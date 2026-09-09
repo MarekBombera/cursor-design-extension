@@ -1,0 +1,7 @@
+{
+	"recommendations": [
+		"oxc.oxc-vscode",
+		"connor4312.esbuild-problem-matchers",
+		"ms-vscode.extension-test-runner"
+	]
+}

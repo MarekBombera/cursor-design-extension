@@ -1,0 +1,39 @@
+---
+description: MCP tools, artboard disk contract, webview CSP quirks
+globs:
+  - "src/**"
+  - "webview/**"
+  - "**/mcp/**"
+alwaysApply: false
+---
+
+# MCP + webview contracts
+
+## MCP tools (v1) — no open_artboard
+
+- set_artboard — create/init; may set active / open panel
+- update_artboard — requires baseGeneration; conflict on mismatch
+- read_artboard / list_artboards / set_active_artboard
+- export_artboard / handoff_status
+
+Serialize writes per artboard id. MCP denied: edit .cursor-design/** and tell user to allowlist.
+
+## Disk (user workspace)
+
+.cursor-design/manifest.json, artboards/<id>.html, optional meta, assets/, tokens.json, handoff/<exportId>/
+
+Multi-artboard + one active. No gallery. Gitignore .cursor-design/.
+
+## Webview CSP
+
+1. Never eval artboard HTML in parent chrome.
+2. Nested iframe sandbox allow-scripts; artboard JS required.
+3. Iframe to chrome postMessage is untrusted.
+4. asWebviewUri + localResourceRoots.
+5. Messages: artboard:updated|error, ui:status|export|reveal.
+
+## Stack
+
+- Host: TS + esbuild
+- Chrome: Svelte 5 + Vite (no Kit)
+- MCP: `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`

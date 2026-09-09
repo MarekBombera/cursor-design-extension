@@ -1,0 +1,107 @@
+---
+description: Prefer arrow functions and fully clear identifier names
+alwaysApply: true
+---
+
+# Code style — arrows & naming
+
+## Arrow functions
+
+Use ES6 arrow functions. Do not use `function` declarations or `function` expressions.
+
+```ts
+// ❌ BAD
+export async function activate(...) { ... }
+function readArtboard(id: string): Artboard | undefined { ... }
+
+// ✅ GOOD
+export const activate = async (...) => { ... }
+const readArtboard = (artboardId: string): Artboard | undefined => { ... }
+```
+
+Exceptions: class methods / `constructor` (classes need them). VS Code extension entry may keep the shape the API expects.
+
+## Naming — one look must tell you what it is
+
+No one-letter or cryptic names. Prefer full words that name the thing.
+
+```ts
+// ❌ BAD
+catch (err) { ... }
+const opts = ...
+const res = await ...
+const ab = readArtboard(id)
+webview.postMessage({ t: 'u', d })
+
+// ✅ GOOD
+catch (error) { ... }
+const options = ...
+const response = await ...
+const artboard = readArtboard(artboardId)
+webview.postMessage({ type: 'artboardUpdated', payload })
+```
+
+### Rules of thumb
+
+- Errors: `error`, never `err` / `e`
+- Async I/O: `response` / `payload` / `requestText`, not `res` / `raw`
+- Domain abbreviations only when the full name is already in the identifier (`artboardId`, not `abId`)
+- Wire/protocol field names stay as the contract defines them (MCP tool args, disk JSON keys, webview message `type`)
+
+When renaming, update all call sites in the same change.
+
+## Single source of truth
+
+Disk layout, artboard schema version, and MCP tool names live in one module each and are imported. Do not re-type path segments under `.cursor-design/` or tool name strings across host / mcp / webview.
+
+## File size
+
+A module that mixes MCP handlers, disk SoT, and webview HTML into hundreds of lines should be split by concern. Keep call sites importing the same public helpers. Do not split a 150-line file that does one thing.
+
+## Code comments
+
+- If you are writing comments they should be to the point. Explaining why was something done over what the code does.
+
+## TypeScript
+
+- Explicit return types on exported helpers, MCP tool handlers, and disk readers/writers.
+- Do **not** add `: JSX.Element` / `: React.JSX.Element` on every Svelte/component wrapper.
+- Reusable types only if used in 2+ places or they're a real domain type. No `types.ts` dump — put the type next to the owner.
+
+## Object arguments (3+)
+
+Utils / helpers with **3 or more** parameters take one object. Named keys catch omitted flags and swapped ids; positional lists do not.
+
+```ts
+// ❌ BAD
+export const writeArtboard = (
+  artboardId: string,
+  html: string,
+  generation: number,
+  workspaceRoot: string,
+) => { ... }
+
+writeArtboard(id, html, generation) // workspaceRoot silently dropped
+
+// ✅ GOOD
+type WriteArtboardArgs = {
+  artboardId: string
+  html: string
+  generation: number
+  workspaceRoot: string
+}
+
+export const writeArtboard = ({
+  artboardId,
+  html,
+  generation,
+  workspaceRoot,
+}: WriteArtboardArgs) => { ... }
+```
+
+Exceptions:
+
+- Ordered coordinates / indices
+- Stdlib-shaped callbacks `(value, index)`
+- Platform-shaped APIs: `fs.readFile(path, encoding)`, `webview.postMessage(message)`, VS Code command handlers
+- Local test factories in `*.test.ts`

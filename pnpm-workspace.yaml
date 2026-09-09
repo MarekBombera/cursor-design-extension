@@ -1,0 +1,3 @@
+# Not a multi-package workspace — file exists so pnpm can approve native builds.
+allowBuilds:
+  esbuild: true

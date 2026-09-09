@@ -1,0 +1,30 @@
+---
+description: Sacred product constraints for Cursor Design extension — always apply
+alwaysApply: true
+---
+
+# Cursor Design — core constraints
+
+You are building **cursor-design**: a Cursor/VS Code extension (WebviewPanel), not a Chrome extension, not a web app.
+
+## Sacred (never violate)
+
+1. **Brain = Cursor Agent only.** Never call LLMs from the extension. Never use `vscode.lm`. No external model API keys.
+2. **No in-extension chat.** Chat stays in Cursor Agent. Panel = artboard chrome + live HTML preview only.
+3. **Disk is SoT:** workspace `.cursor-design/`. MCP process ≠ extension memory.
+4. **Register MCP on activate** with `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
+5. **No Next.js / TanStack Start / TanStack AI / SvelteKit.**
+6. **Panel-only MVP** — no CustomTextEditor, no OS auxiliary window.
+7. **Brand:** `cursor-design` (no Grok Build in v1 messaging).
+
+## Spec
+
+Notion: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Prefer Notion over conflicting chat; ask Bombic if unsure.
+
+## Agent tooling
+
+- Notion MCP — fetch spec before phases
+- Context7 — VS Code / webview / MCP docs
+- Svelte plugin — chrome only
+- modern-web-guidance before webview/CSP work

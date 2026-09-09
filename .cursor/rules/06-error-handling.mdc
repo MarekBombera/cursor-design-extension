@@ -1,0 +1,115 @@
+---
+description: Typed errors, edge cases, safe messages — never leak stacks/secrets; MCP isError for agents
+alwaysApply: true
+---
+
+# Error handling
+
+Agents must design for failure paths, not only the happy path. Every public surface (command, MCP tool, disk read/write, webview message) names what can go wrong and how the caller learns it.
+
+No Sentry / third-party crash reporter in v1. Local `OutputChannel` (or `console.error` in the MCP process) is enough for diagnostics.
+
+## Principles
+
+1. **Expected vs unexpected.** Missing artboard, stale `baseGeneration`, invalid tool args, empty workspace → recoverable, typed, actionable. Programmer bugs / violated invariants → throw `Error` subclasses.
+2. **Throw only `Error` (or subclasses).** Never `throw 400`, `throw 'msg'`, or bare objects — they bypass `instanceof` / `cause` and confuse MCP SDKs.
+3. **`catch (error: unknown)`**, then narrow (`error instanceof Error`, optional `Error.isError` when available). Do not type the catch binding as `any` / `Error` without narrowing.
+4. **Preserve `cause`.** When wrapping: `new ArtboardNotFoundError(artboardId, { cause: error })`. Do not stringify away the original.
+5. **No empty `catch {}`.** Silent swallow only after a deliberate log + a named ceiling (`// ponytail: …`).
+6. **Do not add `neverthrow` / Effect / fp-ts** unless Bombic asks. Prefer plain discriminated returns or typed throws at boundaries (ponytail).
+
+## Channels (who sees what)
+
+| Audience | Channel | Content |
+|----------|---------|---------|
+| Bombic (UI) | `vscode.window.showErrorMessage` / panel banner | Short, human, no stack |
+| Cursor Agent (MCP) | tool result `isError: true` + concise text | Actionable fix hint (retry args, read then update) |
+| Developer | Extension `OutputChannel` / MCP stderr | Full detail: stack, paths, codes — never ship this to UI/MCP text |
+
+MCP protocol errors (unknown tool, bad JSON-RPC) stay protocol-layer. **Tool execution failures** (validation, disk, stale generation) return a normal tool result with `isError: true` so the agent can self-correct — do not turn them into opaque `-32603` unless the process is actually dying.
+
+```ts
+// ❌ BAD — agent gets a protocol crash, no recovery hint
+throw new Error(fsError.stack)
+
+// ✅ GOOD — tool result the agent can act on
+return {
+  content: [{ type: 'text', text: 'Artboard "hero" not found. Call list_artboards, then set_artboard or set_active_artboard.' }],
+  isError: true,
+}
+```
+
+## Safe messages (security)
+
+Never put these in UI strings, MCP `content`, or webview posts:
+
+- Stack traces, `error.stack`
+- Absolute filesystem paths outside the workspace (home dir, extension install dir, temp)
+- Secrets, tokens, cookies, env values
+- Full artboard HTML/JS payloads or handoff file bodies
+- Raw Node/`ENOENT`/`EACCES` driver text as the only message
+- Internal dependency versions / hostnames
+
+**Do** include: stable `code` when useful (`ARTBOARD_NOT_FOUND`, `STALE_GENERATION`, `NO_WORKSPACE`), artboard **id**, relative path under `.cursor-design/`, expected vs actual generation, what to do next.
+
+Map internals → safe copy. Never pipe `error.message` straight to the user or MCP unless you authored that message yourself.
+
+```ts
+// ❌ BAD
+vscode.window.showErrorMessage(error.message) // may be absolute path / errno soup
+return { content: [{ type: 'text', text: String(error) }], isError: true }
+
+// ✅ GOOD
+logError('disk.readArtboard', error) // OutputChannel: full detail
+vscode.window.showErrorMessage('Could not read artboard "hero". Check the Output panel: Cursor Design.')
+```
+
+## Edge cases to always consider
+
+Before claiming a flow is done, check:
+
+- No folder open / multi-root workspace without a clear root
+- `.cursor-design/` missing, unreadable, or partially written
+- Corrupt or wrong-version artboard JSON
+- `update_artboard` with wrong / missing `baseGeneration` (conflict)
+- Race: disk change while panel open; MCP write while UI stale
+- Webview message: unknown `type`, oversized payload, non-object
+- Artboard iframe / CSP failures (render error state, do not execute untrusted as extension code)
+- Export/handoff when active artboard unset
+- Activate / deactivate / dispose: no dangling watchers or double `registerServer`
+
+## TypeScript shapes
+
+Domain failures that callers should handle: **named `Error` subclass** with a `readonly code` string, **or** a small discriminated union return — pick one style per module and stay consistent.
+
+```ts
+export class StaleGenerationError extends Error {
+  readonly code = 'STALE_GENERATION' as const
+  constructor(
+    readonly artboardId: string,
+    readonly expected: number,
+    readonly actual: number,
+    options?: { cause?: unknown },
+  ) {
+    super(
+      `Artboard "${artboardId}" is stale (expected generation ${expected}, was ${actual}). read_artboard, then retry update_artboard with baseGeneration: ${actual}.`,
+      options,
+    )
+    this.name = 'StaleGenerationError'
+  }
+}
+```
+
+Exported helpers that can fail for business reasons should document the failure mode in the return type or via thrown subclasses the host/MCP boundary catches once.
+
+## Webview boundary
+
+Treat `onDidReceiveMessage` like untrusted input: validate `type` + payload before any host action. On failure, ignore or reply with a safe error event — never `eval` message text, never forward raw errors into `innerHTML`.
+
+## Checklist (agent)
+
+- [ ] Happy path **and** at least one failure path exercised or reasoned
+- [ ] Message tells the next step (especially MCP)
+- [ ] No stack / secret / absolute sensitive path in user- or agent-facing text
+- [ ] Logged once at the boundary (no duplicate spam)
+- [ ] Matches ponytail: smallest correct handling, not a new error framework

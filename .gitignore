@@ -1,0 +1,13 @@
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
+
+# Runtime artboard state (user workspaces)
+.cursor-design/
+
+# OS / env
+.DS_Store
+.env
+.env*.local

@@ -1,0 +1,66 @@
+---
+description: VS Code extension host practices — activation, disposables, panel, URIs, trust
+alwaysApply: true
+---
+
+# VS Code extension host
+
+Platform rules for the extension host. Product constraints stay in 00. MCP/CSP/disk contract in 02. Module ownership in 05. Error channels in 06.
+
+## Activation
+
+- Never `"activationEvents": ["*"]`. Contributed `commands` already activate (engines `^1.136`). Add `onWebviewPanel:<viewType>` only if you register a serializer.
+- `activate` registers commands, MCP, watchers — then returns. No workspace walk, no network, no waiting on MCP handshake.
+- Do not open the panel on activate, on update, or for every window. Open from the command / MCP `set_artboard`.
+- `activate` runs once. `deactivate` returns a `Promise` only when cleanup is async.
+
+## Disposables
+
+Push every command, watcher, `OutputChannel`, status item, and MCP registration to `context.subscriptions`. Panel-local timers/listeners die in `onDidDispose` — no leaked `setInterval`.
+
+```ts
+// ❌ BAD — second Open Artboard creates another panel; timer survives close
+vscode.window.createWebviewPanel(viewType, title, column, options)
+setInterval(() => panel.webview.postMessage(payload), 200)
+
+// ✅ GOOD — one panel; reveal; dispose with the panel
+if (currentPanel) {
+  currentPanel.reveal(column)
+  return currentPanel
+}
+const panel = vscode.window.createWebviewPanel(viewType, title, column, options)
+panel.onDidDispose(() => {
+  clearInterval(refreshTimer)
+  currentPanel = undefined
+})
+```
+
+## Commands / chrome UX
+
+- Every command: `contributes.commands` **and** `registerCommand`. IDs `cursor-design.*`, `category: "Cursor Design"`.
+- Hide with `when` / `enablement`; still guard the handler (palette can invoke anyway).
+- Prefer Command Palette / QuickPick over custom wizard UI.
+- Chrome uses `var(--vscode-*)` theme tokens, keyboard order, and ARIA. Artboard HTML is user content — do not theme it as chrome.
+
+## Webview host (CSP contract is 02)
+
+- `webview.html` is a **complete** HTML document, not a fragment.
+- `acquireVsCodeApi()` **once** in chrome; keep the return value.
+- `enableScripts: true` for chrome. `localResourceRoots` = extension media only — not the workspace (artboard is nested iframe `srcdoc`).
+- Chrome CSP: `default-src 'none'` plus nonce'd `script-src` and `style-src` via `webview.cspSource`. No `http:` resources.
+- Prefer `getState` / `setState` over `retainContextWhenHidden` (high memory). Use retain only if iframe state cannot be restored from disk SoT.
+
+## URIs, FS, processes
+
+- `vscode.Uri.joinPath` + `webview.asWebviewUri`. Never string-concat paths or put `file://` in webview HTML.
+- Host: `vscode.workspace.fs` for workspace files (remote / WSL / Codespaces). MCP disk lib: `node:fs` is fine (separate process).
+- `import * as vscode` only in the extension host. Not in webview JS, not in the MCP process.
+
+## Trust, remote, bundle
+
+Artboard HTML is executable workspace code. Declare `capabilities.untrustedWorkspaces` (`false` or `limited` + description — never `true`). Do not write `.cursor-design/` or load artboard scripts until `vscode.workspace.isTrusted`.
+
+- `extensionKind: ["workspace"]` — needs the folder, not the local UI host.
+- esbuild `external: ['vscode']`. Never depend on the `vscode` npm package.
+- No proposed APIs unless `enabledApiProposals` + matching `engines`.
+- Watch with `createFileSystemWatcher` + debounce (~200ms). Do not poll. No sync fs/CPU on the extension host thread.

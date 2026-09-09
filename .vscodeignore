@@ -1,0 +1,23 @@
+.vscode/**
+.vscode-test/**
+out/**
+node_modules/**
+src/**
+.gitignore
+.yarnrc
+esbuild.js
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/*.map
+**/*.ts
+**/.vscode-test.*
+.oxlintrc.json
+.oxfmtrc.json
+oxlint*
+oxfmt*
+.cursor/**
+.agents/**
+.claude/**
+blueprint/**
+fixtures/**
+AGENTS copy.md

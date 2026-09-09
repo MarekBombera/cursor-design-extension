@@ -1,0 +1,49 @@
+---
+description: One job per function — extract host / mcp / webview concerns instead of bloating the owner
+alwaysApply: true
+---
+
+# Single job — host, MCP, webview
+
+A function does **one job**. The name is that job. When a module grows a second hero (disk write vs MCP tool vs panel HTML), extract — do not keep stacking steps into the owner.
+
+Works with ponytail: extract **a real job**, not a forwarder. One-line wrappers that only call the next function stay out. Thin barrels that re-export split modules are fine when callers should still import one path.
+
+| Kind | Lives in | Owns |
+|------|----------|------|
+| Extension host | `src/` activate, commands, panel | open panel, register MCP, watch `.cursor-design/`, postMessage to webview |
+| MCP process | `src/mcp/` (or sibling) | tool handlers; read/write disk SoT; no UI |
+| Disk SoT | shared lib | artboard CRUD, active pointer, generation / hash — no MCP transport, no DOM |
+| Webview chrome | `src/webview/` | Svelte chrome + iframe srcdoc; render what host posts — no MCP, no direct workspace fs |
+
+```ts
+// ❌ BAD — activate also parses MCP args and builds iframe HTML
+export const activate = (context) => {
+  /* registerServer + writeArtboardFile + setWebviewHtml */
+}
+
+// ✅ GOOD — owner wires; jobs are named
+export const activate = (context) => {
+  registerCursorDesignMcp(context)
+  const panel = openArtboardPanel(context)
+  watchArtboardDisk({ workspaceRoot, onChange: panel.postArtboard })
+}
+```
+
+```ts
+// ❌ BAD
+export const save = (args) => writeArtboard(args)
+const load = (id) => readArtboard(id)
+
+// ✅ GOOD — name says when / what
+writeArtboard(args)
+readArtboard(artboardId)
+setActiveArtboard(artboardId)
+```
+
+- **Host** if it uses `vscode.*` or owns the panel lifetime.
+- **MCP** if it is a tool handler / stdio server.
+- **Disk lib** if it could run without VS Code or MCP (pure fs + schema).
+- **Webview** if it runs in the webview JS context.
+- Do not put process-global I/O policy in a pure parse module — the write leaf owns that.
+- `*.test.ts` covers the extracted util, not the VS Code activate wrapper.

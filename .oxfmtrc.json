@@ -1,0 +1,14 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"semi": true,
+	"singleQuote": true,
+	"useTabs": true,
+	"printWidth": 100,
+	"ignorePatterns": [
+		"**/dist/**",
+		"**/out/**",
+		"**/node_modules/**",
+		"**/.vscode-test/**",
+		"src/types/vscode.cursor.d.ts"
+	]
+}

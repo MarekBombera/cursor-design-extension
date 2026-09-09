@@ -1,0 +1,20 @@
+---
+description: Agentic build phases and gates for cursor-design MVP
+alwaysApply: true
+---
+
+# Build protocol
+
+Spec to types to gates to code. Verify with F5 Extension Host in Cursor.
+
+| Phase | Gate |
+|---|---|
+| **0 Bootstrap** | F5 works; empty panel; registerServer on activate; no CSP errors |
+| **1 Disk to pixels** | HTML file save refreshes iframe (~200ms); generation bumps |
+| **2 MCP loop** | set/update/read/list/set_active; baseGeneration conflicts; MCP-offline banner |
+| **3 Export** | export + handoff_status stale mark; IMPLEMENT.md usable |
+| **4 Release polish** | MIT, screenshots, honest limits |
+
+DoD demo: hero+CTA then export then implement into Vite + plain HTML sample. Handoff = HTML+CSS+JS.
+
+Do not invent features outside the Notion spec without asking Bombic.

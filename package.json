@@ -1,0 +1,81 @@
+{
+	"name": "cursor-design",
+	"displayName": "cursor-design",
+	"version": "0.0.1",
+	"description": "Agent-driven live HTML artboard for Cursor (MCP + webview, no in-panel chat).",
+	"categories": [
+		"Other"
+	],
+	"license": "MIT",
+	"main": "./dist/extension.js",
+	"scripts": {
+		"vscode:prepublish": "pnpm run package",
+		"compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+		"watch": "npm-run-all -p watch:*",
+		"watch:esbuild": "node esbuild.js --watch",
+		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+		"package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+		"compile-tests": "tsc -p . --outDir out",
+		"watch-tests": "tsc -p . -w --outDir out",
+		"pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+		"check-types": "tsc --noEmit",
+		"lint": "oxlint",
+		"test": "vscode-test",
+		"lint:fix": "oxlint --fix",
+		"fmt": "oxfmt",
+		"fmt:check": "oxfmt --check"
+	},
+	"devDependencies": {
+		"@types/mocha": "^10.0.10",
+		"@types/node": "24.x",
+		"@types/vscode": "^1.136.0",
+		"@vscode/test-cli": "^0.0.15",
+		"@vscode/test-electron": "^3.0.0",
+		"esbuild": "^0.28.1",
+		"npm-run-all": "^4.1.5",
+		"oxfmt": "^0.67.0",
+		"oxlint": "^1.82.0",
+		"typescript": "^6.0.3"
+	},
+	"overrides": {
+		"diff": "^8.0.4",
+		"serialize-javascript": "^7.0.6"
+	},
+	"contributes": {
+		"commands": [
+			{
+				"command": "cursor-design.openArtboard",
+				"title": "Open Artboard",
+				"category": "Cursor Design"
+			},
+			{
+				"command": "cursor-design.revealDesignFolder",
+				"title": "Reveal Design Folder",
+				"category": "Cursor Design"
+			},
+			{
+				"command": "cursor-design.exportHandoff",
+				"title": "Export Handoff",
+				"category": "Cursor Design"
+			}
+		]
+	},
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"extensionKind": [
+		"workspace"
+	],
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": false,
+			"description": "Cursor Design writes and previews workspace HTML as executable artboard content."
+		}
+	},
+	"engines": {
+		"vscode": "^1.136.0"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/server": "^2.0.0"
+	}
+}

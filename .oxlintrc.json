@@ -1,0 +1,13 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript"],
+	"categories": {
+		"correctness": "error"
+	},
+	"rules": {
+		"curly": "warn",
+		"eqeqeq": "warn",
+		"no-throw-literal": "warn"
+	},
+	"ignorePatterns": ["dist", "out", "node_modules", ".vscode-test"]
+}
