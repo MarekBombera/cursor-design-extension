@@ -56,7 +56,6 @@ export const openArtboardPanel = (context: vscode.ExtensionContext): vscode.Webv
 	panel.onDidDispose(() => {
 		currentPanel = undefined;
 	});
-	context.subscriptions.push(panel);
 	currentPanel = panel;
 	return panel;
 };

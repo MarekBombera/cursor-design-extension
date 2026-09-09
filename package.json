@@ -1,6 +1,7 @@
 {
 	"name": "cursor-design",
 	"displayName": "cursor-design",
+	"publisher": "cursor-design",
 	"version": "0.0.1",
 	"description": "Agent-driven live HTML artboard for Cursor (MCP + webview, no in-panel chat).",
 	"categories": [
@@ -73,7 +74,7 @@
 		}
 	},
 	"engines": {
-		"vscode": "^1.136.0"
+		"vscode": "^1.128.0"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/server": "^2.0.0"

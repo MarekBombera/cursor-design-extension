@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 31d1e01bfb0e1cd149e4bebb0833744dcdbd22fc2c0d4f6d84e763ce350674c8 -->
+<!-- blueprint:source-hash 09852ad5cf3417f25bf416ec9637db1901d48336a803b4ba975a7b8d1bb81bac -->
 
 > Agent-driven live HTML artboard inside Cursor: WebviewPanel chrome, nested iframe, local MCP, disk SoT under `.cursor-design/`.
 
