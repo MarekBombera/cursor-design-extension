@@ -1,6 +1,6 @@
 # AGENTS.md
 
-**cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`. Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4. Rules: `.cursor/rules/`. Skills: `cursor-design-build`, `cursor-design-agent-loop`.
+**cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`. Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4. Rules: `.cursor/rules/`. Skills: `cursor-design-build`, `cursor-design-agent-loop`, `feature-review`.
 
 Instructions for AI coding agents working in this project. This is the cross-tool
 entry point: Codex, OpenCode, Cursor, GitHub Copilot, Gemini CLI, Aider, Zed,
@@ -170,7 +170,7 @@ Git, and never part of a feature commit.
 
 Commands with meaningful progress or a durable handoff should write it when the
 state directory exists: `onboard`, `adopt`, `discovery`, `overview`, `feature`,
-`fix`, `rollback`, `implement`, `debug`, `check`, `audit`, `tests`,
+`fix`, `feature-review`, `rollback`, `implement`, `debug`, `check`, `audit`, `tests`,
 `browser-tests`, `ci`, `prototype`, `autopilot`, `continuous`, `complete`, and
 `release`. Short orientation commands such as `brief`, `try`, `status`, and
 `doctor` do not need activity state. Doctor's optional approved reset removes
