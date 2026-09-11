@@ -8,21 +8,42 @@ import {
 import { exportHandoff } from './commands/exportHandoff';
 import { revealDesignFolder } from './commands/revealDesignFolder';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
-import { ensureArtboardWatcher } from './host/watchArtboardDisk';
+import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
-import { setArtboardPanelOnVisible } from './panel/openArtboardPanel';
+import { postUiStatusToPanel, setArtboardPanelOnVisible } from './panel/openArtboardPanel';
 
 export const activate = (context: vscode.ExtensionContext): void => {
 	const outputChannel = vscode.window.createOutputChannel('Cursor Design');
 	context.subscriptions.push(outputChannel);
 
-	registerCursorDesignMcp({ context, outputChannel });
+	const syncHostRuntime = (): void => {
+		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
+		postUiStatusToPanel(mcpAvailable);
+		replaceArtboardWatcher({ context, outputChannel });
+	};
+
 	setArtboardPanelOnVisible(() => {
 		void reloadVisibleArtboardFromDisk(outputChannel);
 	});
-	ensureArtboardWatcher({ context, outputChannel });
+
+	if (vscode.workspace.isTrusted) {
+		syncHostRuntime();
+	} else {
+		postUiStatusToPanel(false);
+	}
 
 	context.subscriptions.push(
+		vscode.workspace.onDidGrantWorkspaceTrust(() => {
+			syncHostRuntime();
+		}),
+		vscode.workspace.onDidChangeWorkspaceFolders(() => {
+			if (!vscode.workspace.isTrusted) {
+				postUiStatusToPanel(false);
+				replaceArtboardWatcher({ context, outputChannel });
+				return;
+			}
+			syncHostRuntime();
+		}),
 		vscode.commands.registerCommand(OPEN_ARTBOARD_COMMAND, () => {
 			void handleOpenArtboard({ context, outputChannel });
 		}),

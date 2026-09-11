@@ -1,9 +1,8 @@
 import { CorruptManifestError, CorruptMetaError, InvalidArtboardIdError, UnsupportedSchemaVersionError } from './errors';
-import { HASH_PREFIX } from './hash';
+import { isArtboardHash } from './hash';
 import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
 
 const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
-const HASH_PATTERN = new RegExp(`^${HASH_PREFIX}[a-fA-F0-9]{64}$`);
 
 export type ArtboardManifest = {
 	version: typeof SCHEMA_VERSION;
@@ -35,6 +34,24 @@ export const parseArtboardId = (value: unknown): string => {
 	throw new InvalidArtboardIdError(typeof value === 'string' ? value : '');
 };
 
+// Empty or charset-invalid active is "no valid active" (ARTBOARD_NOT_FOUND), not a corrupt file.
+const parseActiveArtboardId = (value: unknown): string => {
+	if (typeof value !== 'string') {
+		throw new CorruptManifestError();
+	}
+	if (value.length === 0) {
+		return '';
+	}
+	try {
+		return parseArtboardId(value);
+	} catch (error: unknown) {
+		if (error instanceof InvalidArtboardIdError) {
+			return '';
+		}
+		throw error;
+	}
+};
+
 export const parseManifest = (value: unknown): ArtboardManifest => {
 	if (!isJsonRecord(value)) {
 		throw new CorruptManifestError();
@@ -50,7 +67,7 @@ export const parseManifest = (value: unknown): ArtboardManifest => {
 	}
 	return {
 		version: SCHEMA_VERSION,
-		activeArtboardId: parseArtboardId(value.activeArtboardId),
+		activeArtboardId: parseActiveArtboardId(value.activeArtboardId),
 		workspaceFolder: value.workspaceFolder,
 		updatedAt: value.updatedAt,
 	};
@@ -67,7 +84,7 @@ export const parseMeta = (value: unknown): ArtboardMeta => {
 	if (typeof value.generation !== 'number' || !Number.isInteger(value.generation) || value.generation < 1) {
 		throw new CorruptMetaError(id);
 	}
-	if (typeof value.hash !== 'string' || !HASH_PATTERN.test(value.hash)) {
+	if (typeof value.hash !== 'string' || !isArtboardHash(value.hash)) {
 		throw new CorruptMetaError(id);
 	}
 	if (!isNonEmptyString(value.updatedAt)) {

@@ -18,6 +18,13 @@ export type ArtboardErrorMessage = {
 	message: string;
 };
 
+export type UiStatusMessage = {
+	type: 'ui:status';
+	mcpAvailable: boolean;
+};
+
+const MCP_UNAVAILABLE_COPY = 'MCP unavailable. Artboard still loads from disk.';
+
 type ArtboardHostView = {
 	updated: ArtboardUpdatedMessage;
 	errorMessage?: string;
@@ -26,6 +33,7 @@ type ArtboardHostView = {
 let currentPanel: vscode.WebviewPanel | undefined;
 let chromeReady = false;
 let pendingView: ArtboardHostView | undefined;
+let pendingMcpAvailable: boolean | undefined;
 let onPanelBecameVisible: (() => void) | undefined;
 
 const createCspNonce = (): string => randomBytes(16).toString('hex');
@@ -51,6 +59,17 @@ const flushPendingArtboardView = (): void => {
 	}
 };
 
+const flushPendingUiStatus = (): void => {
+	if (!currentPanel || !chromeReady || pendingMcpAvailable === undefined) {
+		return;
+	}
+	const statusMessage: UiStatusMessage = {
+		type: 'ui:status',
+		mcpAvailable: pendingMcpAvailable,
+	};
+	void currentPanel.webview.postMessage(statusMessage);
+};
+
 export const hasCurrentArtboardPanel = (): boolean => currentPanel !== undefined;
 
 export const setArtboardPanelOnVisible = (handler: () => void): void => {
@@ -66,6 +85,11 @@ export const postArtboardSnapshotToPanel = ({
 		errorMessage,
 	};
 	flushPendingArtboardView();
+};
+
+export const postUiStatusToPanel = (mcpAvailable: boolean): void => {
+	pendingMcpAvailable = mcpAvailable;
+	flushPendingUiStatus();
 };
 
 const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
@@ -113,6 +137,12 @@ const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
 			color: var(--vscode-errorForeground);
 			flex: 0 0 auto;
 		}
+		.mcp-banner {
+			margin: 0;
+			padding: 0.5rem 0.75rem;
+			color: var(--vscode-editorWarning-foreground, var(--vscode-inputValidation-warningForeground));
+			flex: 0 0 auto;
+		}
 		#empty-copy {
 			margin: 0;
 			padding: 0.75rem;
@@ -131,6 +161,7 @@ const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
 		<span id="artboard-generation-badge" class="badge"></span>
 	</header>
 	<p id="artboard-error" class="error" hidden></p>
+	<p id="mcp-banner" class="mcp-banner" hidden></p>
 	<p id="empty-copy">No artboard yet.</p>
 	<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview"></iframe>
 	<script nonce="${nonce}">
@@ -140,6 +171,8 @@ const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
 		const idBadge = document.getElementById('artboard-id-badge');
 		const generationBadge = document.getElementById('artboard-generation-badge');
 		const errorBanner = document.getElementById('artboard-error');
+		const mcpBanner = document.getElementById('mcp-banner');
+		const mcpUnavailableCopy = '${MCP_UNAVAILABLE_COPY}';
 		let currentBlobUrl;
 		let lastHtml;
 
@@ -168,6 +201,9 @@ const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
 		};
 
 		window.addEventListener('message', (event) => {
+			if (event.source === iframe.contentWindow) {
+				return;
+			}
 			const data = event.data;
 			if (data === null || typeof data !== 'object') {
 				return;
@@ -183,6 +219,19 @@ const buildArtboardChromeHtml = (webview: vscode.Webview): string => {
 			if (data.type === 'artboard:error') {
 				errorBanner.hidden = false;
 				errorBanner.textContent = typeof data.message === 'string' ? data.message : 'Could not load artboard.';
+				return;
+			}
+			if (data.type === 'ui:status') {
+				if (typeof data.mcpAvailable !== 'boolean') {
+					return;
+				}
+				if (data.mcpAvailable) {
+					mcpBanner.hidden = true;
+					mcpBanner.textContent = '';
+					return;
+				}
+				mcpBanner.hidden = false;
+				mcpBanner.textContent = mcpUnavailableCopy;
 			}
 		});
 
@@ -211,6 +260,7 @@ export const openArtboardPanel = (context: vscode.ExtensionContext): vscode.Webv
 		}
 		chromeReady = true;
 		flushPendingArtboardView();
+		flushPendingUiStatus();
 	});
 	panel.onDidChangeViewState(() => {
 		if (!panel.visible) {

@@ -12,6 +12,8 @@ export const DEFAULT_ARTBOARD_TITLE = 'Artboard' as const;
 
 export const DEFAULT_VIEWPORT = '1280x800' as const;
 
+export const ENSURE_PANEL_FILE = '.ensure-panel' as const;
+
 export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,3 +47,5 @@ export const artboardMetaPathSegments = (artboardId: string): readonly [string, 
 	...artboardsDirSegments,
 	artboardMetaFileName(artboardId),
 ];
+
+export const ensurePanelPathSegments = [CURSOR_DESIGN_DIR, ENSURE_PANEL_FILE] as const;
