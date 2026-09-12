@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { readActiveArtboardFromDisk, snapshotForChrome } from './artboardDisk';
+import { fileExists, isFileNotFound, logDiskError } from './hostFs';
 import {
 	hasCurrentArtboardPanel,
 	openArtboardPanel,
@@ -19,22 +20,6 @@ let artboardWatcher: vscode.FileSystemWatcher | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingMarkerEnsure = false;
 let watcherDisposeHooked = false;
-
-const isFileNotFound = (error: unknown): boolean =>
-	error instanceof vscode.FileSystemError &&
-	(error.code === 'FileNotFound' || error.code === 'EntryNotFound');
-
-const markerFileExists = async (markerUri: vscode.Uri): Promise<boolean> => {
-	try {
-		await vscode.workspace.fs.stat(markerUri);
-		return true;
-	} catch (error: unknown) {
-		if (isFileNotFound(error)) {
-			return false;
-		}
-		throw error;
-	}
-};
 
 const clearDebounceTimer = (): void => {
 	if (debounceTimer !== undefined) {
@@ -72,9 +57,7 @@ const deleteEnsurePanelMarker = async (
 		if (isFileNotFound(error)) {
 			return;
 		}
-		outputChannel.appendLine(
-			`watchArtboardDisk.deleteMarker: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-		);
+		logDiskError({ scope: 'watchArtboardDisk.deleteMarker', error, outputChannel });
 	}
 };
 
@@ -104,12 +87,10 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 			}
 			let markerStillThere = false;
 			try {
-				markerStillThere = await markerFileExists(markerUri);
+				markerStillThere = await fileExists(markerUri);
 			} catch (error: unknown) {
 				pendingMarkerEnsure = false;
-				outputChannel.appendLine(
-					`watchArtboardDisk.markerStat: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-				);
+				logDiskError({ scope: 'watchArtboardDisk.markerStat', error, outputChannel });
 				return;
 			}
 			if (!markerStillThere) {
@@ -160,7 +141,7 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 	}
 
 	// Re-arm from disk: a marker written before this replace lost its flag with the old watcher.
-	void markerFileExists(markerUri)
+	void fileExists(markerUri)
 		.then((markerStillThere) => {
 			if (markerStillThere) {
 				pendingMarkerEnsure = true;
@@ -168,9 +149,7 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 			}
 		})
 		.catch((error: unknown) => {
-			outputChannel.appendLine(
-				`watchArtboardDisk.markerStat: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-			);
+			logDiskError({ scope: 'watchArtboardDisk.markerStat', error, outputChannel });
 		});
 };
 

@@ -71,11 +71,15 @@ export const registerCursorDesignMcp = ({
 	const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
 	const workspaceRootOrEmpty = workspaceFolders[0]?.uri.fsPath ?? '';
 
-	try {
-		mcpApi.unregisterServer(CURSOR_DESIGN_MCP_SERVER_NAME);
-	} catch (error: unknown) {
-		logMcpOutput({ outputChannel, label: 'unregisterCursorDesignMcp', error });
-	}
+	const unregisterCursorDesignMcpServer = (): void => {
+		try {
+			mcpApi.unregisterServer(CURSOR_DESIGN_MCP_SERVER_NAME);
+		} catch (error: unknown) {
+			logMcpOutput({ outputChannel, label: 'unregisterCursorDesignMcp', error });
+		}
+	};
+
+	unregisterCursorDesignMcpServer();
 
 	try {
 		mcpApi.registerServer({
@@ -99,13 +103,7 @@ export const registerCursorDesignMcp = ({
 	}
 
 	mcpRegistration = {
-		dispose: (): void => {
-			try {
-				mcpApi.unregisterServer(CURSOR_DESIGN_MCP_SERVER_NAME);
-			} catch (error: unknown) {
-				logMcpOutput({ outputChannel, label: 'unregisterCursorDesignMcp', error });
-			}
-		},
+		dispose: unregisterCursorDesignMcpServer,
 	};
 	return true;
 };

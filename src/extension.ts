@@ -18,7 +18,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
 	const syncHostRuntime = (): void => {
 		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
-		postUiStatusToPanel(mcpAvailable);
+		postUiStatusToPanel({ mcpAvailable });
 		replaceArtboardWatcher({ context, outputChannel });
 	};
 
@@ -29,7 +29,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	if (vscode.workspace.isTrusted) {
 		syncHostRuntime();
 	} else {
-		postUiStatusToPanel(false);
+		postUiStatusToPanel({ mcpAvailable: false });
 	}
 
 	context.subscriptions.push(
@@ -38,7 +38,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			if (!vscode.workspace.isTrusted) {
-				postUiStatusToPanel(false);
+				postUiStatusToPanel({ mcpAvailable: false });
 				replaceArtboardWatcher({ context, outputChannel });
 				return;
 			}
@@ -51,7 +51,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 			void revealDesignFolder(outputChannel);
 		}),
 		vscode.commands.registerCommand(EXPORT_HANDOFF_COMMAND, () => {
-			exportHandoff();
+			void exportHandoff(outputChannel);
 		}),
 	);
 };

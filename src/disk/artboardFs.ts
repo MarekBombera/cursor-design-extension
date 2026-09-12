@@ -15,21 +15,29 @@ import {
 	UnsupportedSchemaVersionError,
 } from './errors';
 import { nextGeneration } from './generation';
+import { buildHandoffFiles, compareHandoff } from './handoff';
 import { hashHtml, isArtboardHash, normalizeHash } from './hash';
 import {
 	CURSOR_DESIGN_DIR,
 	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_VIEWPORT,
+	HANDOFF_INDEX_FILE,
+	IMPLEMENT_FILE,
 	SCHEMA_VERSION,
+	TOKENS_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	artboardsDirSegments,
 	ensurePanelPathSegments,
+	handoffDirSegments,
+	handoffRootSegments,
 	manifestPathSegments,
+	workspaceTokensPathSegments,
 } from './layout';
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
+	type LastExport,
 	parseArtboardId,
 	parseManifest,
 	parseMeta,
@@ -111,6 +119,28 @@ export type SetActiveArtboardArgs = {
 	artboardId: unknown;
 };
 
+export type ExportArtboardArgs = {
+	workspaceRoot: string;
+	artboardId?: unknown;
+	now?: Date;
+};
+
+export type ExportArtboardResult = {
+	exportId: string;
+	artboardId: string;
+	artboardHash: string;
+	exportedAt: string;
+	generation: number;
+	handoffPath: string;
+};
+
+export type HandoffStatusResult = {
+	stale: boolean;
+	activeArtboardId: string;
+	activeHash: string;
+	lastExport?: LastExport;
+};
+
 const isErrno = (error: unknown, code: string): boolean =>
 	typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === code;
 
@@ -138,18 +168,14 @@ const workspaceJoin = (workspaceRoot: string, segments: readonly string[]): stri
 type LayoutEntryKind = 'missing' | 'symlink' | 'file' | 'other';
 
 const layoutEntryKind = async (filePath: string): Promise<LayoutEntryKind> => {
-	try {
-		const fileStats = await lstat(filePath);
-		if (fileStats.isSymbolicLink()) {
-			return 'symlink';
-		}
-		return fileStats.isFile() ? 'file' : 'other';
-	} catch (error: unknown) {
-		if (isErrno(error, 'ENOENT')) {
-			return 'missing';
-		}
-		return throwDiskError(error);
+	const fileStats = await lstatOrUndefined(filePath);
+	if (fileStats === undefined) {
+		return 'missing';
 	}
+	if (fileStats.isSymbolicLink()) {
+		return 'symlink';
+	}
+	return fileStats.isFile() ? 'file' : 'other';
 };
 
 // lstat (never stat) at every level: the id charset already blocks `..`, so rejecting
@@ -170,6 +196,7 @@ const assertLayoutDirsOwned = async (workspaceRoot: string): Promise<void> => {
 	const dirPaths = [
 		join(workspaceRoot, CURSOR_DESIGN_DIR),
 		workspaceJoin(workspaceRoot, artboardsDirSegments),
+		workspaceJoin(workspaceRoot, handoffRootSegments),
 	];
 	for (const dirPath of dirPaths) {
 		const dirStats = await lstatOrUndefined(dirPath);
@@ -222,6 +249,14 @@ const writeUtf8 = async (filePath: string, contents: string): Promise<void> => {
 	}
 };
 
+const ensureDir = async (dirPath: string): Promise<void> => {
+	try {
+		await mkdir(dirPath, { recursive: true });
+	} catch (error: unknown) {
+		throwDiskError(error);
+	}
+};
+
 const parseManifestText = (text: string): ArtboardManifest => {
 	let parsedJson: unknown;
 	try {
@@ -245,17 +280,6 @@ const readManifestFile = async (workspaceRoot: string): Promise<ArtboardManifest
 		return undefined;
 	}
 	return parseManifestText(text);
-};
-
-const parseManifestTextLenient = (text: string): ArtboardManifest | undefined => {
-	try {
-		return parseManifestText(text);
-	} catch (error: unknown) {
-		if (error instanceof CorruptManifestError || error instanceof UnsupportedSchemaVersionError) {
-			return undefined;
-		}
-		throw error;
-	}
 };
 
 const readManifestFileLenient = async (
@@ -297,6 +321,14 @@ const readMetaForHtml = async (workspaceRoot: string, artboardId: string): Promi
 	}
 };
 
+const requireArtboardHtml = async (workspaceRoot: string, artboardId: string): Promise<string> => {
+	const html = await readUtf8IfExists(workspaceJoin(workspaceRoot, artboardHtmlPathSegments(artboardId)));
+	if (html === undefined) {
+		throw new ArtboardNotFoundError(artboardId);
+	}
+	return html;
+};
+
 const requireHtmlString = (html: unknown): string => {
 	if (typeof html !== 'string') {
 		throw new InvalidArgsError('html must be a string. Fix args and retry.');
@@ -309,6 +341,31 @@ const requireArtboardIdString = (artboardId: unknown): string => {
 		throw new InvalidArgsError('artboardId is required. Fix args and retry.');
 	}
 	return parseArtboardId(artboardId);
+};
+
+// Read/export accept an omitted id (default-active); this parses one the caller received.
+const requireExplicitArtboardId = (artboardId: unknown): string => {
+	if (typeof artboardId !== 'string') {
+		throw new InvalidArgsError('artboardId must be a string. Fix args and retry.');
+	}
+	return parseArtboardId(artboardId);
+};
+
+const requireOptionalString = (value: unknown, fieldName: string): string | undefined => {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== 'string') {
+		throw new InvalidArgsError(`${fieldName} must be a string. Fix args and retry.`);
+	}
+	return value;
+};
+
+const requireActiveManifest = (manifest: ArtboardManifest | undefined): ArtboardManifest => {
+	if (manifest === undefined || manifest.activeArtboardId.length === 0) {
+		throw new ArtboardNotFoundError('');
+	}
+	return manifest;
 };
 
 const writeManifestActive = async ({
@@ -326,6 +383,9 @@ const writeManifestActive = async ({
 		workspaceFolder: existing?.workspaceFolder ?? workspaceRoot,
 		updatedAt: new Date().toISOString(),
 	};
+	if (existing?.lastExport !== undefined) {
+		manifest.lastExport = existing.lastExport;
+	}
 	await writeUtf8(workspaceJoin(workspaceRoot, manifestPathSegments), serializeManifest(manifest));
 };
 
@@ -339,26 +399,15 @@ export const createArtboard = async ({
 }: CreateArtboardArgs): Promise<CreateArtboardResult> => {
 	const resolvedId = requireArtboardIdString(artboardId);
 	const resolvedHtml = requireHtmlString(html);
-	if (title !== undefined && typeof title !== 'string') {
-		throw new InvalidArgsError('title must be a string. Fix args and retry.');
-	}
-	if (viewport !== undefined && typeof viewport !== 'string') {
-		throw new InvalidArgsError('viewport must be a string. Fix args and retry.');
-	}
+	const validatedTitle = requireOptionalString(title, 'title');
+	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
 	await assertLayoutDirsOwned(workspaceRoot);
 	const htmlFilePath = workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId));
 	const metaFilePath = workspaceJoin(workspaceRoot, artboardMetaPathSegments(resolvedId));
-	const manifestFilePath = workspaceJoin(workspaceRoot, manifestPathSegments);
-	const existingManifestText = await readUtf8IfExists(manifestFilePath);
-	const existingManifest =
-		existingManifestText === undefined ? undefined : parseManifestTextLenient(existingManifestText);
+	const existingManifest = await readManifestFileLenient(workspaceRoot);
 
-	try {
-		await mkdir(workspaceJoin(workspaceRoot, artboardsDirSegments), { recursive: true });
-	} catch (error: unknown) {
-		throwDiskError(error);
-	}
+	await ensureDir(workspaceJoin(workspaceRoot, artboardsDirSegments));
 
 	const existingHtmlKind = await layoutEntryKind(htmlFilePath);
 	if (existingHtmlKind === 'file') {
@@ -376,8 +425,8 @@ export const createArtboard = async ({
 		throwDiskError(error);
 	}
 
-	const resolvedTitle = title ?? DEFAULT_ARTBOARD_TITLE;
-	const resolvedViewport = viewport ?? DEFAULT_VIEWPORT;
+	const resolvedTitle = validatedTitle ?? DEFAULT_ARTBOARD_TITLE;
+	const resolvedViewport = validatedViewport ?? DEFAULT_VIEWPORT;
 	const htmlHash = hashHtml(resolvedHtml);
 	const meta: ArtboardMeta = {
 		id: resolvedId,
@@ -431,12 +480,8 @@ export const updateArtboard = async ({
 	if (baseHash !== undefined && (typeof baseHash !== 'string' || !isArtboardHash(baseHash))) {
 		throw new InvalidArgsError('baseHash must be sha256: plus 64 hex characters. Fix args and retry.');
 	}
-	if (title !== undefined && typeof title !== 'string') {
-		throw new InvalidArgsError('title must be a string. Fix args and retry.');
-	}
-	if (viewport !== undefined && typeof viewport !== 'string') {
-		throw new InvalidArgsError('viewport must be a string. Fix args and retry.');
-	}
+	const validatedTitle = requireOptionalString(title, 'title');
+	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
 	await assertLayoutDirsOwned(workspaceRoot);
 	const htmlFilePath = workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId));
@@ -456,11 +501,11 @@ export const updateArtboard = async ({
 	const htmlHash = hashHtml(resolvedHtml);
 	const nextMeta: ArtboardMeta = {
 		id: resolvedId,
-		title: title ?? currentMeta.title,
+		title: validatedTitle ?? currentMeta.title,
 		generation:
 			htmlHash === normalizeHash(currentMeta.hash) ? currentMeta.generation : nextGeneration(currentMeta.generation),
 		hash: htmlHash,
-		viewport: viewport ?? currentMeta.viewport,
+		viewport: validatedViewport ?? currentMeta.viewport,
 		updatedAt: new Date().toISOString(),
 	};
 	await writeUtf8(htmlFilePath, resolvedHtml);
@@ -480,23 +525,9 @@ export const readArtboard = async ({ workspaceRoot, artboardId }: ReadArtboardAr
 		artboardId === undefined
 			? await readManifestFile(workspaceRoot)
 			: await readManifestFileLenient(workspaceRoot);
-	let resolvedId: string;
-	if (artboardId === undefined) {
-		const activeId = manifest?.activeArtboardId;
-		if (activeId === undefined || activeId.length === 0) {
-			throw new ArtboardNotFoundError('');
-		}
-		resolvedId = activeId;
-	} else if (typeof artboardId !== 'string') {
-		throw new InvalidArgsError('artboardId must be a string. Fix args and retry.');
-	} else {
-		resolvedId = parseArtboardId(artboardId);
-	}
+	const resolvedId = artboardId === undefined ? requireActiveManifest(manifest).activeArtboardId : requireExplicitArtboardId(artboardId);
 
-	const html = await readUtf8IfExists(workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)));
-	if (html === undefined) {
-		throw new ArtboardNotFoundError(resolvedId);
-	}
+	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
 	const meta = await readMetaForHtml(workspaceRoot, resolvedId);
 	return {
 		artboardId: resolvedId,
@@ -581,4 +612,153 @@ export const setActiveArtboard = async ({
 	const existing = await readManifestFile(workspaceRoot);
 	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing });
 	return { activeArtboardId: resolvedId };
+};
+
+const resolveExportArtboardId = async ({
+	workspaceRoot,
+	artboardId,
+}: {
+	workspaceRoot: string;
+	artboardId: unknown;
+}): Promise<{ resolvedId: string; manifest: ArtboardManifest | undefined }> => {
+	const manifest = await readManifestFile(workspaceRoot);
+	if (artboardId === undefined) {
+		return { resolvedId: requireActiveManifest(manifest).activeArtboardId, manifest };
+	}
+	return { resolvedId: requireExplicitArtboardId(artboardId), manifest };
+};
+
+const readTokensJsonForExport = async (workspaceRoot: string): Promise<string | undefined> => {
+	const tokensPath = workspaceJoin(workspaceRoot, workspaceTokensPathSegments);
+	const entryKind = await layoutEntryKind(tokensPath);
+	if (entryKind === 'missing') {
+		return undefined;
+	}
+	if (entryKind !== 'file') {
+		throw new DiskError('.cursor-design/tokens.json must be a regular file.');
+	}
+	try {
+		return await readFile(tokensPath, 'utf8');
+	} catch (error: unknown) {
+		return throwDiskError(error);
+	}
+};
+
+const writeHandoffLeaf = async ({
+	workspaceRoot,
+	exportId,
+	indexHtml,
+	implementMd,
+	tokensJson,
+}: {
+	workspaceRoot: string;
+	exportId: string;
+	indexHtml: string;
+	implementMd: string;
+	tokensJson: string;
+}): Promise<void> => {
+	await ensureDir(workspaceJoin(workspaceRoot, handoffRootSegments));
+
+	const leafDir = workspaceJoin(workspaceRoot, handoffDirSegments(exportId));
+	try {
+		await mkdir(leafDir, { recursive: false });
+	} catch (error: unknown) {
+		if (isErrno(error, 'EEXIST')) {
+			throw new DiskError('Handoff folder already exists. Retry export_artboard.');
+		}
+		throwDiskError(error);
+	}
+
+	await writeUtf8(join(leafDir, HANDOFF_INDEX_FILE), indexHtml);
+	await writeUtf8(join(leafDir, IMPLEMENT_FILE), implementMd);
+	await writeUtf8(join(leafDir, TOKENS_FILE), tokensJson);
+	// ponytail: no journal / rollback; orphan dirs are harmless and never deleted
+};
+
+const writeManifestLastExport = async ({
+	workspaceRoot,
+	existing,
+	artboardId,
+	lastExport,
+}: {
+	workspaceRoot: string;
+	existing: ArtboardManifest | undefined;
+	artboardId: string;
+	lastExport: LastExport;
+}): Promise<void> => {
+	const manifest: ArtboardManifest = {
+		version: SCHEMA_VERSION,
+		activeArtboardId: existing?.activeArtboardId || artboardId,
+		workspaceFolder: existing?.workspaceFolder ?? workspaceRoot,
+		updatedAt: lastExport.exportedAt,
+		lastExport,
+	};
+	await writeUtf8(workspaceJoin(workspaceRoot, manifestPathSegments), serializeManifest(manifest));
+};
+
+export const exportArtboard = async ({
+	workspaceRoot,
+	artboardId,
+	now,
+}: ExportArtboardArgs): Promise<ExportArtboardResult> => {
+	const exportNow = now ?? new Date();
+	await assertLayoutDirsOwned(workspaceRoot);
+	const { resolvedId, manifest } = await resolveExportArtboardId({ workspaceRoot, artboardId });
+
+	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
+	const meta = await readMetaForHtml(workspaceRoot, resolvedId);
+	const tokensJson = await readTokensJsonForExport(workspaceRoot);
+	const files = buildHandoffFiles({
+		artboardId: resolvedId,
+		html,
+		meta,
+		tokensJson,
+		now: exportNow,
+	});
+
+	await writeHandoffLeaf({
+		workspaceRoot,
+		exportId: files.exportId,
+		indexHtml: files.indexHtml,
+		implementMd: files.implementMd,
+		tokensJson: files.tokensJson,
+	});
+	await writeManifestLastExport({
+		workspaceRoot,
+		existing: manifest,
+		artboardId: resolvedId,
+		lastExport: files.lastExport,
+	});
+
+	return {
+		exportId: files.exportId,
+		artboardId: resolvedId,
+		artboardHash: files.lastExport.artboardHash,
+		exportedAt: files.lastExport.exportedAt,
+		generation: meta.generation,
+		handoffPath: handoffDirSegments(files.exportId).join('/'),
+	};
+};
+
+export const readHandoffStatus = async ({
+	workspaceRoot,
+}: {
+	workspaceRoot: string;
+}): Promise<HandoffStatusResult> => {
+	await assertLayoutDirsOwned(workspaceRoot);
+	const manifest = requireActiveManifest(await readManifestFile(workspaceRoot));
+	const activeArtboardId = manifest.activeArtboardId;
+
+	await requireArtboardHtml(workspaceRoot, activeArtboardId);
+	const meta = await readMetaForHtml(workspaceRoot, activeArtboardId);
+	const compared = compareHandoff({ lastExport: manifest.lastExport, activeHash: meta.hash });
+	const status: HandoffStatusResult = {
+		stale: !compared.exported || compared.stale,
+		activeArtboardId,
+		activeHash: meta.hash,
+	};
+	if (manifest.lastExport !== undefined) {
+		status.lastExport = manifest.lastExport;
+	}
+	return status;
 };

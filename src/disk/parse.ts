@@ -4,11 +4,19 @@ import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
 
 const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
+export type LastExport = {
+	exportId: string;
+	artboardId: string;
+	artboardHash: string;
+	exportedAt: string;
+};
+
 export type ArtboardManifest = {
 	version: typeof SCHEMA_VERSION;
 	activeArtboardId: string;
 	workspaceFolder: string;
 	updatedAt: string;
+	lastExport?: LastExport;
 };
 
 export type ArtboardMeta = {
@@ -52,6 +60,41 @@ const parseActiveArtboardId = (value: unknown): string => {
 	}
 };
 
+const parseLastExport = (value: unknown): LastExport => {
+	if (!isJsonRecord(value)) {
+		throw new CorruptManifestError();
+	}
+	if (
+		!isNonEmptyString(value.exportId) ||
+		!isNonEmptyString(value.artboardId) ||
+		!isNonEmptyString(value.artboardHash) ||
+		!isNonEmptyString(value.exportedAt)
+	) {
+		throw new CorruptManifestError();
+	}
+	let artboardId: string;
+	try {
+		artboardId = parseArtboardId(value.artboardId);
+	} catch (error: unknown) {
+		if (error instanceof InvalidArtboardIdError) {
+			throw new CorruptManifestError({ cause: error });
+		}
+		throw error;
+	}
+	if (!isArtboardHash(value.artboardHash)) {
+		throw new CorruptManifestError();
+	}
+	if (Number.isNaN(Date.parse(value.exportedAt))) {
+		throw new CorruptManifestError();
+	}
+	return {
+		exportId: value.exportId,
+		artboardId,
+		artboardHash: value.artboardHash,
+		exportedAt: value.exportedAt,
+	};
+};
+
 export const parseManifest = (value: unknown): ArtboardManifest => {
 	if (!isJsonRecord(value)) {
 		throw new CorruptManifestError();
@@ -65,33 +108,37 @@ export const parseManifest = (value: unknown): ArtboardManifest => {
 	if (!isNonEmptyString(value.workspaceFolder) || !isNonEmptyString(value.updatedAt)) {
 		throw new CorruptManifestError();
 	}
-	return {
+	const manifest: ArtboardManifest = {
 		version: SCHEMA_VERSION,
 		activeArtboardId: parseActiveArtboardId(value.activeArtboardId),
 		workspaceFolder: value.workspaceFolder,
 		updatedAt: value.updatedAt,
 	};
+	if (value.lastExport !== undefined) {
+		manifest.lastExport = parseLastExport(value.lastExport);
+	}
+	return manifest;
 };
 
 export const parseMeta = (value: unknown): ArtboardMeta => {
 	if (!isJsonRecord(value)) {
 		throw new CorruptMetaError('');
 	}
-	const id = parseArtboardId(value.id);
+	const artboardId = parseArtboardId(value.id);
 	if (typeof value.title !== 'string') {
-		throw new CorruptMetaError(id);
+		throw new CorruptMetaError(artboardId);
 	}
 	if (typeof value.generation !== 'number' || !Number.isInteger(value.generation) || value.generation < 1) {
-		throw new CorruptMetaError(id);
+		throw new CorruptMetaError(artboardId);
 	}
 	if (typeof value.hash !== 'string' || !isArtboardHash(value.hash)) {
-		throw new CorruptMetaError(id);
+		throw new CorruptMetaError(artboardId);
 	}
 	if (!isNonEmptyString(value.updatedAt)) {
-		throw new CorruptMetaError(id);
+		throw new CorruptMetaError(artboardId);
 	}
 	return {
-		id,
+		id: artboardId,
 		title: value.title,
 		generation: value.generation,
 		hash: value.hash,

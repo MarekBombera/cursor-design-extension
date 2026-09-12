@@ -138,8 +138,12 @@ export class InvalidRootError extends Error {
 export class DiskError extends Error {
 	readonly code = 'DISK_ERROR' as const;
 
-	constructor(options?: { cause?: unknown }) {
-		super('Could not read or write artboard files. Check Output/stderr; fix folder permissions.', options);
+	constructor(message?: string | { cause?: unknown }, options?: { cause?: unknown }) {
+		const authoredMessage =
+			typeof message === 'string'
+				? message
+				: 'Could not read or write artboard files. Check Output/stderr; fix folder permissions.';
+		super(authoredMessage, typeof message === 'string' ? options : message);
 		this.name = 'DiskError';
 	}
 }

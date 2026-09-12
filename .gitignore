@@ -7,6 +7,10 @@ node_modules
 # Runtime artboard state (user workspaces)
 .cursor-design/
 
+# Sample implement target (DoD Vite + plain HTML)
+fixtures/dev-workspace/sample-app/node_modules/
+fixtures/dev-workspace/sample-app/pnpm-lock.yaml
+
 # OS / env
 .DS_Store
 .env

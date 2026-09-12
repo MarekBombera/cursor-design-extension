@@ -1,13 +1,7 @@
 import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR } from '../disk/layout';
-
-const isFileNotFound = (error: unknown): boolean => {
-	if (!(error instanceof vscode.FileSystemError)) {
-		return false;
-	}
-	return error.code === 'FileNotFound' || error.code === 'EntryNotFound';
-};
+import { isFileNotFound, logDiskError } from '../host/hostFs';
 
 export const revealDesignFolder = async (outputChannel: vscode.OutputChannel): Promise<void> => {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -30,9 +24,7 @@ export const revealDesignFolder = async (outputChannel: vscode.OutputChannel): P
 			);
 			return;
 		}
-		outputChannel.appendLine(
-			`revealDesignFolder: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-		);
+		logDiskError({ scope: 'revealDesignFolder', error, outputChannel });
 		await vscode.window.showErrorMessage(
 			'Could not reveal the design folder. Check the Output panel: Cursor Design.',
 		);

@@ -1,0 +1,10 @@
+{
+	"name": "cursor-design-sample-app",
+	"private": true,
+	"scripts": {
+		"dev": "vite"
+	},
+	"devDependencies": {
+		"vite": "8.3.0"
+	}
+}

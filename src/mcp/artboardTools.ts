@@ -2,8 +2,10 @@ import { type CallToolResult, fromJsonSchema, type McpServer } from '@modelconte
 
 import {
 	createArtboard,
+	exportArtboard,
 	listArtboards,
 	readArtboard,
+	readHandoffStatus,
 	setActiveArtboard,
 	updateArtboard,
 } from '../disk/artboardFs';
@@ -25,6 +27,8 @@ import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import { enqueueDiskOp } from './mcpQueue';
 import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
 import {
+	EXPORT_ARTBOARD_TOOL,
+	HANDOFF_STATUS_TOOL,
 	LIST_ARTBOARDS_TOOL,
 	READ_ARTBOARD_TOOL,
 	SET_ACTIVE_ARTBOARD_TOOL,
@@ -54,21 +58,24 @@ type McpErrorBody = {
 
 // Schemas stay permissive on purpose: wrong-typed args must reach the handler so the
 // agent gets authored INVALID_ARGS JSON, not an SDK "Input validation error".
-const setArtboardInputSchema = fromJsonSchema<ToolArgs>({
-	type: 'object',
-	properties: {
+const ROOT_PATH_DESCRIPTION = 'Workspace folder fsPath. Pass when more than one folder is open.';
+
+const toolInputSchema = (properties: Record<string, { description: string }>) =>
+	fromJsonSchema<ToolArgs>({
+		type: 'object',
+		properties,
+		additionalProperties: true,
+	});
+
+const setArtboardInputSchema = toolInputSchema({
 		artboardId: { description: 'New artboard id (letters, digits, dot, underscore, hyphen).' },
 		html: { description: 'Full HTML document. Empty string allowed.' },
 		title: { description: 'Optional title.' },
 		viewport: { description: 'Optional viewport label, e.g. 1280x800.' },
-		rootPath: { description: 'Workspace folder fsPath. Pass when more than one folder is open.' },
-	},
-	additionalProperties: true,
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const updateArtboardInputSchema = fromJsonSchema<ToolArgs>({
-	type: 'object',
-	properties: {
+const updateArtboardInputSchema = toolInputSchema({
 		artboardId: { description: 'Existing artboard id.' },
 		html: { description: 'Replacement HTML document.' },
 		baseGeneration: {
@@ -77,35 +84,30 @@ const updateArtboardInputSchema = fromJsonSchema<ToolArgs>({
 		baseHash: { description: 'Hash from read_artboard. Required unless baseGeneration is sent.' },
 		title: { description: 'Optional title. Keeps the stored title when omitted.' },
 		viewport: { description: 'Optional viewport label. Keeps the stored viewport when omitted.' },
-		rootPath: { description: 'Workspace folder fsPath. Pass when more than one folder is open.' },
-	},
-	additionalProperties: true,
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const readArtboardInputSchema = fromJsonSchema<ToolArgs>({
-	type: 'object',
-	properties: {
+const readArtboardInputSchema = toolInputSchema({
 		artboardId: { description: 'Artboard id. Defaults to the active artboard when omitted.' },
-		rootPath: { description: 'Workspace folder fsPath. Pass when more than one folder is open.' },
-	},
-	additionalProperties: true,
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const listArtboardsInputSchema = fromJsonSchema<ToolArgs>({
-	type: 'object',
-	properties: {
-		rootPath: { description: 'Workspace folder fsPath. Pass when more than one folder is open.' },
-	},
-	additionalProperties: true,
+const listArtboardsInputSchema = toolInputSchema({
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const setActiveArtboardInputSchema = fromJsonSchema<ToolArgs>({
-	type: 'object',
-	properties: {
+const setActiveArtboardInputSchema = toolInputSchema({
 		artboardId: { description: 'Existing artboard id to make active.' },
-		rootPath: { description: 'Workspace folder fsPath. Pass when more than one folder is open.' },
-	},
-	additionalProperties: true,
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
+});
+
+const exportArtboardInputSchema = toolInputSchema({
+		artboardId: { description: 'Artboard id to export. Defaults to the active artboard when omitted.' },
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
+});
+
+const handoffStatusInputSchema = toolInputSchema({
+		rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 export const artboardToolInputSchemas = {
@@ -114,6 +116,8 @@ export const artboardToolInputSchemas = {
 	[READ_ARTBOARD_TOOL]: readArtboardInputSchema,
 	[LIST_ARTBOARDS_TOOL]: listArtboardsInputSchema,
 	[SET_ACTIVE_ARTBOARD_TOOL]: setActiveArtboardInputSchema,
+	[EXPORT_ARTBOARD_TOOL]: exportArtboardInputSchema,
+	[HANDOFF_STATUS_TOOL]: handoffStatusInputSchema,
 };
 
 const jsonResult = (body: unknown, isError = false): CallToolResult => ({
@@ -191,6 +195,11 @@ const runQueued = async (
 
 const firstFolderRoot = (): string => process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] ?? '';
 
+const shouldWriteEnsurePanelMarker = (workspaceRoot: string): boolean => {
+	const firstRoot = firstFolderRoot();
+	return firstRoot.length > 0 && workspaceRoot === firstRoot;
+};
+
 export const registerArtboardTools = (server: McpServer): void => {
 	server.registerTool(
 		SET_ARTBOARD_TOOL,
@@ -208,7 +217,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 					html,
 					title,
 					viewport,
-					writeEnsurePanelMarker: firstFolderRoot().length > 0 && workspaceRoot === firstFolderRoot(),
+					writeEnsurePanelMarker: shouldWriteEnsurePanelMarker(workspaceRoot),
 				}),
 			),
 	);
@@ -277,5 +286,33 @@ export const registerArtboardTools = (server: McpServer): void => {
 					artboardId,
 				}),
 			),
+	);
+
+	server.registerTool(
+		EXPORT_ARTBOARD_TOOL,
+		{
+			title: 'Export artboard',
+			description:
+				'Export an artboard to .cursor-design/handoff/<exportId>/ (index.html, IMPLEMENT.md, tokens.json) and record lastExport. artboardId optional (defaults to active). Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open.',
+			inputSchema: exportArtboardInputSchema,
+		},
+		async ({ artboardId, rootPath }) =>
+			runQueued(rootPath, (workspaceRoot) =>
+				exportArtboard({
+					workspaceRoot,
+					artboardId,
+				}),
+			),
+	);
+
+	server.registerTool(
+		HANDOFF_STATUS_TOOL,
+		{
+			title: 'Handoff status',
+			description:
+				'Read whether the recorded handoff is stale versus the active artboard hash. Call this before implementing; if stale is true, re-export with export_artboard. Does not write. Pass rootPath when more than one folder is open.',
+			inputSchema: handoffStatusInputSchema,
+		},
+		async ({ rootPath }) => runQueued(rootPath, (workspaceRoot) => readHandoffStatus({ workspaceRoot })),
 	);
 };

@@ -8,7 +8,7 @@ import { type CallToolResult, type McpServer } from '@modelcontextprotocol/serve
 
 import { artboardToolInputSchemas, registerArtboardTools } from './artboardTools';
 import { CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
-import { SET_ARTBOARD_TOOL, UPDATE_ARTBOARD_TOOL } from './toolNames';
+import { EXPORT_ARTBOARD_TOOL, SET_ARTBOARD_TOOL, UPDATE_ARTBOARD_TOOL } from './toolNames';
 
 type CapturedHandler = (args: Record<string, unknown>) => Promise<CallToolResult>;
 
@@ -93,5 +93,14 @@ test('wrong-typed baseGeneration returns INVALID_ARGS JSON', async () => {
 			),
 			'INVALID_ARGS',
 		);
+	});
+});
+
+test('export_artboard with non-string artboardId returns INVALID_ARGS JSON', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceRootsEnv(workspaceRoot, async () => {
+		const exportArtboard = captureHandlers().get(EXPORT_ARTBOARD_TOOL);
+		assert.ok(exportArtboard !== undefined);
+		assert.equal(await errorCodeOf(await exportArtboard({ artboardId: 42 })), 'INVALID_ARGS');
 	});
 });
