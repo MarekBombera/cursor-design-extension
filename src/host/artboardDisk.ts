@@ -94,8 +94,10 @@ export const toSafeArtboardErrorMessage = (error: unknown): string => {
 	return 'Could not load artboard. Check the Output panel: Cursor Design.';
 };
 
-const joinWorkspace = (workspaceFolder: vscode.WorkspaceFolder, segments: readonly string[]): vscode.Uri =>
-	vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
+const joinWorkspace = (
+	workspaceFolder: vscode.WorkspaceFolder,
+	segments: readonly string[],
+): vscode.Uri => vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
 
 const readTextFile = async (uri: vscode.Uri): Promise<string> => {
 	const bytes = await vscode.workspace.fs.readFile(uri);
@@ -215,8 +217,14 @@ const loadExistingArtboard = async (
 	manifestUri: vscode.Uri,
 ): Promise<ArtboardSnapshot> => {
 	const manifest = await readManifest(manifestUri);
-	const htmlUri = joinWorkspace(workspaceFolder, artboardHtmlPathSegments(manifest.activeArtboardId));
-	const metaUri = joinWorkspace(workspaceFolder, artboardMetaPathSegments(manifest.activeArtboardId));
+	const htmlUri = joinWorkspace(
+		workspaceFolder,
+		artboardHtmlPathSegments(manifest.activeArtboardId),
+	);
+	const metaUri = joinWorkspace(
+		workspaceFolder,
+		artboardMetaPathSegments(manifest.activeArtboardId),
+	);
 	if (!(await fileExists(htmlUri))) {
 		const parsedMeta = await readParsedMeta(metaUri);
 		return {

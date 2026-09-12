@@ -1,4 +1,9 @@
-import { CorruptManifestError, CorruptMetaError, InvalidArtboardIdError, UnsupportedSchemaVersionError } from './errors';
+import {
+	CorruptManifestError,
+	CorruptMetaError,
+	InvalidArtboardIdError,
+	UnsupportedSchemaVersionError,
+} from './errors';
 import { isArtboardHash } from './hash';
 import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
 
@@ -31,7 +36,8 @@ export type ArtboardMeta = {
 const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
 	value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+const isNonEmptyString = (value: unknown): value is string =>
+	typeof value === 'string' && value.length > 0;
 
 const toPrettyJson = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
@@ -128,7 +134,11 @@ export const parseMeta = (value: unknown): ArtboardMeta => {
 	if (typeof value.title !== 'string') {
 		throw new CorruptMetaError(artboardId);
 	}
-	if (typeof value.generation !== 'number' || !Number.isInteger(value.generation) || value.generation < 1) {
+	if (
+		typeof value.generation !== 'number' ||
+		!Number.isInteger(value.generation) ||
+		value.generation < 1
+	) {
 		throw new CorruptMetaError(artboardId);
 	}
 	if (typeof value.hash !== 'string' || !isArtboardHash(value.hash)) {

@@ -106,7 +106,10 @@ export const postArtboardSnapshotToPanel = ({
 	flushPendingArtboardView();
 };
 
-export const postUiStatusToPanel = (partial: { mcpAvailable?: boolean; handoffStale?: boolean }): void => {
+export const postUiStatusToPanel = (partial: {
+	mcpAvailable?: boolean;
+	handoffStale?: boolean;
+}): void => {
 	if (partial.mcpAvailable !== undefined) {
 		pendingUiStatus.mcpAvailable = partial.mcpAvailable;
 	}

@@ -1,13 +1,13 @@
 {
 	"name": "cursor-design",
 	"displayName": "cursor-design",
-	"publisher": "cursor-design",
 	"version": "0.0.1",
 	"description": "Agent-driven live HTML artboard for Cursor (MCP + webview, no in-panel chat).",
 	"categories": [
 		"Other"
 	],
 	"license": "MIT",
+	"publisher": "cursor-design",
 	"main": "./dist/extension.js",
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",
@@ -25,6 +25,9 @@
 		"lint:fix": "oxlint --fix",
 		"fmt": "oxfmt",
 		"fmt:check": "oxfmt --check"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/server": "^2.0.0"
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
@@ -67,16 +70,13 @@
 	"extensionKind": [
 		"workspace"
 	],
+	"engines": {
+		"vscode": "^1.128.0"
+	},
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": false,
 			"description": "Cursor Design writes and previews workspace HTML as executable artboard content."
 		}
-	},
-	"engines": {
-		"vscode": "^1.128.0"
-	},
-	"dependencies": {
-		"@modelcontextprotocol/server": "^2.0.0"
 	}
 }

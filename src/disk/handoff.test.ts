@@ -11,12 +11,7 @@ import {
 	setActiveArtboard,
 	updateArtboard,
 } from './artboardFs';
-import {
-	ArtboardNotFoundError,
-	CorruptManifestError,
-	CorruptMetaError,
-	DiskError,
-} from './errors';
+import { ArtboardNotFoundError, CorruptManifestError, CorruptMetaError, DiskError } from './errors';
 import { compareHandoff, makeExportId } from './handoff';
 import { hashHtml } from './hash';
 import {
@@ -49,7 +44,9 @@ const HERO_HTML = '<p>hero</p>';
 const OTHER_HTML = '<p>other</p>';
 
 const readManifestJson = async (workspaceRoot: string): Promise<ArtboardManifest> =>
-	parseManifest(JSON.parse(await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8')) as unknown);
+	parseManifest(
+		JSON.parse(await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8')) as unknown,
+	);
 
 const createHero = async (workspaceRoot: string) =>
 	createArtboard({
@@ -103,7 +100,9 @@ test('export writes three files, lastExport, bumped updatedAt, unchanged generat
 		artboardHash: created.hash,
 		exportedAt: FIXED_NOW.toISOString(),
 	});
-	const meta = JSON.parse(await readFile(join(workspaceRoot, ...artboardMetaPathSegments('hero')), 'utf8')) as {
+	const meta = JSON.parse(
+		await readFile(join(workspaceRoot, ...artboardMetaPathSegments('hero')), 'utf8'),
+	) as {
 		generation: number;
 	};
 	assert.equal(meta.generation, created.generation);
@@ -139,7 +138,10 @@ test('updateArtboard with new HTML makes status stale and keeps old handoff', as
 	assert.equal(status.stale, true);
 	assert.equal(status.lastExport?.exportId, exported.exportId);
 	assert.equal(
-		await readFile(join(workspaceRoot, ...handoffDirSegments(exported.exportId), HANDOFF_INDEX_FILE), 'utf8'),
+		await readFile(
+			join(workspaceRoot, ...handoffDirSegments(exported.exportId), HANDOFF_INDEX_FILE),
+			'utf8',
+		),
 		HERO_HTML,
 	);
 });
@@ -204,8 +206,15 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 			exportedAt: FIXED_NOW.toISOString(),
 		},
 	};
-	assert.throws(() => parseManifest(badHash), (error: unknown) => error instanceof CorruptManifestError);
-	await writeFile(join(workspaceRoot, ...manifestPathSegments), `${JSON.stringify(badHash)}\n`, 'utf8');
+	assert.throws(
+		() => parseManifest(badHash),
+		(error: unknown) => error instanceof CorruptManifestError,
+	);
+	await writeFile(
+		join(workspaceRoot, ...manifestPathSegments),
+		`${JSON.stringify(badHash)}\n`,
+		'utf8',
+	);
 	await assert.rejects(readHandoffStatus({ workspaceRoot }), (error: unknown) => {
 		assert.ok(error instanceof CorruptManifestError);
 		return true;
@@ -220,17 +229,23 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 			exportedAt: 'not-a-date',
 		},
 	};
-	assert.throws(() => parseManifest(badDate), (error: unknown) => error instanceof CorruptManifestError);
+	assert.throws(
+		() => parseManifest(badDate),
+		(error: unknown) => error instanceof CorruptManifestError,
+	);
 });
 
 test('export with unknown id is ArtboardNotFoundError', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createHero(workspaceRoot);
-	await assert.rejects(exportArtboard({ workspaceRoot, artboardId: 'missing' }), (error: unknown) => {
-		assert.ok(error instanceof ArtboardNotFoundError);
-		assert.equal(error.artboardId, 'missing');
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ workspaceRoot, artboardId: 'missing' }),
+		(error: unknown) => {
+			assert.ok(error instanceof ArtboardNotFoundError);
+			assert.equal(error.artboardId, 'missing');
+			return true;
+		},
+	);
 });
 
 test('export with omitted id and no active is ArtboardNotFoundError', async () => {
@@ -306,7 +321,10 @@ test('missing tokens writes stub; present tokens are copied byte-for-byte', asyn
 	const laterNow = new Date('2026-09-11T17:40:00.000Z');
 	const second = await exportArtboard({ workspaceRoot, now: laterNow });
 	assert.equal(
-		await readFile(join(workspaceRoot, ...handoffDirSegments(second.exportId), TOKENS_FILE), 'utf8'),
+		await readFile(
+			join(workspaceRoot, ...handoffDirSegments(second.exportId), TOKENS_FILE),
+			'utf8',
+		),
 		tokensBytes,
 	);
 });

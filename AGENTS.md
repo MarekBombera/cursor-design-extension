@@ -200,17 +200,17 @@ The helper writes this schema:
 
 ```json
 {
-  "schemaVersion": 1,
-  "command": "continuous",
-  "status": "running",
-  "summary": "Completing the remaining build plan",
-  "detail": "Implementing feature 3.",
-  "boundary": "local-only",
-  "startedAt": "<ISO-8601 timestamp>",
-  "updatedAt": "<ISO-8601 timestamp>",
-  "resumeCommand": "/continuous resume",
-  "progress": { "current": 2, "total": 5, "label": "features" },
-  "feature": { "id": "3", "title": "Export reports" }
+	"schemaVersion": 1,
+	"command": "continuous",
+	"status": "running",
+	"summary": "Completing the remaining build plan",
+	"detail": "Implementing feature 3.",
+	"boundary": "local-only",
+	"startedAt": "<ISO-8601 timestamp>",
+	"updatedAt": "<ISO-8601 timestamp>",
+	"resumeCommand": "/continuous resume",
+	"progress": { "current": 2, "total": 5, "label": "features" },
+	"feature": { "id": "3", "title": "Export reports" }
 }
 ```
 

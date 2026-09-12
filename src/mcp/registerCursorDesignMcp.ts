@@ -90,7 +90,9 @@ export const registerCursorDesignMcp = ({
 				env: {
 					ELECTRON_RUN_AS_NODE: '1',
 					[CURSOR_DESIGN_WORKSPACE_ROOT_ENV]: workspaceRootOrEmpty,
-					[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: JSON.stringify(workspaceFolders.map((folder) => folder.uri.fsPath)),
+					[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: JSON.stringify(
+						workspaceFolders.map((folder) => folder.uri.fsPath),
+					),
 				},
 			},
 		});

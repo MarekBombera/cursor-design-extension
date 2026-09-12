@@ -130,7 +130,10 @@ export class InvalidRootError extends Error {
 	readonly code = 'INVALID_ROOT' as const;
 
 	constructor(options?: { cause?: unknown }) {
-		super('rootPath is not an exact host-passed folder. Pass a rootPath from CURSOR_DESIGN_WORKSPACE_ROOTS.', options);
+		super(
+			'rootPath is not an exact host-passed folder. Pass a rootPath from CURSOR_DESIGN_WORKSPACE_ROOTS.',
+			options,
+		);
 		this.name = 'InvalidRootError';
 	}
 }

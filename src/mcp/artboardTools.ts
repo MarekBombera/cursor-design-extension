@@ -68,46 +68,48 @@ const toolInputSchema = (properties: Record<string, { description: string }>) =>
 	});
 
 const setArtboardInputSchema = toolInputSchema({
-		artboardId: { description: 'New artboard id (letters, digits, dot, underscore, hyphen).' },
-		html: { description: 'Full HTML document. Empty string allowed.' },
-		title: { description: 'Optional title.' },
-		viewport: { description: 'Optional viewport label, e.g. 1280x800.' },
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	artboardId: { description: 'New artboard id (letters, digits, dot, underscore, hyphen).' },
+	html: { description: 'Full HTML document. Empty string allowed.' },
+	title: { description: 'Optional title.' },
+	viewport: { description: 'Optional viewport label, e.g. 1280x800.' },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const updateArtboardInputSchema = toolInputSchema({
-		artboardId: { description: 'Existing artboard id.' },
-		html: { description: 'Replacement HTML document.' },
-		baseGeneration: {
-			description: 'Generation from read_artboard. Required unless baseHash is sent.',
-		},
-		baseHash: { description: 'Hash from read_artboard. Required unless baseGeneration is sent.' },
-		title: { description: 'Optional title. Keeps the stored title when omitted.' },
-		viewport: { description: 'Optional viewport label. Keeps the stored viewport when omitted.' },
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	artboardId: { description: 'Existing artboard id.' },
+	html: { description: 'Replacement HTML document.' },
+	baseGeneration: {
+		description: 'Generation from read_artboard. Required unless baseHash is sent.',
+	},
+	baseHash: { description: 'Hash from read_artboard. Required unless baseGeneration is sent.' },
+	title: { description: 'Optional title. Keeps the stored title when omitted.' },
+	viewport: { description: 'Optional viewport label. Keeps the stored viewport when omitted.' },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const readArtboardInputSchema = toolInputSchema({
-		artboardId: { description: 'Artboard id. Defaults to the active artboard when omitted.' },
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	artboardId: { description: 'Artboard id. Defaults to the active artboard when omitted.' },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const listArtboardsInputSchema = toolInputSchema({
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const setActiveArtboardInputSchema = toolInputSchema({
-		artboardId: { description: 'Existing artboard id to make active.' },
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	artboardId: { description: 'Existing artboard id to make active.' },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const exportArtboardInputSchema = toolInputSchema({
-		artboardId: { description: 'Artboard id to export. Defaults to the active artboard when omitted.' },
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	artboardId: {
+		description: 'Artboard id to export. Defaults to the active artboard when omitted.',
+	},
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const handoffStatusInputSchema = toolInputSchema({
-		rootPath: { description: ROOT_PATH_DESCRIPTION },
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 export const artboardToolInputSchemas = {
@@ -154,7 +156,11 @@ const toMcpToolError = (error: unknown): CallToolResult => {
 			code: error.code,
 			message: error.message,
 		};
-		if ('artboardId' in error && typeof error.artboardId === 'string' && error.artboardId.length > 0) {
+		if (
+			'artboardId' in error &&
+			typeof error.artboardId === 'string' &&
+			error.artboardId.length > 0
+		) {
 			body.artboardId = error.artboardId;
 		}
 		if (error instanceof ConflictError) {
@@ -168,7 +174,8 @@ const toMcpToolError = (error: unknown): CallToolResult => {
 	return jsonResult(
 		{
 			code: 'DISK_ERROR',
-			message: 'Could not read or write artboard files. Check Output/stderr; fix folder permissions.',
+			message:
+				'Could not read or write artboard files. Check Output/stderr; fix folder permissions.',
 		},
 		true,
 	);
@@ -265,10 +272,12 @@ export const registerArtboardTools = (server: McpServer): void => {
 		LIST_ARTBOARDS_TOOL,
 		{
 			title: 'List artboards',
-			description: 'List artboards/*.html ids. Omits generation when meta is missing or corrupt. Does not write.',
+			description:
+				'List artboards/*.html ids. Omits generation when meta is missing or corrupt. Does not write.',
 			inputSchema: listArtboardsInputSchema,
 		},
-		async ({ rootPath }) => runQueued(rootPath, (workspaceRoot) => listArtboards({ workspaceRoot })),
+		async ({ rootPath }) =>
+			runQueued(rootPath, (workspaceRoot) => listArtboards({ workspaceRoot })),
 	);
 
 	server.registerTool(
@@ -313,6 +322,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 				'Read whether the recorded handoff is stale versus the active artboard hash. Call this before implementing; if stale is true, re-export with export_artboard. Does not write. Pass rootPath when more than one folder is open.',
 			inputSchema: handoffStatusInputSchema,
 		},
-		async ({ rootPath }) => runQueued(rootPath, (workspaceRoot) => readHandoffStatus({ workspaceRoot })),
+		async ({ rootPath }) =>
+			runQueued(rootPath, (workspaceRoot) => readHandoffStatus({ workspaceRoot })),
 	);
 };

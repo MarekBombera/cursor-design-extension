@@ -142,7 +142,10 @@ export type HandoffStatusResult = {
 };
 
 const isErrno = (error: unknown, code: string): boolean =>
-	typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === code;
+	typeof error === 'object' &&
+	error !== null &&
+	'code' in error &&
+	(error as { code: unknown }).code === code;
 
 const isExpectedError = (error: unknown): boolean =>
 	error instanceof ArtboardExistsError ||
@@ -300,10 +303,16 @@ const isBenignMetaParseError = (error: unknown): boolean =>
 	error instanceof CorruptMetaError ||
 	error instanceof InvalidArtboardIdError;
 
-const parseMetaFromJsonText = (text: string): ArtboardMeta => parseMeta(JSON.parse(text) as unknown);
+const parseMetaFromJsonText = (text: string): ArtboardMeta =>
+	parseMeta(JSON.parse(text) as unknown);
 
-const readMetaForHtml = async (workspaceRoot: string, artboardId: string): Promise<ArtboardMeta> => {
-	const text = await readUtf8IfExists(workspaceJoin(workspaceRoot, artboardMetaPathSegments(artboardId)));
+const readMetaForHtml = async (
+	workspaceRoot: string,
+	artboardId: string,
+): Promise<ArtboardMeta> => {
+	const text = await readUtf8IfExists(
+		workspaceJoin(workspaceRoot, artboardMetaPathSegments(artboardId)),
+	);
 	if (text === undefined) {
 		throw new CorruptMetaError(artboardId);
 	}
@@ -322,7 +331,9 @@ const readMetaForHtml = async (workspaceRoot: string, artboardId: string): Promi
 };
 
 const requireArtboardHtml = async (workspaceRoot: string, artboardId: string): Promise<string> => {
-	const html = await readUtf8IfExists(workspaceJoin(workspaceRoot, artboardHtmlPathSegments(artboardId)));
+	const html = await readUtf8IfExists(
+		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(artboardId)),
+	);
 	if (html === undefined) {
 		throw new ArtboardNotFoundError(artboardId);
 	}
@@ -469,7 +480,9 @@ export const updateArtboard = async ({
 	const resolvedId = requireArtboardIdString(artboardId);
 	const resolvedHtml = requireHtmlString(html);
 	if (baseGeneration === undefined && baseHash === undefined) {
-		throw new InvalidArgsError('update_artboard requires baseGeneration and/or baseHash. Fix args and retry.');
+		throw new InvalidArgsError(
+			'update_artboard requires baseGeneration and/or baseHash. Fix args and retry.',
+		);
 	}
 	if (
 		baseGeneration !== undefined &&
@@ -478,7 +491,9 @@ export const updateArtboard = async ({
 		throw new InvalidArgsError('baseGeneration must be an integer >= 1. Fix args and retry.');
 	}
 	if (baseHash !== undefined && (typeof baseHash !== 'string' || !isArtboardHash(baseHash))) {
-		throw new InvalidArgsError('baseHash must be sha256: plus 64 hex characters. Fix args and retry.');
+		throw new InvalidArgsError(
+			'baseHash must be sha256: plus 64 hex characters. Fix args and retry.',
+		);
 	}
 	const validatedTitle = requireOptionalString(title, 'title');
 	const validatedViewport = requireOptionalString(viewport, 'viewport');
@@ -503,13 +518,18 @@ export const updateArtboard = async ({
 		id: resolvedId,
 		title: validatedTitle ?? currentMeta.title,
 		generation:
-			htmlHash === normalizeHash(currentMeta.hash) ? currentMeta.generation : nextGeneration(currentMeta.generation),
+			htmlHash === normalizeHash(currentMeta.hash)
+				? currentMeta.generation
+				: nextGeneration(currentMeta.generation),
 		hash: htmlHash,
 		viewport: validatedViewport ?? currentMeta.viewport,
 		updatedAt: new Date().toISOString(),
 	};
 	await writeUtf8(htmlFilePath, resolvedHtml);
-	await writeUtf8(workspaceJoin(workspaceRoot, artboardMetaPathSegments(resolvedId)), serializeMeta(nextMeta));
+	await writeUtf8(
+		workspaceJoin(workspaceRoot, artboardMetaPathSegments(resolvedId)),
+		serializeMeta(nextMeta),
+	);
 	return {
 		artboardId: resolvedId,
 		generation: nextMeta.generation,
@@ -519,13 +539,19 @@ export const updateArtboard = async ({
 	};
 };
 
-export const readArtboard = async ({ workspaceRoot, artboardId }: ReadArtboardArgs): Promise<ReadArtboardResult> => {
+export const readArtboard = async ({
+	workspaceRoot,
+	artboardId,
+}: ReadArtboardArgs): Promise<ReadArtboardResult> => {
 	await assertLayoutDirsOwned(workspaceRoot);
 	const manifest =
 		artboardId === undefined
 			? await readManifestFile(workspaceRoot)
 			: await readManifestFileLenient(workspaceRoot);
-	const resolvedId = artboardId === undefined ? requireActiveManifest(manifest).activeArtboardId : requireExplicitArtboardId(artboardId);
+	const resolvedId =
+		artboardId === undefined
+			? requireActiveManifest(manifest).activeArtboardId
+			: requireExplicitArtboardId(artboardId);
 
 	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
 	const meta = await readMetaForHtml(workspaceRoot, resolvedId);
@@ -541,7 +567,9 @@ export const readArtboard = async ({ workspaceRoot, artboardId }: ReadArtboardAr
 	};
 };
 
-export const listArtboards = async ({ workspaceRoot }: ListArtboardsArgs): Promise<ListArtboardsResult> => {
+export const listArtboards = async ({
+	workspaceRoot,
+}: ListArtboardsArgs): Promise<ListArtboardsResult> => {
 	await assertLayoutDirsOwned(workspaceRoot);
 	const artboardsDirectory = workspaceJoin(workspaceRoot, artboardsDirSegments);
 	if ((await layoutEntryKind(artboardsDirectory)) === 'missing') {
@@ -573,7 +601,9 @@ export const listArtboards = async ({ workspaceRoot }: ListArtboardsArgs): Promi
 		}
 
 		if (
-			(await layoutEntryKind(workspaceJoin(workspaceRoot, artboardHtmlPathSegments(candidateId)))) !== 'file'
+			(await layoutEntryKind(
+				workspaceJoin(workspaceRoot, artboardHtmlPathSegments(candidateId)),
+			)) !== 'file'
 		) {
 			continue;
 		}
@@ -582,7 +612,9 @@ export const listArtboards = async ({ workspaceRoot }: ListArtboardsArgs): Promi
 			title: '',
 			active: candidateId === activeArtboardId,
 		};
-		const metaText = await readUtf8IfExists(workspaceJoin(workspaceRoot, artboardMetaPathSegments(candidateId)));
+		const metaText = await readUtf8IfExists(
+			workspaceJoin(workspaceRoot, artboardMetaPathSegments(candidateId)),
+		);
 		if (metaText !== undefined) {
 			try {
 				const meta = parseMetaFromJsonText(metaText);
@@ -608,7 +640,10 @@ export const setActiveArtboard = async ({
 }: SetActiveArtboardArgs): Promise<{ activeArtboardId: string }> => {
 	const resolvedId = requireArtboardIdString(artboardId);
 	await assertLayoutDirsOwned(workspaceRoot);
-	await requireHtmlFile(workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)), resolvedId);
+	await requireHtmlFile(
+		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)),
+		resolvedId,
+	);
 	const existing = await readManifestFile(workspaceRoot);
 	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing });
 	return { activeArtboardId: resolvedId };

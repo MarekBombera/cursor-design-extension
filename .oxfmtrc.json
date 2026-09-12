@@ -9,6 +9,10 @@
 		"**/out/**",
 		"**/node_modules/**",
 		"**/.vscode-test/**",
+		"**/.agents/**",
+		"**/.cursor/**",
+		"**/.claude/**",
+		"**/blueprint/**",
 		"src/types/vscode.cursor.d.ts"
 	]
 }

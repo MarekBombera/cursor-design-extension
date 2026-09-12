@@ -32,7 +32,9 @@ export const exportHandoff = async (outputChannel: vscode.OutputChannel): Promis
 
 	try {
 		const { exportId } = await exportActiveArtboardHandoff({ workspaceFolder, outputChannel });
-		await vscode.window.showInformationMessage(`Handoff exported to .cursor-design/handoff/${exportId}/.`);
+		await vscode.window.showInformationMessage(
+			`Handoff exported to .cursor-design/handoff/${exportId}/.`,
+		);
 	} catch (error: unknown) {
 		if (error instanceof ArtboardNotFoundError) {
 			await vscode.window.showErrorMessage(NO_ACTIVE_MESSAGE);
