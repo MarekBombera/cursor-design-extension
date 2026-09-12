@@ -165,14 +165,26 @@ Red-team the draft before presenting it:
 - are the removal criteria observable rather than phrased as "feature gone"?
 - can each compatibility edit be reviewed separately?
 
-Tighten the spec, then stop. Summarize the target commit, affected product paths,
+Tighten the spec, then reset `blueprint/context/current-feature-overview.md`
+to exactly this stub, creating the file when it does not exist yet:
+
+    # Current Feature Overview
+
+    > **Generated file.** Human-facing steering summary of the active work item:
+    > what it does, what you will see, data flow, key decisions, and diagrams.
+    > Starting skills reset this file; `/complete` writes the finished summary.
+    > Open in Markdown preview to render the diagrams.
+
+    _Summary lands here at `/complete`._
+
+Then stop. Summarize the target commit, affected product paths,
 later-change risk, and what the critique changed. Tell the user to review the
 spec, then run `/implement` to create the rollback branch and apply it.
 
 ## Rules
 
 - Preserve history. Never delete or rewrite the original feature archive.
-- Plan only. This skill writes the rollback spec and nothing else.
+- Plan only. This skill writes the rollback spec and resets the overview stub, nothing else.
 - One completed feature per rollback.
 - Record both the target commit and its parent as full 40-character SHA values.
   Each value must resolve to the recorded commit in the current repository.

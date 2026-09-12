@@ -125,6 +125,18 @@ Then use these section headings:
 - Notes for the AI
 - Open questions, only when a product decision remains unresolved
 
+Alongside the spec write, reset `blueprint/context/current-feature-overview.md`
+to exactly this stub, creating the file when it does not exist yet:
+
+    # Current Feature Overview
+
+    > **Generated file.** Human-facing steering summary of the active work item:
+    > what it does, what you will see, data flow, key decisions, and diagrams.
+    > Starting skills reset this file; `/complete` writes the finished summary.
+    > Open in Markdown preview to render the diagrams.
+
+    _Summary lands here at `/complete`._
+
 Build steps are ordered checklist items. Each step must leave the project
 working, stay small enough to review, and end with a concrete `Done when` that
 names observable behavior and the relevant check. Follow `workflow.stepReview`

@@ -275,7 +275,38 @@ an older installation does not have it:
     _No independent review requested. Run `/audit independent current` to prepare one._
 
 Keep every unresolved entry in the ledger. Do not replace it with the empty stub
-while it still contains any open, fixed, or unverified finding. After archiving
+while it still contains any open, fixed, or unverified finding.
+
+Before resetting the spec, write the finished human summary to
+`blueprint/context/current-feature-overview.md` from the verified spec and the
+built result. This file is for the human steering the project, not for builders.
+Use this shape, omitting sections that do not apply:
+
+    # <Title> - Overview for review
+
+    Source of truth: `<archive path>`. This file is the steering summary, not the build spec.
+
+    ## TL;DR
+    ## Flow
+    ## System map
+    ## Key loop
+    ## Rule logic (only when a decision rule needs a diagram)
+    ## What you will see
+    ## Data flow
+    ## Architecture decisions
+    ## Decisions locked
+    ## Out of scope
+    ## Your actions (manual human steps, if any)
+    ## Done means
+
+Keep it to one scannable page (about 2 minutes to read): concrete examples and
+real paths over abstractions; mermaid `flowchart` for the system map and rule
+logic, mermaid `sequenceDiagram` for the key loop (both render in Markdown
+preview and on GitHub); no function signatures and no file-by-file breakdown
+(the archive holds the build detail). `Source of truth` points at the archive
+placed above, since the live spec is reset next.
+
+After archiving
 resolved findings, replace `blueprint/context/current-feature.md` with
 the canonical stub below. Do not paraphrase it or substitute an abbreviated "no
 work" stub. Before committing, read the file and confirm it exactly matches:
