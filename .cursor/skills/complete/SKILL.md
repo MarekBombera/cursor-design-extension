@@ -296,14 +296,16 @@ Use this shape, omitting sections that do not apply:
     ## Architecture decisions
     ## Decisions locked
     ## Out of scope
+    ## Glossary
     ## Your actions (manual human steps, if any)
     ## Done means
 
 Keep it to one scannable page (about 2 minutes to read): concrete examples and
 real paths over abstractions; mermaid `flowchart` for the system map and rule
 logic, mermaid `sequenceDiagram` for the key loop (both render in Markdown
-preview and on GitHub); no function signatures and no file-by-file breakdown
-(the archive holds the build detail). `Source of truth` points at the archive
+preview and on GitHub); a `Term | Why it exists` glossary table with one line
+per domain term a non-coding reader would trip on; no function signatures and
+no file-by-file breakdown (the archive holds the build detail). `Source of truth` points at the archive
 placed above, since the live spec is reset next.
 
 After archiving
