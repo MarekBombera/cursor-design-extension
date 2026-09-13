@@ -20,4 +20,8 @@ oxfmt*
 .claude/**
 blueprint/**
 fixtures/**
-AGENTS copy.md
+AGENTS.md
+CLAUDE.md
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.github/**

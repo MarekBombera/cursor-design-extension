@@ -8,7 +8,9 @@ Agent-driven live HTML artboard for **Cursor** - Claude Design–style canvas wi
 
 ## Status
 
-Phase 3: seven MCP tools against disk SoT, export handoff + stale badge, generation/hash conflict on `update_artboard`, MCP-unavailable banner, F5 against `fixtures/dev-workspace`.
+v0.1.0: installable `.vsix` with an artboard panel, seven MCP tools, export handoff + stale badge, and documented v1 limits.
+
+![Artboard panel](media/artboard-panel.png)
 
 Spec (source of truth): [Notion - Cursor Design](https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4)
 
@@ -24,7 +26,16 @@ Server name: `cursor-design`. Tools:
 - `export_artboard` - write `.cursor-design/handoff/<exportId>/` and record `lastExport` (call before implementing)
 - `handoff_status` - `{ stale, activeArtboardId, activeHash, lastExport? }`; re-export when `stale` is true
 
-**Allowlist** the server if Cursor prompts. Settings may show **0 tools** until you toggle the server off/on (known Cursor quirk). If MCP is denied, edit `.cursor-design/**` on disk and tell the user to allowlist the tools.
+**Allowlist** the server if Cursor prompts. If MCP is denied, edit `.cursor-design/**` on disk and tell the user to allowlist the tools.
+
+## Install
+
+1. From this repo: `pnpm vsix` writes `cursor-design-0.1.0.vsix` at the repo root.
+2. In Cursor: Command Palette → **Extensions: Install from VSIX…** → pick that file → reload.
+3. Open a trusted folder. Command Palette → **Cursor Design: Open Artboard**.
+4. Settings → MCP: allowlist `cursor-design` (toggle off/on if the tool count stays 0; see Limits).
+
+Smoke-tested 2026-09-13, Cursor 3.20.17.
 
 ## Develop
 
@@ -69,6 +80,22 @@ F5 in the Extension Development Host with `fixtures/dev-workspace` open:
 Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace && pnpm dev` to view the implemented page. (`--ignore-workspace` is required because this repo has a root `pnpm-workspace.yaml`; without it, `pnpm install` no-ops and `vite` is missing.) Observed 2026-09-12: Vite 8.3.0 served `index.html` at `http://localhost:5173/` (`Implement the exported artboard here.`).
 
 **Trial performed:** 2026-09-12 (live F5 pass, steps 2–6 green; 6 handoffs on disk, `stale:false`, Vite 200 with latest implement).
+
+## Limits (v1)
+
+Facts, not a roadmap. Drift vs the rules or overview is labeled.
+
+- Cursor only: MCP registration uses `vscode.cursor.mcp.registerServer`. In plain VS Code the server is not registered (warning in Output → Cursor Design); the panel still renders `.cursor-design/` from disk, with no Agent loop.
+- First workspace folder only; multi-root beyond the first folder is ignored (`revealDesignFolder.ts`, `handleOpenArtboard.ts` ponytail).
+- Untrusted workspaces unsupported (`capabilities.untrustedWorkspaces.supported: false`); artboard HTML is executable workspace content.
+- One active artboard, no gallery; variants are new ids + `set_active_artboard`.
+- Writes: one process-wide MCP queue (recorded drift vs rule 02 "Serialize writes per artboard id"; documented as-is, queue unchanged); host-vs-MCP manifest writes are last-writer-wins; no cross-window lock (`mcpQueue.ts`, `watchArtboardDisk.ts`, `artboardFs.ts` ponytails). Failed multi-file writes leave partial files (no journal/rollback); orphan handoff dirs are never deleted.
+- Artboard iframe: `sandbox="allow-scripts"`. CSP blocks inline event handlers, `style=""` attributes, and external subresources in the artboard (`artboardChromeHtml.ts` v1 limit).
+- Handoff carries the whole document in `index.html` (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.cursor-design/assets/` is copied manually; `tokens.json` is passed through without validation.
+- Brain is Cursor Agent only: no in-panel chat, no model API keys, no `vscode.lm`.
+- Not on the Marketplace; install from `.vsix` (**Extensions: Install from VSIX…**).
+- Cursor MCP settings may show **0 tools** until the server is toggled off/on.
+- Chrome is vanilla nonce'd script, not the Svelte 5 + Vite chrome named in the overview (recorded drift, not fixed here).
 
 ## License
 

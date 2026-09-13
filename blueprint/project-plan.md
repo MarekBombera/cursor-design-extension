@@ -26,7 +26,7 @@ Match build phases in `.cursor/rules/01-phase-protocol.mdc` and Notion section 1
 - Disk `.cursor-design/` as SoT; file saves refresh the nested iframe; generation bumps (Phase 1).
 - MCP tools: `set_artboard`, `update_artboard` (requires `baseGeneration`), `read_artboard`, `list_artboards`, `set_active_artboard`; conflict path; MCP-offline banner (Phase 2).
 - `export_artboard` + `handoff_status` stale mark; usable `IMPLEMENT.md` (Phase 3).
-- Release polish: MIT, screenshots, honest limits (Phase 4).
+- Release polish: MIT, honest limits (Phase 4).
 
 Shipped demo: Agent designs a landing hero+CTA on the artboard, export, then implement that section into a tiny Vite + plain HTML sample. Handoff is HTML+CSS+JS.
 

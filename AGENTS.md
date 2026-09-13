@@ -253,7 +253,8 @@ checks do not make the Blueprint unusable.
 - Compile: `pnpm compile` (writes `dist/extension.js` and `dist/mcp.js`)
 - Watch: `pnpm watch`
 - Debug: **F5** (Run Extension) — Extension Development Host opens `fixtures/dev-workspace`
-- Package: `pnpm package`
+- Package: `pnpm package` (builds `dist/` only)
+- Package `.vsix`: `pnpm vsix`
 
 Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Extension Development Host.
 
