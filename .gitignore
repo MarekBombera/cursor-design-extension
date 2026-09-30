@@ -15,3 +15,6 @@ fixtures/dev-workspace/sample-app/pnpm-lock.yaml
 .DS_Store
 .env
 .env*.local
+
+# Local pnpm store
+.pnpm-store/
