@@ -1,4 +1,8 @@
-export class InvalidArtboardIdError extends Error {
+export abstract class CursorDesignError extends Error {
+	abstract readonly code: string;
+}
+
+export class InvalidArtboardIdError extends CursorDesignError {
 	readonly code = 'INVALID_ARTBOARD_ID' as const;
 
 	constructor(
@@ -10,7 +14,7 @@ export class InvalidArtboardIdError extends Error {
 	}
 }
 
-export class CorruptManifestError extends Error {
+export class CorruptManifestError extends CursorDesignError {
 	readonly code = 'CORRUPT_MANIFEST' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -22,7 +26,7 @@ export class CorruptManifestError extends Error {
 	}
 }
 
-export class UnsupportedSchemaVersionError extends Error {
+export class UnsupportedSchemaVersionError extends CursorDesignError {
 	readonly code = 'UNSUPPORTED_SCHEMA_VERSION' as const;
 
 	constructor(
@@ -37,7 +41,7 @@ export class UnsupportedSchemaVersionError extends Error {
 	}
 }
 
-export class ArtboardHtmlMissingError extends Error {
+export class ArtboardHtmlMissingError extends CursorDesignError {
 	readonly code = 'ARTBOARD_HTML_MISSING' as const;
 
 	constructor(
@@ -52,7 +56,7 @@ export class ArtboardHtmlMissingError extends Error {
 	}
 }
 
-export class CorruptMetaError extends Error {
+export class CorruptMetaError extends CursorDesignError {
 	readonly code = 'CORRUPT_META' as const;
 
 	constructor(
@@ -67,7 +71,7 @@ export class CorruptMetaError extends Error {
 	}
 }
 
-export class InvalidArgsError extends Error {
+export class InvalidArgsError extends CursorDesignError {
 	readonly code = 'INVALID_ARGS' as const;
 
 	constructor(message: string, options?: { cause?: unknown }) {
@@ -76,7 +80,7 @@ export class InvalidArgsError extends Error {
 	}
 }
 
-export class ArtboardExistsError extends Error {
+export class ArtboardExistsError extends CursorDesignError {
 	readonly code = 'ARTBOARD_EXISTS' as const;
 
 	constructor(
@@ -91,7 +95,7 @@ export class ArtboardExistsError extends Error {
 	}
 }
 
-export class ArtboardNotFoundError extends Error {
+export class ArtboardNotFoundError extends CursorDesignError {
 	readonly code = 'ARTBOARD_NOT_FOUND' as const;
 
 	constructor(
@@ -108,7 +112,7 @@ export class ArtboardNotFoundError extends Error {
 	}
 }
 
-export class NoWorkspaceError extends Error {
+export class NoWorkspaceError extends CursorDesignError {
 	readonly code = 'NO_WORKSPACE' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -117,28 +121,31 @@ export class NoWorkspaceError extends Error {
 	}
 }
 
-export class AmbiguousWorkspaceError extends Error {
+export class AmbiguousWorkspaceError extends CursorDesignError {
 	readonly code = 'ambiguous_workspace' as const;
 
-	constructor(options?: { cause?: unknown }) {
-		super('Workspace root is ambiguous. Pass rootPath.', options);
+	constructor(
+		readonly roots: readonly string[],
+		options?: { cause?: unknown },
+	) {
+		super('Workspace root is ambiguous. Retry with rootPath set to one of roots.', options);
 		this.name = 'AmbiguousWorkspaceError';
 	}
 }
 
-export class InvalidRootError extends Error {
+export class InvalidRootError extends CursorDesignError {
 	readonly code = 'INVALID_ROOT' as const;
 
-	constructor(options?: { cause?: unknown }) {
-		super(
-			'rootPath is not an exact host-passed folder. Pass a rootPath from CURSOR_DESIGN_WORKSPACE_ROOTS.',
-			options,
-		);
+	constructor(
+		readonly roots: readonly string[],
+		options?: { cause?: unknown },
+	) {
+		super('rootPath is not an open workspace folder. Retry with rootPath set to one of roots.', options);
 		this.name = 'InvalidRootError';
 	}
 }
 
-export class DiskError extends Error {
+export class DiskError extends CursorDesignError {
 	readonly code = 'DISK_ERROR' as const;
 
 	constructor(message?: string | { cause?: unknown }, options?: { cause?: unknown }) {
@@ -158,7 +165,7 @@ export type ConflictCompared = {
 	actualHash?: string;
 };
 
-export class ConflictError extends Error {
+export class ConflictError extends CursorDesignError {
 	readonly code = 'conflict' as const;
 
 	constructor(

@@ -11,17 +11,11 @@ import {
 } from '../disk/artboardFs';
 import {
 	AmbiguousWorkspaceError,
-	ArtboardExistsError,
-	ArtboardNotFoundError,
 	ConflictError,
-	CorruptManifestError,
-	CorruptMetaError,
+	CursorDesignError,
 	DiskError,
 	InvalidArgsError,
-	InvalidArtboardIdError,
 	InvalidRootError,
-	NoWorkspaceError,
-	UnsupportedSchemaVersionError,
 } from '../disk/errors';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import { enqueueDiskOp } from './mcpQueue';
@@ -53,12 +47,14 @@ type McpErrorBody = {
 	actualGeneration?: number;
 	expectedHash?: string;
 	actualHash?: string;
+	roots?: readonly string[];
 	message: string;
 };
 
 // Schemas stay permissive on purpose: wrong-typed args must reach the handler so the
 // agent gets authored INVALID_ARGS JSON, not an SDK "Input validation error".
-const ROOT_PATH_DESCRIPTION = 'Workspace folder fsPath. Pass when more than one folder is open.';
+const ROOT_PATH_DESCRIPTION =
+	'Optional string. Workspace folder fsPath. Pass when more than one folder is open; error roots lists valid values.';
 
 const toolInputSchema = (properties: Record<string, { description: string }>) =>
 	fromJsonSchema<ToolArgs>({
@@ -68,27 +64,35 @@ const toolInputSchema = (properties: Record<string, { description: string }>) =>
 	});
 
 const setArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'New artboard id (letters, digits, dot, underscore, hyphen).' },
-	html: { description: 'Full HTML document. Empty string allowed.' },
-	title: { description: 'Optional title.' },
-	viewport: { description: 'Optional viewport label, e.g. 1280x800.' },
+	artboardId: {
+		description: 'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
+	},
+	html: { description: 'Required string. Full HTML document. Empty string allowed.' },
+	title: { description: 'Optional string title.' },
+	viewport: { description: 'Optional string viewport label, e.g. 1280x800.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const updateArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'Existing artboard id.' },
-	html: { description: 'Replacement HTML document.' },
+	artboardId: { description: 'Required string. Existing artboard id.' },
+	html: { description: 'Required string. Replacement HTML document.' },
 	baseGeneration: {
-		description: 'Generation from read_artboard. Required unless baseHash is sent.',
+		description: 'Integer generation from read_artboard. Required unless baseHash is sent.',
 	},
-	baseHash: { description: 'Hash from read_artboard. Required unless baseGeneration is sent.' },
-	title: { description: 'Optional title. Keeps the stored title when omitted.' },
-	viewport: { description: 'Optional viewport label. Keeps the stored viewport when omitted.' },
+	baseHash: {
+		description: 'String hash from read_artboard. Required unless baseGeneration is sent.',
+	},
+	title: { description: 'Optional string title. Keeps the stored title when omitted.' },
+	viewport: {
+		description: 'Optional string viewport label. Keeps the stored viewport when omitted.',
+	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const readArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'Artboard id. Defaults to the active artboard when omitted.' },
+	artboardId: {
+		description: 'Optional string artboard id. Defaults to the active artboard when omitted.',
+	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
@@ -97,13 +101,14 @@ const listArtboardsInputSchema = toolInputSchema({
 });
 
 const setActiveArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'Existing artboard id to make active.' },
+	artboardId: { description: 'Required string. Existing artboard id to make active.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const exportArtboardInputSchema = toolInputSchema({
 	artboardId: {
-		description: 'Artboard id to export. Defaults to the active artboard when omitted.',
+		description:
+			'Optional string artboard id to export. Defaults to the active artboard when omitted.',
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
@@ -122,6 +127,8 @@ export const artboardToolInputSchemas = {
 	[HANDOFF_STATUS_TOOL]: handoffStatusInputSchema,
 };
 
+const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const;
+
 const jsonResult = (body: unknown, isError = false): CallToolResult => ({
 	content: [{ type: 'text', text: JSON.stringify(body) }],
 	isError,
@@ -137,21 +144,17 @@ const optionalRootPath = (value: unknown): string | undefined => {
 	return value;
 };
 
+const logMcpError = (error: unknown): void => {
+	process.stderr.write(
+		`cursor-design MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+	);
+};
+
 const toMcpToolError = (error: unknown): CallToolResult => {
-	if (
-		error instanceof AmbiguousWorkspaceError ||
-		error instanceof ArtboardExistsError ||
-		error instanceof ArtboardNotFoundError ||
-		error instanceof ConflictError ||
-		error instanceof CorruptManifestError ||
-		error instanceof CorruptMetaError ||
-		error instanceof DiskError ||
-		error instanceof InvalidArgsError ||
-		error instanceof InvalidArtboardIdError ||
-		error instanceof InvalidRootError ||
-		error instanceof NoWorkspaceError ||
-		error instanceof UnsupportedSchemaVersionError
-	) {
+	if (error instanceof CursorDesignError) {
+		if (error instanceof DiskError && error.cause !== undefined) {
+			logMcpError(error.cause);
+		}
 		const body: McpErrorBody = {
 			code: error.code,
 			message: error.message,
@@ -166,11 +169,12 @@ const toMcpToolError = (error: unknown): CallToolResult => {
 		if (error instanceof ConflictError) {
 			Object.assign(body, error.compared);
 		}
+		if (error instanceof AmbiguousWorkspaceError || error instanceof InvalidRootError) {
+			body.roots = error.roots;
+		}
 		return jsonResult(body, true);
 	}
-	process.stderr.write(
-		`cursor-design MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-	);
+	logMcpError(error);
 	return jsonResult(
 		{
 			code: 'DISK_ERROR',
@@ -215,6 +219,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Create a new artboard HTML id on disk. html is required (empty string allowed). Does not overwrite an existing id. Pass rootPath when more than one folder is open.',
 			inputSchema: setArtboardInputSchema,
+			annotations: { destructiveHint: false, openWorldHint: false },
 		},
 		async ({ artboardId, html, title, viewport, rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) =>
@@ -236,6 +241,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML.',
 			inputSchema: updateArtboardInputSchema,
+			annotations: { destructiveHint: true, openWorldHint: false },
 		},
 		async ({ artboardId, html, title, viewport, rootPath, baseGeneration, baseHash }) =>
 			runQueued(rootPath, (workspaceRoot) =>
@@ -258,6 +264,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Read artboard HTML and meta. artboardId optional (defaults to active). Does not write or bump generation.',
 			inputSchema: readArtboardInputSchema,
+			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ artboardId, rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) =>
@@ -275,6 +282,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'List artboards/*.html ids. Omits generation when meta is missing or corrupt. Does not write.',
 			inputSchema: listArtboardsInputSchema,
+			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) => listArtboards({ workspaceRoot })),
@@ -287,6 +295,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Set manifest activeArtboardId to an id whose HTML exists. Does not open the panel. Host watcher reloads if the panel is already open on the first folder.',
 			inputSchema: setActiveArtboardInputSchema,
+			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
 		async ({ artboardId, rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) =>
@@ -304,6 +313,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Export an artboard to .cursor-design/handoff/<exportId>/ (index.html, IMPLEMENT.md, tokens.json) and record lastExport. artboardId optional (defaults to active). Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open.',
 			inputSchema: exportArtboardInputSchema,
+			annotations: { destructiveHint: false, openWorldHint: false },
 		},
 		async ({ artboardId, rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) =>
@@ -321,6 +331,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 			description:
 				'Read whether the recorded handoff is stale versus the active artboard hash. Call this before implementing; if stale is true, re-export with export_artboard. Does not write. Pass rootPath when more than one folder is open.',
 			inputSchema: handoffStatusInputSchema,
+			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) => readHandoffStatus({ workspaceRoot })),

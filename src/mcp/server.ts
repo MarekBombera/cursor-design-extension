@@ -7,7 +7,7 @@ import { CURSOR_DESIGN_MCP_SERVER_NAME } from './mcpIdentity';
 const startCursorDesignMcpServer = async (): Promise<void> => {
 	const server = new McpServer({
 		name: CURSOR_DESIGN_MCP_SERVER_NAME,
-		version: '0.0.1',
+		version: process.env.CURSOR_DESIGN_VERSION ?? '0.0.0',
 	});
 	registerArtboardTools(server);
 	const transport = new StdioServerTransport();

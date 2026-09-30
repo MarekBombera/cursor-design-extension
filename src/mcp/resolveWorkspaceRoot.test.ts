@@ -32,12 +32,49 @@ test('exact rootPath match wins', async () => {
 	);
 });
 
+test('rootPath with a trailing slash resolves to the host root', async () => {
+	const workspaceRoot = await makeTempRoot();
+	assert.equal(
+		resolveWorkspaceRoot({ roots: [workspaceRoot], rootPath: `${workspaceRoot}/` }),
+		workspaceRoot,
+	);
+});
+
+test('relative or empty rootPath is INVALID_ROOT even when cwd is a root', () => {
+	const cwdRoot = process.cwd();
+	for (const rootPath of ['.', '', './']) {
+		assert.throws(
+			() => resolveWorkspaceRoot({ roots: [cwdRoot], rootPath }),
+			(error: unknown) => error instanceof InvalidRootError,
+		);
+	}
+});
+
+test('rootPath that only shares a prefix with a root is INVALID_ROOT', async () => {
+	const workspaceRoot = await makeTempRoot();
+	assert.throws(
+		() => resolveWorkspaceRoot({ roots: [workspaceRoot], rootPath: `${workspaceRoot}-evil` }),
+		(error: unknown) => error instanceof InvalidRootError,
+	);
+});
+
+test('explicit rootPath wins over a single layout folder elsewhere', async () => {
+	const firstRoot = await makeTempRoot();
+	const secondRoot = await makeTempRoot();
+	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
+	assert.equal(
+		resolveWorkspaceRoot({ roots: [firstRoot, secondRoot], rootPath: firstRoot }),
+		firstRoot,
+	);
+});
+
 test('rootPath outside the host list is INVALID_ROOT', async () => {
 	const workspaceRoot = await makeTempRoot();
 	assert.throws(
 		() => resolveWorkspaceRoot({ roots: [workspaceRoot], rootPath: join(workspaceRoot, '..') }),
 		(error: unknown) => {
 			assert.ok(error instanceof InvalidRootError);
+			assert.deepEqual(error.roots, [workspaceRoot]);
 			return true;
 		},
 	);
@@ -54,6 +91,18 @@ test('invalid ROOTS falls back to ROOT', async () => {
 			[workspaceRoot],
 		);
 	}
+});
+
+test('valid ROOTS wins over ROOT', async () => {
+	const firstRoot = await makeTempRoot();
+	const secondRoot = await makeTempRoot();
+	assert.deepEqual(
+		parseWorkspaceRootsEnv({
+			[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: JSON.stringify([firstRoot, secondRoot]),
+			[CURSOR_DESIGN_WORKSPACE_ROOT_ENV]: firstRoot,
+		}),
+		[firstRoot, secondRoot],
+	);
 });
 
 test('missing roots is NO_WORKSPACE', () => {
@@ -89,6 +138,7 @@ test('two layout folders without rootPath is ambiguous', async () => {
 		() => resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }),
 		(error: unknown) => {
 			assert.ok(error instanceof AmbiguousWorkspaceError);
+			assert.deepEqual(error.roots, [firstRoot, secondRoot]);
 			return true;
 		},
 	);

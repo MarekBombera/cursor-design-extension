@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import { AmbiguousWorkspaceError, InvalidRootError, NoWorkspaceError } from '../disk/errors';
 import { CURSOR_DESIGN_DIR } from '../disk/layout';
@@ -46,10 +46,14 @@ export const resolveWorkspaceRoot = ({
 	rootPath?: string;
 }): string => {
 	if (rootPath !== undefined) {
-		if (!roots.includes(rootPath)) {
-			throw new InvalidRootError();
+		// Relative paths would resolve against the MCP process cwd, not a workspace folder.
+		const matchedRoot = isAbsolute(rootPath)
+			? roots.find((root) => resolve(root) === resolve(rootPath))
+			: undefined;
+		if (matchedRoot === undefined) {
+			throw new InvalidRootError(roots);
 		}
-		return rootPath;
+		return matchedRoot;
 	}
 	const withLayout = roots.filter((folder) => existsSync(join(folder, CURSOR_DESIGN_DIR)));
 	if (withLayout.length === 1) {
@@ -58,5 +62,5 @@ export const resolveWorkspaceRoot = ({
 	if (roots.length === 1) {
 		return roots[0];
 	}
-	throw new AmbiguousWorkspaceError();
+	throw new AmbiguousWorkspaceError(roots);
 };

@@ -9,6 +9,7 @@ import {
 	ConflictError,
 	CorruptManifestError,
 	CorruptMetaError,
+	CursorDesignError,
 	DiskError,
 	InvalidArgsError,
 	InvalidArtboardIdError,
@@ -147,19 +148,8 @@ const isErrno = (error: unknown, code: string): boolean =>
 	'code' in error &&
 	(error as { code: unknown }).code === code;
 
-const isExpectedError = (error: unknown): boolean =>
-	error instanceof ArtboardExistsError ||
-	error instanceof ArtboardNotFoundError ||
-	error instanceof ConflictError ||
-	error instanceof CorruptManifestError ||
-	error instanceof CorruptMetaError ||
-	error instanceof DiskError ||
-	error instanceof InvalidArgsError ||
-	error instanceof InvalidArtboardIdError ||
-	error instanceof UnsupportedSchemaVersionError;
-
 const throwDiskError = (error: unknown): never => {
-	if (isExpectedError(error)) {
+	if (error instanceof CursorDesignError) {
 		throw error;
 	}
 	throw new DiskError({ cause: error });

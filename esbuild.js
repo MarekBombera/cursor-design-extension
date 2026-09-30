@@ -52,6 +52,9 @@ const main = async () => {
 		...sharedBuildOptions,
 		entryPoints: ['src/mcp/server.ts'],
 		outfile: 'dist/mcp.js',
+		define: {
+			'process.env.CURSOR_DESIGN_VERSION': JSON.stringify(require('./package.json').version),
+		},
 		plugins: [createEsbuildProblemMatcherPlugin()],
 	});
 	if (watch) {
