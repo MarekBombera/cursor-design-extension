@@ -1,5 +1,3 @@
-import { existsSync } from 'node:fs';
-
 import * as vscode from 'vscode';
 
 import {
@@ -63,11 +61,6 @@ export const registerCursorDesignMcp = ({
 	}
 
 	const mcpJsUri = vscode.Uri.joinPath(context.extensionUri, 'dist', 'mcp.js');
-	if (!existsSync(mcpJsUri.fsPath)) {
-		outputChannel.appendLine('dist/mcp.js is missing. Compile the extension before testing MCP.');
-		return false;
-	}
-
 	const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
 	const workspaceRootOrEmpty = workspaceFolders[0]?.uri.fsPath ?? '';
 

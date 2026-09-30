@@ -16,10 +16,16 @@ type WatchArtboardDiskArgs = {
 	outputChannel: vscode.OutputChannel;
 };
 
+type ReplaceArtboardWatcherArgs = WatchArtboardDiskArgs & {
+	rearmMarker: boolean;
+};
+
 let artboardWatcher: vscode.FileSystemWatcher | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingMarkerEnsure = false;
 let watcherDisposeHooked = false;
+let watchGeneration = 0;
+let watchChain: Promise<void> = Promise.resolve();
 
 const clearDebounceTimer = (): void => {
 	if (debounceTimer !== undefined) {
@@ -31,19 +37,28 @@ const clearDebounceTimer = (): void => {
 const disposeArtboardWatcher = (): void => {
 	clearDebounceTimer();
 	pendingMarkerEnsure = false;
+	watchGeneration += 1;
 	artboardWatcher?.dispose();
 	artboardWatcher = undefined;
 };
 
-const refreshWatchedArtboard = async (
-	workspaceFolder: vscode.WorkspaceFolder,
-	outputChannel: vscode.OutputChannel,
-): Promise<void> => {
+const refreshWatchedArtboard = async ({
+	workspaceFolder,
+	outputChannel,
+	token,
+}: {
+	workspaceFolder: vscode.WorkspaceFolder;
+	outputChannel: vscode.OutputChannel;
+	token: number;
+}): Promise<void> => {
 	if (!hasCurrentArtboardPanel()) {
 		return;
 	}
 	// ponytail: last clean writer wins; no cross-window lock
 	const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
+	if (token !== watchGeneration) {
+		return;
+	}
 	postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
 };
 
@@ -61,7 +76,11 @@ const deleteEnsurePanelMarker = async (
 	}
 };
 
-export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboardDiskArgs): void => {
+export const replaceArtboardWatcher = ({
+	context,
+	outputChannel,
+	rearmMarker,
+}: ReplaceArtboardWatcherArgs): void => {
 	disposeArtboardWatcher();
 	if (!vscode.workspace.isTrusted) {
 		return;
@@ -75,6 +94,7 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 	const isMarkerUri = (uri: vscode.Uri): boolean => uri.fsPath === markerUri.fsPath;
 
 	const runDebouncedWatch = async (): Promise<void> => {
+		const token = ++watchGeneration;
 		const currentFirstFolder = vscode.workspace.workspaceFolders?.[0];
 		if (!currentFirstFolder || currentFirstFolder.uri.fsPath !== workspaceFolder.uri.fsPath) {
 			pendingMarkerEnsure = false;
@@ -97,20 +117,20 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 				pendingMarkerEnsure = false;
 				return;
 			}
-			openArtboardPanel(context);
-			await refreshWatchedArtboard(workspaceFolder, outputChannel);
+			openArtboardPanel({ context, preserveFocus: true });
+			await refreshWatchedArtboard({ workspaceFolder, outputChannel, token });
 			await deleteEnsurePanelMarker(markerUri, outputChannel);
 			pendingMarkerEnsure = false;
 			return;
 		}
-		await refreshWatchedArtboard(workspaceFolder, outputChannel);
+		await refreshWatchedArtboard({ workspaceFolder, outputChannel, token });
 	};
 
 	const scheduleDebounce = (): void => {
 		clearDebounceTimer();
 		debounceTimer = setTimeout(() => {
 			debounceTimer = undefined;
-			void runDebouncedWatch();
+			watchChain = watchChain.then(runDebouncedWatch, runDebouncedWatch);
 		}, WATCH_DEBOUNCE_MS);
 	};
 
@@ -140,7 +160,11 @@ export const replaceArtboardWatcher = ({ context, outputChannel }: WatchArtboard
 		watcherDisposeHooked = true;
 	}
 
-	// Re-arm from disk: a marker written before this replace lost its flag with the old watcher.
+	if (!rearmMarker) {
+		return;
+	}
+
+	// Re-arm from disk: a marker written while the previous watcher was disposed must still open the panel.
 	void fileExists(markerUri)
 		.then((markerStillThere) => {
 			if (markerStillThere) {
@@ -157,5 +181,5 @@ export const ensureArtboardWatcher = ({ context, outputChannel }: WatchArtboardD
 	if (artboardWatcher !== undefined) {
 		return;
 	}
-	replaceArtboardWatcher({ context, outputChannel });
+	replaceArtboardWatcher({ context, outputChannel, rearmMarker: false });
 };

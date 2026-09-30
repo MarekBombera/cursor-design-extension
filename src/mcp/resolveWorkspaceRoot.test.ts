@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
-import { AmbiguousWorkspaceError, InvalidRootError, NoWorkspaceError } from '../disk/errors';
+import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
 import { CURSOR_DESIGN_DIR } from '../disk/layout';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
@@ -122,26 +122,19 @@ test('missing roots is NO_WORKSPACE', () => {
 	);
 });
 
-test('unique layout folder wins without rootPath', async () => {
+test('omitted rootPath uses the first root', async () => {
 	const firstRoot = await makeTempRoot();
 	const secondRoot = await makeTempRoot();
 	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
-	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), secondRoot);
+	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), firstRoot);
 });
 
-test('two layout folders without rootPath is ambiguous', async () => {
+test('two folders without rootPath use the first folder', async () => {
 	const firstRoot = await makeTempRoot();
 	const secondRoot = await makeTempRoot();
 	await mkdir(join(firstRoot, CURSOR_DESIGN_DIR));
 	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
-	assert.throws(
-		() => resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }),
-		(error: unknown) => {
-			assert.ok(error instanceof AmbiguousWorkspaceError);
-			assert.deepEqual(error.roots, [firstRoot, secondRoot]);
-			return true;
-		},
-	);
+	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), firstRoot);
 });
 
 test('single root without layout is used', async () => {

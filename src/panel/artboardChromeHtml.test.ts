@@ -29,6 +29,20 @@ test('chrome document keeps sandbox, single vscode api, and no remote resources'
 	assert.ok(chrome.html.includes('MCP unavailable. Artboard still loads from disk.'));
 });
 
+test('chrome script ignores nested-frame null origin', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+
+	assert.ok(chrome.html.includes("event.origin === 'null'"));
+});
+
+test('chrome script hides iframe and drops src on empty html', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+
+	assert.ok(chrome.html.includes('if (html.length === 0)'));
+	assert.ok(chrome.html.includes('iframe.hidden = true'));
+	assert.ok(chrome.html.includes("iframe.removeAttribute('src')"));
+});
+
 test('each chrome document gets a fresh nonce', () => {
 	const first = buildArtboardChromeHtml(fakeWebview);
 	const second = buildArtboardChromeHtml(fakeWebview);

@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 
-import { initAndLoadArtboard, readActiveArtboardFromDisk, snapshotForChrome } from './artboardDisk';
+import {
+	emptyArtboardSnapshot,
+	initAndLoadArtboard,
+	readActiveArtboardFromDisk,
+	snapshotForChrome,
+} from './artboardDisk';
 import { ensureArtboardWatcher } from './watchArtboardDisk';
 import { openArtboardPanel, postArtboardSnapshotToPanel } from '../panel/openArtboardPanel';
 
@@ -17,6 +22,7 @@ export const reloadVisibleArtboardFromDisk = async (
 ): Promise<void> => {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 	if (!workspaceFolder) {
+		postArtboardSnapshotToPanel(snapshotForChrome(emptyArtboardSnapshot()));
 		return;
 	}
 	const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
@@ -28,15 +34,15 @@ export const handleOpenArtboard = async ({
 	outputChannel,
 }: HandleOpenArtboardArgs): Promise<void> => {
 	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-	// ponytail: first folder only; ambiguous_workspace is Phase 2
+	// ponytail: first folder only
 	if (!workspaceFolder) {
 		await vscode.window.showErrorMessage(NO_FOLDER_TOAST);
-		openArtboardPanel(context);
+		openArtboardPanel({ context });
 		return;
 	}
 
 	const snapshot = await initAndLoadArtboard({ workspaceFolder, outputChannel });
 	postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
-	openArtboardPanel(context);
+	openArtboardPanel({ context });
 	ensureArtboardWatcher({ context, outputChannel });
 };

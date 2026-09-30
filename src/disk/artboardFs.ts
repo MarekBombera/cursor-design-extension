@@ -1,8 +1,9 @@
 import { type Stats } from 'node:fs';
-import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { conflictFields } from './conflict';
+import { effectiveArtboardMeta } from './effectiveMeta';
 import {
 	ArtboardExistsError,
 	ArtboardNotFoundError,
@@ -13,7 +14,6 @@ import {
 	DiskError,
 	InvalidArgsError,
 	InvalidArtboardIdError,
-	UnsupportedSchemaVersionError,
 } from './errors';
 import { nextGeneration } from './generation';
 import { buildHandoffFiles, compareHandoff } from './handoff';
@@ -26,6 +26,7 @@ import {
 	IMPLEMENT_FILE,
 	SCHEMA_VERSION,
 	TOKENS_FILE,
+	artboardHtmlFileName,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	artboardsDirSegments,
@@ -158,6 +159,20 @@ const throwDiskError = (error: unknown): never => {
 const workspaceJoin = (workspaceRoot: string, segments: readonly string[]): string =>
 	join(workspaceRoot, ...segments);
 
+const workspaceLayoutFile = (
+	workspaceRoot: string,
+	segments: readonly string[],
+): { filePath: string; relativePath: string } => ({
+	filePath: workspaceJoin(workspaceRoot, segments),
+	relativePath: segments.join('/'),
+});
+
+const regularFileRequiredMessage = (relativePath: string): string =>
+	`${relativePath} must be a regular file (symlinks rejected).`;
+
+const directoryRequiredMessage = (relativePath: string): string =>
+	`${relativePath} must be a directory (symlinks rejected).`;
+
 type LayoutEntryKind = 'missing' | 'symlink' | 'file' | 'other';
 
 const layoutEntryKind = async (filePath: string): Promise<LayoutEntryKind> => {
@@ -173,7 +188,8 @@ const layoutEntryKind = async (filePath: string): Promise<LayoutEntryKind> => {
 
 // lstat (never stat) at every level: the id charset already blocks `..`, so rejecting
 // symlinks here keeps layout I/O under {workspaceRoot}/.cursor-design/ without realpath.
-// ponytail: check-then-act, no fd holding; a swap between lstat and read/write still wins.
+// ponytail: reads still check-then-act; writeUtf8 unlinks tmp then wx-writes so a leftover
+// symlink tmp cannot redirect the payload; rename replaces the dest name (does not follow it).
 const lstatOrUndefined = async (filePath: string): Promise<Stats | undefined> => {
 	try {
 		return await lstat(filePath);
@@ -186,18 +202,19 @@ const lstatOrUndefined = async (filePath: string): Promise<Stats | undefined> =>
 };
 
 const assertLayoutDirsOwned = async (workspaceRoot: string): Promise<void> => {
-	const dirPaths = [
-		join(workspaceRoot, CURSOR_DESIGN_DIR),
-		workspaceJoin(workspaceRoot, artboardsDirSegments),
-		workspaceJoin(workspaceRoot, handoffRootSegments),
+	const dirLayouts: readonly (readonly string[])[] = [
+		[CURSOR_DESIGN_DIR],
+		artboardsDirSegments,
+		handoffRootSegments,
 	];
-	for (const dirPath of dirPaths) {
+	for (const segments of dirLayouts) {
+		const dirPath = join(workspaceRoot, ...segments);
 		const dirStats = await lstatOrUndefined(dirPath);
 		if (dirStats === undefined) {
 			continue;
 		}
 		if (dirStats.isSymbolicLink() || !dirStats.isDirectory()) {
-			throw new DiskError();
+			throw new DiskError(directoryRequiredMessage(segments.join('/')));
 		}
 	}
 };
@@ -208,17 +225,39 @@ const requireHtmlFile = async (htmlFilePath: string, artboardId: string): Promis
 		throw new ArtboardNotFoundError(artboardId);
 	}
 	if (entryKind !== 'file') {
-		throw new DiskError();
+		throw new DiskError(regularFileRequiredMessage(artboardHtmlPathSegments(artboardId).join('/')));
 	}
 };
 
-const readUtf8IfExists = async (filePath: string): Promise<string | undefined> => {
+const requireExactHtmlFileName = async (
+	workspaceRoot: string,
+	artboardId: string,
+): Promise<void> => {
+	const artboardsDirectory = workspaceJoin(workspaceRoot, artboardsDirSegments);
+	let fileNames: string[];
+	try {
+		fileNames = await readdir(artboardsDirectory, { encoding: 'utf8' });
+	} catch (error: unknown) {
+		return throwDiskError(error);
+	}
+	if (!fileNames.includes(artboardHtmlFileName(artboardId))) {
+		throw new ArtboardNotFoundError(artboardId);
+	}
+};
+
+const readUtf8IfExists = async ({
+	filePath,
+	relativePath,
+}: {
+	filePath: string;
+	relativePath: string;
+}): Promise<string | undefined> => {
 	const entryKind = await layoutEntryKind(filePath);
 	if (entryKind === 'missing') {
 		return undefined;
 	}
 	if (entryKind !== 'file') {
-		throw new DiskError();
+		throw new DiskError(regularFileRequiredMessage(relativePath));
 	}
 	try {
 		return await readFile(filePath, 'utf8');
@@ -230,13 +269,30 @@ const readUtf8IfExists = async (filePath: string): Promise<string | undefined> =
 	}
 };
 
-const writeUtf8 = async (filePath: string, contents: string): Promise<void> => {
+const writeUtf8 = async ({
+	filePath,
+	contents,
+	relativePath,
+}: {
+	filePath: string;
+	contents: string;
+	relativePath: string;
+}): Promise<void> => {
 	const entryKind = await layoutEntryKind(filePath);
 	if (entryKind === 'symlink' || entryKind === 'other') {
-		throw new DiskError();
+		throw new DiskError(regularFileRequiredMessage(relativePath));
+	}
+	const tempFilePath = `${filePath}.${process.pid}.tmp`;
+	try {
+		await unlink(tempFilePath);
+	} catch (error: unknown) {
+		if (!isErrno(error, 'ENOENT')) {
+			throwDiskError(error);
+		}
 	}
 	try {
-		await writeFile(filePath, contents, 'utf8');
+		await writeFile(tempFilePath, contents, { encoding: 'utf8', flag: 'wx' });
+		await rename(tempFilePath, filePath);
 	} catch (error: unknown) {
 		throwDiskError(error);
 	}
@@ -257,18 +313,11 @@ const parseManifestText = (text: string): ArtboardManifest => {
 	} catch (error: unknown) {
 		throw new CorruptManifestError({ cause: error });
 	}
-	try {
-		return parseManifest(parsedJson);
-	} catch (error: unknown) {
-		if (error instanceof InvalidArtboardIdError) {
-			throw new CorruptManifestError({ cause: error });
-		}
-		throw error;
-	}
+	return parseManifest(parsedJson);
 };
 
 const readManifestFile = async (workspaceRoot: string): Promise<ArtboardManifest | undefined> => {
-	const text = await readUtf8IfExists(workspaceJoin(workspaceRoot, manifestPathSegments));
+	const text = await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, manifestPathSegments));
 	if (text === undefined) {
 		return undefined;
 	}
@@ -281,7 +330,7 @@ const readManifestFileLenient = async (
 	try {
 		return await readManifestFile(workspaceRoot);
 	} catch (error: unknown) {
-		if (error instanceof CorruptManifestError || error instanceof UnsupportedSchemaVersionError) {
+		if (error instanceof CorruptManifestError) {
 			return undefined;
 		}
 		throw error;
@@ -296,33 +345,34 @@ const isBenignMetaParseError = (error: unknown): boolean =>
 const parseMetaFromJsonText = (text: string): ArtboardMeta =>
 	parseMeta(JSON.parse(text) as unknown);
 
-const readMetaForHtml = async (
+const readStoredMeta = async (
 	workspaceRoot: string,
 	artboardId: string,
-): Promise<ArtboardMeta> => {
+): Promise<ArtboardMeta | undefined> => {
 	const text = await readUtf8IfExists(
-		workspaceJoin(workspaceRoot, artboardMetaPathSegments(artboardId)),
+		workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(artboardId)),
 	);
 	if (text === undefined) {
-		throw new CorruptMetaError(artboardId);
+		return undefined;
 	}
+	let meta: ArtboardMeta;
 	try {
-		const meta = parseMetaFromJsonText(text);
-		if (meta.id !== artboardId) {
-			throw new CorruptMetaError(artboardId);
-		}
-		return meta;
+		meta = parseMetaFromJsonText(text);
 	} catch (error: unknown) {
 		if (isBenignMetaParseError(error)) {
-			throw new CorruptMetaError(artboardId, { cause: error });
+			return undefined;
 		}
 		return throwDiskError(error);
 	}
+	if (meta.id !== artboardId) {
+		throw new CorruptMetaError(artboardId);
+	}
+	return meta;
 };
 
 const requireArtboardHtml = async (workspaceRoot: string, artboardId: string): Promise<string> => {
 	const html = await readUtf8IfExists(
-		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(artboardId)),
+		workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(artboardId)),
 	);
 	if (html === undefined) {
 		throw new ArtboardNotFoundError(artboardId);
@@ -339,14 +389,6 @@ const requireHtmlString = (html: unknown): string => {
 
 const requireArtboardIdString = (artboardId: unknown): string => {
 	if (typeof artboardId !== 'string') {
-		throw new InvalidArgsError('artboardId is required. Fix args and retry.');
-	}
-	return parseArtboardId(artboardId);
-};
-
-// Read/export accept an omitted id (default-active); this parses one the caller received.
-const requireExplicitArtboardId = (artboardId: unknown): string => {
-	if (typeof artboardId !== 'string') {
 		throw new InvalidArgsError('artboardId must be a string. Fix args and retry.');
 	}
 	return parseArtboardId(artboardId);
@@ -358,6 +400,9 @@ const requireOptionalString = (value: unknown, fieldName: string): string | unde
 	}
 	if (typeof value !== 'string') {
 		throw new InvalidArgsError(`${fieldName} must be a string. Fix args and retry.`);
+	}
+	if (fieldName === 'viewport' && value.length === 0) {
+		throw new InvalidArgsError('viewport must be a non-empty string. Fix args and retry.');
 	}
 	return value;
 };
@@ -387,7 +432,10 @@ const writeManifestActive = async ({
 	if (existing?.lastExport !== undefined) {
 		manifest.lastExport = existing.lastExport;
 	}
-	await writeUtf8(workspaceJoin(workspaceRoot, manifestPathSegments), serializeManifest(manifest));
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, manifestPathSegments),
+		contents: serializeManifest(manifest),
+	});
 };
 
 export const createArtboard = async ({
@@ -404,21 +452,21 @@ export const createArtboard = async ({
 	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
 	await assertLayoutDirsOwned(workspaceRoot);
-	const htmlFilePath = workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId));
-	const metaFilePath = workspaceJoin(workspaceRoot, artboardMetaPathSegments(resolvedId));
+	const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(resolvedId));
+	const metaLayout = workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId));
 	const existingManifest = await readManifestFileLenient(workspaceRoot);
 
 	await ensureDir(workspaceJoin(workspaceRoot, artboardsDirSegments));
 
-	const existingHtmlKind = await layoutEntryKind(htmlFilePath);
+	const existingHtmlKind = await layoutEntryKind(htmlLayout.filePath);
 	if (existingHtmlKind === 'file') {
 		throw new ArtboardExistsError(resolvedId);
 	}
 	if (existingHtmlKind !== 'missing') {
-		throw new DiskError();
+		throw new DiskError(regularFileRequiredMessage(htmlLayout.relativePath));
 	}
 	try {
-		await writeFile(htmlFilePath, resolvedHtml, { encoding: 'utf8', flag: 'wx' });
+		await writeFile(htmlLayout.filePath, resolvedHtml, { encoding: 'utf8', flag: 'wx' });
 	} catch (error: unknown) {
 		if (isErrno(error, 'EEXIST')) {
 			throw new ArtboardExistsError(resolvedId);
@@ -438,12 +486,15 @@ export const createArtboard = async ({
 		updatedAt: new Date().toISOString(),
 	};
 	// ponytail: no journal; if meta/manifest/marker fails after wx HTML, Agent re-reads
-	await writeUtf8(metaFilePath, serializeMeta(meta));
+	await writeUtf8({ ...metaLayout, contents: serializeMeta(meta) });
 	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing: existingManifest });
 
 	let panelEnsured = false;
 	if (writeEnsurePanelMarker) {
-		await writeUtf8(workspaceJoin(workspaceRoot, ensurePanelPathSegments), '');
+		await writeUtf8({
+			...workspaceLayoutFile(workspaceRoot, ensurePanelPathSegments),
+			contents: '',
+		});
 		panelEnsured = true;
 	}
 
@@ -489,10 +540,17 @@ export const updateArtboard = async ({
 	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
 	await assertLayoutDirsOwned(workspaceRoot);
-	const htmlFilePath = workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId));
-	await requireHtmlFile(htmlFilePath, resolvedId);
-
-	const currentMeta = await readMetaForHtml(workspaceRoot, resolvedId);
+	const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(resolvedId));
+	await requireHtmlFile(htmlLayout.filePath, resolvedId);
+	const currentHtml = await readUtf8IfExists(htmlLayout);
+	if (currentHtml === undefined) {
+		throw new ArtboardNotFoundError(resolvedId);
+	}
+	const currentMeta = effectiveArtboardMeta({
+		html: currentHtml,
+		meta: await readStoredMeta(workspaceRoot, resolvedId),
+		artboardId: resolvedId,
+	});
 	const compared = conflictFields({
 		baseGeneration,
 		baseHash,
@@ -515,11 +573,11 @@ export const updateArtboard = async ({
 		viewport: validatedViewport ?? currentMeta.viewport,
 		updatedAt: new Date().toISOString(),
 	};
-	await writeUtf8(htmlFilePath, resolvedHtml);
-	await writeUtf8(
-		workspaceJoin(workspaceRoot, artboardMetaPathSegments(resolvedId)),
-		serializeMeta(nextMeta),
-	);
+	await writeUtf8({ ...htmlLayout, contents: resolvedHtml });
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
+		contents: serializeMeta(nextMeta),
+	});
 	return {
 		artboardId: resolvedId,
 		generation: nextMeta.generation,
@@ -541,10 +599,14 @@ export const readArtboard = async ({
 	const resolvedId =
 		artboardId === undefined
 			? requireActiveManifest(manifest).activeArtboardId
-			: requireExplicitArtboardId(artboardId);
+			: requireArtboardIdString(artboardId);
 
 	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
-	const meta = await readMetaForHtml(workspaceRoot, resolvedId);
+	const meta = effectiveArtboardMeta({
+		html,
+		meta: await readStoredMeta(workspaceRoot, resolvedId),
+		artboardId: resolvedId,
+	});
 	return {
 		artboardId: resolvedId,
 		title: meta.title,
@@ -590,35 +652,43 @@ export const listArtboards = async ({
 			throw error;
 		}
 
-		if (
-			(await layoutEntryKind(
-				workspaceJoin(workspaceRoot, artboardHtmlPathSegments(candidateId)),
-			)) !== 'file'
-		) {
+		const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(candidateId));
+		if ((await layoutEntryKind(htmlLayout.filePath)) !== 'file') {
 			continue;
 		}
-		const listed: ListedArtboard = {
-			artboardId: candidateId,
-			title: '',
-			active: candidateId === activeArtboardId,
-		};
-		const metaText = await readUtf8IfExists(
-			workspaceJoin(workspaceRoot, artboardMetaPathSegments(candidateId)),
-		);
-		if (metaText !== undefined) {
-			try {
-				const meta = parseMetaFromJsonText(metaText);
-				if (meta.id === candidateId) {
-					listed.title = meta.title;
-					listed.generation = meta.generation;
-				}
-			} catch (error: unknown) {
-				if (!isBenignMetaParseError(error)) {
-					throwDiskError(error);
-				}
-			}
+		const html = await readUtf8IfExists(htmlLayout);
+		if (html === undefined) {
+			continue;
 		}
-		artboards.push(listed);
+
+		let storedMeta: ArtboardMeta | undefined;
+		try {
+			storedMeta = await readStoredMeta(workspaceRoot, candidateId);
+		} catch (error: unknown) {
+			if (error instanceof DiskError || error instanceof CorruptMetaError) {
+				// ponytail: list is scan-tolerant; symlink / foreign-id meta omits generation
+				// instead of failing the whole list (read_artboard still errors on those ids).
+				artboards.push({
+					artboardId: candidateId,
+					title: '',
+					active: candidateId === activeArtboardId,
+				});
+				continue;
+			}
+			throw error;
+		}
+
+		const effective = effectiveArtboardMeta({
+			html,
+			meta: storedMeta,
+			artboardId: candidateId,
+		});
+		artboards.push({
+			artboardId: candidateId,
+			title: effective.title,
+			active: candidateId === activeArtboardId,
+			generation: effective.generation,
+		});
 	}
 	artboards.sort((left, right) => left.artboardId.localeCompare(right.artboardId));
 	return { activeArtboardId, artboards };
@@ -634,7 +704,16 @@ export const setActiveArtboard = async ({
 		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)),
 		resolvedId,
 	);
-	const existing = await readManifestFile(workspaceRoot);
+	await requireExactHtmlFileName(workspaceRoot, resolvedId);
+	let existing: ArtboardManifest | undefined;
+	try {
+		existing = await readManifestFile(workspaceRoot);
+	} catch (error: unknown) {
+		// ponytail: corrupt manifest is overwritten on set_active; Agent can restore from git
+		if (!(error instanceof CorruptManifestError)) {
+			throw error;
+		}
+	}
 	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing });
 	return { activeArtboardId: resolvedId };
 };
@@ -650,7 +729,7 @@ const resolveExportArtboardId = async ({
 	if (artboardId === undefined) {
 		return { resolvedId: requireActiveManifest(manifest).activeArtboardId, manifest };
 	}
-	return { resolvedId: requireExplicitArtboardId(artboardId), manifest };
+	return { resolvedId: requireArtboardIdString(artboardId), manifest };
 };
 
 const readTokensJsonForExport = async (workspaceRoot: string): Promise<string | undefined> => {
@@ -660,7 +739,7 @@ const readTokensJsonForExport = async (workspaceRoot: string): Promise<string | 
 		return undefined;
 	}
 	if (entryKind !== 'file') {
-		throw new DiskError('.cursor-design/tokens.json must be a regular file.');
+		throw new DiskError(regularFileRequiredMessage(workspaceTokensPathSegments.join('/')));
 	}
 	try {
 		return await readFile(tokensPath, 'utf8');
@@ -694,9 +773,19 @@ const writeHandoffLeaf = async ({
 		throwDiskError(error);
 	}
 
-	await writeUtf8(join(leafDir, HANDOFF_INDEX_FILE), indexHtml);
-	await writeUtf8(join(leafDir, IMPLEMENT_FILE), implementMd);
-	await writeUtf8(join(leafDir, TOKENS_FILE), tokensJson);
+	const leafSegments = handoffDirSegments(exportId);
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, [...leafSegments, HANDOFF_INDEX_FILE]),
+		contents: indexHtml,
+	});
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, [...leafSegments, IMPLEMENT_FILE]),
+		contents: implementMd,
+	});
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, [...leafSegments, TOKENS_FILE]),
+		contents: tokensJson,
+	});
 	// ponytail: no journal / rollback; orphan dirs are harmless and never deleted
 };
 
@@ -718,7 +807,10 @@ const writeManifestLastExport = async ({
 		updatedAt: lastExport.exportedAt,
 		lastExport,
 	};
-	await writeUtf8(workspaceJoin(workspaceRoot, manifestPathSegments), serializeManifest(manifest));
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, manifestPathSegments),
+		contents: serializeManifest(manifest),
+	});
 };
 
 export const exportArtboard = async ({
@@ -731,7 +823,12 @@ export const exportArtboard = async ({
 	const { resolvedId, manifest } = await resolveExportArtboardId({ workspaceRoot, artboardId });
 
 	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
-	const meta = await readMetaForHtml(workspaceRoot, resolvedId);
+	const storedMeta = await readStoredMeta(workspaceRoot, resolvedId);
+	const meta = effectiveArtboardMeta({
+		html,
+		meta: storedMeta,
+		artboardId: resolvedId,
+	});
 	const tokensJson = await readTokensJsonForExport(workspaceRoot);
 	const files = buildHandoffFiles({
 		artboardId: resolvedId,
@@ -748,6 +845,12 @@ export const exportArtboard = async ({
 		implementMd: files.implementMd,
 		tokensJson: files.tokensJson,
 	});
+	if (storedMeta === undefined || normalizeHash(storedMeta.hash) !== meta.hash) {
+		await writeUtf8({
+			...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
+			contents: serializeMeta({ ...meta, updatedAt: exportNow.toISOString() }),
+		});
+	}
 	await writeManifestLastExport({
 		workspaceRoot,
 		existing: manifest,
@@ -773,14 +876,35 @@ export const readHandoffStatus = async ({
 	await assertLayoutDirsOwned(workspaceRoot);
 	const manifest = requireActiveManifest(await readManifestFile(workspaceRoot));
 	const activeArtboardId = manifest.activeArtboardId;
+	const activeHtml = await requireArtboardHtml(workspaceRoot, activeArtboardId);
+	const activeMeta = effectiveArtboardMeta({
+		html: activeHtml,
+		meta: await readStoredMeta(workspaceRoot, activeArtboardId),
+		artboardId: activeArtboardId,
+	});
 
-	await requireArtboardHtml(workspaceRoot, activeArtboardId);
-	const meta = await readMetaForHtml(workspaceRoot, activeArtboardId);
-	const compared = compareHandoff({ lastExport: manifest.lastExport, activeHash: meta.hash });
+	let stale: boolean;
+	if (manifest.lastExport === undefined) {
+		stale = true;
+	} else {
+		const exportedHtml = await readUtf8IfExists(
+			workspaceLayoutFile(
+				workspaceRoot,
+				artboardHtmlPathSegments(manifest.lastExport.artboardId),
+			),
+		);
+		stale =
+			exportedHtml === undefined ||
+			compareHandoff({
+				lastExport: manifest.lastExport,
+				activeHash: hashHtml(exportedHtml),
+			}).stale;
+	}
+
 	const status: HandoffStatusResult = {
-		stale: !compared.exported || compared.stale,
+		stale,
 		activeArtboardId,
-		activeHash: meta.hash,
+		activeHash: activeMeta.hash,
 	};
 	if (manifest.lastExport !== undefined) {
 		status.lastExport = manifest.lastExport;

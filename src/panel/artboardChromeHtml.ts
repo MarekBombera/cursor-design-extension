@@ -81,10 +81,10 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 		<span id="artboard-generation-badge" class="badge"></span>
 		<span id="handoff-stale-badge" class="badge" aria-live="polite" hidden></span>
 	</header>
-	<p id="artboard-error" class="error" hidden></p>
-	<p id="mcp-banner" class="mcp-banner" hidden></p>
+	<p id="artboard-error" class="error" role="alert" hidden></p>
+	<p id="mcp-banner" class="mcp-banner" role="status" hidden></p>
 	<p id="empty-copy">No artboard yet.</p>
-	<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview"></iframe>
+	<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview" hidden></iframe>
 	<script nonce="${nonce}">
 		const vscodeApi = acquireVsCodeApi();
 		const iframe = document.getElementById('artboard-frame');
@@ -129,17 +129,22 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			lastHtml = html;
 			revokeCurrentBlob();
 			if (html.length === 0) {
+				iframe.hidden = true;
 				iframe.removeAttribute('src');
 				emptyCopy.hidden = false;
 				return;
 			}
 			emptyCopy.hidden = true;
+			iframe.hidden = false;
 			const blob = new Blob([stampArtboardHtml(html, nonceValue)], { type: 'text/html' });
 			currentBlobUrl = URL.createObjectURL(blob);
 			iframe.src = currentBlobUrl;
 		};
 
 		window.addEventListener('message', (event) => {
+			if (event.origin === 'null') {
+				return;
+			}
 			if (event.source === iframe.contentWindow) {
 				return;
 			}

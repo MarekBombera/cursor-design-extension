@@ -30,7 +30,7 @@ Multi-artboard + one active. No gallery. Gitignore .cursor-design/.
 2. Nested iframe sandbox allow-scripts; artboard JS required.
 3. Iframe to chrome postMessage is untrusted.
 4. asWebviewUri + localResourceRoots.
-5. Messages: artboard:updated|error, ui:status|export|reveal.
+5. Messages: artboard:ready (chrome → host), artboard:updated|error, ui:status (host → chrome).
 
 ## Stack
 

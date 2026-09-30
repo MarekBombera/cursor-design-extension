@@ -11,8 +11,8 @@ import {
 	setActiveArtboard,
 	updateArtboard,
 } from './artboardFs';
-import { ArtboardNotFoundError, CorruptManifestError, CorruptMetaError, DiskError } from './errors';
-import { compareHandoff, makeExportId } from './handoff';
+import { ArtboardNotFoundError, CorruptManifestError, DiskError } from './errors';
+import { buildHandoffFiles, compareHandoff, makeExportId } from './handoff';
 import { hashHtml } from './hash';
 import {
 	HANDOFF_INDEX_FILE,
@@ -60,6 +60,34 @@ test('makeExportId strips ISO punctuation', () => {
 	assert.equal(makeExportId({ artboardId: 'hero', now: FIXED_NOW }), 'hero-20260911T173900123Z');
 });
 
+test('buildHandoffFiles collapses newlines in title and viewport headers', () => {
+	const files = buildHandoffFiles({
+		artboardId: 'hero',
+		html: HERO_HTML,
+		meta: {
+			id: 'hero',
+			title: 'Hero\r\nCTA',
+			generation: 1,
+			hash: hashHtml(HERO_HTML),
+			viewport: '1280\nx800',
+			updatedAt: FIXED_NOW.toISOString(),
+		},
+		tokensJson: undefined,
+		now: FIXED_NOW,
+	});
+	const headerLines = files.implementMd.split('\n');
+	assert.equal(
+		headerLines.find((line) => line.startsWith('title: ')),
+		'title: Hero CTA',
+	);
+	assert.equal(
+		headerLines.find((line) => line.startsWith('viewport: ')),
+		'viewport: 1280 x800',
+	);
+	assert.ok(!headerLines.includes('CTA'));
+	assert.ok(!headerLines.includes('x800'));
+});
+
 test('compareHandoff reports exported=false when never exported', () => {
 	assert.deepEqual(compareHandoff({ lastExport: undefined, activeHash: hashHtml(HERO_HTML) }), {
 		exported: false,
@@ -84,6 +112,9 @@ test('export writes three files, lastExport, bumped updatedAt, unchanged generat
 	const implementMd = await readFile(join(leafDir, IMPLEMENT_FILE), 'utf8');
 	assert.match(implementMd, /exportId: hero-20260911T173900123Z/);
 	assert.match(implementMd, /artboardId: hero/);
+	assert.match(implementMd, /re-export that `artboardId`/);
+	assert.match(implementMd, /the user's app entry file/);
+	assert.doesNotMatch(implementMd, /fixtures\/dev-workspace/);
 	assert.doesNotMatch(implementMd, /<p>hero<\/p>/);
 	assert.deepEqual(JSON.parse(await readFile(join(leafDir, TOKENS_FILE), 'utf8')), {
 		version: 1,
@@ -164,7 +195,7 @@ test('setActiveArtboard keeps lastExport', async () => {
 	assert.equal(manifest.lastExport?.artboardId, 'hero');
 });
 
-test('export of a non-active id leaves status stale', async () => {
+test('handoff stale tracks lastExport artboard HTML, not the active id', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createHero(workspaceRoot);
 	await createArtboard({
@@ -175,10 +206,28 @@ test('export of a non-active id leaves status stale', async () => {
 	});
 	await setActiveArtboard({ workspaceRoot, artboardId: 'hero' });
 	await exportArtboard({ workspaceRoot, artboardId: 'other', now: FIXED_NOW });
-	const status = await readHandoffStatus({ workspaceRoot });
-	assert.equal(status.stale, true);
-	assert.equal(status.activeArtboardId, 'hero');
-	assert.equal(status.lastExport?.artboardId, 'other');
+	const afterExport = await readHandoffStatus({ workspaceRoot });
+	assert.equal(afterExport.stale, false);
+	assert.equal(afterExport.activeArtboardId, 'hero');
+	assert.equal(afterExport.lastExport?.artboardId, 'other');
+
+	await updateArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html: '<p>hero-changed</p>',
+		baseGeneration: 1,
+	});
+	const afterActiveChange = await readHandoffStatus({ workspaceRoot });
+	assert.equal(afterActiveChange.stale, false);
+
+	await updateArtboard({
+		workspaceRoot,
+		artboardId: 'other',
+		html: '<p>other-changed</p>',
+		baseGeneration: 1,
+	});
+	const afterExportedChange = await readHandoffStatus({ workspaceRoot });
+	assert.equal(afterExportedChange.stale, true);
 });
 
 test('never exported is stale without lastExport', async () => {
@@ -295,15 +344,15 @@ test('export with explicit id and empty activeArtboardId activates that id', asy
 	assert.equal(status.activeArtboardId, 'hero');
 });
 
-test('export with HTML but no meta is CorruptMetaError', async () => {
+test('export with HTML but no meta succeeds and stamps the HTML hash', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createHero(workspaceRoot);
 	await rm(join(workspaceRoot, ...artboardMetaPathSegments('hero')));
-	await assert.rejects(exportArtboard({ workspaceRoot, artboardId: 'hero' }), (error: unknown) => {
-		assert.ok(error instanceof CorruptMetaError);
-		assert.equal(error.artboardId, 'hero');
-		return true;
-	});
+	const exported = await exportArtboard({ workspaceRoot, artboardId: 'hero', now: FIXED_NOW });
+	assert.equal(exported.artboardHash, hashHtml(HERO_HTML));
+	assert.equal(exported.generation, 1);
+	const status = await readHandoffStatus({ workspaceRoot });
+	assert.equal(status.stale, false);
 });
 
 test('missing tokens writes stub; present tokens are copied byte-for-byte', async () => {
@@ -335,7 +384,10 @@ test('tokens.json that is not a regular file is authored DiskError', async () =>
 	await mkdir(join(workspaceRoot, ...workspaceTokensPathSegments));
 	await assert.rejects(exportArtboard({ workspaceRoot, now: FIXED_NOW }), (error: unknown) => {
 		assert.ok(error instanceof DiskError);
-		assert.equal(error.message, '.cursor-design/tokens.json must be a regular file.');
+		assert.equal(
+			error.message,
+			`${workspaceTokensPathSegments.join('/')} must be a regular file (symlinks rejected).`,
+		);
 		return true;
 	});
 });

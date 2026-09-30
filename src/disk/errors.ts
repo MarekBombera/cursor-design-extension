@@ -1,3 +1,5 @@
+import { SCHEMA_VERSION, artboardMetaPathSegments, manifestPathSegments } from './layout';
+
 export abstract class CursorDesignError extends Error {
 	abstract readonly code: string;
 }
@@ -19,7 +21,7 @@ export class CorruptManifestError extends CursorDesignError {
 
 	constructor(options?: { cause?: unknown }) {
 		super(
-			'Artboard manifest is invalid. Fix or restore .cursor-design/manifest.json (version 1).',
+			`Artboard manifest is invalid. Fix or restore ${manifestPathSegments.join('/')} (version ${SCHEMA_VERSION}).`,
 			options,
 		);
 		this.name = 'CorruptManifestError';
@@ -34,25 +36,10 @@ export class UnsupportedSchemaVersionError extends CursorDesignError {
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Artboard manifest version ${version} is unsupported. Expected version 1. Fix or restore .cursor-design/manifest.json.`,
+			`Artboard manifest version ${version} is unsupported. Expected version ${SCHEMA_VERSION}. Fix or restore ${manifestPathSegments.join('/')}.`,
 			options,
 		);
 		this.name = 'UnsupportedSchemaVersionError';
-	}
-}
-
-export class ArtboardHtmlMissingError extends CursorDesignError {
-	readonly code = 'ARTBOARD_HTML_MISSING' as const;
-
-	constructor(
-		readonly artboardId: string,
-		options?: { cause?: unknown },
-	) {
-		super(
-			`Artboard "${artboardId}" HTML is missing. Restore .cursor-design/artboards/${artboardId}.html.`,
-			options,
-		);
-		this.name = 'ArtboardHtmlMissingError';
 	}
 }
 
@@ -64,7 +51,7 @@ export class CorruptMetaError extends CursorDesignError {
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Artboard "${artboardId}" meta is invalid. Restore .cursor-design/artboards/${artboardId}.meta.json or set_artboard a new id.`,
+			`Artboard "${artboardId}" meta is invalid. Restore ${artboardMetaPathSegments(artboardId).join('/')} or set_artboard a new id.`,
 			options,
 		);
 		this.name = 'CorruptMetaError';
@@ -118,18 +105,6 @@ export class NoWorkspaceError extends CursorDesignError {
 	constructor(options?: { cause?: unknown }) {
 		super('No workspace folder is available. Open a workspace folder.', options);
 		this.name = 'NoWorkspaceError';
-	}
-}
-
-export class AmbiguousWorkspaceError extends CursorDesignError {
-	readonly code = 'ambiguous_workspace' as const;
-
-	constructor(
-		readonly roots: readonly string[],
-		options?: { cause?: unknown },
-	) {
-		super('Workspace root is ambiguous. Retry with rootPath set to one of roots.', options);
-		this.name = 'AmbiguousWorkspaceError';
 	}
 }
 

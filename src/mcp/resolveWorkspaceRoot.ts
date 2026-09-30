@@ -1,8 +1,6 @@
-import { existsSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 
-import { AmbiguousWorkspaceError, InvalidRootError, NoWorkspaceError } from '../disk/errors';
-import { CURSOR_DESIGN_DIR } from '../disk/layout';
+import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 
 const parseRootsJson = (raw: string): string[] | undefined => {
@@ -16,6 +14,7 @@ const parseRootsJson = (raw: string): string[] | undefined => {
 		}
 		return parsed;
 	} catch {
+		// ponytail: invalid ROOTS JSON falls back to ROOT env; malformed is not a crash
 		return undefined;
 	}
 };
@@ -55,12 +54,9 @@ export const resolveWorkspaceRoot = ({
 		}
 		return matchedRoot;
 	}
-	const withLayout = roots.filter((folder) => existsSync(join(folder, CURSOR_DESIGN_DIR)));
-	if (withLayout.length === 1) {
-		return withLayout[0];
+	const firstRoot = roots[0];
+	if (firstRoot === undefined) {
+		throw new NoWorkspaceError();
 	}
-	if (roots.length === 1) {
-		return roots[0];
-	}
-	throw new AmbiguousWorkspaceError(roots);
+	return firstRoot;
 };

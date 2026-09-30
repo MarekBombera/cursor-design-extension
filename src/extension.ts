@@ -16,10 +16,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	const outputChannel = vscode.window.createOutputChannel('Cursor Design');
 	context.subscriptions.push(outputChannel);
 
-	const syncHostRuntime = (): void => {
+	const syncHostRuntime = (rearmMarker: boolean): void => {
 		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
 		postUiStatusToPanel({ mcpAvailable });
-		replaceArtboardWatcher({ context, outputChannel });
+		replaceArtboardWatcher({ context, outputChannel, rearmMarker });
 	};
 
 	setArtboardPanelOnVisible(() => {
@@ -27,22 +27,23 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	});
 
 	if (vscode.workspace.isTrusted) {
-		syncHostRuntime();
+		syncHostRuntime(false);
 	} else {
 		postUiStatusToPanel({ mcpAvailable: false });
 	}
 
 	context.subscriptions.push(
 		vscode.workspace.onDidGrantWorkspaceTrust(() => {
-			syncHostRuntime();
+			syncHostRuntime(false);
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			if (!vscode.workspace.isTrusted) {
 				postUiStatusToPanel({ mcpAvailable: false });
-				replaceArtboardWatcher({ context, outputChannel });
-				return;
+				replaceArtboardWatcher({ context, outputChannel, rearmMarker: true });
+			} else {
+				syncHostRuntime(true);
 			}
-			syncHostRuntime();
+			void reloadVisibleArtboardFromDisk(outputChannel);
 		}),
 		vscode.commands.registerCommand(OPEN_ARTBOARD_COMMAND, () => {
 			void handleOpenArtboard({ context, outputChannel });

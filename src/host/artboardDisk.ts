@@ -1,38 +1,30 @@
 import * as vscode from 'vscode';
 
-import { fileExists, isFileNotFound, logDiskError } from './hostFs';
+import { fileExists, logDiskError } from './hostFs';
+import { effectiveArtboardMeta } from '../disk/effectiveMeta';
 import {
-	ArtboardHtmlMissingError,
 	ArtboardNotFoundError,
 	CorruptManifestError,
 	CorruptMetaError,
-	DiskError,
+	CursorDesignError,
 	InvalidArtboardIdError,
-	UnsupportedSchemaVersionError,
 } from '../disk/errors';
-import { nextGeneration } from '../disk/generation';
-import { buildHandoffFiles, compareHandoff } from '../disk/handoff';
+import { compareHandoff } from '../disk/handoff';
 import { hashHtml } from '../disk/hash';
 import {
 	DEFAULT_ARTBOARD_HTML,
 	DEFAULT_ARTBOARD_ID,
-	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_VIEWPORT,
-	HANDOFF_INDEX_FILE,
-	IMPLEMENT_FILE,
 	SCHEMA_VERSION,
-	TOKENS_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	artboardsDirSegments,
-	handoffDirSegments,
-	handoffRootSegments,
 	manifestPathSegments,
-	workspaceTokensPathSegments,
 } from '../disk/layout';
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
+	type LastExport,
 	parseManifest,
 	parseMeta,
 	serializeManifest,
@@ -82,13 +74,7 @@ export const snapshotForChrome = (snapshot: ArtboardSnapshot): ArtboardSnapshot 
 };
 
 export const toSafeArtboardErrorMessage = (error: unknown): string => {
-	if (
-		error instanceof CorruptManifestError ||
-		error instanceof UnsupportedSchemaVersionError ||
-		error instanceof ArtboardHtmlMissingError ||
-		error instanceof InvalidArtboardIdError ||
-		error instanceof CorruptMetaError
-	) {
+	if (error instanceof CursorDesignError) {
 		return error.message;
 	}
 	return 'Could not load artboard. Check the Output panel: Cursor Design.';
@@ -122,25 +108,25 @@ const snapshotFromMeta = (meta: ArtboardMeta, html: string): ArtboardSnapshot =>
 	handoffStale: false,
 });
 
-const readParsedMeta = async (metaUri: vscode.Uri): Promise<ArtboardMeta | undefined> => {
+const readParsedMeta = async (
+	metaUri: vscode.Uri,
+	artboardId: string,
+): Promise<ArtboardMeta | undefined> => {
 	if (!(await fileExists(metaUri))) {
 		return undefined;
 	}
 	try {
-		return parseMeta(JSON.parse(await readTextFile(metaUri)) as unknown);
+		const parsedMeta = parseMeta(JSON.parse(await readTextFile(metaUri)) as unknown);
+		if (parsedMeta.id !== artboardId) {
+			return undefined;
+		}
+		return parsedMeta;
 	} catch (error: unknown) {
 		if (isExpectedMetaParseError(error)) {
 			return undefined;
 		}
 		throw error;
 	}
-};
-
-type ReconcileMetaArgs = {
-	artboardId: string;
-	html: string;
-	metaUri: vscode.Uri;
-	titleFallback: string;
 };
 
 const readManifest = async (manifestUri: vscode.Uri): Promise<ArtboardManifest> => {
@@ -153,28 +139,44 @@ const readManifest = async (manifestUri: vscode.Uri): Promise<ArtboardManifest> 
 	return parseManifest(parsedJson);
 };
 
-const reconcileMeta = async ({
-	artboardId,
-	html,
-	metaUri,
-	titleFallback,
-}: ReconcileMetaArgs): Promise<ArtboardSnapshot> => {
-	const htmlHash = hashHtml(html);
-	const parsedMeta = await readParsedMeta(metaUri);
-	if (parsedMeta !== undefined && parsedMeta.hash === htmlHash) {
-		return snapshotFromMeta(parsedMeta, html);
+type LastExportHandoffStaleArgs = {
+	workspaceFolder: vscode.WorkspaceFolder;
+	lastExport: LastExport | undefined;
+	activeArtboardId: string;
+	activeHtml: string;
+};
+
+const lastExportHandoffStale = async ({
+	workspaceFolder,
+	lastExport,
+	activeArtboardId,
+	activeHtml,
+}: LastExportHandoffStaleArgs): Promise<boolean> => {
+	if (lastExport === undefined) {
+		return false;
 	}
 
-	const nextMeta: ArtboardMeta = {
-		id: artboardId,
-		title: parsedMeta?.title ?? titleFallback,
-		generation: nextGeneration(parsedMeta?.generation),
-		hash: htmlHash,
-		viewport: parsedMeta?.viewport ?? DEFAULT_VIEWPORT,
-		updatedAt: new Date().toISOString(),
-	};
-	await writeTextFile(metaUri, serializeMeta(nextMeta));
-	return snapshotFromMeta(nextMeta, html);
+	let exportedHtml: string | undefined;
+	if (lastExport.artboardId === activeArtboardId) {
+		exportedHtml = activeHtml;
+	} else {
+		const exportedHtmlUri = joinWorkspace(
+			workspaceFolder,
+			artboardHtmlPathSegments(lastExport.artboardId),
+		);
+		if (await fileExists(exportedHtmlUri)) {
+			exportedHtml = await readTextFile(exportedHtmlUri);
+		}
+	}
+
+	if (exportedHtml === undefined) {
+		return true;
+	}
+	const compared = compareHandoff({
+		lastExport,
+		activeHash: hashHtml(exportedHtml),
+	});
+	return compared.exported && compared.stale;
 };
 
 const initializeDefaultArtboard = async (
@@ -195,12 +197,18 @@ const initializeDefaultArtboard = async (
 		await writeTextFile(htmlUri, html);
 	}
 
-	const snapshot = await reconcileMeta({
-		artboardId: DEFAULT_ARTBOARD_ID,
-		html,
-		metaUri,
-		titleFallback: DEFAULT_ARTBOARD_TITLE,
-	});
+	let storedMeta = await readParsedMeta(metaUri, DEFAULT_ARTBOARD_ID);
+	if (storedMeta === undefined) {
+		storedMeta = {
+			...effectiveArtboardMeta({
+				html,
+				meta: undefined,
+				artboardId: DEFAULT_ARTBOARD_ID,
+			}),
+			updatedAt: new Date().toISOString(),
+		};
+		await writeTextFile(metaUri, serializeMeta(storedMeta));
+	}
 
 	const manifest: ArtboardManifest = {
 		version: SCHEMA_VERSION,
@@ -209,7 +217,14 @@ const initializeDefaultArtboard = async (
 		updatedAt: new Date().toISOString(),
 	};
 	await writeTextFile(manifestUri, serializeManifest(manifest));
-	return snapshot;
+	return snapshotFromMeta(
+		effectiveArtboardMeta({
+			html,
+			meta: storedMeta,
+			artboardId: DEFAULT_ARTBOARD_ID,
+		}),
+		html,
+	);
 };
 
 const loadExistingArtboard = async (
@@ -217,6 +232,10 @@ const loadExistingArtboard = async (
 	manifestUri: vscode.Uri,
 ): Promise<ArtboardSnapshot> => {
 	const manifest = await readManifest(manifestUri);
+	if (manifest.activeArtboardId === '') {
+		return emptyArtboardSnapshot('No active artboard. Ask the agent to set_artboard.');
+	}
+
 	const htmlUri = joinWorkspace(
 		workspaceFolder,
 		artboardHtmlPathSegments(manifest.activeArtboardId),
@@ -225,8 +244,8 @@ const loadExistingArtboard = async (
 		workspaceFolder,
 		artboardMetaPathSegments(manifest.activeArtboardId),
 	);
+	const parsedMeta = await readParsedMeta(metaUri, manifest.activeArtboardId);
 	if (!(await fileExists(htmlUri))) {
-		const parsedMeta = await readParsedMeta(metaUri);
 		return {
 			artboardId: manifest.activeArtboardId,
 			title: parsedMeta?.title ?? '',
@@ -234,24 +253,27 @@ const loadExistingArtboard = async (
 			html: '',
 			viewport: parsedMeta?.viewport ?? DEFAULT_VIEWPORT,
 			handoffStale: false,
-			errorMessage: new ArtboardHtmlMissingError(manifest.activeArtboardId).message,
+			errorMessage: new ArtboardNotFoundError(manifest.activeArtboardId).message,
 		};
 	}
 
 	const html = await readTextFile(htmlUri);
-	const snapshot = await reconcileMeta({
-		artboardId: manifest.activeArtboardId,
+	const snapshot = snapshotFromMeta(
+		effectiveArtboardMeta({
+			html,
+			meta: parsedMeta,
+			artboardId: manifest.activeArtboardId,
+		}),
 		html,
-		metaUri,
-		titleFallback: DEFAULT_ARTBOARD_TITLE,
-	});
-	const compared = compareHandoff({
-		lastExport: manifest.lastExport,
-		activeHash: hashHtml(html),
-	});
+	);
 	return {
 		...snapshot,
-		handoffStale: compared.exported && compared.stale,
+		handoffStale: await lastExportHandoffStale({
+			workspaceFolder,
+			lastExport: manifest.lastExport,
+			activeArtboardId: manifest.activeArtboardId,
+			activeHtml: html,
+		}),
 	};
 };
 
@@ -292,108 +314,3 @@ export const readActiveArtboardFromDisk = async (
 	args: WorkspaceDiskArgs,
 ): Promise<ArtboardSnapshot> =>
 	loadActiveSnapshot({ ...args, scope: 'artboardDisk.readActive', initializeWhenMissing: false });
-
-const readTokensJsonForHostExport = async (
-	workspaceFolder: vscode.WorkspaceFolder,
-): Promise<string | undefined> => {
-	const tokensUri = joinWorkspace(workspaceFolder, workspaceTokensPathSegments);
-	try {
-		const tokensStat = await vscode.workspace.fs.stat(tokensUri);
-		if (tokensStat.type !== vscode.FileType.File) {
-			throw new DiskError('.cursor-design/tokens.json must be a regular file.');
-		}
-		return await readTextFile(tokensUri);
-	} catch (error: unknown) {
-		if (isFileNotFound(error)) {
-			return undefined;
-		}
-		if (error instanceof DiskError) {
-			throw error;
-		}
-		throw new DiskError({ cause: error });
-	}
-};
-
-export const exportActiveArtboardHandoff = async ({
-	workspaceFolder,
-	outputChannel,
-}: WorkspaceDiskArgs): Promise<{ exportId: string }> => {
-	try {
-		const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
-		if (!(await fileExists(manifestUri))) {
-			throw new ArtboardNotFoundError('');
-		}
-
-		const manifest = await readManifest(manifestUri);
-		const artboardId = manifest.activeArtboardId;
-		if (artboardId.length === 0) {
-			throw new ArtboardNotFoundError('');
-		}
-
-		const htmlUri = joinWorkspace(workspaceFolder, artboardHtmlPathSegments(artboardId));
-		if (!(await fileExists(htmlUri))) {
-			throw new ArtboardNotFoundError(artboardId);
-		}
-		const html = await readTextFile(htmlUri);
-		// Watcher skips reconcile while the panel is closed; export must heal meta to match the HTML it copies.
-		const snapshot = await reconcileMeta({
-			artboardId,
-			html,
-			metaUri: joinWorkspace(workspaceFolder, artboardMetaPathSegments(artboardId)),
-			titleFallback: DEFAULT_ARTBOARD_TITLE,
-		});
-		const tokensJson = await readTokensJsonForHostExport(workspaceFolder);
-		const exportNow = new Date();
-		const meta: ArtboardMeta = {
-			id: artboardId,
-			title: snapshot.title,
-			generation: snapshot.generation,
-			hash: hashHtml(html),
-			viewport: snapshot.viewport,
-			updatedAt: exportNow.toISOString(),
-		};
-		const files = buildHandoffFiles({
-			artboardId,
-			html,
-			meta,
-			tokensJson,
-			now: exportNow,
-		});
-
-		await vscode.workspace.fs.createDirectory(joinWorkspace(workspaceFolder, handoffRootSegments));
-		const leafUri = joinWorkspace(workspaceFolder, handoffDirSegments(files.exportId));
-		if (await fileExists(leafUri)) {
-			throw new DiskError();
-		}
-		await vscode.workspace.fs.createDirectory(leafUri);
-		await writeTextFile(vscode.Uri.joinPath(leafUri, HANDOFF_INDEX_FILE), files.indexHtml);
-		await writeTextFile(vscode.Uri.joinPath(leafUri, IMPLEMENT_FILE), files.implementMd);
-		await writeTextFile(vscode.Uri.joinPath(leafUri, TOKENS_FILE), files.tokensJson);
-		// ponytail: no journal / rollback; orphan dirs are harmless and never deleted
-
-		const nextManifest: ArtboardManifest = {
-			version: SCHEMA_VERSION,
-			activeArtboardId: manifest.activeArtboardId,
-			workspaceFolder: manifest.workspaceFolder,
-			updatedAt: files.lastExport.exportedAt,
-			lastExport: files.lastExport,
-		};
-		await writeTextFile(manifestUri, serializeManifest(nextManifest));
-		return { exportId: files.exportId };
-	} catch (error: unknown) {
-		if (
-			error instanceof ArtboardNotFoundError ||
-			error instanceof CorruptManifestError ||
-			error instanceof CorruptMetaError ||
-			error instanceof InvalidArtboardIdError ||
-			error instanceof UnsupportedSchemaVersionError
-		) {
-			throw error;
-		}
-		logDiskError({ scope: 'artboardDisk.exportHandoff', error, outputChannel });
-		if (error instanceof DiskError) {
-			throw error;
-		}
-		throw new DiskError({ cause: error });
-	}
-};

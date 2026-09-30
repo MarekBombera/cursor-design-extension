@@ -7,7 +7,7 @@ import {
 import { isArtboardHash } from './hash';
 import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
 
-const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
+const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 
 export type LastExport = {
 	exportId: string;

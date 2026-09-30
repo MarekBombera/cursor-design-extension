@@ -25,6 +25,8 @@ export type HandoffFiles = {
 
 const STUB_TOKENS_JSON = `${JSON.stringify({ version: 1, tokens: {} }, null, 2)}\n`;
 
+const collapseMarkdownHeaderValue = (value: string): string => value.replaceAll(/[\r\n]+/g, ' ');
+
 const buildImplementMarkdown = ({
 	exportId,
 	artboardId,
@@ -49,8 +51,8 @@ exportId: ${exportId}
 artboardId: ${artboardId}
 artboardHash: ${artboardHash}
 exportedAt: ${exportedAt}
-title: ${title}
-viewport: ${viewport}
+title: ${collapseMarkdownHeaderValue(title)}
+viewport: ${collapseMarkdownHeaderValue(viewport)}
 generation: ${generation}
 
 ## Files
@@ -60,10 +62,10 @@ generation: ${generation}
 
 ## Instructions
 
-1. Call \`handoff_status\` first. If \`stale\` is true, re-export before implementing.
+1. Call \`handoff_status\` first. If \`stale\` is true, re-export that \`artboardId\` before implementing.
 2. If MCP is unavailable, compare this header \`artboardHash\` with \`${metaPath}\` \`hash\`. If they differ, re-export, or ask the user to run **Export Handoff**.
 3. Implement from \`index.html\` (HTML+CSS+JS live inline in that document), not from screenshots.
-4. Target \`fixtures/dev-workspace/sample-app/index.html\` in the demo, or the user's named app.
+4. Target the user's app entry file.
 5. Never copy \`.cursor-design/\` into the app.
 6. Keep semantic structure, classes, and behavior.
 7. Assets referenced as \`assets/...\` resolve against \`.cursor-design/assets/\`. Copy them manually.

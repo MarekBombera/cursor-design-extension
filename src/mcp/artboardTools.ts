@@ -10,7 +10,6 @@ import {
 	updateArtboard,
 } from '../disk/artboardFs';
 import {
-	AmbiguousWorkspaceError,
 	ConflictError,
 	CursorDesignError,
 	DiskError,
@@ -152,8 +151,11 @@ const logMcpError = (error: unknown): void => {
 
 const toMcpToolError = (error: unknown): CallToolResult => {
 	if (error instanceof CursorDesignError) {
-		if (error instanceof DiskError && error.cause !== undefined) {
-			logMcpError(error.cause);
+		if (error instanceof DiskError) {
+			logMcpError(error);
+			if (error.cause !== undefined) {
+				logMcpError(error.cause);
+			}
 		}
 		const body: McpErrorBody = {
 			code: error.code,
@@ -169,7 +171,7 @@ const toMcpToolError = (error: unknown): CallToolResult => {
 		if (error instanceof ConflictError) {
 			Object.assign(body, error.compared);
 		}
-		if (error instanceof AmbiguousWorkspaceError || error instanceof InvalidRootError) {
+		if (error instanceof InvalidRootError) {
 			body.roots = error.roots;
 		}
 		return jsonResult(body, true);
@@ -280,7 +282,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'List artboards',
 			description:
-				'List artboards/*.html ids. Omits generation when meta is missing or corrupt. Does not write.',
+				'List artboards/*.html ids. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Does not write.',
 			inputSchema: listArtboardsInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
@@ -329,7 +331,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Handoff status',
 			description:
-				'Read whether the recorded handoff is stale versus the active artboard hash. Call this before implementing; if stale is true, re-export with export_artboard. Does not write. Pass rootPath when more than one folder is open.',
+				'Read whether the recorded handoff is stale versus lastExport.artboardId HTML. Call this before implementing; if stale is true, re-export that artboardId. Does not write. Pass rootPath when more than one folder is open.',
 			inputSchema: handoffStatusInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},

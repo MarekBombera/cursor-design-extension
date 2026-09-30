@@ -3,6 +3,9 @@ import * as vscode from 'vscode';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
+// ponytail: 1.5M char ceiling; upgrade if a real artboard needs more
+const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
+const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 
 export type ArtboardUpdatedMessage = {
 	type: 'artboard:updated';
@@ -98,9 +101,10 @@ export const postArtboardSnapshotToPanel = ({
 	handoffStale,
 	...updatedFields
 }: PostArtboardSnapshotArgs): void => {
+	const htmlTooLarge = updatedFields.html.length > MAX_POSTED_ARTBOARD_HTML_CHARS;
 	pendingView = {
-		updated: updatedFields,
-		errorMessage,
+		updated: htmlTooLarge ? { ...updatedFields, html: '' } : updatedFields,
+		errorMessage: errorMessage ?? (htmlTooLarge ? ARTBOARD_HTML_TOO_LARGE_MESSAGE : undefined),
 	};
 	postUiStatusToPanel({ handoffStale });
 	flushPendingArtboardView();
@@ -119,16 +123,26 @@ export const postUiStatusToPanel = (partial: {
 	flushPendingUiStatus();
 };
 
-export const openArtboardPanel = (context: vscode.ExtensionContext): vscode.WebviewPanel => {
-	const column = vscode.ViewColumn.One;
+export type OpenArtboardPanelArgs = {
+	context: vscode.ExtensionContext;
+	preserveFocus?: boolean;
+};
+
+export const openArtboardPanel = ({
+	preserveFocus: preserveFocusFlag,
+}: OpenArtboardPanelArgs): vscode.WebviewPanel => {
+	const preserveFocus = preserveFocusFlag === true;
 	if (currentPanel) {
-		currentPanel.reveal(column);
+		currentPanel.reveal(undefined, preserveFocus);
 		return currentPanel;
 	}
 
-	const panel = vscode.window.createWebviewPanel(ARTBOARD_VIEW_TYPE, 'Artboard', column, {
+	const showOptions = preserveFocus
+		? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true }
+		: vscode.ViewColumn.One;
+	const panel = vscode.window.createWebviewPanel(ARTBOARD_VIEW_TYPE, 'Artboard', showOptions, {
 		enableScripts: true,
-		localResourceRoots: [context.extensionUri],
+		localResourceRoots: [],
 	});
 	const chrome = buildArtboardChromeHtml(panel.webview);
 	chromeCspNonce = chrome.cspNonce;
@@ -141,8 +155,11 @@ export const openArtboardPanel = (context: vscode.ExtensionContext): vscode.Webv
 		flushPendingArtboardView();
 		flushPendingUiStatus();
 	});
+	let wasVisible = panel.visible;
 	panel.onDidChangeViewState(() => {
-		if (!panel.visible) {
+		const becameVisible = panel.visible && !wasVisible;
+		wasVisible = panel.visible;
+		if (!becameVisible) {
 			return;
 		}
 		onPanelBecameVisible?.();
