@@ -12,6 +12,7 @@ import {
 } from './layout';
 import { parseArtboardId } from './parse';
 
+// One artboard's slot on the shared stage, in stage px. Height is never stored; the panel measures it.
 export type CanvasFrame = {
 	id: string;
 	label: string;
@@ -21,6 +22,7 @@ export type CanvasFrame = {
 	group?: string;
 };
 
+// Shape of .cursor-design/canvas.json. This is the STORED layout, not the resolved list list_artboards returns.
 export type CanvasLayout = {
 	version: typeof CANVAS_SCHEMA_VERSION;
 	frames: CanvasFrame[];
@@ -96,6 +98,7 @@ const parseCanvasFrame = (value: unknown): CanvasFrame => {
 	});
 };
 
+// Strict reader for canvas.json. Throws CORRUPT_CANVAS or UNSUPPORTED_CANVAS_VERSION so a broken file is never rewritten.
 export const parseCanvasLayout = (value: unknown): CanvasLayout => {
 	if (!isJsonRecord(value)) {
 		throw new CorruptCanvasError();
@@ -124,6 +127,7 @@ export const parseCanvasLayout = (value: unknown): CanvasLayout => {
 export const serializeCanvasLayout = (layout: CanvasLayout): string =>
 	`${JSON.stringify({ version: layout.version, frames: layout.frames.map(buildFrame) }, null, 2)}\n`;
 
+// Turns stored frames into what the panel and Agent see: stored frames for artboards that still exist, then auto-placed ones. Pure; never writes.
 export const resolveCanvasFrames = ({
 	stored,
 	artboards,
@@ -161,6 +165,7 @@ export const resolveCanvasFrames = ({
 	return resolved;
 };
 
+// Applies a partial update to ONE frame and returns the next stored layout, leaving every other stored entry (orphans too) untouched.
 export const placeCanvasFrame = ({
 	layout,
 	current,

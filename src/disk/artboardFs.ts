@@ -363,6 +363,7 @@ const readManifestFileLenient = async (
 	}
 };
 
+// Reads the stored canvas.json; a missing file is an empty layout, a bad one throws and is never overwritten.
 const readCanvasLayoutFile = async (workspaceRoot: string): Promise<CanvasLayout> => {
 	const text = await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, canvasPathSegments));
 	if (text === undefined) {
@@ -659,6 +660,7 @@ export const readArtboard = async ({
 	};
 };
 
+// Lists artboard ids plus resolved stage frames (stored canvas.json entries, then auto-placed). Read-only.
 export const listArtboards = async ({
 	workspaceRoot,
 }: ListArtboardsArgs): Promise<ListArtboardsResult> => {
@@ -749,6 +751,7 @@ const requireOptionalFiniteNumber = (value: unknown, fieldName: string): number 
 	return value;
 };
 
+// Backs the place_frame MCP tool: validate args, require the artboard, then write only this frame's entry to canvas.json.
 export const placeFrame = async ({
 	workspaceRoot,
 	id,
