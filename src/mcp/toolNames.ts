@@ -11,3 +11,5 @@ export const SET_ACTIVE_ARTBOARD_TOOL = 'set_active_artboard' as const;
 export const EXPORT_ARTBOARD_TOOL = 'export_artboard' as const;
 
 export const HANDOFF_STATUS_TOOL = 'handoff_status' as const;
+
+export const PLACE_FRAME_TOOL = 'place_frame' as const;

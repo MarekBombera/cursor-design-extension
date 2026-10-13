@@ -1,77 +1,79 @@
-# Blob inject (6a) - Overview for review
+# Contract (6b) - Overview for review
 
-Source of truth: `blueprint/history/features/06a-blob-inject.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/06b-contract.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-First slice of the 0.2 Interact canvas. The artboard iframe now sits in a clip "well" and zooms 50–200% from its top-left with pinch, ctrl+wheel, or Cmd+wheel. Zoom scales the iframe element, not the artboard's own `body`, so `position: fixed`, `vh`, and native scroll behave as they will in the real implementation. A tiny gesture runtime is injected only into the preview blob; disk and export HTML stay byte-identical to what the agent wrote.
+The data and math foundation for the multi-frame canvas. The panel is unchanged. The Agent can now position frames on disk with `place_frame` and read the layout back from `list_artboards`, and the stage zoom/pan/fit math exists, tested, and waits for 6c.
 
-## Flow
+## What you will see
+
+- A new MCP tool, `place_frame`, to set one frame's `x`, `y`, `width`, `label`, or `group`.
+- `.cursor-design/canvas.json` appears the first time a frame is placed.
+- `list_artboards` also returns `frames`: every artboard with its stage position. Artboards the Agent never placed are lined up to the right of the others (24px gap), computed on read and never written.
+- The Artboard panel looks the same as before.
+
+## Data flow
 
 ```mermaid
 flowchart LR
-  Disk[".cursor-design/ artboard HTML"] --> Host["Extension host"]
-  Host -->|artboard:updated + cspNonce| Chrome["Panel chrome"]
-  Chrome -->|stamp nonce + inject runtime| Blob["blob: iframe"]
-  Blob -->|canvas:wheel deltaY| Chrome
-  Chrome -->|CSSOM translate/scale| Frame["#artboard-frame in #artboard-well"]
-  Disk --> Export["Export handoff index.html (unchanged)"]
+  Agent["Cursor Agent"] -->|place_frame| MCP["MCP process"]
+  Agent -->|list_artboards| MCP
+  MCP -->|"read / atomic write"| Canvas[".cursor-design/canvas.json"]
+  MCP -->|read| Artboards[".cursor-design/artboards/*.html"]
+  MCP -->|"frames (stored + auto-placed)"| Agent
+  Geometry["stageGeometry (tested, unused until 6c)"]
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant Artboard as Artboard iframe (runtime)
-  participant Chrome as Panel chrome
-  User->>Artboard: pinch / ctrl+wheel / Cmd+wheel
-  Artboard->>Artboard: preventDefault()
-  Artboard->>Chrome: postMessage {type: canvas:wheel, deltaY}
-  Chrome->>Chrome: source === iframe.contentWindow? finite deltaY?
-  Chrome->>Chrome: zoom *= exp(capped step), clamp 0.5..2
-  Chrome->>Chrome: iframe.style.transform = translate(0,0) scale(zoom)
-  User->>Chrome: pinch over letterbox (well)
-  Chrome->>Chrome: same applyZoomDelta, no message
+  participant A as Agent
+  participant M as MCP
+  participant D as canvas.json
+  A->>M: list_artboards
+  M-->>A: frames (stored, then auto-placed)
+  A->>M: place_frame { id, x?, width?, group? }
+  M->>D: read stored layout (never rewrites a broken file)
+  M->>D: write only this frame, keep every other entry
+  M-->>A: every frame
 ```
-
-## What you will see
-
-- Pinch or Cmd/ctrl+wheel over the artboard zooms it from the top-left; one mouse notch is about 20%, stopping at 50% and 200%.
-- At 50% the well background shows right of and below the artboard; pinching there also zooms the artboard, not the Cursor window.
-- Plain wheel still scrolls the artboard natively. Clicks on the scaled artboard still land.
-- Editing the artboard file or switching artboards keeps the current zoom.
-
-## Architecture decisions
-
-- Scale the host iframe, not artboard `body` (approved deviation from the Notion 0.2 lock): body transforms re-root `position: fixed`, break letterboxing, and fight native scroll.
-- The runtime is injected at blob build with the chrome CSP nonce, placed right after `<meta charset>` so it runs before every artboard script. Spoofed runtime scripts are removed first.
-- Iframe messages are trusted by source identity (`event.source === iframe.contentWindow`) and only ever reach the zoom handler, never host branches.
 
 ## Decisions locked
 
-- Only marker is `data-cd-canvas-runtime`; only message is `canvas:wheel`; chrome never posts into the iframe.
-- Nothing is stripped on export; tests assert disk and handoff HTML byte-equal the authored HTML.
+- `canvas.json` is `{ version: 1, frames: [{ id, label, x, y, width, group? }] }`. Height is never stored. A missing file is an empty layout.
+- Width defaults to 1280 and is clamped 120-3840, on `place_frame` and when reading a hand-edited file.
+- A corrupt or future-version `canvas.json` is never overwritten. Tools return a clear error saying how to fix or delete it.
+- `place_frame({ id })` with no other field pins that frame where it currently sits. `group: ""` removes a group. Omitted fields keep their value.
+- Frames whose HTML is gone are hidden from results but kept in the file. Unplaced siblings are never pinned as a side effect.
+- `place_frame` uses `id` (as Notion locks it); older tools use `artboardId`.
+- `place_frame` also fails on a corrupt `manifest.json`, the same as `list_artboards`, and writes nothing.
+- Stage view math: `screen = stage * zoom + translate`. One wheel notch is capped at about 20%. Frames can never be panned fully off screen. Fit-all centers and never zooms past 100%.
 
 ## Out of scope
 
-- Zoom around the cursor, plain-wheel pan, zoom-math unit tests (6b).
-- Zoom menu, ready-handshake, persisted zoom across panel hide/show (6c).
+- Stage, frames, labels, toolbar, presets, persisted view in the panel (6c/6d).
+- Canvas export and `handoff_status` changes (6e).
+- Dragging, resizing, or deleting frames; pruning orphan entries.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Well | Clipping box around the artboard so a zoomed-out artboard letterboxes |
-| Blob | The preview document built in chrome from disk HTML; the only place the runtime lives |
-| Runtime | Tiny script in the artboard that forwards zoom gestures to chrome |
-| Chrome | The panel's own UI around the artboard |
+| Frame | One artboard's place on the stage: position, width, label, group. |
+| Stage | The shared canvas the frames sit on, in stage px. |
+| Auto-placed | A frame with no `canvas.json` entry, laid out to the right on read. |
+| Pin | Writing a frame's current position into `canvas.json`. |
+| Orphan | A stored frame whose artboard HTML no longer exists. Hidden, kept. |
+| `group` | Free-text name (for example Desktop, Mobile) to cluster frames. |
 
 ## Your actions
 
-- Known limit: zoom resets to 100% when you switch to another editor tab and back (6c fixes it).
-- Open P3 follow-ups for a later `/fix`: F-08 (test for the finite-`deltaY` guard), F-09 (stale Blueprint manifest hashes after the adapter symlinks), F-07 (carried doc nit).
+- Decide the stage zoom range before 6c inlines the geometry. Default is 10-400%; the shipped 6a chrome is still 50-200%.
+- Remove any stale installed `cursor-design` VSIX from `~/.cursor/extensions` and fully quit Cursor, or the dev host can keep spawning an old MCP without `place_frame`.
 
 ## Done means
 
-Pinch/Cmd/ctrl zoom works over artboard and letterbox within 50–200%, fixed headers and native scroll unaffected, export stays pristine, and 78/78 tests plus types, lint, and compile pass.
+- Unit tests (120) pass, and the F5 MCP sequence behaved as specified: two stored frames, the rest auto-placed to the right, unknown id returns `ARTBOARD_NOT_FOUND`.
+- The panel was not changed (no existing panel or host file was touched). A visual glance at the panel was not recorded.

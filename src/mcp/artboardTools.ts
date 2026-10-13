@@ -4,6 +4,7 @@ import {
 	createArtboard,
 	exportArtboard,
 	listArtboards,
+	placeFrame,
 	readArtboard,
 	readHandoffStatus,
 	setActiveArtboard,
@@ -16,6 +17,7 @@ import {
 	InvalidArgsError,
 	InvalidRootError,
 } from '../disk/errors';
+import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import { enqueueDiskOp } from './mcpQueue';
 import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
@@ -23,6 +25,7 @@ import {
 	EXPORT_ARTBOARD_TOOL,
 	HANDOFF_STATUS_TOOL,
 	LIST_ARTBOARDS_TOOL,
+	PLACE_FRAME_TOOL,
 	READ_ARTBOARD_TOOL,
 	SET_ACTIVE_ARTBOARD_TOOL,
 	SET_ARTBOARD_TOOL,
@@ -37,6 +40,12 @@ type ToolArgs = {
 	rootPath?: unknown;
 	baseGeneration?: unknown;
 	baseHash?: unknown;
+	id?: unknown;
+	x?: unknown;
+	y?: unknown;
+	width?: unknown;
+	label?: unknown;
+	group?: unknown;
 };
 
 type McpErrorBody = {
@@ -116,6 +125,25 @@ const handoffStatusInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
+const placeFrameInputSchema = toolInputSchema({
+	id: { description: 'Required string. Existing artboard id to place on the stage.' },
+	x: {
+		description: 'Optional finite number. Stage x in px. Keeps the current value when omitted.',
+	},
+	y: {
+		description: 'Optional finite number. Stage y in px. Keeps the current value when omitted.',
+	},
+	width: {
+		description: `Optional finite number. Frame width in px, clamped to ${MIN_FRAME_WIDTH}..${MAX_FRAME_WIDTH}. Keeps the current value when omitted.`,
+	},
+	label: { description: 'Optional string label. Keeps the current label when omitted.' },
+	group: {
+		description:
+			'Optional string group name. Empty string clears the group. Keeps the current group when omitted.',
+	},
+	rootPath: { description: ROOT_PATH_DESCRIPTION },
+});
+
 export const artboardToolInputSchemas = {
 	[SET_ARTBOARD_TOOL]: setArtboardInputSchema,
 	[UPDATE_ARTBOARD_TOOL]: updateArtboardInputSchema,
@@ -124,6 +152,7 @@ export const artboardToolInputSchemas = {
 	[SET_ACTIVE_ARTBOARD_TOOL]: setActiveArtboardInputSchema,
 	[EXPORT_ARTBOARD_TOOL]: exportArtboardInputSchema,
 	[HANDOFF_STATUS_TOOL]: handoffStatusInputSchema,
+	[PLACE_FRAME_TOOL]: placeFrameInputSchema,
 };
 
 const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const;
@@ -282,12 +311,35 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'List artboards',
 			description:
-				'List artboards/*.html ids. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Does not write.',
+				'List artboards/*.html ids. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from .cursor-design/canvas.json, with artboards missing from it auto-placed to the right. Does not write.',
 			inputSchema: listArtboardsInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
 			runQueued(rootPath, (workspaceRoot) => listArtboards({ workspaceRoot })),
+	);
+
+	server.registerTool(
+		PLACE_FRAME_TOOL,
+		{
+			title: 'Place frame',
+			description:
+				'Update one frame (x, y, width, label, group) in .cursor-design/canvas.json and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
+			inputSchema: placeFrameInputSchema,
+			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
+		},
+		async ({ id, x, y, width, label, group, rootPath }) =>
+			runQueued(rootPath, (workspaceRoot) =>
+				placeFrame({
+					workspaceRoot,
+					id,
+					x,
+					y,
+					width,
+					label,
+					group,
+				}),
+			),
 	);
 
 	server.registerTool(

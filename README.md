@@ -21,8 +21,9 @@ Server name: `cursor-design`. Tools:
 - `set_artboard` - create a new artboard id (`html` required; empty string allowed)
 - `update_artboard` - replace HTML; requires `baseGeneration` and/or `baseHash`
 - `read_artboard` - HTML + meta; `artboardId` optional (defaults to active)
-- `list_artboards` - ids on disk (no HTML bodies)
+- `list_artboards` - ids on disk (no HTML bodies) plus `frames`, the stage layout from `.cursor-design/canvas.json` (missing frames auto-placed)
 - `set_active_artboard` - switch the active id (does not open the panel)
+- `place_frame` - set one frame's `x`, `y`, `width`, `label`, or `group` in `canvas.json`; returns every frame
 - `export_artboard` - write `.cursor-design/handoff/<exportId>/` and record `lastExport` (call before implementing)
 - `handoff_status` - `{ stale, activeArtboardId, activeHash, lastExport? }`; re-export when `stale` is true
 

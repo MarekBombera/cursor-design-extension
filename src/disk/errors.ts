@@ -1,4 +1,10 @@
-import { SCHEMA_VERSION, artboardMetaPathSegments, manifestPathSegments } from './layout';
+import {
+	CANVAS_SCHEMA_VERSION,
+	SCHEMA_VERSION,
+	artboardMetaPathSegments,
+	canvasPathSegments,
+	manifestPathSegments,
+} from './layout';
 
 export abstract class CursorDesignError extends Error {
 	abstract readonly code: string;
@@ -40,6 +46,33 @@ export class UnsupportedSchemaVersionError extends CursorDesignError {
 			options,
 		);
 		this.name = 'UnsupportedSchemaVersionError';
+	}
+}
+
+export class CorruptCanvasError extends CursorDesignError {
+	readonly code = 'CORRUPT_CANVAS' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super(
+			`Canvas layout is invalid. Fix or restore ${canvasPathSegments.join('/')} (version ${CANVAS_SCHEMA_VERSION}), or delete it to auto-place every frame.`,
+			options,
+		);
+		this.name = 'CorruptCanvasError';
+	}
+}
+
+export class UnsupportedCanvasVersionError extends CursorDesignError {
+	readonly code = 'UNSUPPORTED_CANVAS_VERSION' as const;
+
+	constructor(
+		readonly version: number,
+		options?: { cause?: unknown },
+	) {
+		super(
+			`Canvas layout version ${version} is unsupported (expected ${CANVAS_SCHEMA_VERSION}). Fix ${canvasPathSegments.join('/')} or delete it to auto-place every frame.`,
+			options,
+		);
+		this.name = 'UnsupportedCanvasVersionError';
 	}
 }
 
@@ -115,7 +148,10 @@ export class InvalidRootError extends CursorDesignError {
 		readonly roots: readonly string[],
 		options?: { cause?: unknown },
 	) {
-		super('rootPath is not an open workspace folder. Retry with rootPath set to one of roots.', options);
+		super(
+			'rootPath is not an open workspace folder. Retry with rootPath set to one of roots.',
+			options,
+		);
 		this.name = 'InvalidRootError';
 	}
 }

@@ -22,6 +22,18 @@ export const HANDOFF_INDEX_FILE = 'index.html' as const;
 
 export const IMPLEMENT_FILE = 'IMPLEMENT.md' as const;
 
+export const CANVAS_FILE = 'canvas.json' as const;
+
+export const CANVAS_SCHEMA_VERSION = 1 as const;
+
+export const DEFAULT_FRAME_WIDTH = 1280;
+
+export const MIN_FRAME_WIDTH = 120;
+
+export const MAX_FRAME_WIDTH = 3840;
+
+export const FRAME_GAP = 24;
+
 export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,6 +51,8 @@ export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 `;
 
 export const manifestPathSegments = [CURSOR_DESIGN_DIR, MANIFEST_FILE] as const;
+
+export const canvasPathSegments = [CURSOR_DESIGN_DIR, CANVAS_FILE] as const;
 
 export const artboardsDirSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
 

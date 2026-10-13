@@ -15,12 +15,13 @@ alwaysApply: false
 - update_artboard — requires baseGeneration; conflict on mismatch
 - read_artboard / list_artboards / set_active_artboard
 - export_artboard / handoff_status
+- place_frame — one frame's x / y / width / label / group in canvas.json; returns every frame
 
 Serialize writes per artboard id. MCP denied: edit .cursor-design/** and tell user to allowlist.
 
 ## Disk (user workspace)
 
-.cursor-design/manifest.json, artboards/<id>.html, optional meta, assets/, tokens.json, handoff/<exportId>/
+.cursor-design/manifest.json, canvas.json, artboards/<id>.html, optional meta, assets/, tokens.json, handoff/<exportId>/
 
 Multi-artboard + one active. No gallery. Gitignore .cursor-design/.
 

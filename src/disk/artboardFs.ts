@@ -2,12 +2,21 @@ import { type Stats } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import {
+	type CanvasFrame,
+	type CanvasLayout,
+	parseCanvasLayout,
+	placeCanvasFrame,
+	resolveCanvasFrames,
+	serializeCanvasLayout,
+} from './canvasLayout';
 import { conflictFields } from './conflict';
 import { effectiveArtboardMeta } from './effectiveMeta';
 import {
 	ArtboardExistsError,
 	ArtboardNotFoundError,
 	ConflictError,
+	CorruptCanvasError,
 	CorruptManifestError,
 	CorruptMetaError,
 	CursorDesignError,
@@ -19,6 +28,7 @@ import { nextGeneration } from './generation';
 import { buildHandoffFiles, compareHandoff } from './handoff';
 import { hashHtml, isArtboardHash, normalizeHash } from './hash';
 import {
+	CANVAS_SCHEMA_VERSION,
 	CURSOR_DESIGN_DIR,
 	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_VIEWPORT,
@@ -30,6 +40,7 @@ import {
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	artboardsDirSegments,
+	canvasPathSegments,
 	ensurePanelPathSegments,
 	handoffDirSegments,
 	handoffRootSegments,
@@ -114,6 +125,21 @@ export type ListedArtboard = {
 export type ListArtboardsResult = {
 	activeArtboardId: string;
 	artboards: ListedArtboard[];
+	frames: CanvasFrame[];
+};
+
+export type PlaceFrameArgs = {
+	workspaceRoot: string;
+	id: unknown;
+	x?: unknown;
+	y?: unknown;
+	width?: unknown;
+	label?: unknown;
+	group?: unknown;
+};
+
+export type PlaceFrameResult = {
+	frames: CanvasFrame[];
 };
 
 export type SetActiveArtboardArgs = {
@@ -335,6 +361,20 @@ const readManifestFileLenient = async (
 		}
 		throw error;
 	}
+};
+
+const readCanvasLayoutFile = async (workspaceRoot: string): Promise<CanvasLayout> => {
+	const text = await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, canvasPathSegments));
+	if (text === undefined) {
+		return { version: CANVAS_SCHEMA_VERSION, frames: [] };
+	}
+	let parsedJson: unknown;
+	try {
+		parsedJson = JSON.parse(text) as unknown;
+	} catch (error: unknown) {
+		throw new CorruptCanvasError({ cause: error });
+	}
+	return parseCanvasLayout(parsedJson);
 };
 
 const isBenignMetaParseError = (error: unknown): boolean =>
@@ -625,7 +665,7 @@ export const listArtboards = async ({
 	await assertLayoutDirsOwned(workspaceRoot);
 	const artboardsDirectory = workspaceJoin(workspaceRoot, artboardsDirSegments);
 	if ((await layoutEntryKind(artboardsDirectory)) === 'missing') {
-		return { activeArtboardId: '', artboards: [] };
+		return { activeArtboardId: '', artboards: [], frames: [] };
 	}
 
 	let fileNames: string[];
@@ -691,7 +731,64 @@ export const listArtboards = async ({
 		});
 	}
 	artboards.sort((left, right) => left.artboardId.localeCompare(right.artboardId));
-	return { activeArtboardId, artboards };
+	const layout = await readCanvasLayoutFile(workspaceRoot);
+	const frames = resolveCanvasFrames({
+		stored: layout.frames,
+		artboards: artboards.map(({ artboardId, title }) => ({ artboardId, title })),
+	});
+	return { activeArtboardId, artboards, frames };
+};
+
+const requireOptionalFiniteNumber = (value: unknown, fieldName: string): number | undefined => {
+	if (value === undefined) {
+		return undefined;
+	}
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		throw new InvalidArgsError(`${fieldName} must be a finite number. Fix args and retry.`);
+	}
+	return value;
+};
+
+export const placeFrame = async ({
+	workspaceRoot,
+	id,
+	x,
+	y,
+	width,
+	label,
+	group,
+}: PlaceFrameArgs): Promise<PlaceFrameResult> => {
+	const resolvedId = parseArtboardId(id);
+	const placement = {
+		x: requireOptionalFiniteNumber(x, 'x'),
+		y: requireOptionalFiniteNumber(y, 'y'),
+		width: requireOptionalFiniteNumber(width, 'width'),
+		label: requireOptionalString(label, 'label'),
+		group: requireOptionalString(group, 'group'),
+	};
+
+	await assertLayoutDirsOwned(workspaceRoot);
+	await requireHtmlFile(
+		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)),
+		resolvedId,
+	);
+	await requireExactHtmlFileName(workspaceRoot, resolvedId);
+	const stored = await readCanvasLayoutFile(workspaceRoot);
+	const listed = await listArtboards({ workspaceRoot });
+	const current = listed.frames.find((frame) => frame.id === resolvedId);
+	if (current === undefined) {
+		throw new ArtboardNotFoundError(resolvedId);
+	}
+	const next = placeCanvasFrame({ layout: stored, current, placement });
+
+	await ensureDir(workspaceJoin(workspaceRoot, [CURSOR_DESIGN_DIR]));
+	await writeUtf8({
+		...workspaceLayoutFile(workspaceRoot, canvasPathSegments),
+		contents: serializeCanvasLayout(next),
+	});
+	return {
+		frames: resolveCanvasFrames({ stored: next.frames, artboards: listed.artboards }),
+	};
 };
 
 export const setActiveArtboard = async ({
@@ -888,10 +985,7 @@ export const readHandoffStatus = async ({
 		stale = true;
 	} else {
 		const exportedHtml = await readUtf8IfExists(
-			workspaceLayoutFile(
-				workspaceRoot,
-				artboardHtmlPathSegments(manifest.lastExport.artboardId),
-			),
+			workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(manifest.lastExport.artboardId)),
 		);
 		stale =
 			exportedHtml === undefined ||
