@@ -30,6 +30,8 @@ Match build phases in `.cursor/rules/01-phase-protocol.mdc` and Notion section 1
 
 Shipped demo: Agent designs a landing hero+CTA on the artboard, export, then implement that section into a tiny Vite + plain HTML sample. Handoff is HTML+CSS+JS.
 
+**0.2 Interact** (Notion 0.2 page: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e): pan/zoom the live artboard with trackpad/mouse. Chrome scales the artboard iframe itself inside a clip well (CSSOM transform), so fixed/sticky/`vh` render as in a real viewport and zoomed-out artboards letterbox. A small gesture-forwarding runtime is injected by chrome at blob-build only, never written to disk; it never restyles artboard HTML; export/handoff assert pristine HTML. Pinch / ctrl+wheel zoom around cursor, plain wheel pans only when the artboard cannot scroll, zoom presets 50–200% via allowlisted postMessage, zoom persisted by chrome across refresh. Deliberate deviation from the Notion 0.2 lock ("pan host = body", "never CSS-scale the host iframe"), decided 2026-09-30. 0.2 out of scope: Edit mode, click-to-edit, layers, GrapesJS/Webstudio, comment overlays, multi-frame stage, space-drag pan.
+
 **v1 non-goals:** in-extension chat, `vscode.lm` / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP auto-writing production app source.
 
 ## 4. Data - What are we storing?
@@ -65,6 +67,8 @@ Panel-only MVP. No in-panel chat (chat stays in Cursor Agent).
 Chrome: active artboard id, generation badge, handoff-stale badge, MCP-unavailable banner (still show disk artboard), Reveal / Export actions. Commands: Open Artboard, Reveal Design Folder, Export Handoff.
 
 Artboard HTML is user/Agent content, not themed as chrome. No gallery. Variants are new ids + `set_active_artboard`.
+
+0.2: default mode is Interact (no Edit chrome). Host shows a clip well and zoom menu; zoom scales the artboard iframe inside the well. Empty/error artboard disables the zoom menu.
 
 ## 8. Deployment - Where and how will this ship?
 

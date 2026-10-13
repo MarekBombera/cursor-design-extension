@@ -7,7 +7,9 @@ description: Use when implementing or scaffolding the cursor-design VS Code/Curs
 
 ## Steps
 
-1. Fetch Notion spec via Notion MCP: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+1. Fetch Notion hub + active version page (0.2) via Notion MCP:
+   - Hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+   - Active (0.2): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 2. Confirm phase gate you are targeting (0–4). Do not skip gates.
 3. For Cursor MCP registration use **only** `vscode.cursor.mcp.registerServer` with stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
 4. Webview chrome = Svelte 5 + Vite; artboard = nested sandboxed iframe with scripts allowed.

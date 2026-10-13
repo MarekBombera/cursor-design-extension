@@ -2,9 +2,18 @@ import { randomBytes } from 'node:crypto';
 
 import type * as vscode from 'vscode';
 
+import {
+	ARTBOARD_CANVAS_RUNTIME_SOURCE,
+	CANVAS_RUNTIME_ATTRIBUTE,
+	CANVAS_WHEEL_MESSAGE,
+} from './artboardCanvasRuntime';
+
 const MCP_UNAVAILABLE_COPY = 'MCP unavailable. Artboard still loads from disk.';
 
 const createCspNonce = (): string => randomBytes(16).toString('hex');
+
+export const embedScriptSource = (source: string): string =>
+	JSON.stringify(source).replaceAll('<', '\\u003c');
 
 export type ArtboardChromeDocument = {
 	html: string;
@@ -67,9 +76,17 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			margin: 0;
 			padding: 0.75rem;
 		}
-		#artboard-frame {
+		#artboard-well {
 			flex: 1 1 auto;
+			position: relative;
+			overflow: hidden;
+			background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+		}
+		#artboard-frame {
+			position: absolute;
+			inset: 0;
 			width: 100%;
+			height: 100%;
 			border: 0;
 			background: var(--vscode-editor-background);
 		}
@@ -84,10 +101,17 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 	<p id="artboard-error" class="error" role="alert" hidden></p>
 	<p id="mcp-banner" class="mcp-banner" role="status" hidden></p>
 	<p id="empty-copy">No artboard yet.</p>
-	<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview" hidden></iframe>
+	<div id="artboard-well" hidden>
+		<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview"></iframe>
+	</div>
 	<script nonce="${nonce}">
 		const vscodeApi = acquireVsCodeApi();
 		const iframe = document.getElementById('artboard-frame');
+		const artboardWell = document.getElementById('artboard-well');
+		const canvasRuntimeSource = ${embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE)};
+		const canvasRuntimeAttribute = ${JSON.stringify(CANVAS_RUNTIME_ATTRIBUTE)};
+		const canvasWheelMessage = ${JSON.stringify(CANVAS_WHEEL_MESSAGE)};
+		const canvasView = { x: 0, y: 0, zoom: 1 };
 		const emptyCopy = document.getElementById('empty-copy');
 		const idBadge = document.getElementById('artboard-id-badge');
 		const generationBadge = document.getElementById('artboard-generation-badge');
@@ -106,11 +130,68 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			}
 		};
 
+		const applyCanvasView = () => {
+			iframe.style.transformOrigin = '0 0';
+			iframe.style.transform =
+				'translate(' + canvasView.x + 'px, ' + canvasView.y + 'px) scale(' + canvasView.zoom + ')';
+		};
+
+		const applyZoomDelta = (deltaY) => {
+			const zoomStep = Math.min(0.2, Math.max(-0.2, -deltaY * 0.01));
+			canvasView.zoom = Math.min(2, Math.max(0.5, canvasView.zoom * Math.exp(zoomStep)));
+			applyCanvasView();
+		};
+
+		const handleCanvasMessage = (data) => {
+			// ponytail: rejects are not logged; wheel fires at 60+ Hz, so logging would spam.
+			// Upgrade path: a debug-only reject counter.
+			if (data === null || typeof data !== 'object' || data.type !== canvasWheelMessage) {
+				return;
+			}
+			if (!Number.isFinite(data.deltaY)) {
+				return;
+			}
+			applyZoomDelta(data.deltaY);
+		};
+
+		// Letterbox gestures land on the chrome document, not the runtime. Wheel events
+		// inside the iframe never bubble here, so the two paths cannot double-zoom.
+		artboardWell.addEventListener(
+			'wheel',
+			(event) => {
+				if (!event.ctrlKey && !event.metaKey) {
+					return;
+				}
+				event.preventDefault();
+				applyZoomDelta(event.deltaY);
+			},
+			{ passive: false },
+		);
+
+		// Runs first in head (after meta charset) so the runtime captures window.parent
+		// and registers its wheel listener before any artboard script.
+		const injectCanvasRuntime = (parsed, nonceValue) => {
+			for (const element of parsed.querySelectorAll('script[' + canvasRuntimeAttribute + ']')) {
+				element.remove();
+			}
+			const runtimeScript = parsed.createElement('script');
+			runtimeScript.setAttribute('nonce', nonceValue);
+			runtimeScript.setAttribute(canvasRuntimeAttribute, '');
+			runtimeScript.textContent = canvasRuntimeSource;
+			const charsetMeta = parsed.head.querySelector('meta[charset]');
+			if (charsetMeta !== null) {
+				charsetMeta.after(runtimeScript);
+				return;
+			}
+			parsed.head.prepend(runtimeScript);
+		};
+
 		// The blob frame inherits this document's nonce CSP, so bare <script>/<style>
 		// would be blocked. Stamping the chrome nonce re-allows exactly those tags;
 		// inline handlers, style="" attributes, and subresources stay blocked (v1 limit).
 		// DOMParser never executes scripts, and meta http-equiv is stripped so the
-		// artboard cannot stack its own policy on top.
+		// artboard cannot stack its own policy on top. The canvas runtime is then
+		// injected into the blob copy only; disk and export HTML never see it.
 		const stampArtboardHtml = (rawHtml, nonceValue) => {
 			const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
 			for (const element of parsed.querySelectorAll('meta[http-equiv]')) {
@@ -119,6 +200,7 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			for (const element of parsed.querySelectorAll('script, style')) {
 				element.setAttribute('nonce', nonceValue);
 			}
+			injectCanvasRuntime(parsed, nonceValue);
 			return '<!DOCTYPE html>' + parsed.documentElement.outerHTML;
 		};
 
@@ -129,23 +211,24 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			lastHtml = html;
 			revokeCurrentBlob();
 			if (html.length === 0) {
-				iframe.hidden = true;
+				artboardWell.hidden = true;
 				iframe.removeAttribute('src');
 				emptyCopy.hidden = false;
 				return;
 			}
 			emptyCopy.hidden = true;
-			iframe.hidden = false;
+			artboardWell.hidden = false;
 			const blob = new Blob([stampArtboardHtml(html, nonceValue)], { type: 'text/html' });
 			currentBlobUrl = URL.createObjectURL(blob);
 			iframe.src = currentBlobUrl;
 		};
 
 		window.addEventListener('message', (event) => {
-			if (event.origin === 'null') {
+			if (iframe.contentWindow !== null && event.source === iframe.contentWindow) {
+				handleCanvasMessage(event.data);
 				return;
 			}
-			if (event.source === iframe.contentWindow) {
+			if (event.origin === 'null') {
 				return;
 			}
 			const data = event.data;
@@ -190,6 +273,7 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 		});
 
 		window.addEventListener('pagehide', revokeCurrentBlob);
+		applyCanvasView();
 		vscodeApi.postMessage({ type: 'artboard:ready' });
 	</script>
 </body>

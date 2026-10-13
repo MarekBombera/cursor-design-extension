@@ -1,6 +1,17 @@
 # AGENTS.md
 
-**cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`. Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4. Rules: `.cursor/rules/`. Skills: `cursor-design-build`, `cursor-design-agent-loop`, `feature-review`.
+**cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`.
+
+**Notion:**
+- Hub (locks, MCP/disk, Interact vs Edit): https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+- Active build brief **0.2 Interact**: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
+- 0.1 archive (shipped, don’t re-litigate): https://app.notion.com/p/3da500344e0881e884dcc828fc49a395
+
+**Rules:** `.cursor/rules/`. **Skills / agents:** `.cursor/skills/`, `.cursor/agents/`. **Repo path:** `~/projects/personal/cursor-design-extension`
+
+`.cursor` is the adapter source of truth. `.claude/{skills,rules,agents}` and `.agents/skills` are relative symlinks into `.cursor`. Add or edit only under `.cursor`. Do not copy files between adapter trees.
+
+**Status:** MVP shipped; next = 0.2 Interact canvas per §18 / 0.2 page.
 
 Instructions for AI coding agents working in this project. This is the cross-tool
 entry point: Codex, OpenCode, Cursor, GitHub Copilot, Gemini CLI, Aider, Zed,
@@ -105,8 +116,9 @@ Codex-only, Copilot-only, or OpenCode-only projects can delete `CLAUDE.md` and
 skills under `.opencode/skills/`; OpenCode already discovers the compatible
 trees.
 
-When changing shared workflow behavior, update the matching skill in both
-adapter folders so Codex, Claude Code, GitHub Copilot, and OpenCode stay aligned.
+When changing shared workflow behavior, edit the file under `.cursor` only.
+The `.claude` and `.agents` trees follow via symlink. Do not duplicate a skill
+or rule into another adapter folder.
 
 Core skills:
 
@@ -184,6 +196,7 @@ Never create or edit `run.json` directly. From the project root, use the first
 helper that exists:
 
 ```text
+node .cursor/skills/doctor/scripts/run-state.mjs <action> <options>
 node .agents/skills/doctor/scripts/run-state.mjs <action> <options>
 node .claude/skills/doctor/scripts/run-state.mjs <action> <options>
 ```

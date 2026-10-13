@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 8ff8e9c46b90e3678cfd7627659f1fafe0aa267b768dabd4770b7e492a2d89d3 -->
+<!-- blueprint:source-hash 630a42f77d09914ba689fff8f1099dd2c86a4bf61da212c6e5bf09d78de5728d -->
 
 > Agent-driven live HTML artboard inside Cursor: WebviewPanel chrome, nested iframe, local MCP, disk SoT under `.cursor-design/`.
 
@@ -27,6 +27,14 @@ MVP map in build-plan order. Headline: live Agent -> artboard -> export -> imple
 3. **Phase 2 MCP loop** - `set_artboard`, `update_artboard` (requires `baseGeneration`), `read_artboard`, `list_artboards`, `set_active_artboard`; conflict path; MCP-offline banner.
 4. **Phase 3 Export** - `export_artboard` + `handoff_status` stale mark; `IMPLEMENT.md` usable; demo = hero+CTA into Vite + plain HTML.
 5. **Phase 4 Release polish** - MIT, screenshots, honest limits.
+6. **0.2 Interact canvas** - pan/zoom the live artboard; default mode Interact; disk/export stay pristine. Spec: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
+   - 6a. **Blob inject** - clip well + CSSOM `translate(x,y) scale(z)` on the host iframe, origin `0 0`; chrome injects a gesture-forwarding runtime + CSP nonce at blob-build only (never restyles artboard HTML); pinch / ctrl+wheel forwarded as an allowlisted typed message; top-left zoom 50–200%; `data-cd-*` prefix only; export/handoff asserts no injected runtime (no strip).
+   - 6b. **Gestures + zoom math** - zoom around cursor; plain wheel pans only when the artboard cannot scroll (nested-scroll walk in runtime); clamps; unit tests for zoom math, clamps, nested-scroll walk.
+   - 6c. **Host zoom chrome** - zoom menu 50–200%; ready-handshake + chrome-persisted zoom survives refresh; empty/error disables menu.
+
+**Architecture deviation from Notion 0.2 (decided 2026-09-30):** zoom scales the host iframe inside a clip well instead of transforming artboard `body`, so fixed/sticky/`vh` render as in a real viewport and zoomed-out artboards letterbox. Chrome owns pan/zoom geometry; the runtime only forwards gestures.
+
+**0.2 out of scope:** Edit mode, click-to-edit, layers, GrapesJS/Webstudio, repo design-system import, comment overlays, multi-frame stage, space-drag pan, writing runtime to disk, strip-on-export.
 
 **v1 non-goals:** in-panel chat, `vscode.lm` / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP writing production app source.
 
@@ -81,6 +89,7 @@ Panel-only. Chat stays in Cursor Agent.
 - **Reveal Design Folder** / **Export Handoff**
 - Artboard HTML is user/Agent content, not chrome-themed
 - Variants = new ids + `set_active_artboard`, not a gallery
+- 0.2: default Interact mode (no Edit chrome); clip well + zoom menu; zoom scales the artboard iframe inside the well; artboard iframe is null-origin blob, so chrome accepts only allowlisted message `type`s
 
 ## Deployment
 

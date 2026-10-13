@@ -75,15 +75,15 @@ Gather these, then summarize. Do not dump file contents.
      use `.agents/skills/`. Claude Code uses `.claude/skills/`. OpenCode can use
      either tree.
    - If both skill trees are present, say that is healthy when the selected
-     tools require both. Compare their skill folder names and warn about missing
-     skills on either side.
+     tools require both. This repo keeps `.cursor` as SoT and points
+     `.agents/skills`, `.claude/skills`, `.claude/rules`, and `.claude/agents`
+     at it with relative symlinks. Confirm those four paths are symlinks into
+     `.cursor`. Warn if any is a real directory (copy drift) instead of telling
+     the user to duplicate files.
    - If OpenCode is selected, do not require `.opencode/skills/`. If it contains
      duplicate Blueprint skills alongside `.agents/skills/` or `.claude/skills/`,
      warn that OpenCode discovers all of those locations and the duplicate tree
      should be reviewed.
-   - If git shows changes under `.agents/skills/` or `.claude/skills/`, check
-     the matching adapter file too. Warn when workflow behavior was updated in
-     one adapter but not the other.
    - Confirm each installed adapter tree contains
      `doctor/scripts/run-state.mjs`. This managed helper validates and atomically
      writes dashboard activity. A missing helper needs a Blueprint update before
@@ -216,8 +216,9 @@ Choose the repair order in this priority:
 - Invalid `blueprint/config.json` -> fix the named key or value, then rerun
   `/doctor`. Do not mutate project work while configuration is ambiguous.
 - No git repo -> initialize git before using the build loop.
-- No tool adapter -> restore `.agents/skills/` or `.claude/skills/` for the
-  selected tool. OpenCode can use either compatible tree.
+- No tool adapter -> restore the `.cursor` skill tree and the adapter
+  symlinks (`.agents/skills` → `.cursor/skills`, `.claude/{skills,rules,agents}`
+  → `.cursor/...`) for the selected tool. OpenCode can use either compatible tree.
 - Installed adapter is missing `doctor/scripts/run-state.mjs` -> update
   Blueprint before relying on dashboard activity.
 - Claude uses legacy direct context imports -> remove the exact direct imports

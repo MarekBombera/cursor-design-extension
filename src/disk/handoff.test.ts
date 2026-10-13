@@ -18,6 +18,7 @@ import {
 	HANDOFF_INDEX_FILE,
 	IMPLEMENT_FILE,
 	TOKENS_FILE,
+	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	handoffDirSegments,
 	manifestPathSegments,
@@ -109,6 +110,8 @@ test('export writes three files, lastExport, bumped updatedAt, unchanged generat
 
 	const leafDir = join(workspaceRoot, ...handoffDirSegments(exported.exportId));
 	assert.equal(await readFile(join(leafDir, HANDOFF_INDEX_FILE), 'utf8'), HERO_HTML);
+	// Byte-equality on disk and handoff proves no preview-only canvas runtime leaks out.
+	assert.equal(await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8'), HERO_HTML);
 	const implementMd = await readFile(join(leafDir, IMPLEMENT_FILE), 'utf8');
 	assert.match(implementMd, /exportId: hero-20260911T173900123Z/);
 	assert.match(implementMd, /artboardId: hero/);

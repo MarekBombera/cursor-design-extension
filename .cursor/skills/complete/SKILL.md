@@ -146,8 +146,8 @@ Before logging or committing, run a short safety pass and report blockers only:
   visibility, and Git conditions from Audit's reference contract to remain valid.
 - when a passing independent receipt exists, the active spec is already
   `verified` and remains byte-for-byte unchanged through archival
-- if workflow files changed, `.agents` and `.claude` stayed in sync where both
-  adapters exist
+- if workflow files changed, they were edited under `.cursor` only. `.agents`
+  and `.claude` stay in sync via symlink; do not require a second copy
 - no P0 or P1 finding in `blueprint/context/findings.md` is `open` or `fixed`.
   `fixed` still blocks on purpose: the repair exists but no review has looked at
   it - run `/audit` to close it. The only waivers are `accepted` (the user's

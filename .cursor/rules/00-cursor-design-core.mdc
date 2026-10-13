@@ -19,7 +19,8 @@ You are building **cursor-design**: a Cursor/VS Code extension (WebviewPanel), n
 
 ## Spec
 
-Notion: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Active version page (0.2): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 Prefer Notion over conflicting chat; ask Bombic if unsure.
 
 ## Agent tooling
@@ -28,3 +29,4 @@ Prefer Notion over conflicting chat; ask Bombic if unsure.
 - Context7 — VS Code / webview / MCP docs
 - Svelte plugin — chrome only
 - modern-web-guidance before webview/CSP work
+- Adapter trees: edit `.cursor/{skills,rules,agents}` only. `.claude/{skills,rules,agents}` and `.agents/skills` are symlinks — never copy between them.

@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type * as vscode from 'vscode';
 
-import { buildArtboardChromeHtml } from './artboardChromeHtml';
+import {
+	ARTBOARD_CANVAS_RUNTIME_SOURCE,
+	CANVAS_RUNTIME_ATTRIBUTE,
+	CANVAS_WHEEL_MESSAGE,
+} from './artboardCanvasRuntime';
+import { buildArtboardChromeHtml, embedScriptSource } from './artboardChromeHtml';
 
 const fakeWebview = { cspSource: 'vscode-webview://test' } as vscode.Webview;
 
@@ -35,12 +40,73 @@ test('chrome script ignores nested-frame null origin', () => {
 	assert.ok(chrome.html.includes("event.origin === 'null'"));
 });
 
-test('chrome script hides iframe and drops src on empty html', () => {
+test('chrome script hides the well and drops src on empty html', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 
 	assert.ok(chrome.html.includes('if (html.length === 0)'));
-	assert.ok(chrome.html.includes('iframe.hidden = true'));
+	assert.ok(chrome.html.includes('artboardWell.hidden = true'));
 	assert.ok(chrome.html.includes("iframe.removeAttribute('src')"));
+});
+
+test('embedScriptSource escapes every less-than', () => {
+	const embedded = embedScriptSource('a</script><b');
+
+	assert.ok(embedded.includes('\\u003c'));
+	assert.ok(!embedded.includes('<'));
+});
+
+test('chrome wraps the iframe in the well and injects the canvas runtime once', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const wellIndex = chrome.html.indexOf('<div id="artboard-well" hidden>');
+
+	assert.ok(wellIndex >= 0);
+	assert.ok(wellIndex < chrome.html.indexOf('<iframe id="artboard-frame" sandbox="allow-scripts"'));
+	assert.ok(chrome.html.includes(CANVAS_RUNTIME_ATTRIBUTE));
+	assert.ok(chrome.html.includes(embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE)));
+	assert.equal(chrome.html.split('<script nonce="').length - 1, 1);
+	assert.equal(chrome.html.split('</script>').length - 1, 1);
+	assert.ok(chrome.html.includes('transformOrigin'));
+	assert.ok(chrome.html.includes('style.transform'));
+});
+
+test('chrome routes iframe messages to canvas before the null-origin drop', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const sourceCheckIndex = chrome.html.indexOf('event.source === iframe.contentWindow');
+
+	assert.ok(sourceCheckIndex >= 0);
+	assert.ok(sourceCheckIndex < chrome.html.indexOf("event.origin === 'null'"));
+});
+
+test('chrome zooms from ctrl/meta wheel over the letterbox well through the shared zoom path', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const listenerIndex = chrome.html.indexOf("artboardWell.addEventListener(\n\t\t\t'wheel'");
+	const passiveIndex = chrome.html.indexOf('{ passive: false }', listenerIndex);
+	const listenerSource = chrome.html.slice(listenerIndex, passiveIndex);
+
+	assert.ok(listenerIndex >= 0);
+	assert.ok(passiveIndex > listenerIndex);
+	assert.ok(listenerSource.includes('event.metaKey'));
+	assert.ok(listenerSource.includes('event.ctrlKey'));
+	assert.ok(listenerSource.includes('event.preventDefault()'));
+	assert.ok(listenerSource.includes('applyZoomDelta(event.deltaY)'));
+	assert.ok(chrome.html.includes('applyZoomDelta(data.deltaY)'));
+	assert.equal(chrome.html.split('Math.exp(').length - 1, 1);
+});
+
+test('canvas runtime only forwards ctrl+wheel and never touches the artboard', () => {
+	for (const required of [
+		'passive: false',
+		'ctrlKey',
+		'metaKey',
+		'preventDefault',
+		'window.parent',
+		JSON.stringify(CANVAS_WHEEL_MESSAGE),
+	]) {
+		assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(required), required);
+	}
+	for (const forbidden of ['<', '.style', 'classList', 'clientX', 'data-dc-', 'sc-host', 'design_doc_mode']) {
+		assert.ok(!ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(forbidden), forbidden);
+	}
 });
 
 test('each chrome document gets a fresh nonce', () => {
