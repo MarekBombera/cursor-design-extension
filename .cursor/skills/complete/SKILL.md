@@ -122,8 +122,9 @@ Before logging or committing, run a short safety pass and report blockers only:
 - active spec exists and the work is not being completed from `main` or `master`
 - the branch name uses the configured feature, fix, or rollback prefix
 - changed files are tied to the active spec, with no unrelated dirty work mixed
-  in (dirty `blueprint/context/findings.md` and
-  `blueprint/context/review.md` are expected review evidence)
+  in (dirty `blueprint/context/findings.md`,
+  `blueprint/context/review.md`, and
+  `blueprint/context/feature-review.md` are expected review evidence)
 - the exact `Verify` command from `AGENTS.md` passed in this session, when one is
   declared; otherwise the build passed, and tests passed when the project has a
   declared test command and the change touched logic
@@ -277,9 +278,15 @@ an older installation does not have it:
 Keep every unresolved entry in the ledger. Do not replace it with the empty stub
 while it still contains any open, fixed, or unverified finding.
 
-Before resetting the spec, write the finished human summary to
-`blueprint/context/current-feature-overview.md` from the verified spec and the
-built result. This file is for the human steering the project, not for builders.
+Before resetting the spec, polish `blueprint/context/current-feature-overview.md`
+into the archive-ready one-pager from the verified spec and the built result.
+This is a polish of the overview `/feature` (or `/fix` / `/rollback`) already
+wrote — never the first write. If the file is still a stub (legacy), write the
+one-pager now rather than leaving a placeholder. Do not reset this file after
+archival. Leave it as the finished summary of the work just shipped until the
+next `/feature`, `/fix`, or `/rollback` replaces it.
+
+This file is for the human steering the project, not for builders.
 Use this shape, omitting sections that do not apply:
 
     # <Title> - Overview for review
@@ -306,7 +313,8 @@ logic, mermaid `sequenceDiagram` for the key loop (both render in Markdown
 preview and on GitHub); a `Term | Why it exists` glossary table with one line
 per domain term a non-coding reader would trip on; no function signatures and
 no file-by-file breakdown (the archive holds the build detail). `Source of truth` points at the archive
-placed above, since the live spec is reset next.
+placed above, since the live spec is reset next. After `current-feature.md` is
+reset, this overview stays until the next starting skill replaces it.
 
 After archiving
 resolved findings, replace `blueprint/context/current-feature.md` with
@@ -323,11 +331,26 @@ work" stub. Before committing, read the file and confirm it exactly matches:
 
     _Nothing in progress. Run `/feature`, `/fix`, or `/rollback` to start._
 
+Then replace `blueprint/context/feature-review.md` with the canonical stub
+below, creating it when an older installation does not have it. Do not
+paraphrase it. Before committing, read the file and confirm it exactly matches:
+
+    # Feature Review
+
+    > **Generated file.** Dual-reviewer packet for the active spec. Written by
+    > `/feature-review` after both Breaker and Literalist reports validate. Consumed
+    > by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
+    > `/complete` like other current-* files.
+
+    _No review in flight. Run `/feature-review` after `/feature`, `/fix`, or `/rollback` has written a spec._
+
 When no open, fixed, or unverified ledger entries remain, confirm
 `blueprint/context/findings.md` exactly matches the canonical Findings stub
 above. Otherwise, preserve the remaining entries without rewriting them.
 Confirm `blueprint/context/review.md` exactly matches the canonical Independent
 Review stub above.
+Confirm `blueprint/context/feature-review.md` exactly matches the canonical
+Feature Review stub above.
 
 Don't commit yet; the next step makes one work commit covering the code and these
 documentation changes. The archive is the build history.

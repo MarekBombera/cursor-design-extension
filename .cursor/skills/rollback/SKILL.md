@@ -13,9 +13,9 @@ contract in `AGENTS.md`.
 
 Where this sits in the workflow:
 
-    completed feature + git history  ->  [rollback]  ->  /implement  ->  /check  ->  /complete
-    (archive + squashed commit)           (risk review     (reverse       (prove)     (log + merge)
-                                           + spec)          product diff)
+    completed feature + git history  ->  [rollback]  ->  /feature-review  ->  /feature-review-fix  ->  /implement  ->  /check  ->  /complete
+    (archive + squashed commit)           (risk review     (two Grok          (judge rewrites        (reverse       (prove)     (log + merge)
+                                           + spec)          reports)           the spec)              product diff)
 
 This skill plans a rollback. It does not change product code, create a branch,
 commit, merge, or push. It identifies the completed feature and its exact git
@@ -165,33 +165,41 @@ Red-team the draft before presenting it:
 - are the removal criteria observable rather than phrased as "feature gone"?
 - can each compatibility edit be reviewed separately?
 
-Tighten the spec, then reset `blueprint/context/current-feature-overview.md`
-to exactly this stub, creating the file when it does not exist yet:
+Tighten the spec, then write `blueprint/context/current-feature-overview.md` as
+the trimmed readable version of that rollback spec (same banner, sections, and
+constraints as `/feature`). A brief stub mid-command is allowed if needed; the
+handoff must leave a real overview, never the empty placeholder.
 
-    # Current Feature Overview
+Also reset `blueprint/context/feature-review.md` to exactly the canonical stub
+below. Do not paraphrase it. A leftover dual-review packet must not follow the
+new spec:
 
-    > **Generated file.** Human-facing steering summary of the active work item:
-    > what it does, what you will see, data flow, key decisions, and diagrams.
-    > Starting skills reset this file; `/complete` writes the finished summary.
-    > Open in Markdown preview to render the diagrams.
+    # Feature Review
 
-    _Summary lands here at `/complete`._
+    > **Generated file.** Dual-reviewer packet for the active spec. Written by
+    > `/feature-review` after both Breaker and Literalist reports validate. Consumed
+    > by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
+    > `/complete` like other current-* files.
+
+    _No review in flight. Run `/feature-review` after `/feature`, `/fix`, or `/rollback` has written a spec._
 
 Then stop. Summarize the target commit, affected product paths,
-later-change risk, and what the critique changed. Tell the user to review the
-spec, then run `/implement` to create the rollback branch and apply it.
+later-change risk, and what the critique changed. Next: `/feature-review`, then
+`/feature-review-fix`, then `/implement` to create the rollback branch and apply it.
 
 ## Rules
 
 - Preserve history. Never delete or rewrite the original feature archive.
-- Plan only. This skill writes the rollback spec and resets the overview stub, nothing else.
+- Plan only. This skill writes the rollback spec, its trimmed overview, and
+  resets `blueprint/context/feature-review.md` to the empty packet stub. Nothing else.
 - One completed feature per rollback.
 - Record both the target commit and its parent as full 40-character SHA values.
   Each value must resolve to the recorded commit in the current repository.
 - Never use `git reset --hard`, force-push, history rewriting, or broad file
   restoration.
 - Never infer permission to cascade into later features or destroy stored data.
-- A rollback still uses `/implement`, `/check`, and `/complete` review gates.
+- A rollback still uses `/feature-review`, `/feature-review-fix`, `/implement`,
+  `/check`, and `/complete` review gates.
 
 ## Formatting
 

@@ -1,10 +1,10 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 630a42f77d09914ba689fff8f1099dd2c86a4bf61da212c6e5bf09d78de5728d -->
+<!-- blueprint:source-hash a9cb964863fc0a17d40ca34b050f01de490581ff5e9bb470a3c0b860786c0877 -->
 
-> Agent-driven live HTML artboard inside Cursor: WebviewPanel chrome, nested iframe, local MCP, disk SoT under `.cursor-design/`.
+> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 turns the panel into a Figma-style multi-frame stage.
 
-Coding SoT remains `.cursor/rules/` (00-07) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Coding SoT remains `.cursor/rules/` (00-07) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 ## Problem
 
@@ -13,28 +13,38 @@ Cursor has no Claude Design-style live canvas. Design talk stays in chat; the hu
 ## Users
 
 - **People using Cursor** who want a live HTML artboard the Agent can iterate, then export into a real repo.
-- **Cursor Agent** creating and iterating artboards via MCP, or `.cursor-design/**` files if MCP is denied.
+- **Cursor Agent** creating, iterating, and (0.2) placing frames via MCP, or `.cursor-design/**` files if MCP is denied.
 - **A second Agent session** implementing from handoff (`IMPLEMENT.md` + HTML/CSS/JS), not screenshots.
 
 No accounts or access tiers in v1.
 
 ## Features
 
-MVP map in build-plan order. Headline: live Agent -> artboard -> export -> implement.
+Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 
 1. **Phase 0 Bootstrap** - F5 Extension Host, empty Artboard panel, `registerServer` on activate, no CSP errors.
-2. **Phase 1 Disk to pixels** - `.cursor-design/` HTML save refreshes the nested iframe (~200ms); generation bumps.
+2. **Phase 1 Disk to pixels** - `.cursor-design/` HTML save refreshes the iframe (~200ms); generation bumps.
 3. **Phase 2 MCP loop** - `set_artboard`, `update_artboard` (requires `baseGeneration`), `read_artboard`, `list_artboards`, `set_active_artboard`; conflict path; MCP-offline banner.
-4. **Phase 3 Export** - `export_artboard` + `handoff_status` stale mark; `IMPLEMENT.md` usable; demo = hero+CTA into Vite + plain HTML.
-5. **Phase 4 Release polish** - MIT, screenshots, honest limits.
-6. **0.2 Interact canvas** - pan/zoom the live artboard; default mode Interact; disk/export stay pristine. Spec: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
-   - 6a. **Blob inject** - clip well + CSSOM `translate(x,y) scale(z)` on the host iframe, origin `0 0`; chrome injects a gesture-forwarding runtime + CSP nonce at blob-build only (never restyles artboard HTML); pinch / ctrl+wheel forwarded as an allowlisted typed message; top-left zoom 50–200%; `data-cd-*` prefix only; export/handoff asserts no injected runtime (no strip).
-   - 6b. **Gestures + zoom math** - zoom around cursor; plain wheel pans only when the artboard cannot scroll (nested-scroll walk in runtime); clamps; unit tests for zoom math, clamps, nested-scroll walk.
-   - 6c. **Host zoom chrome** - zoom menu 50–200%; ready-handshake + chrome-persisted zoom survives refresh; empty/error disables menu.
+4. **Phase 3 Export** - `export_artboard` + `handoff_status` stale mark; usable `IMPLEMENT.md`; demo = hero+CTA into Vite + plain HTML.
+5. **Phase 4 Release polish** - MIT, honest limits.
+6. **0.2 Multi-frame canvas** - Figma-style stage holding many fixed-width, full-height frames; Interact is default; disk/export stay pristine. Spec (rewritten 2026-10-13): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
+   - 6a. **Blob inject** (shipped) - CSP-nonce'd runtime injected at blob-build only, typed iframe -> chrome allowlist, CSSOM transform, `data-cd-*` prefix, clean-export assert. Built for the earlier single-frame plan; these pieces carry forward and the transform moves from the iframe to the stage.
+   - 6b. **Contract** - `canvas.json` read/write + MCP `place_frame`; `list_artboards` returns layout; pure geometry module + unit tests (zoom, clamps, fit-all, screen-to-stage).
+   - 6c. **Stage** - pinch/ctrl+wheel zoom at cursor; plain wheel and empty-stage drag pan; zoom presets; fit-all; persisted view.
+   - 6d. **Frames** - one blob iframe per frame at fixed width; full height via `cd:frame-height`; frames forward wheel/pinch to the stage; chrome labels + group headings; error tiles.
+   - 6e. **Canvas export** - `export_artboard` exports every frame into one handoff: a folder per group, one `IMPLEMENT.md` index, a view-only `canvas.html`; `handoff_status` stale when any frame changed.
+   - 6f. **Verify** - F5 dogfood: desktop page, mobile page, and two section frames on one canvas; export clean.
 
-**Architecture deviation from Notion 0.2 (decided 2026-09-30):** zoom scales the host iframe inside a clip well instead of transforming artboard `body`, so fixed/sticky/`vh` render as in a real viewport and zoomed-out artboards letterbox. Chrome owns pan/zoom geometry; the runtime only forwards gestures.
+### 0.2 canvas model
 
-**0.2 out of scope:** Edit mode, click-to-edit, layers, GrapesJS/Webstudio, repo design-system import, comment overlays, multi-frame stage, space-drag pan, writing runtime to disk, strip-on-export.
+- **Stage** lives in chrome. Pan/zoom is CSSOM `translate(x,y) scale(z)` on the stage layer, origin `0 0`. Chrome owns all geometry.
+- **Frames** are fixed: each is its own artboard file at its own width, rendered at full content height in its own sandboxed blob iframe, with no inner scroll. Zoom, pan, and panel resize never reflow a frame, so a fixed header sticks to its frame's top (this reverses the old single-frame "pinned to viewport" check). A mobile frame is a separate file, not a narrowed desktop file.
+- **Gestures:** pinch / ctrl+wheel zooms around the cursor; plain wheel and drag on empty stage pan. Over a frame, the injected runtime forwards wheel/pinch as a typed message; scroll boxes inside a design scroll first, and the wheel is forwarded only when nothing under the cursor can scroll that way. Frames stay clickable; no transparent overlay.
+- **Messages (frame -> chrome, untrusted, allowlisted by type):** `cd:frame-height` `{ height }` (debounced, clamped to 20000px); `cd:frame-wheel` `{ deltaX, deltaY, ctrlKey, x, y }` (frame-local x/y), replacing 6a's `canvas:wheel`. Chrome -> frame: none planned.
+- **Active artboard:** still exactly one. Every artboard file is a frame on the stage; the active one carries the badge, a stage highlight, and is what `set_active_artboard` sets. It is no longer the export target.
+- **Chrome UI:** frame label above each frame, one heading per `group`, zoom presets and fit-all in a toolbar, error tile for a broken frame. No frame list or sidebar.
+
+**0.2 out of scope:** Edit mode, layers, inspector, click-to-edit, dragging/resizing frames by hand, frame list or sidebar, comments, drawing, multiplayer, GrapesJS/Webstudio/page-builders, repo design-system import, writing canvas code to disk, strip-on-export.
 
 **v1 non-goals:** in-panel chat, `vscode.lm` / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP writing production app source.
 
@@ -49,27 +59,47 @@ No database. Gitignored workspace folder `.cursor-design/`.
 - `workspaceFolder` (string)
 - `updatedAt` (ISO timestamp)
 - `lastExport` (`exportId`, `artboardId`, `artboardHash`, `exportedAt`) or absent
+- 0.2 (6e): `lastExport.frames` (array of `{ artboardId, artboardHash }`), additive; manifest stays version 1 and the single-artboard fields stay for older readers.
 
-One active artboard. Panel always shows `activeArtboardId`. No gallery.
-
-### Artboard
+### Artboard (one per frame)
 
 - `artboards/<id>.html` - full HTML document (the pixels)
 - optional `artboards/<id>.meta.json` - `id`, `title`, `generation` (monotonic), `hash`, `viewport`, `updatedAt`
 
 `update_artboard` requires `baseGeneration` (or `baseHash`). Mismatch -> conflict; Agent re-reads then retries. MCP serializes writes per artboard id.
 
+### Canvas layout (`canvas.json`, 0.2, locked)
+
+- `version` (number, `1`)
+- `frames` (array of Frame)
+
+**Frame:**
+
+- `id` (string) - matches `artboards/<id>.html`
+- `label` (string) - chrome label above the frame
+- `x`, `y` (number) - stage position
+- `width` (number) - default 1280; `place_frame` clamps to 120-3840
+- `group` (string, optional) - frames sharing it get one chrome heading
+
+Height is never stored; it comes from the rendered content (`cd:frame-height`). A frame with no `canvas.json` entry is auto-placed right of the last frame with a 24px gap. Stage view (zoom, pan) is chrome state, persisted by chrome, not design data.
+
+### MCP additions (0.2, locked)
+
+- `place_frame({ id, x?, y?, width?, label?, group? })` - partial update of one frame in `canvas.json`; returns the full frame list.
+- `list_artboards` also returns layout, so the Agent can arrange frames without overlap.
+- `set_artboard` / `update_artboard` keep working per frame.
+
 ### Handoff
 
-- `handoff/<exportId>/` including `IMPLEMENT.md` (`artboardId`, `artboardHash`, `exportedAt`, `exportId`)
-- If active hash != last export hash -> `stale: true`; do not delete the old handoff
-- Also: `assets/`, stub `tokens.json`
+- Today (single artboard): `handoff/<exportId>/` with `index.html` (HTML+CSS+JS inline), `IMPLEMENT.md` (`artboardId`, `artboardHash`, `exportedAt`, `exportId`), stub `tokens.json`. `assets/` are referenced, not copied. Stale when active hash != last export hash. Old handoffs are never deleted.
+- 0.2 (6e, whole canvas): `handoff/<exportId>/` with `IMPLEMENT.md` (index: groups -> frames with label, width, id, hash), `canvas.html` (view-only: each frame's `index.html` in its own iframe at its stage position and width, with labels and group headings), `<group-slug>/<frame-id>/index.html` per frame (`ungrouped/` when no group; colliding slugs get a numeric suffix), `tokens.json`. Stale when any frame hash changed or a frame was added or removed since export.
+- Every exported `index.html` stays byte-equal to its disk HTML; canvas code never appears (asserted, not stripped). Frames are never merged into one document (their CSS/JS would collide).
 
 ## Tech stack
 
 - **Host** - TypeScript + esbuild Cursor/VS Code extension. `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
-- **Chrome** - Svelte 5 + Vite (no Kit). `var(--vscode-*)` tokens.
-- **Artboard** - nested iframe, `sandbox="allow-scripts"`. Parent never `eval`s artboard HTML.
+- **Chrome** - TS template-string document (`src/panel/artboardChromeHtml.ts`) through 0.2; Svelte 5 + Vite deferred. `var(--vscode-*)` tokens.
+- **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
 - **Tooling** - `pnpm`, oxlint, oxfmt. UI verify = F5 (`fixtures/dev-workspace`).
@@ -84,12 +114,11 @@ Not in v1. MIT open-source core. Paid kits only if traction, later.
 
 Panel-only. Chat stays in Cursor Agent.
 
-- **Open Artboard** - empty or active artboard chrome + iframe
+- **Open Artboard** - panel chrome + stage (0.2) or the empty state
 - Chrome badges - active id, generation, handoff stale, MCP unavailable (still render disk)
 - **Reveal Design Folder** / **Export Handoff**
 - Artboard HTML is user/Agent content, not chrome-themed
-- Variants = new ids + `set_active_artboard`, not a gallery
-- 0.2: default Interact mode (no Edit chrome); clip well + zoom menu; zoom scales the artboard iframe inside the well; artboard iframe is null-origin blob, so chrome accepts only allowlisted message `type`s
+- 0.2: default Interact mode (no Edit chrome); stage with labeled frames and group headings; toolbar with zoom presets and fit-all; error tile per broken frame; no frame list
 
 ## Deployment
 

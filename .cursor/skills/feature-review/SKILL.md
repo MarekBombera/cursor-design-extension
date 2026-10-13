@@ -1,9 +1,9 @@
 ---
 name: feature-review
-description: Dual-subagent review of the active current-feature.md spec for bugs, edge cases, security, and plan correctness, then fix the spec in place. Use for /feature-review, reviewing the current feature spec, or pre-implementation spec review.
+description: Dual-subagent review of the active current-feature.md spec for bugs, edge cases, security, and plan correctness. Writes both full reports to feature-review.md and stops. Use for /feature-review or pre-implementation spec review. Does not rewrite the spec.
 ---
 
-# feature-review - two models review the spec, main fixes it
+# feature-review - two Grok 4.6 reviewers (Breaker + Literalist), then stop
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
@@ -11,20 +11,21 @@ description: Dual-subagent review of the active current-feature.md spec for bugs
 
 Where this sits in the workflow:
 
-    /feature or /fix  ->  [feature-review]  ->  /implement
-    (spec exists)         (dual review +      (build the fixed
-                           fix the spec)       spec)
+    /feature or /fix  ->  [feature-review]  ->  /feature-review-fix  ->  /implement
+    (spec exists)         (two Grok reviews,    (Claude is judge:        (build the
+                           write reports,        research, push back,     fixed spec)
+                           STOP)                 rewrite spec)
 
-This skill reviews the spec itself: `blueprint/context/current-feature.md`. It never reviews code (`/audit` does that) and never implements. Two isolated subagents — Muse Spark and Grok — review in parallel through the same four lenses. The main agent merges both reports and rewrites the spec once, deciding any clash itself.
+This skill reviews the spec itself: `blueprint/context/current-feature.md`. It never reviews code (`/audit` does that), never rewrites the spec (`/feature-review-fix` is the judge), and never implements. Two isolated Grok 4.6 subagents — Breaker and Literalist — review in parallel through the same four lenses. After both reports validate, this skill writes them in full to `blueprint/context/feature-review.md` and stops. Two same-model reviewers still disagree usefully: Breaker hunts breakage; Literalist hunts Opus-implementer ambiguity.
 
 ## Step 0 - preflight (fail fast)
 
 1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/doctor`.
-2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature` or `/fix`. Never review an empty spec.
-3. Require both reviewer files with the expected models:
-   - `.cursor/agents/feature-review-spark.md` with a `model:` line for `muse-spark-1.3`
-   - `.cursor/agents/feature-review-grok.md` with a `model:` line for `grok-4.6`
-   A missing file or a `model:` line pointing elsewhere stops the command: explain exactly which file and line, make no spec edit. Runtimes without these subagents stop here too — never silently downgrade to a single-pass self-review.
+2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature`, `/fix`, or `/rollback`. Never review an empty spec.
+3. Require both reviewer files, each with a `model:` line containing `grok-4.6`:
+   - `.cursor/agents/feature-review-breaker.md`
+   - `.cursor/agents/feature-review-literalist.md`
+   A missing file or a `model:` line pointing elsewhere stops the command: explain exactly which file and line, make no packet write. Runtimes without these subagents stop here too — never silently downgrade to a single-pass self-review.
 
 ## Step 1 - gather the packet
 
@@ -41,44 +42,106 @@ Do not read source, findings, review records, or history. This review judges the
 
 ## Step 2 - spawn both reviewers in parallel
 
-One message, two subagent calls, foreground blocking. Pass the exact file paths from Step 1 to both. Do not summarize the spec for them — each reviewer reads the raw files with its own tools for an independent read.
+One message, two subagent calls, foreground blocking. Pass the exact file paths from Step 1 to both. Do not summarize the spec for them — each reviewer reads the raw files with its own tools for an independent read. When the runtime allows a model override, pass `cursor-grok-4.6-xhigh-fast` for both (that is the xhigh 4.6 fast slug).
 
-- `/feature-review-spark`: review the spec through your four lenses, return your report contract.
-- `/feature-review-grok`: review the spec through your four lenses, return your report contract.
+- `/feature-review-breaker`: review the spec through your four lenses, return your report contract.
+- `/feature-review-literalist`: review the spec through your four lenses, return your report contract.
 
 ## Step 3 - validate both reports (fail fast)
 
 Each report must contain all five sections: `Model`, `Verdict`, `Findings`, `Nits`, `Not reviewed`.
 
-- Spawn error, timeout, or missing/malformed report from either reviewer: stop immediately, make no spec edit, and shortly explain what went wrong and which reviewer failed.
-- `Model` must contain the expected base id (`muse-spark-1.3` for Spark, `grok-4.6` for Grok). An explicitly different model means Cursor silently fell back: stop, make no spec edit, explain the fallback and the likely cause (plan limits, team block, Max Mode). The exact value `unknown (runtime did not expose exact model)` is not a mismatch: continue and mark the review `model unverified` in the final report.
-- Never merge a single report. Never fix the spec from a partial review.
+- Spawn error, timeout, or missing/malformed report from either reviewer: stop immediately, write no packet, and shortly explain what went wrong and which reviewer failed.
+- `Model` must contain `grok-4.6` for both. An explicitly different family (e.g. muse-spark, or grok-4.7 as the only id with no grok-4.6) is a fallback: stop, write no packet, explain the fallback and the likely cause (plan limits, team block, Max Mode). The exact value `unknown (runtime did not expose exact model)` is not a mismatch: continue and mark the review `model unverified` in the final report.
+- Never persist a single report. Never rewrite the spec from this skill.
 
-## Step 4 - merge and fix the spec
+## Step 4 - write both full reports
 
-Consider both reports in full. Then rewrite `blueprint/context/current-feature.md` once: draft and merge in context, write once, a later write only for a mechanical correction.
+Write `blueprint/context/feature-review.md` once, with both reports in full — not summaries. Keep these headings stable so `/feature-review-fix` can parse them.
 
-- Apply agreed findings and all nits.
-- On a clash, re-read both claims against the packet, decide, apply the winner. Record each clash in the final chat report as: both claims, the winner, one line why. Do not add a decisions ledger to the spec.
-- Keep the spec's canonical headings and branch/attempt identity intact. Never broaden scope, invent contracts, or pull in later features to satisfy a finding — put genuinely unresolved product choices under `Open questions`.
+Canonical shape:
+
+```markdown
+# Feature Review
+
+> **Generated file.** Dual-reviewer packet for the active spec. Written by
+> `/feature-review` after both Breaker and Literalist reports validate. Consumed
+> by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
+> `/complete` like other current-* files.
+
+**Title:** <first heading of the spec, without the leading #>
+**From build-plan:** <copied when the spec has this field>
+**Build attempt:** <copied when the spec has this field>
+**Branch:** <copied when the spec has this field>
+**Type:** <copied when the spec has this field>
+
+## Breaker
+
+### Model
+
+<verbatim Model value>
+
+### Verdict
+
+<verbatim Verdict value>
+
+### Findings
+
+<verbatim Findings body>
+
+### Nits
+
+<verbatim Nits body>
+
+### Not reviewed
+
+<verbatim Not reviewed body>
+
+## Literalist
+
+### Model
+
+<verbatim Model value>
+
+### Verdict
+
+<verbatim Verdict value>
+
+### Findings
+
+<verbatim Findings body>
+
+### Nits
+
+<verbatim Nits body>
+
+### Not reviewed
+
+<verbatim Not reviewed body>
+```
+
+Copy feature identity from the spec header. Omit `From build-plan`, `Build attempt`, `Branch`, or `Type` when the spec does not have that field. Do not invent ids.
+
+Paste each reviewer's five sections verbatim under the matching `###` heading. Do not summarize, merge, rank, or drop a finding or nit. If a section is empty, keep the heading and the reviewer's empty text (`none`, `_none_`, or an empty list).
+
+Do not invent a findings ledger here (`findings.md` stays for `/audit`). Do not rewrite `current-feature.md` or `current-feature-overview.md`.
 
 ## Step 5 - report
 
-Set activity to `ready` (spec fixed, awaiting `/implement`) and report, scannable:
+Set activity to `ready` (reports written, awaiting `/feature-review-fix`) and report, scannable:
 
 - Both verdicts and models (or `model unverified`)
-- Fixes applied, grouped by lens (bugs, edge cases, security, correctness), with spec sections
-- Clash decisions: claims, winner, why
-- Nits applied (count + sections, no full dump)
-- Anything neither reviewer covered
-- Next action: `/implement`, or the `/fix`/decision if the review surfaced a blocker
+- Packet path: `blueprint/context/feature-review.md`
+- Next action: `/feature-review-fix`
+
+Do not decide clashes, accept or reject findings, or rewrite the spec. That is `/feature-review-fix`.
 
 ## Rules
 
-- This skill writes only `blueprint/context/current-feature.md` (Step 4) plus the dashboard activity record. Never edit source, tests, config, findings, or review records. Never commit, branch, merge, or implement.
-- Fail fast, always: any reviewer failure stops the command with a short explanation and no spec edit.
+- This skill writes the dashboard activity record plus `blueprint/context/feature-review.md`. Never edit source, tests, config, findings, review records, `current-feature.md`, or `current-feature-overview.md`. Never commit, branch, merge, or implement.
+- Fail fast, always: any reviewer failure stops the command with a short explanation and no packet write.
 - Two reports or nothing. A silent single-pass is a bug in this skill, not a fallback.
-- Findings first. Ground P0/P1 fixes in a spec quote or a named missing contract.
+- Findings first. Ground P0/P1 in a spec quote or a named missing contract — that is the reviewers' job; this skill only persists what they returned.
 - Respect existing project patterns over generic advice.
 
 ## Formatting

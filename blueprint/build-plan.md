@@ -10,11 +10,14 @@ Ordered MVP phases from Notion section 12 and `.cursor/rules/01-phase-protocol.m
 - [x] 4. **Phase 3 Export** - `export_artboard` + `handoff_status` stale mark; `IMPLEMENT.md` usable for Vite + plain HTML sample
 - [x] 5. **Phase 4 Release polish** - MIT, honest limits
 
-## 0.2 Interact
+## 0.2 Multi-frame canvas
 
-From the Notion 0.2 page: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
+From the Notion 0.2 page (rewritten 2026-10-13): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 
-- [ ] 6. **0.2 Interact canvas** - pan/zoom the live artboard; Interact is the default; disk and export HTML stay pristine
-  - [x] 6a. **Blob inject** - clip well + CSSOM `translate/scale` on the host iframe (origin `0 0`); gesture-forwarding runtime + chrome CSP nonce injected only at blob-build; pinch / ctrl+wheel forwarded as an allowlisted typed message; chrome zooms from the top-left within 50–200%; `data-cd-*` only; export/handoff asserts no inject junk (no strip)
-  - [ ] 6b. **Gestures + zoom math** - zoom around the cursor; plain wheel pans only when the artboard cannot scroll that way (nested-scroll walk in runtime); clamps; unit tests for zoom math, clamps, nested-scroll walk
-  - [ ] 6c. **Host zoom chrome** - zoom menu (50–200%); ready-handshake; chrome-persisted zoom survives refresh; empty/error disables menu; F5 dogfood at 50%/100%
+- [ ] 6. **0.2 Multi-frame canvas** - Figma-style stage in the panel holding many fixed-width, full-height frames; Interact is the default; disk and export HTML stay pristine
+  - [x] 6a. **Blob inject** - clip well + CSSOM `translate/scale` on the host iframe (origin `0 0`); gesture-forwarding runtime + chrome CSP nonce injected only at blob-build; pinch / ctrl+wheel forwarded as an allowlisted typed message; chrome zooms from the top-left within 50–200%; `data-cd-*` only; export/handoff asserts no inject junk (no strip). Shipped under the earlier single-frame plan; its nonce injection, typed allowlist, clean-export assert, `data-cd-*` prefix, and transform code carry forward (transform moves from the iframe to the stage).
+  - [ ] 6b. **Contract** - `canvas.json` read/write + `place_frame`; `list_artboards` returns layout; geometry module + unit tests (zoom, clamps, fit-all, screen-to-stage)
+  - [ ] 6c. **Stage** - pinch/ctrl+wheel zoom at cursor, wheel + empty-drag pan, presets, fit-all, persisted view
+  - [ ] 6d. **Frames** - one blob iframe per frame at fixed width, full height via `cd:frame-height`, frames forward wheel/pinch to the stage, labels + group headings, error tiles
+  - [ ] 6e. **Canvas export** - `export_artboard` exports every frame: one `handoff/<exportId>/` with `<group-slug>/<frame-id>/index.html` (ungrouped frames under `ungrouped/`), one `IMPLEMENT.md` index, a view-only `canvas.html` preview of the layout; `manifest.lastExport.frames`; `handoff_status` stale when any frame changed, was added, or was removed
+  - [ ] 6f. **Verify** - F5 dogfood with a desktop page, a mobile page and two section frames on one canvas; export clean

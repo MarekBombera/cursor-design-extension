@@ -13,9 +13,9 @@ contract in `AGENTS.md`.
 
 Where this sits in the workflow:
 
-    /fix  ->  /implement  ->  /complete  ->  back to your features
-    (spec     (build it,      (log to blueprint/history/fixes/
-     the fix)  reviewed)       + merge)
+    /fix  ->  /feature-review  ->  /feature-review-fix  ->  /implement  ->  /complete
+    (spec     (two Grok reviews,    (judge rewrites         (build it,      (log + merge)
+     the fix)  write reports)        the spec)               reviewed)
 
 A fix is a bug or small change that isn't a planned build-plan feature. It runs
 through the same loop as a feature (build with review gates, iterate, then merge);
@@ -55,19 +55,25 @@ lighter than a feature spec:
   big to read. Each ends with an observable "done when".
 - **Verify** - how to confirm it's fixed (what to click or test).
 
-Alongside the spec write, reset `blueprint/context/current-feature-overview.md`
-to exactly this stub, creating the file when it does not exist yet:
+After that spec write, write `blueprint/context/current-feature-overview.md` as
+the trimmed readable version of the fix spec (same banner, sections, and
+constraints as `/feature`). A brief stub mid-command is allowed if needed; the
+handoff must leave a real overview, never the empty placeholder.
 
-    # Current Feature Overview
+Also reset `blueprint/context/feature-review.md` to exactly the canonical stub
+below. Do not paraphrase it. A leftover dual-review packet must not follow the
+new spec:
 
-    > **Generated file.** Human-facing steering summary of the active work item:
-    > what it does, what you will see, data flow, key decisions, and diagrams.
-    > Starting skills reset this file; `/complete` writes the finished summary.
-    > Open in Markdown preview to render the diagrams.
+    # Feature Review
 
-    _Summary lands here at `/complete`._
+    > **Generated file.** Dual-reviewer packet for the active spec. Written by
+    > `/feature-review` after both Breaker and Literalist reports validate. Consumed
+    > by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
+    > `/complete` like other current-* files.
 
-Then stop. Tell the user to review the fix spec, then run `/implement` to build it.
+    _No review in flight. Run `/feature-review` after `/feature`, `/fix`, or `/rollback` has written a spec._
+
+Then stop. Next: `/feature-review`, then `/feature-review-fix`, then `/implement`.
 
 ## Rules
 

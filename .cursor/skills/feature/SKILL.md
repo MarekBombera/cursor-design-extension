@@ -7,8 +7,11 @@ description: Turn the next, named, or numbered build-plan feature into a buildab
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
-This skill plans one feature and stops before implementation. Its output is
-`blueprint/context/current-feature.md`.
+This skill plans one feature and stops before implementation. Its outputs are
+`blueprint/context/current-feature.md` (the build spec) and
+`blueprint/context/current-feature-overview.md` (the trimmed human-readable
+version of that spec). Starting new work also resets
+`blueprint/context/feature-review.md` to the empty packet stub.
 
 ## Start
 
@@ -22,6 +25,19 @@ configuration stops mutating work and points to `/doctor`.
 
 Confirm that `blueprint/context/current-feature.md` is the empty stub. If it
 contains active work, stop and direct the user to resume or complete it.
+
+After that confirm, reset `blueprint/context/feature-review.md` to exactly the
+canonical stub below. Do not paraphrase it. A leftover dual-review packet must
+not follow the new spec:
+
+    # Feature Review
+
+    > **Generated file.** Dual-reviewer packet for the active spec. Written by
+    > `/feature-review` after both Breaker and Literalist reports validate. Consumed
+    > by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
+    > `/complete` like other current-* files.
+
+    _No review in flight. Run `/feature-review` after `/feature`, `/fix`, or `/rollback` has written a spec._
 
 Resolve the target from `blueprint/build-plan.md`:
 
@@ -125,17 +141,28 @@ Then use these section headings:
 - Notes for the AI
 - Open questions, only when a product decision remains unresolved
 
-Alongside the spec write, reset `blueprint/context/current-feature-overview.md`
-to exactly this stub, creating the file when it does not exist yet:
+After that single spec write, write `blueprint/context/current-feature-overview.md`
+as the human-readable steering page of **that** spec — same content, trimmed.
+A brief stub mid-command is allowed if needed; the review handoff must leave a
+real overview, never the empty placeholder. `/complete` may polish this file
+later; it is not the first write.
 
-    # Current Feature Overview
+Keep the generated-file banner, with copy that it is written at `/feature` (and
+kept current if the spec is revised), not delayed until `/complete`:
 
     > **Generated file.** Human-facing steering summary of the active work item:
-    > what it does, what you will see, data flow, key decisions, and diagrams.
-    > Starting skills reset this file; `/complete` writes the finished summary.
+    > same content as `current-feature.md`, trimmed. Written at `/feature` when the
+    > spec is created, and kept current if the spec is revised. `/complete` may
+    > polish this into the archive-ready one-pager; it is not the first write.
     > Open in Markdown preview to render the diagrams.
 
-    _Summary lands here at `/complete`._
+Sections (omit any that do not apply): short Goal, what you will see, in/out of
+scope in one glance, data flow (mermaid ok), locked decisions, open questions if
+the spec has them, F5/try notes if the spec has them. Readable, TLDR, no
+agent-only implementation minutiae (file:line, Done when checklists, string-level
+test asserts). Do not invent contracts the spec does not have. Source of truth
+is `blueprint/context/current-feature.md` until `/complete` points it at the
+archive.
 
 Build steps are ordered checklist items. Each step must leave the project
 working, stay small enough to review, and end with a concrete `Done when` that
@@ -195,6 +222,7 @@ If a prerequisite is absent, incomplete, untracked, or unverified, say which one
 the evidence shows. Do not bury repair inside this feature. Stop with the exact
 `/fix` or user decision required.
 
-Otherwise write the tightened spec, update activity to `ready`, and stop for
-review. Lead with a short note naming what the critique changed, or say that it
-found no material change. Never implement from this skill.
+Otherwise write the tightened spec, update activity to `ready`, and stop. Next:
+`/feature-review`, then `/feature-review-fix`, then `/implement`. Lead with a
+short note naming what the critique changed, or say that it found no material
+change. Never implement from this skill.
