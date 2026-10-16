@@ -4,8 +4,8 @@
 // of the template literal that inlines it or close the chrome script element.
 // View { x, y, zoom } maps stage px to screen px: screen = stage * zoom + (x, y), which is
 // CSS translate(x, y) scale(zoom) with transform-origin 0 0.
-export const STAGE_GEOMETRY_SOURCE = `const MIN_STAGE_ZOOM = 0.1;
-const MAX_STAGE_ZOOM = 4;
+export const STAGE_GEOMETRY_SOURCE = `const MIN_STAGE_ZOOM = 0.05;
+const MAX_STAGE_ZOOM = 10;
 const ZOOM_STEP_CAP = 0.2;
 const ZOOM_SENSITIVITY = 0.01;
 const FIT_PADDING = 48;
@@ -26,19 +26,28 @@ const screenToStage = ({ view, screenX, screenY }) => ({
 	y: (screenY - view.y) / view.zoom,
 });
 
-const zoomStageAt = ({ view, deltaY, screenX, screenY }) => {
+const zoomStageTo = ({ view, zoom: targetZoom, screenX, screenY }) => {
 	const fromZoom = clampStageZoom({ zoom: view.zoom });
-	const step = clampNumber({
-		value: -deltaY * ZOOM_SENSITIVITY,
-		min: -ZOOM_STEP_CAP,
-		max: ZOOM_STEP_CAP,
-	});
-	const zoom = clampStageZoom({ zoom: fromZoom * Math.exp(step) });
+	const zoom = clampStageZoom({ zoom: targetZoom });
 	return {
 		x: screenX - ((screenX - view.x) * zoom) / fromZoom,
 		y: screenY - ((screenY - view.y) * zoom) / fromZoom,
 		zoom,
 	};
+};
+
+const zoomStageAt = ({ view, deltaY, screenX, screenY }) => {
+	const step = clampNumber({
+		value: -deltaY * ZOOM_SENSITIVITY,
+		min: -ZOOM_STEP_CAP,
+		max: ZOOM_STEP_CAP,
+	});
+	return zoomStageTo({
+		view,
+		zoom: clampStageZoom({ zoom: view.zoom }) * Math.exp(step),
+		screenX,
+		screenY,
+	});
 };
 
 const panStage = ({ view, deltaX, deltaY }) => ({

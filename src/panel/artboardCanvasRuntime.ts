@@ -14,7 +14,15 @@ export const ARTBOARD_CANVAS_RUNTIME_SOURCE = `(() => {
 				return;
 			}
 			event.preventDefault();
-			host.postMessage({ type: ${JSON.stringify(CANVAS_WHEEL_MESSAGE)}, deltaY: event.deltaY }, '*');
+			host.postMessage(
+				{
+					type: ${JSON.stringify(CANVAS_WHEEL_MESSAGE)},
+					deltaY: event.deltaY,
+					clientX: event.clientX,
+					clientY: event.clientY,
+				},
+				'*',
+			);
 		},
 		{ passive: false, capture: true },
 	);

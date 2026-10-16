@@ -14,6 +14,7 @@ type StageGeometry = {
 	stageToScreen: (args: { view: View; stageX: number; stageY: number }) => Point;
 	screenToStage: (args: { view: View; screenX: number; screenY: number }) => Point;
 	zoomStageAt: (args: { view: View; deltaY: number; screenX: number; screenY: number }) => View;
+	zoomStageTo: (args: { view: View; zoom: number; screenX: number; screenY: number }) => View;
 	panStage: (args: { view: View; deltaX: number; deltaY: number }) => View;
 	frameBounds: (args: { frames: Rect[] }) => Rect | null;
 	clampStageView: (args: {
@@ -31,7 +32,7 @@ type StageGeometry = {
 
 // Evaluates the exact shipped string; a fresh context has its own Math and nothing else.
 const geometry = runInNewContext(
-	`${STAGE_GEOMETRY_SOURCE}\n;({ MIN_STAGE_ZOOM, MAX_STAGE_ZOOM, stageToScreen, screenToStage, zoomStageAt, panStage, frameBounds, clampStageView, fitStageView })`,
+	`${STAGE_GEOMETRY_SOURCE}\n;({ MIN_STAGE_ZOOM, MAX_STAGE_ZOOM, stageToScreen, screenToStage, zoomStageAt, zoomStageTo, panStage, frameBounds, clampStageView, fitStageView })`,
 ) as StageGeometry;
 
 const TOLERANCE = 1e-9;
@@ -77,22 +78,63 @@ test('one zoom step is capped', () => {
 });
 
 test('zoom clamps exactly at the minimum and maximum', () => {
-	assert.equal(geometry.MIN_STAGE_ZOOM, 0.1);
-	assert.equal(geometry.MAX_STAGE_ZOOM, 4);
+	assert.equal(geometry.MIN_STAGE_ZOOM, 0.05);
+	assert.equal(geometry.MAX_STAGE_ZOOM, 10);
 	const atMin = geometry.zoomStageAt({
-		view: { x: 0, y: 0, zoom: 0.1 },
+		view: { x: 0, y: 0, zoom: 0.05 },
 		deltaY: 100,
 		screenX: 0,
 		screenY: 0,
 	});
 	const atMax = geometry.zoomStageAt({
-		view: { x: 0, y: 0, zoom: 4 },
+		view: { x: 0, y: 0, zoom: 10 },
 		deltaY: -100,
 		screenX: 0,
 		screenY: 0,
 	});
-	assert.equal(atMin.zoom, 0.1);
-	assert.equal(atMax.zoom, 4);
+	assert.equal(atMin.zoom, 0.05);
+	assert.equal(atMax.zoom, 10);
+});
+
+test('zoomStageTo keeps the screen anchor fixed at the target zoom', () => {
+	const zoomed = geometry.zoomStageTo({
+		view: { x: 100, y: 50, zoom: 1 },
+		zoom: 2,
+		screenX: 300,
+		screenY: 200,
+	});
+	assert.equal(zoomed.x, -100);
+	assert.equal(zoomed.y, -100);
+	assert.equal(zoomed.zoom, 2);
+});
+
+test('zoomStageTo clamps the target zoom at both ends', () => {
+	const view = { x: 0, y: 0, zoom: 1 };
+	assertClose(geometry.zoomStageTo({ view, zoom: 0.01, screenX: 0, screenY: 0 }), {
+		x: 0,
+		y: 0,
+		zoom: 0.05,
+	});
+	assertClose(geometry.zoomStageTo({ view, zoom: 50, screenX: 0, screenY: 0 }), {
+		x: 0,
+		y: 0,
+		zoom: 10,
+	});
+	assertClose(geometry.zoomStageTo({ view, zoom: 50, screenX: 100, screenY: 40 }), {
+		x: 100 - 100 * 10,
+		y: 40 - 40 * 10,
+		zoom: 10,
+	});
+});
+
+test('zoomStageTo from a zero zoom yields a finite view', () => {
+	const zoomed = geometry.zoomStageTo({
+		view: { x: 10, y: 20, zoom: 0 },
+		zoom: 2,
+		screenX: 100,
+		screenY: 100,
+	});
+	assertClose(zoomed, { x: 100 - 90 * 40, y: 100 - 80 * 40, zoom: 2 });
 });
 
 test('the stage point under the cursor stays under it while zooming', () => {
@@ -114,7 +156,7 @@ test('a zero input zoom still yields a finite view', () => {
 		screenY: 100,
 	});
 	assert.ok(Number.isFinite(zoomed.x) && Number.isFinite(zoomed.y));
-	assert.ok(zoomed.zoom >= 0.1);
+	assert.ok(zoomed.zoom >= 0.05);
 });
 
 test('pan moves the view against the wheel delta and keeps zoom', () => {
@@ -201,12 +243,12 @@ test('clamp in a 30x30 viewport keeps 30px visible', () => {
 test('clamp with null bounds only clamps zoom', () => {
 	assertClose(
 		geometry.clampStageView({
-			view: { x: 999, y: -999, zoom: 10 },
+			view: { x: 999, y: -999, zoom: 50 },
 			bounds: null,
 			viewportWidth: 800,
 			viewportHeight: 600,
 		}),
-		{ x: 999, y: -999, zoom: 4 },
+		{ x: 999, y: -999, zoom: 10 },
 	);
 });
 
