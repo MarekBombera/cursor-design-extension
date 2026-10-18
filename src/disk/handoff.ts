@@ -124,7 +124,7 @@ ${fileLines.join('\n')}
 1. Call \`handoff_status\` first. If \`stale\` is true, call \`export_artboard\` again (it exports the whole canvas) before implementing.
 2. If MCP is unavailable, compare each frame's \`hash\` above with \`${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR}/<id>.meta.json\` \`hash\`, and the frame list with \`${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR}/*.html\`. On any difference, re-export, or ask the user to run **Export Handoff**.
 3. Implement each frame from its own \`${HANDOFF_INDEX_FILE}\` (HTML+CSS+JS inline), not from screenshots or \`${CANVAS_PREVIEW_FILE}\`.
-4. Frames are separate documents. Never merge their CSS or JS into one document. Each frame's \`width\` is the viewport it was designed at.
+4. Each frame is a complete design at its \`width\`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same \`group\`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on \`body\`.
 5. Target the user's app entry files. Never copy \`${CURSOR_DESIGN_DIR}/\` into the app.
 6. Keep semantic structure, classes, and behavior.
 7. Assets referenced as \`assets/...\` resolve against \`${CURSOR_DESIGN_DIR}/assets/\`. Copy them manually.

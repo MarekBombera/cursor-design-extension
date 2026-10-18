@@ -208,6 +208,24 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 	}
 	assert.ok(markdown.includes('- canvas.html - view-only preview'));
 	assert.ok(markdown.includes('call `export_artboard` again (it exports the whole canvas)'));
+	const instructionsStart = markdown.indexOf('## Instructions\n');
+	assert.ok(instructionsStart >= 0);
+	assert.equal(
+		markdown.slice(instructionsStart),
+		[
+			'## Instructions',
+			'',
+			'1. Call `handoff_status` first. If `stale` is true, call `export_artboard` again (it exports the whole canvas) before implementing.',
+			'2. If MCP is unavailable, compare each frame\'s `hash` above with `.cursor-design/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.',
+			'3. Implement each frame from its own `index.html` (HTML+CSS+JS inline), not from screenshots or `canvas.html`.',
+			'4. Each frame is a complete design at its `width`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same `group`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame\'s CSS and JS side by side, and keep each frame\'s classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame\'s width on `body`.',
+			'5. Target the user\'s app entry files. Never copy `.cursor-design/` into the app.',
+			'6. Keep semantic structure, classes, and behavior.',
+			'7. Assets referenced as `assets/...` resolve against `.cursor-design/assets/`. Copy them manually.',
+			'',
+		].join('\n'),
+	);
+	assert.ok(!markdown.includes('Never merge their CSS or JS'));
 });
 
 test('compareCanvasHandoff covers never exported, unchanged, changed, added, removed, unreadable, order', () => {
