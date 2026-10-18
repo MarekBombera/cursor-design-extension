@@ -15,10 +15,10 @@
 **Suggested fix:** Record the symlink layout as an intended local customization (for example a note in `AGENTS.md` or the doctor skill telling update tooling to target `.cursor` once), or refresh the manifest through the Blueprint updater rather than by hand. No product code change.
 **Resolution:**
 
-### F-12 [P3] open - README export trial still names the 0.1 handoff tree
+### F-12 [P3] fixed - README export trial still names the 0.1 handoff tree
 
 **File:** README.md:76
 **Found:** 2026-10-18 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** The Commands list now says Export Handoff writes every frame, but the trial still tells the reader to confirm `.cursor-design/handoff/<exportId>/{index.html,IMPLEMENT.md,tokens.json}`. Canvas export no longer writes a root `index.html`; it writes `canvas.html` plus `<group>/<id>/index.html`. Someone following the trial looks for a file that is not there.
 **Suggested fix:** Point step 3 at `IMPLEMENT.md`, `canvas.html`, `tokens.json`, and one `<group>/<id>/index.html`, plus `lastExport.frames`.
-**Resolution:**
+**Resolution:** Fixed 2026-10-18 by fix `readme-canvas-export-trial`: trial step 3 now names `IMPLEMENT.md`, `canvas.html`, `tokens.json`, `<group-folder>/<frame-id>/index.html` and `lastExport.frames`; Limits lines for one-active-artboard and single `index.html` updated. Awaiting /audit closure.

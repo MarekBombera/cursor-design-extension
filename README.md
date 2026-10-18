@@ -72,15 +72,17 @@ Workflow overlay: [AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint) 
 F5 in the Extension Development Host with `fixtures/dev-workspace` open:
 
 1. Command Palette → **Cursor Design: Open Artboard**. No handoff badge.
-2. Design a hero + CTA on the active artboard via Cursor Agent (`set_artboard` / `update_artboard`).
-3. Call `export_artboard` (or Command Palette → **Cursor Design: Export Handoff**). Confirm `.cursor-design/handoff/<exportId>/{index.html,IMPLEMENT.md,tokens.json}` and `manifest.json` `lastExport`. Badge still hidden.
-4. In a second Agent session, open `.cursor-design/handoff/<exportId>/IMPLEMENT.md` (from `manifest.json.lastExport.exportId`) and implement into `fixtures/dev-workspace/sample-app/index.html`. Do not copy `.cursor-design/` into the app.
-5. Edit `artboards/<id>.html` and save. Within ~200ms the panel badge shows `Handoff out of date. Re-export.`
+2. Design at least two frames via Cursor Agent (`set_artboard` / `update_artboard`), for example a desktop page and a mobile page, and lay them out with `place_frame` (with `group`).
+3. Call `export_artboard` (or Command Palette → **Cursor Design: Export Handoff**). Confirm `.cursor-design/handoff/<exportId>/` holds `IMPLEMENT.md`, `canvas.html`, `tokens.json`, and one `<group-folder>/<frame-id>/index.html` per frame, and that `manifest.json` `lastExport.frames` lists every frame. Badge still hidden. `canvas.html` opens in a browser as a view-only preview of the canvas.
+4. In a second Agent session, open `.cursor-design/handoff/<exportId>/IMPLEMENT.md` (from `manifest.json.lastExport.exportId`) and implement into `fixtures/dev-workspace/sample-app/`: one responsive page from the desktop and mobile variants. Do not copy `.cursor-design/` into the app.
+5. Edit any frame's `artboards/<id>.html` and save. Within ~200ms the panel badge shows `Handoff out of date. Re-export.`
 6. Re-export. Badge clears. The previous handoff directory stays on disk.
 
-Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace && pnpm dev` to view the implemented page. (`--ignore-workspace` is required because this repo has a root `pnpm-workspace.yaml`; without it, `pnpm install` no-ops and `vite` is missing.) Observed 2026-09-12: Vite 8.3.0 served `index.html` at `http://localhost:5173/` (`Implement the exported artboard here.`).
+Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace && pnpm dev` to view the implemented page. (`--ignore-workspace` is required because this repo has a root `pnpm-workspace.yaml`; without it, `pnpm install` no-ops and `vite` is missing.) 0.1 trial, observed 2026-09-12: Vite 8.3.0 served `index.html` at `http://localhost:5173/` (`Implement the exported artboard here.`).
 
-**Trial performed:** 2026-09-12 (live F5 pass, steps 2–6 green; 6 handoffs on disk, `stale:false`, Vite 200 with latest implement).
+**0.1 trial performed:** 2026-09-12 (live F5 pass, steps 2–6 green; 6 handoffs on disk, `stale:false`, Vite 200 with latest implement).
+
+**0.2 canvas trial:** 2026-10-18 (6f dogfood: four frames exported clean, responsive sample-app built from the handoff).
 
 ## Limits (v1)
 
@@ -89,10 +91,10 @@ Facts, not a roadmap. Drift vs the rules or overview is labeled.
 - Cursor only: MCP registration uses `vscode.cursor.mcp.registerServer`. In plain VS Code the server is not registered (warning in Output → Cursor Design); the panel still renders `.cursor-design/` from disk, with no Agent loop.
 - First workspace folder only; multi-root beyond the first folder is ignored (`revealDesignFolder.ts`, `handleOpenArtboard.ts` ponytail).
 - Untrusted workspaces unsupported (`capabilities.untrustedWorkspaces.supported: false`); artboard HTML is executable workspace content.
-- One active artboard, no gallery; variants are new ids + `set_active_artboard`.
+- One canvas per workspace folder; every artboard file is a frame on it. `set_active_artboard` still picks the frame that `read_artboard` and `handoff_status` default to.
 - Writes: one process-wide MCP queue (recorded drift vs rule 02 "Serialize writes per artboard id"; documented as-is, queue unchanged); host-vs-MCP manifest writes are last-writer-wins; no cross-window lock (`mcpQueue.ts`, `watchArtboardDisk.ts`, `artboardFs.ts` ponytails). Failed multi-file writes leave partial files (no journal/rollback); orphan handoff dirs are never deleted.
 - Artboard iframe: `sandbox="allow-scripts"`. CSP blocks inline event handlers, `style=""` attributes, and external subresources in the artboard (`artboardChromeHtml.ts` v1 limit).
-- Handoff carries the whole document in `index.html` (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.cursor-design/assets/` is copied manually; `tokens.json` is passed through without validation.
+- Each frame's `index.html` carries its whole document (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.cursor-design/assets/` is copied manually; `tokens.json` is passed through without validation.
 - Brain is Cursor Agent only: no in-panel chat, no model API keys, no `vscode.lm`.
 - Not on the Marketplace; install from `.vsix` (**Extensions: Install from VSIX…**).
 - Cursor MCP settings may show **0 tools** until the server is toggled off/on.
