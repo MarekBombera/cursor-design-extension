@@ -17,6 +17,18 @@ type StageGeometry = {
 	zoomStageTo: (args: { view: View; zoom: number; screenX: number; screenY: number }) => View;
 	panStage: (args: { view: View; deltaX: number; deltaY: number }) => View;
 	frameBounds: (args: { frames: Rect[] }) => Rect | null;
+	layoutCanvasChrome: (args: {
+		frames: Array<Rect & { id: string; group?: string }>;
+	}) => {
+		labels: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+		headings: Array<{ group: string; x: number; y: number; width: number; height: number }>;
+		bounds: Rect | null;
+	};
+	nextFrameHeight: (args: {
+		current: number;
+		reported: number;
+		state: { lastGrowth: number; frozen: boolean };
+	}) => { height: number; state: { lastGrowth: number; frozen: boolean } };
 	clampStageView: (args: {
 		view: View;
 		bounds: Rect | null;
@@ -32,10 +44,14 @@ type StageGeometry = {
 
 // Evaluates the exact shipped string; a fresh context has its own Math and nothing else.
 const geometry = runInNewContext(
-	`${STAGE_GEOMETRY_SOURCE}\n;({ MIN_STAGE_ZOOM, MAX_STAGE_ZOOM, stageToScreen, screenToStage, zoomStageAt, zoomStageTo, panStage, frameBounds, clampStageView, fitStageView })`,
+	`${STAGE_GEOMETRY_SOURCE}\n;({ MIN_STAGE_ZOOM, MAX_STAGE_ZOOM, stageToScreen, screenToStage, zoomStageAt, zoomStageTo, panStage, frameBounds, layoutCanvasChrome, nextFrameHeight, clampStageView, fitStageView })`,
 ) as StageGeometry;
 
 const TOLERANCE = 1e-9;
+
+const boxRect = (
+	box: { x: number; y: number; width: number; height: number } | undefined,
+): Rect | null => (box === undefined ? null : { x: box.x, y: box.y, width: box.width, height: box.height });
 
 // vm results come from another realm, so compare field by field instead of deepStrictEqual.
 const assertClose = (
@@ -167,6 +183,54 @@ test('pan moves the view against the wheel delta and keeps zoom', () => {
 	});
 });
 
+test('layoutCanvasChrome places labels, one heading per group, and includes them in bounds', () => {
+	const layout = geometry.layoutCanvasChrome({
+		frames: [
+			{ id: 'a', x: 0, y: 100, width: 1280, height: 800, group: 'Desktop' },
+			{ id: 'b', x: 1304, y: 100, width: 390, height: 800, group: 'Desktop' },
+			{ id: 'c', x: 0, y: 1000, width: 600, height: 400 },
+		],
+	});
+	assert.equal(layout.labels.length, 3);
+	assert.equal(layout.labels[0]?.id, 'a');
+	assertClose(boxRect(layout.labels[0]), { x: 0, y: 76, width: 1280, height: 24 });
+	assert.equal(layout.labels[1]?.id, 'b');
+	assertClose(boxRect(layout.labels[1]), { x: 1304, y: 76, width: 390, height: 24 });
+	assert.equal(layout.labels[2]?.id, 'c');
+	assertClose(boxRect(layout.labels[2]), { x: 0, y: 976, width: 600, height: 24 });
+	assert.equal(layout.headings.length, 1);
+	assert.equal(layout.headings[0]?.group, 'Desktop');
+	assertClose(boxRect(layout.headings[0]), { x: 0, y: 44, width: 1694, height: 32 });
+	assertClose(layout.bounds, { x: 0, y: 44, width: 1694, height: 1356 });
+});
+
+test('layoutCanvasChrome has no heading for ungrouped frames and null bounds for none', () => {
+	const ungrouped = geometry.layoutCanvasChrome({
+		frames: [{ id: 'solo', x: 10, y: 50, width: 100, height: 80 }],
+	});
+	assert.equal(ungrouped.headings.length, 0);
+	assert.equal(ungrouped.labels.length, 1);
+	assertClose(ungrouped.bounds, { x: 10, y: 26, width: 100, height: 104 });
+	const empty = geometry.layoutCanvasChrome({ frames: [] });
+	assert.equal(empty.bounds, null);
+	assert.equal(empty.labels.length, 0);
+	assert.equal(empty.headings.length, 0);
+});
+
+test('layoutCanvasChrome headings follow first-seen group order', () => {
+	const layout = geometry.layoutCanvasChrome({
+		frames: [
+			{ id: 'm', x: 0, y: 40, width: 100, height: 80, group: 'Mobile' },
+			{ id: 'd', x: 200, y: 10, width: 120, height: 80, group: 'Desktop' },
+		],
+	});
+	assert.equal(layout.headings.length, 2);
+	assert.equal(layout.headings[0]?.group, 'Mobile');
+	assert.equal(layout.headings[1]?.group, 'Desktop');
+	assertClose(boxRect(layout.headings[0]), { x: 0, y: -16, width: 100, height: 32 });
+	assertClose(boxRect(layout.headings[1]), { x: 200, y: -46, width: 120, height: 32 });
+});
+
 test('frame bounds are the union rect, or null for no frames', () => {
 	assertClose(
 		geometry.frameBounds({
@@ -296,6 +360,86 @@ test('fit returns the default view for empty, zero-size, or tiny inputs', () => 
 		}),
 		defaultView,
 	);
+});
+
+test('nextFrameHeight applies first report, shrink, growth, clamps, and freeze', () => {
+	const reset = { lastGrowth: 0, frozen: false };
+	const first = geometry.nextFrameHeight({ current: 800, reported: 1200, state: reset });
+	assert.equal(first.height, 1200);
+	assert.equal(first.state.lastGrowth, 400);
+	assert.equal(first.state.frozen, false);
+
+	const grown = geometry.nextFrameHeight({
+		current: 1200,
+		reported: 1500,
+		state: first.state,
+	});
+	assert.equal(grown.height, 1500);
+	assert.equal(grown.state.lastGrowth, 300);
+
+	const shrunk = geometry.nextFrameHeight({
+		current: 1500,
+		reported: 400,
+		state: grown.state,
+	});
+	assert.equal(shrunk.height, 400);
+	assert.equal(shrunk.state.lastGrowth, 0);
+	assert.equal(shrunk.state.frozen, false);
+
+	const ignored = geometry.nextFrameHeight({
+		current: 800,
+		reported: Number.POSITIVE_INFINITY,
+		state: reset,
+	});
+	assert.equal(ignored.height, 800);
+	assert.equal(ignored.state.lastGrowth, 0);
+	assert.equal(ignored.state.frozen, false);
+	assert.equal(
+		geometry.nextFrameHeight({ current: 800, reported: Number.NaN, state: reset }).height,
+		800,
+	);
+
+	assert.equal(geometry.nextFrameHeight({ current: 800, reported: 0, state: reset }).height, 1);
+	assert.equal(
+		geometry.nextFrameHeight({ current: 800, reported: 50000, state: reset }).height,
+		20000,
+	);
+
+	const bounce = geometry.nextFrameHeight({ current: 800, reported: 1800, state: reset });
+	const frozen = geometry.nextFrameHeight({
+		current: bounce.height,
+		reported: 2800,
+		state: bounce.state,
+	});
+	assert.equal(frozen.height, 1800);
+	assert.equal(frozen.state.frozen, true);
+	assert.equal(frozen.state.lastGrowth, 1000);
+
+	const shrinkFrozen = geometry.nextFrameHeight({
+		current: 1800,
+		reported: 500,
+		state: frozen.state,
+	});
+	assert.equal(shrinkFrozen.height, 500);
+	assert.equal(shrinkFrozen.state.frozen, true);
+	assert.equal(shrinkFrozen.state.lastGrowth, 0);
+
+	const blocked = geometry.nextFrameHeight({
+		current: 500,
+		reported: 900,
+		state: shrinkFrozen.state,
+	});
+	assert.equal(blocked.height, 500);
+	assert.equal(blocked.state.frozen, true);
+
+	const afterReset = geometry.nextFrameHeight({
+		current: 500,
+		reported: 900,
+		state: reset,
+	});
+	assert.equal(afterReset.height, 900);
+	assert.equal(afterReset.state.frozen, false);
+	assert.equal(afterReset.state.lastGrowth, 400);
 });
 
 test('source has no backtick, dollar-brace, or closing tag sequence', () => {

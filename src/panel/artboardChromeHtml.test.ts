@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import type * as vscode from 'vscode';
 
 import {
 	ARTBOARD_CANVAS_RUNTIME_SOURCE,
 	CANVAS_RUNTIME_ATTRIBUTE,
-	CANVAS_WHEEL_MESSAGE,
+	FRAME_HEIGHT_MESSAGE,
+	FRAME_WHEEL_MESSAGE,
 } from './artboardCanvasRuntime';
 import { buildArtboardChromeHtml, embedScriptSource } from './artboardChromeHtml';
 import { buildArtboardChromeScript } from './artboardChromeScript';
@@ -27,10 +30,11 @@ test('chrome document is complete and carries one CSP nonce everywhere', () => {
 	assert.ok(chrome.html.includes(`<script nonce="${chrome.cspNonce}">`));
 });
 
-test('chrome document keeps sandbox, single vscode api, and no remote resources', () => {
+test('chrome document has no static iframe, one vscode api, and no remote resources', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 
-	assert.ok(chrome.html.includes('<iframe id="artboard-frame" sandbox="allow-scripts"'));
+	assert.ok(!chrome.html.includes('id="artboard-frame"'));
+	assert.ok(chrome.html.includes('<div id="stage-layer"></div>'));
 	assert.equal(chrome.html.split('acquireVsCodeApi').length - 1, 1);
 	assert.ok(!chrome.html.includes('http:'));
 	assert.ok(chrome.html.includes('MCP unavailable. Artboard still loads from disk.'));
@@ -42,16 +46,17 @@ test('chrome script ignores nested-frame null origin', () => {
 	assert.ok(chrome.html.includes("event.origin === 'null'"));
 });
 
-test('chrome script hides the stage, disables the toolbar, and drops src on empty html', () => {
+test('chrome script hides the stage and disables the toolbar when there are no frames', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
-	const emptyIndex = chrome.html.indexOf('if (html.length === 0)');
-	const emptyBranch = chrome.html.slice(emptyIndex, chrome.html.indexOf('return;', emptyIndex));
+	const reconcileIndex = chrome.html.indexOf('const reconcileCanvasFrames');
+	const emptyIndex = chrome.html.indexOf('if (frameRecords.size === 0)', reconcileIndex);
 
-	assert.ok(emptyIndex >= 0);
-	assert.ok(emptyBranch.includes('stageViewport.hidden = true'));
-	assert.ok(emptyBranch.includes('zoomPreset.disabled = true'));
-	assert.ok(emptyBranch.includes('zoomFit.disabled = true'));
-	assert.ok(emptyBranch.includes("iframe.removeAttribute('src')"));
+	assert.ok(reconcileIndex >= 0);
+	assert.ok(emptyIndex > reconcileIndex);
+	assert.ok(emptyIndex < chrome.html.indexOf('applyEmptyStage();', emptyIndex) + 1);
+	assert.ok(chrome.html.includes('stageViewport.hidden = true'));
+	assert.ok(chrome.html.includes('zoomPreset.disabled = true'));
+	assert.ok(chrome.html.includes('zoomFit.disabled = true'));
 	assert.ok(!chrome.html.includes('artboardWell'));
 });
 
@@ -69,7 +74,8 @@ test('chrome script source cannot break out of the inline script element', () =>
 	const script = buildArtboardChromeScript({
 		embeddedCanvasRuntimeSource: embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE),
 		canvasRuntimeAttribute: CANVAS_RUNTIME_ATTRIBUTE,
-		canvasWheelMessage: CANVAS_WHEEL_MESSAGE,
+		frameHeightMessage: FRAME_HEIGHT_MESSAGE,
+		frameWheelMessage: FRAME_WHEEL_MESSAGE,
 		mcpUnavailableCopy: 'MCP unavailable. Artboard still loads from disk.',
 	});
 
@@ -85,15 +91,13 @@ test('embedScriptSource escapes every less-than', () => {
 	assert.ok(!embedded.includes('<'));
 });
 
-test('chrome nests the iframe in the stage layer and injects the canvas runtime once', () => {
+test('chrome starts with an empty stage layer and injects the canvas runtime once', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 	const viewportIndex = chrome.html.indexOf('<div id="stage-viewport" hidden>');
-	const layerIndex = chrome.html.indexOf('<div id="stage-layer">');
-	const iframeIndex = chrome.html.indexOf('<iframe id="artboard-frame" sandbox="allow-scripts"');
+	const layerIndex = chrome.html.indexOf('<div id="stage-layer"></div>');
 
 	assert.ok(viewportIndex >= 0);
-	assert.ok(viewportIndex < layerIndex);
-	assert.ok(layerIndex < iframeIndex);
+	assert.ok(layerIndex > viewportIndex);
 	assert.ok(chrome.html.includes(CANVAS_RUNTIME_ATTRIBUTE));
 	assert.ok(chrome.html.includes(embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE)));
 	assert.equal(chrome.html.split('<script nonce="').length - 1, 1);
@@ -149,14 +153,19 @@ test('chrome pans on plain wheel and zooms at the cursor on ctrl/meta wheel', ()
 	assert.ok(chrome.html.includes('event.clientY - viewportRect.top'));
 });
 
-test('chrome forwards frame zoom only with a finite cursor anchored at the frame origin', () => {
+test('chrome frame-wheel validates every field and passes raw deltas', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 
+	assert.ok(chrome.html.includes('Number.isFinite(data.deltaX)'));
 	assert.ok(chrome.html.includes('Number.isFinite(data.deltaY)'));
-	assert.ok(chrome.html.includes('Number.isFinite(data.clientX)'));
-	assert.ok(chrome.html.includes('Number.isFinite(data.clientY)'));
-	assert.ok(chrome.html.includes('screenX: stageView.x + data.clientX * stageView.zoom'));
-	assert.ok(chrome.html.includes('screenY: stageView.y + data.clientY * stageView.zoom'));
+	assert.ok(chrome.html.includes('Number.isFinite(data.x)'));
+	assert.ok(chrome.html.includes('Number.isFinite(data.y)'));
+	assert.ok(chrome.html.includes("typeof data.ctrlKey !== 'boolean'"));
+	assert.ok(chrome.html.includes('deltaY: data.deltaY'));
+	assert.ok(chrome.html.includes('screenX: stageView.x + (frame.x + data.x) * stageView.zoom'));
+	assert.ok(chrome.html.includes('screenY: stageView.y + (frame.y + data.y) * stageView.zoom'));
+	assert.ok(chrome.html.includes('deltaX: data.deltaX'));
+	assert.ok(chrome.html.includes('panStage({'));
 });
 
 test('chrome drags the empty stage with pointer capture in the pointer direction', () => {
@@ -206,26 +215,30 @@ test('chrome presets zoom around the viewport center and Fit all refits', () => 
 
 test('chrome routes iframe messages to canvas before the null-origin drop', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
-	const sourceCheckIndex = chrome.html.indexOf('event.source === iframe.contentWindow');
+	const sourceCheckIndex = chrome.html.indexOf('frameRecordForSource(event.source)');
 
 	assert.ok(sourceCheckIndex >= 0);
 	assert.ok(sourceCheckIndex < chrome.html.indexOf("event.origin === 'null'"));
+	assert.ok(chrome.html.includes('record.iframe.contentWindow === source'));
 });
 
-test('canvas runtime only forwards ctrl+wheel and never touches the artboard', () => {
-	for (const required of [
-		'passive: false',
-		'ctrlKey',
-		'metaKey',
-		'preventDefault',
-		'window.parent',
-		JSON.stringify(CANVAS_WHEEL_MESSAGE),
-		'clientX: event.clientX',
-		'clientY: event.clientY',
-	]) {
-		assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(required), required);
-	}
-	for (const forbidden of ['<', '.style', 'classList', 'data-dc-', 'sc-host', 'design_doc_mode']) {
+test('canvas runtime posts only frame height and wheel and never touches the artboard', () => {
+	const parentIndex = ARTBOARD_CANVAS_RUNTIME_SOURCE.indexOf('const host = window.parent');
+	assert.ok(parentIndex >= 0);
+	assert.ok(parentIndex < ARTBOARD_CANVAS_RUNTIME_SOURCE.indexOf('addEventListener'));
+	assert.ok(!ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('<'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(JSON.stringify(FRAME_HEIGHT_MESSAGE)));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(JSON.stringify(FRAME_WHEEL_MESSAGE)));
+	assert.equal(ARTBOARD_CANVAS_RUNTIME_SOURCE.split('host.postMessage').length - 1, 2);
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('parentElement'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('overflowY'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('overflowX'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes("'overlay'"));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('scrollHeight - 1 >'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('20000'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('x: event.clientX'));
+	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('y: event.clientY'));
+	for (const forbidden of ['.style', 'classList', 'setAttribute', 'data-dc-', 'sc-host', 'design_doc_mode']) {
 		assert.ok(!ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(forbidden), forbidden);
 	}
 });
@@ -235,4 +248,111 @@ test('each chrome document gets a fresh nonce', () => {
 	const second = buildArtboardChromeHtml(fakeWebview);
 
 	assert.notEqual(first.cspNonce, second.cspNonce);
+});
+
+test('canvas:updated replaces artboard:updated in host types and chrome', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const panelSource = readFileSync(join(process.cwd(), 'src/panel/openArtboardPanel.ts'), 'utf8');
+	const diskSource = readFileSync(join(process.cwd(), 'src/host/artboardDisk.ts'), 'utf8');
+
+	assert.ok(chrome.html.includes("data.type === 'canvas:updated'"));
+	assert.ok(!chrome.html.includes('artboard:updated'));
+	assert.ok(panelSource.includes('type CanvasUpdatedMessage'));
+	assert.ok(panelSource.includes("type: 'canvas:updated'"));
+	assert.ok(!panelSource.includes('artboard:updated'));
+	assert.ok(diskSource.includes('type CanvasSnapshot'));
+	assert.ok(!diskSource.includes('type ArtboardSnapshot'));
+});
+
+test('chrome validates canvas:updated and each frame before reconciling', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const validFrameIndex = chrome.html.indexOf('isValidPostedFrame(entry)');
+	const removeInvalidIndex = chrome.html.indexOf('removeFrameRecord(entry.id)');
+
+	assert.ok(chrome.html.includes('isValidCanvasUpdated(data)'));
+	assert.ok(chrome.html.includes('typeof data.activeArtboardId === \'string\''));
+	assert.ok(chrome.html.includes('typeof data.cspNonce === \'string\''));
+	assert.ok(chrome.html.includes('Number.isFinite(data.generation)'));
+	assert.ok(chrome.html.includes('Array.isArray(data.frames)'));
+	assert.ok(validFrameIndex >= 0);
+	assert.ok(removeInvalidIndex > validFrameIndex);
+	assert.ok(chrome.html.includes("typeof entry.id === 'string'"));
+	assert.ok(chrome.html.includes("typeof entry.label === 'string'"));
+	assert.ok(chrome.html.includes("typeof entry.html === 'string'"));
+	assert.ok(chrome.html.includes('Number.isFinite(entry.x)'));
+	assert.ok(chrome.html.includes('Number.isFinite(entry.y)'));
+	assert.ok(chrome.html.includes('Number.isFinite(entry.width)'));
+	assert.ok(chrome.html.includes('isOptionalString(entry.group)'));
+	assert.ok(chrome.html.includes('isOptionalString(entry.errorMessage)'));
+});
+
+test('chrome diffs frame html, revokes removed blobs, and toggles the active class', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const reloadIndex = chrome.html.indexOf(
+		'const shouldReload = record.kind !== \'iframe\' || html !== record.lastHtml',
+	);
+	const heightGuardIndex = chrome.html.indexOf(
+		'record.heightGuard = { lastGrowth: 0, frozen: false }',
+		reloadIndex,
+	);
+	const tileErrorIndex = chrome.html.indexOf("typeof frame.errorMessage === 'string'");
+	const emptyTileIndex = chrome.html.indexOf("'Empty artboard file.'", tileErrorIndex);
+	const renderTileIndex = chrome.html.indexOf("'Could not render this frame.'", tileErrorIndex);
+
+	assert.ok(chrome.html.includes('html !== record.lastHtml'));
+	assert.ok(chrome.html.includes('record.kind !== \'iframe\''));
+	assert.ok(reloadIndex >= 0);
+	assert.ok(heightGuardIndex > reloadIndex);
+	assert.ok(tileErrorIndex >= 0);
+	assert.ok(emptyTileIndex > tileErrorIndex);
+	assert.ok(renderTileIndex > emptyTileIndex);
+	assert.ok(chrome.html.includes('URL.revokeObjectURL(record.blobUrl)'));
+	assert.ok(chrome.html.includes('removeFrameRecord(id)'));
+	assert.ok(chrome.html.includes("record.wrapper.classList.add('cd-frame-active')"));
+	assert.ok(chrome.html.includes("record.wrapper.classList.remove('cd-frame-active')"));
+	assert.ok(chrome.html.includes('record.id === activeArtboardId'));
+});
+
+test('chrome labels and headings use textContent and never innerHTML', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+
+	assert.ok(chrome.html.includes('labelNode.textContent = record === undefined ? \'\' : record.label'));
+	assert.ok(chrome.html.includes('headingNode.textContent = box.group'));
+	assert.ok(!chrome.html.includes('innerHTML'));
+});
+
+test('every created iframe is sandboxed with scrolling disabled', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const createIndex = chrome.html.indexOf("document.createElement('iframe')");
+
+	assert.ok(createIndex >= 0);
+	const createBlock = chrome.html.slice(createIndex, chrome.html.indexOf('record.iframe = iframe', createIndex));
+	assert.ok(createBlock.includes("iframe.setAttribute('sandbox', 'allow-scripts')"));
+	assert.ok(createBlock.includes("iframe.setAttribute('scrolling', 'no')"));
+});
+
+test('chrome frame-height validates height and applies nextFrameHeight', () => {
+	const chrome = buildArtboardChromeHtml(fakeWebview);
+
+	assert.ok(chrome.html.includes('data.type === frameHeightMessage'));
+	assert.ok(chrome.html.includes('Number.isFinite(data.height)'));
+	assert.ok(chrome.html.includes('nextFrameHeight({'));
+	assert.ok(chrome.html.includes('reported: data.height'));
+	assert.ok(chrome.html.includes('reconcileChromeDecorations()'));
+	assert.ok(chrome.html.includes('commitStageView(stageView)'));
+});
+
+test('canvas:wheel is gone from runtime, chrome script, and the CSP rule line', () => {
+	const runtimeSource = readFileSync(join(process.cwd(), 'src/panel/artboardCanvasRuntime.ts'), 'utf8');
+	const chromeScriptSource = readFileSync(
+		join(process.cwd(), 'src/panel/artboardChromeScript.ts'),
+		'utf8',
+	);
+	const ruleSource = readFileSync(join(process.cwd(), '.cursor/rules/02-mcp-webview.mdc'), 'utf8');
+	const ruleLine =
+		'5. Messages: artboard:ready (chrome → host), canvas:updated|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: cd:frame-height { height }, cd:frame-wheel { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.';
+
+	assert.ok(!runtimeSource.includes('canvas:wheel'));
+	assert.ok(!chromeScriptSource.includes('canvas:wheel'));
+	assert.ok(ruleSource.includes(ruleLine));
 });

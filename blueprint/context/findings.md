@@ -15,14 +15,6 @@
 **Suggested fix:** Name both files: `openArtboardPanel.ts` (`cspNonce` message, flush attach) and `artboardChromeHtml.ts` (chrome template, `stampArtboardHtml`).
 **Resolution:**
 
-### F-08 [P3] open - No test pins the finite-deltaY guard on untrusted iframe messages
-
-**File:** src/panel/artboardChromeHtml.ts:151
-**Found:** 2026-10-12 by /audit (scope: current; lens: tests)
-**Why it matters:** `handleCanvasMessage` is the only validation on iframe → chrome input. If `Number.isFinite(data.deltaY)` is dropped, one spoofed `{ type: 'canvas:wheel', deltaY: NaN }` makes `canvasView.zoom` NaN (the `Math.min`/`Math.max` clamp passes NaN through), and every later multiply stays NaN, so zoom is dead until the chrome reloads. No test in `artboardChromeHtml.test.ts` fails if the guard is removed.
-**Suggested fix:** Add `assert.ok(chrome.html.includes('Number.isFinite(data.deltaY)'))` to the existing listener-order or wheel test. The 6b zoom-math module can replace it with a real unit test.
-**Resolution:**
-
 ### F-09 [P3] open - Blueprint manifest still hashes the replaced adapter copies
 
 **File:** blueprint/.state/manifest.json:6

@@ -1,20 +1,18 @@
 import * as vscode from 'vscode';
 
+import { type CanvasSnapshot, postedFrameFromSnapshot, type PostedCanvasFrame } from '../host/canvasSnapshot';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
-// ponytail: 1.5M char ceiling; upgrade if a real artboard needs more
-const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
-const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 
-export type ArtboardUpdatedMessage = {
-	type: 'artboard:updated';
-	artboardId: string;
+export type CanvasUpdatedFrame = PostedCanvasFrame;
+
+export type CanvasUpdatedMessage = {
+	type: 'canvas:updated';
+	activeArtboardId: string;
 	generation: number;
-	html: string;
 	cspNonce: string;
-	title: string;
-	viewport: string;
+	frames: CanvasUpdatedFrame[];
 };
 
 export type ArtboardErrorMessage = {
@@ -28,22 +26,18 @@ export type UiStatusMessage = {
 	handoffStale: boolean;
 };
 
-type ArtboardViewFields = {
-	artboardId: string;
-	title: string;
-	generation: number;
-	html: string;
-	viewport: string;
-};
-
-type ArtboardHostView = {
-	updated: ArtboardViewFields;
+type CanvasHostView = {
+	updated: {
+		activeArtboardId: string;
+		generation: number;
+		frames: CanvasUpdatedFrame[];
+	};
 	errorMessage?: string;
 };
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let chromeReady = false;
-let pendingView: ArtboardHostView | undefined;
+let pendingView: CanvasHostView | undefined;
 let pendingUiStatus: { mcpAvailable?: boolean; handoffStale: boolean } = { handoffStale: false };
 let onPanelBecameVisible: (() => void) | undefined;
 let chromeCspNonce = '';
@@ -60,10 +54,10 @@ const flushPendingArtboardView = (): void => {
 		return;
 	}
 	void currentPanel.webview.postMessage({
-		type: 'artboard:updated',
+		type: 'canvas:updated',
 		...pendingView.updated,
 		cspNonce: chromeCspNonce,
-	} satisfies ArtboardUpdatedMessage);
+	} satisfies CanvasUpdatedMessage);
 	if (pendingView.errorMessage !== undefined) {
 		const errorMessage: ArtboardErrorMessage = {
 			type: 'artboard:error',
@@ -91,22 +85,16 @@ export const setArtboardPanelOnVisible = (handler: () => void): void => {
 	onPanelBecameVisible = handler;
 };
 
-export type PostArtboardSnapshotArgs = ArtboardViewFields & {
-	errorMessage?: string;
-	handoffStale: boolean;
-};
-
-export const postArtboardSnapshotToPanel = ({
-	errorMessage,
-	handoffStale,
-	...updatedFields
-}: PostArtboardSnapshotArgs): void => {
-	const htmlTooLarge = updatedFields.html.length > MAX_POSTED_ARTBOARD_HTML_CHARS;
+export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
 	pendingView = {
-		updated: htmlTooLarge ? { ...updatedFields, html: '' } : updatedFields,
-		errorMessage: errorMessage ?? (htmlTooLarge ? ARTBOARD_HTML_TOO_LARGE_MESSAGE : undefined),
+		updated: {
+			activeArtboardId: snapshot.activeArtboardId,
+			generation: snapshot.generation,
+			frames: snapshot.frames.map(postedFrameFromSnapshot),
+		},
+		errorMessage: snapshot.errorMessage,
 	};
-	postUiStatusToPanel({ handoffStale });
+	postUiStatusToPanel({ handoffStale: snapshot.handoffStale });
 	flushPendingArtboardView();
 };
 

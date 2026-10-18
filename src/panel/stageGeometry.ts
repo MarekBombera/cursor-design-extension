@@ -73,6 +73,93 @@ const frameBounds = ({ frames }) => {
 	return { x: left, y: top, width: right - left, height: bottom - top };
 };
 
+const FRAME_LABEL_BAND = 24;
+const GROUP_HEADING_BAND = 32;
+
+const layoutCanvasChrome = ({ frames }) => {
+	const labels = [];
+	const headingAcc = [];
+	for (const frame of frames) {
+		labels.push({
+			id: frame.id,
+			x: frame.x,
+			y: frame.y - FRAME_LABEL_BAND,
+			width: frame.width,
+			height: FRAME_LABEL_BAND,
+		});
+		if (typeof frame.group !== 'string' || frame.group.length === 0) {
+			continue;
+		}
+		let found;
+		for (const entry of headingAcc) {
+			if (entry.group === frame.group) {
+				found = entry;
+				break;
+			}
+		}
+		if (found === undefined) {
+			headingAcc.push({
+				group: frame.group,
+				minX: frame.x,
+				minY: frame.y,
+				maxRight: frame.x + frame.width,
+			});
+			continue;
+		}
+		if (found.minX > frame.x) {
+			found.minX = frame.x;
+		}
+		if (found.minY > frame.y) {
+			found.minY = frame.y;
+		}
+		if (frame.x + frame.width > found.maxRight) {
+			found.maxRight = frame.x + frame.width;
+		}
+	}
+	const headings = [];
+	for (const entry of headingAcc) {
+		headings.push({
+			group: entry.group,
+			x: entry.minX,
+			y: entry.minY - FRAME_LABEL_BAND - GROUP_HEADING_BAND,
+			width: entry.maxRight - entry.minX,
+			height: GROUP_HEADING_BAND,
+		});
+	}
+	const boxes = [];
+	for (const frame of frames) {
+		boxes.push({ x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+	}
+	for (const label of labels) {
+		boxes.push({ x: label.x, y: label.y, width: label.width, height: label.height });
+	}
+	for (const heading of headings) {
+		boxes.push({ x: heading.x, y: heading.y, width: heading.width, height: heading.height });
+	}
+	return { labels: labels, headings: headings, bounds: frameBounds({ frames: boxes }) };
+};
+
+const MIN_FRAME_HEIGHT = 1;
+const MAX_FRAME_HEIGHT = 20000;
+
+const nextFrameHeight = ({ current, reported, state }) => {
+	if (!Number.isFinite(reported)) {
+		return { height: current, state: state };
+	}
+	const clamped = clampNumber({ value: reported, min: MIN_FRAME_HEIGHT, max: MAX_FRAME_HEIGHT });
+	const growth = clamped - current;
+	if (0 >= growth) {
+		return { height: clamped, state: { lastGrowth: 0, frozen: state.frozen } };
+	}
+	if (state.frozen) {
+		return { height: current, state: state };
+	}
+	if (state.lastGrowth > 0 && 1 >= Math.abs(growth - state.lastGrowth)) {
+		return { height: current, state: { lastGrowth: state.lastGrowth, frozen: true } };
+	}
+	return { height: clamped, state: { lastGrowth: growth, frozen: state.frozen } };
+};
+
 const clampStageAxis = ({ offset, start, size, zoom, viewportSize }) => {
 	const scaledSize = size * zoom;
 	const keep = Math.min(KEEP_VISIBLE, scaledSize, viewportSize);

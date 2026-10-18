@@ -31,7 +31,7 @@ Multi-artboard + one active. No gallery. Gitignore .cursor-design/.
 2. Nested iframe sandbox allow-scripts; artboard JS required.
 3. Iframe to chrome postMessage is untrusted.
 4. asWebviewUri + localResourceRoots.
-5. Messages: artboard:ready (chrome → host), artboard:updated|error, ui:status (host → chrome). iframe → chrome: canvas:wheel { deltaY, clientX, clientY } (allowlisted by source; stage zoom at the cursor; renamed cd:frame-wheel in 6d). Chrome → iframe: none.
+5. Messages: artboard:ready (chrome → host), canvas:updated|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: cd:frame-height { height }, cd:frame-wheel { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.
 
 ## Stack
 

@@ -5,7 +5,8 @@ import type * as vscode from 'vscode';
 import {
 	ARTBOARD_CANVAS_RUNTIME_SOURCE,
 	CANVAS_RUNTIME_ATTRIBUTE,
-	CANVAS_WHEEL_MESSAGE,
+	FRAME_HEIGHT_MESSAGE,
+	FRAME_WHEEL_MESSAGE,
 } from './artboardCanvasRuntime';
 import { buildArtboardChromeScript } from './artboardChromeScript';
 import { STAGE_GEOMETRY_SOURCE } from './stageGeometry';
@@ -33,7 +34,8 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 	const chromeScript = buildArtboardChromeScript({
 		embeddedCanvasRuntimeSource: embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE),
 		canvasRuntimeAttribute: CANVAS_RUNTIME_ATTRIBUTE,
-		canvasWheelMessage: CANVAS_WHEEL_MESSAGE,
+		frameHeightMessage: FRAME_HEIGHT_MESSAGE,
+		frameWheelMessage: FRAME_WHEEL_MESSAGE,
 		mcpUnavailableCopy: MCP_UNAVAILABLE_COPY,
 	});
 	return {
@@ -119,14 +121,39 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 			top: 0;
 			transform-origin: 0 0;
 		}
-		#artboard-frame {
+		.cd-frame {
 			position: absolute;
-			left: 0;
-			top: 0;
-			width: 1280px;
-			height: 800px;
+			overflow: hidden;
+			pointer-events: none;
+		}
+		.cd-frame > iframe {
+			display: block;
+			width: 100%;
+			height: 100%;
 			border: 0;
 			background: var(--vscode-editor-background);
+			pointer-events: auto;
+		}
+		.cd-frame-active {
+			outline: 2px solid var(--vscode-focusBorder);
+		}
+		.cd-frame-tile {
+			width: 100%;
+			height: 100%;
+			box-sizing: border-box;
+			padding: 0.5rem 0.75rem;
+			color: var(--vscode-errorForeground);
+			border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+			overflow-wrap: anywhere;
+		}
+		.cd-frame-label,
+		.cd-group-heading {
+			position: absolute;
+			pointer-events: none;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			box-sizing: border-box;
 		}
 	</style>
 </head>
@@ -154,9 +181,7 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 	<p id="mcp-banner" class="mcp-banner" role="status" hidden></p>
 	<p id="empty-copy">No artboard yet.</p>
 	<div id="stage-viewport" hidden>
-		<div id="stage-layer">
-			<iframe id="artboard-frame" sandbox="allow-scripts" title="Artboard preview"></iframe>
-		</div>
+		<div id="stage-layer"></div>
 	</div>
 	<script nonce="${nonce}">
 		${STAGE_GEOMETRY_SOURCE}

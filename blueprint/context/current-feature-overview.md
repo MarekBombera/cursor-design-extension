@@ -1,82 +1,93 @@
-# Stage (6c) - Overview for review
+# Frames - Overview for review
 
-Source of truth: `blueprint/history/features/06c-stage.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/06d-frames.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The panel is now a Figma-style stage. Pinch, ctrl+wheel, and Cmd+wheel zoom around the cursor. Plain wheel and empty-stage drag pan. A toolbar shows the zoom, nine presets, and Fit all. Until 6d, the stage holds one frame: the active artboard at a fixed 1280×800.
+Every artboard is now its own sandbox iframe on the stage: fixed width from `canvas.json`, full content height, no inner scroll. Labels and group headings sit above. An empty or broken frame is a red tile; the rest keep working. Disk HTML is still pristine. Not merged until you approve the work commit and squash.
 
-## What you will see
+## Flow
 
-- First open fits the frame (100% or less). After that, zoom and position stay when you switch tabs, edit the artboard, or switch the active artboard.
-- Pinch / ctrl+wheel / Cmd+wheel zooms at the cursor, over the empty stage and over the frame. Range 5–1000%. Trackpad pinch is fine; one mouse notch is about 20%.
-- Plain wheel pans the empty stage. Over the frame it still scrolls inside the page.
-- Dragging the empty stage pans. The frame can never be pushed fully off screen.
-- Toolbar: zoom %, presets 50–200% (with 150) around the stage center, and Fit all (never past 100%). Presets and Fit all stay disabled until an artboard is showing.
-- The frame stays 1280px wide at every zoom, so a fixed header sits at the frame's top.
+1. Disk reads every artboard + layout (`readCanvasView`).
+2. Host posts `canvas:updated` with all frames.
+3. Chrome draws one iframe (or tile) per frame, then labels/headings.
+4. Each iframe reports height (`cd:frame-height`) and forwards wheel (`cd:frame-wheel`).
+5. Chrome pans/zooms the stage. Nested scroll boxes inside a design get the wheel first.
 
-## Data flow
+## System map
 
 ```mermaid
 flowchart LR
-  User -->|"wheel / drag on empty stage"| Chrome["Panel chrome"]
-  User -->|"pinch / ctrl+wheel over frame"| Frame["Frame iframe"]
-  Frame -->|"canvas:wheel + cursor"| Chrome
-  Chrome -->|"translate + scale, clamped"| Layer["Stage layer"]
-  Chrome <-->|"setState / getState"| State["Webview state"]
-  Toolbar["Presets / Fit all"] --> Chrome
+  disk[".cursor-design artboards + canvas.json"] -->|200ms watch| host["Host snapshot"]
+  host -->|canvas:updated| chrome["Chrome stage"]
+  host -->|artboard:error| chrome
+  chrome -->|blob iframe| frame["Sandboxed frame"]
+  frame -->|cd:frame-height| chrome
+  frame -->|cd:frame-wheel| chrome
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant U as You
-  participant C as Chrome
-  participant F as Frame
-  participant S as Webview state
-  U->>C: pinch or ctrl+wheel
-  alt over the frame
-    F->>C: canvas:wheel deltaY + cursor
-  end
-  C->>C: clamp, move the stage layer
-  C->>S: save stageView
-  U->>C: hide and show the panel
-  S-->>C: restore stageView
+  participant Disk
+  participant Host
+  participant Chrome
+  participant Frame
+  Disk->>Host: readCanvasView
+  Host->>Chrome: canvas:updated
+  Chrome->>Frame: blob URL
+  Frame-->>Chrome: cd:frame-height
+  Chrome->>Chrome: size wrapper, labels, clamp view
+  Frame-->>Chrome: cd:frame-wheel
+  Chrome->>Chrome: pan or zoom at cursor
 ```
+
+## What you will see
+
+- Several frames at once, each labeled; a **Desktop** (or other) heading over grouped frames.
+- Active frame outlined; badge shows id + generation.
+- Short sections shrink below 800px. A `100vh` hero stops growing (F5: ~1600px, not 20000) and may clip below the fold.
+- Empty file: red tile `Empty artboard file.` Wheel/drag on a tile pans the stage.
+- Pinch / ctrl+wheel over a frame zooms at the cursor. Plain wheel pans, unless an inner scroller can still scroll.
+
+## Data flow
+
+Workspace `.cursor-design/` is source of truth. MCP tools did not change in 6d (`place_frame` was 6b). Host never writes artboard HTML. Runtime is injected only into the blob copy.
+
+## Architecture decisions
+
+- One blob iframe per frame, `sandbox="allow-scripts"`, `scrolling="no"`.
+- Frame messages trusted only as typed numbers, and only from that iframe's `contentWindow`.
+- Per-frame 1.5M HTML cap (tile, no global banner). No total payload cap across frames.
+- Labels/headings/tiles are `textContent` only. They scale with zoom.
 
 ## Decisions locked
 
-- Zoom and pan move the stage layer, never the frame iframe.
-- Zoom 5–1000%. Presets 50–200% with 150, applied at the stage center. Fit-all capped at 100%.
-- Pinch is the browser's ctrl/meta wheel event. No separate touch handling.
-- The view lives only in webview state. No disk, MCP, or host change.
-- The only iframe message is still `canvas:wheel`, now with the cursor. 6d renames it to `cd:frame-wheel`.
-- The frame is a provisional 1280×800 at stage (0, 0) until 6d reads canvas.json widths and reported heights.
+- Corrupt `canvas.json` auto-places frames and shows the existing error in the banner; the file is not rewritten.
+- One unreadable HTML file tiles; siblings still load; Output logs the DiskError.
+- Hide/show restores the saved view; no refit.
+- Export/handoff stay active-artboard-only until 6e.
 
 ## Out of scope
 
-- Many frames, real widths, full height, labels, error tiles (6d).
-- Canvas export (6e).
-- Keyboard zoom shortcuts, space-drag, inertia.
-- View saved across a full window reload.
+Canvas export and `canvas.html` (6e). Reference four-frame dogfood (6f). Drag/resize by hand, frame list, Edit mode, MCP schema changes, rewriting `vh` in the blob.
 
 ## Glossary
 
 | Term | Why it exists |
-|---|---|
-| Stage | The clipped panel surface you zoom and pan. |
-| Stage layer | The transformed layer the frame sits on. |
-| Frame | The live artboard iframe, fixed 1280×800 in 6c. |
-| `stageView` | `{ x, y, zoom }` in webview state. |
-| Fit all | Zoom to show the whole frame, never past 100%. |
+| --- | --- |
+| Frame | One artboard file, one iframe, fixed width |
+| Stage | Chrome layer that pans and zooms around frames |
+| `cd:frame-height` | Iframe tells chrome how tall the content is |
+| `cd:frame-wheel` | Iframe forwards pinch/wheel so the stage moves |
+| Tile | Error/empty stand-in so a bad file cannot kill the canvas |
+| Group heading | One chrome label (e.g. Desktop) spanning grouped frames |
 
 ## Your actions
 
-- F5 on `fixtures/dev-workspace` with `canvas-6b` if you want another pass. Reload the Extension Host after pull.
-- Next planned slice is 6d Frames.
+F5 into `fixtures/dev-workspace` and open **Cursor Design: Open Artboard**. Next product work is 6e (canvas export) after this merge.
 
 ## Done means
 
-- `pnpm compile` and 131 `node:test` cases passed.
-- F5: first-open fit, zoom at cursor, wheel and drag pan, presets, Fit all, saved view across tab switch, 1280px frame, empty toolbar disabled.
+Multi-frame canvas works in the panel. 155 tests pass. Independent review passed at `7ae31016`. 6e/6f still open on the 0.2 plan.

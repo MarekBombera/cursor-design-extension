@@ -5,17 +5,18 @@
 type ArtboardChromeScriptArgs = {
 	embeddedCanvasRuntimeSource: string;
 	canvasRuntimeAttribute: string;
-	canvasWheelMessage: string;
+	frameHeightMessage: string;
+	frameWheelMessage: string;
 	mcpUnavailableCopy: string;
 };
 
 export const buildArtboardChromeScript = ({
 	embeddedCanvasRuntimeSource,
 	canvasRuntimeAttribute,
-	canvasWheelMessage,
+	frameHeightMessage,
+	frameWheelMessage,
 	mcpUnavailableCopy,
 }: ArtboardChromeScriptArgs): string => `const vscodeApi = acquireVsCodeApi();
-const iframe = document.getElementById('artboard-frame');
 const stageViewport = document.getElementById('stage-viewport');
 const stageLayer = document.getElementById('stage-layer');
 const zoomReadout = document.getElementById('zoom-readout');
@@ -23,7 +24,8 @@ const zoomPreset = document.getElementById('zoom-preset');
 const zoomFit = document.getElementById('zoom-fit');
 const canvasRuntimeSource = ${embeddedCanvasRuntimeSource};
 const canvasRuntimeAttribute = ${JSON.stringify(canvasRuntimeAttribute)};
-const canvasWheelMessage = ${JSON.stringify(canvasWheelMessage)};
+const frameHeightMessage = ${JSON.stringify(frameHeightMessage)};
+const frameWheelMessage = ${JSON.stringify(frameWheelMessage)};
 const emptyCopy = document.getElementById('empty-copy');
 const idBadge = document.getElementById('artboard-id-badge');
 const generationBadge = document.getElementById('artboard-generation-badge');
@@ -32,20 +34,12 @@ const errorBanner = document.getElementById('artboard-error');
 const mcpBanner = document.getElementById('mcp-banner');
 const mcpUnavailableCopy = ${JSON.stringify(mcpUnavailableCopy)};
 const handoffStaleCopy = 'Handoff out of date. Re-export.';
-let currentBlobUrl;
-let lastHtml;
+const frameRecords = new Map();
+const labelNodes = new Map();
+const headingNodes = new Map();
 
-const revokeCurrentBlob = () => {
-	if (currentBlobUrl !== undefined) {
-		URL.revokeObjectURL(currentBlobUrl);
-		currentBlobUrl = undefined;
-	}
-};
-
-// ponytail: one provisional frame at stage (0, 0). 6d replaces these with the
-// canvas.json width and the reported frame height.
-const PROVISIONAL_FRAME_WIDTH = 1280;
 const PROVISIONAL_FRAME_HEIGHT = 800;
+const ERROR_TILE_HEIGHT = 160;
 
 const isUsableStageView = (view) =>
 	view !== null &&
@@ -68,13 +62,121 @@ let isDraggingStage = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
 
+const wrapperHeight = (record) => (record.kind === 'tile' ? ERROR_TILE_HEIGHT : record.height);
+
+const chromeLayoutFrames = () => {
+	const frames = [];
+	for (const record of frameRecords.values()) {
+		const frame = {
+			id: record.id,
+			x: record.x,
+			y: record.y,
+			width: record.width,
+			height: wrapperHeight(record),
+		};
+		if (typeof record.group === 'string' && record.group.length > 0) {
+			frame.group = record.group;
+		}
+		frames.push(frame);
+	}
+	return frames;
+};
+
 const stageBounds = () => {
 	if (stageViewport.hidden) {
 		return null;
 	}
-	return frameBounds({
-		frames: [{ x: 0, y: 0, width: PROVISIONAL_FRAME_WIDTH, height: PROVISIONAL_FRAME_HEIGHT }],
-	});
+	return layoutCanvasChrome({ frames: chromeLayoutFrames() }).bounds;
+};
+
+const placeChromeBox = (node, box) => {
+	node.style.left = box.x + 'px';
+	node.style.top = box.y + 'px';
+	node.style.width = box.width + 'px';
+	node.style.height = box.height + 'px';
+};
+
+const reconcileChromeDecorations = () => {
+	const layout = layoutCanvasChrome({ frames: chromeLayoutFrames() });
+	const seenLabelIds = new Set();
+	for (const box of layout.labels) {
+		seenLabelIds.add(box.id);
+		let labelNode = labelNodes.get(box.id);
+		if (labelNode === undefined) {
+			labelNode = document.createElement('div');
+			labelNode.className = 'cd-frame-label';
+			labelNode.setAttribute('data-cd-frame-label', box.id);
+			labelNodes.set(box.id, labelNode);
+		}
+		const record = frameRecords.get(box.id);
+		labelNode.textContent = record === undefined ? '' : record.label;
+		placeChromeBox(labelNode, box);
+		stageLayer.appendChild(labelNode);
+	}
+	for (const id of Array.from(labelNodes.keys())) {
+		if (!seenLabelIds.has(id)) {
+			labelNodes.get(id).remove();
+			labelNodes.delete(id);
+		}
+	}
+	const seenGroups = new Set();
+	for (const box of layout.headings) {
+		seenGroups.add(box.group);
+		let headingNode = headingNodes.get(box.group);
+		if (headingNode === undefined) {
+			headingNode = document.createElement('div');
+			headingNode.className = 'cd-group-heading';
+			headingNode.setAttribute('data-cd-group-heading', box.group);
+			headingNodes.set(box.group, headingNode);
+		}
+		headingNode.textContent = box.group;
+		placeChromeBox(headingNode, box);
+		stageLayer.appendChild(headingNode);
+	}
+	for (const group of Array.from(headingNodes.keys())) {
+		if (!seenGroups.has(group)) {
+			headingNodes.get(group).remove();
+			headingNodes.delete(group);
+		}
+	}
+};
+
+const layoutFrameWrapper = (record) => {
+	record.wrapper.style.left = record.x + 'px';
+	record.wrapper.style.top = record.y + 'px';
+	record.wrapper.style.width = record.width + 'px';
+	record.wrapper.style.height = wrapperHeight(record) + 'px';
+};
+
+const setFrameActive = (record, activeArtboardId) => {
+	if (record.id === activeArtboardId) {
+		record.wrapper.classList.add('cd-frame-active');
+		return;
+	}
+	record.wrapper.classList.remove('cd-frame-active');
+};
+
+const revokeRecordBlob = (record) => {
+	if (record.blobUrl !== undefined) {
+		URL.revokeObjectURL(record.blobUrl);
+		record.blobUrl = undefined;
+	}
+};
+
+const removeFrameRecord = (id) => {
+	const record = frameRecords.get(id);
+	if (record === undefined) {
+		return;
+	}
+	revokeRecordBlob(record);
+	record.wrapper.remove();
+	frameRecords.delete(id);
+};
+
+const revokeAllFrameBlobs = () => {
+	for (const record of frameRecords.values()) {
+		revokeRecordBlob(record);
+	}
 };
 
 // The single write path for the view: clamp, transform the layer, readout, save.
@@ -121,28 +223,66 @@ const viewportPoint = (event) => {
 	};
 };
 
-const handleCanvasMessage = (data) => {
+const handleFrameMessage = (data, frame) => {
 	// ponytail: rejects are not logged; wheel fires at 60+ Hz, so logging would spam.
-	// Upgrade path: a debug-only reject counter.
-	if (data === null || typeof data !== 'object' || data.type !== canvasWheelMessage) {
+	// Late cd:frame-height / cd:frame-wheel from a previous document is accepted.
+	if (data === null || typeof data !== 'object') {
+		return;
+	}
+	if (data.type === frameHeightMessage) {
+		if (!Number.isFinite(data.height)) {
+			return;
+		}
+		const next = nextFrameHeight({
+			current: frame.height,
+			reported: data.height,
+			state: frame.heightGuard,
+		});
+		frame.height = next.height;
+		frame.heightGuard = next.state;
+		layoutFrameWrapper(frame);
+		reconcileChromeDecorations();
+		commitStageView(stageView);
+		return;
+	}
+	if (data.type !== frameWheelMessage) {
 		return;
 	}
 	if (
+		!Number.isFinite(data.deltaX) ||
 		!Number.isFinite(data.deltaY) ||
-		!Number.isFinite(data.clientX) ||
-		!Number.isFinite(data.clientY)
+		!Number.isFinite(data.x) ||
+		!Number.isFinite(data.y) ||
+		typeof data.ctrlKey !== 'boolean'
 	) {
 		return;
 	}
-	// The frame sits at stage (0, 0), so its screen origin is the view offset.
+	if (data.ctrlKey === true) {
+		commitStageView(
+			zoomStageAt({
+				view: stageView,
+				deltaY: data.deltaY,
+				screenX: stageView.x + (frame.x + data.x) * stageView.zoom,
+				screenY: stageView.y + (frame.y + data.y) * stageView.zoom,
+			}),
+		);
+		return;
+	}
 	commitStageView(
-		zoomStageAt({
+		panStage({
 			view: stageView,
+			deltaX: data.deltaX,
 			deltaY: data.deltaY,
-			screenX: stageView.x + data.clientX * stageView.zoom,
-			screenY: stageView.y + data.clientY * stageView.zoom,
 		}),
 	);
+};
+
+const frameRecordForSource = (source) => {
+	for (const record of frameRecords.values()) {
+		if (record.iframe !== undefined && record.iframe.contentWindow === source) {
+			return record;
+		}
+	}
 };
 
 // Stage gestures land on the chrome document, not the runtime. Wheel events
@@ -275,18 +415,156 @@ const stampArtboardHtml = (rawHtml, nonceValue) => {
 	return '<!DOCTYPE html>' + parsed.documentElement.outerHTML;
 };
 
-const applyArtboardHtml = (html, nonceValue) => {
-	if (html === lastHtml) {
+const tileCopy = (frame, renderFailed) => {
+	if (typeof frame.errorMessage === 'string') {
+		return frame.errorMessage;
+	}
+	if (frame.html.trim() === '') {
+		return 'Empty artboard file.';
+	}
+	if (renderFailed) {
+		return 'Could not render this frame.';
+	}
+	return 'Empty artboard file.';
+};
+
+const showFrameTile = (record, text) => {
+	revokeRecordBlob(record);
+	if (record.iframe !== undefined) {
+		record.iframe.remove();
+		record.iframe = undefined;
+	}
+	if (record.tile === undefined) {
+		const tile = document.createElement('div');
+		tile.className = 'cd-frame-tile';
+		record.wrapper.appendChild(tile);
+		record.tile = tile;
+	}
+	record.tile.textContent = text;
+	record.kind = 'tile';
+};
+
+const showFrameIframe = (record, html, nonceValue) => {
+	if (record.tile !== undefined) {
+		record.tile.remove();
+		record.tile = undefined;
+	}
+	if (record.iframe === undefined) {
+		const iframe = document.createElement('iframe');
+		iframe.setAttribute('sandbox', 'allow-scripts');
+		iframe.setAttribute('scrolling', 'no');
+		record.wrapper.appendChild(iframe);
+		record.iframe = iframe;
+	}
+	record.iframe.setAttribute('title', 'Frame: ' + record.label);
+	const shouldReload = record.kind !== 'iframe' || html !== record.lastHtml;
+	if (!shouldReload) {
+		record.kind = 'iframe';
 		return;
 	}
-	lastHtml = html;
-	revokeCurrentBlob();
-	if (html.length === 0) {
-		stageViewport.hidden = true;
-		zoomPreset.disabled = true;
-		zoomFit.disabled = true;
-		iframe.removeAttribute('src');
-		emptyCopy.hidden = false;
+	revokeRecordBlob(record);
+	record.heightGuard = { lastGrowth: 0, frozen: false };
+	try {
+		const blob = new Blob([stampArtboardHtml(html, nonceValue)], { type: 'text/html' });
+		record.blobUrl = URL.createObjectURL(blob);
+		record.iframe.src = record.blobUrl;
+		record.kind = 'iframe';
+	} catch {
+		// ponytail: stamp/blob throw is per-frame tile copy only; no chrome log
+		showFrameTile(record, 'Could not render this frame.');
+	}
+};
+
+const ensureFrameRecord = (frame) => {
+	const existing = frameRecords.get(frame.id);
+	if (existing !== undefined) {
+		existing.label = frame.label;
+		existing.x = frame.x;
+		existing.y = frame.y;
+		existing.width = frame.width;
+		existing.group = frame.group;
+		return existing;
+	}
+	const wrapper = document.createElement('div');
+	wrapper.className = 'cd-frame';
+	wrapper.setAttribute('data-cd-frame-id', frame.id);
+	const record = {
+		id: frame.id,
+		label: frame.label,
+		x: frame.x,
+		y: frame.y,
+		width: frame.width,
+		group: frame.group,
+		height: PROVISIONAL_FRAME_HEIGHT,
+		kind: 'tile',
+		lastHtml: undefined,
+		heightGuard: { lastGrowth: 0, frozen: false },
+		wrapper: wrapper,
+		iframe: undefined,
+		tile: undefined,
+		blobUrl: undefined,
+	};
+	frameRecords.set(frame.id, record);
+	return record;
+};
+
+const isOptionalString = (value) => value === undefined || typeof value === 'string';
+
+const isValidPostedFrame = (entry) =>
+	entry !== null &&
+	typeof entry === 'object' &&
+	typeof entry.id === 'string' &&
+	typeof entry.label === 'string' &&
+	typeof entry.html === 'string' &&
+	Number.isFinite(entry.x) &&
+	Number.isFinite(entry.y) &&
+	Number.isFinite(entry.width) &&
+	isOptionalString(entry.group) &&
+	isOptionalString(entry.errorMessage);
+
+const isValidCanvasUpdated = (data) =>
+	typeof data.activeArtboardId === 'string' &&
+	typeof data.cspNonce === 'string' &&
+	Number.isFinite(data.generation) &&
+	Array.isArray(data.frames);
+
+const applyEmptyStage = () => {
+	stageViewport.hidden = true;
+	zoomPreset.disabled = true;
+	zoomFit.disabled = true;
+	emptyCopy.hidden = false;
+};
+
+const reconcileCanvasFrames = (data) => {
+	const seenIds = new Set();
+	for (const entry of data.frames) {
+		if (!isValidPostedFrame(entry)) {
+			if (entry !== null && typeof entry === 'object' && typeof entry.id === 'string') {
+				removeFrameRecord(entry.id);
+			}
+			continue;
+		}
+		seenIds.add(entry.id);
+		const record = ensureFrameRecord(entry);
+		stageLayer.appendChild(record.wrapper);
+		const showTile = typeof entry.errorMessage === 'string' || entry.html.trim() === '';
+		if (showTile) {
+			showFrameTile(record, tileCopy(entry, false));
+		} else {
+			showFrameIframe(record, entry.html, data.cspNonce);
+		}
+		record.lastHtml = entry.html;
+		layoutFrameWrapper(record);
+		setFrameActive(record, data.activeArtboardId);
+	}
+	for (const id of Array.from(frameRecords.keys())) {
+		if (!seenIds.has(id)) {
+			removeFrameRecord(id);
+		}
+	}
+	reconcileChromeDecorations();
+	if (frameRecords.size === 0) {
+		applyEmptyStage();
 		return;
 	}
 	emptyCopy.hidden = true;
@@ -294,14 +572,13 @@ const applyArtboardHtml = (html, nonceValue) => {
 	zoomPreset.disabled = false;
 	zoomFit.disabled = false;
 	applyInitialView();
-	const blob = new Blob([stampArtboardHtml(html, nonceValue)], { type: 'text/html' });
-	currentBlobUrl = URL.createObjectURL(blob);
-	iframe.src = currentBlobUrl;
+	commitStageView(stageView);
 };
 
 window.addEventListener('message', (event) => {
-	if (iframe.contentWindow !== null && event.source === iframe.contentWindow) {
-		handleCanvasMessage(event.data);
+	const sourceRecord = frameRecordForSource(event.source);
+	if (sourceRecord !== undefined) {
+		handleFrameMessage(event.data, sourceRecord);
 		return;
 	}
 	if (event.origin === 'null') {
@@ -311,13 +588,13 @@ window.addEventListener('message', (event) => {
 	if (data === null || typeof data !== 'object') {
 		return;
 	}
-	if (data.type === 'artboard:updated') {
-		idBadge.textContent = typeof data.artboardId === 'string' ? data.artboardId : '';
-		generationBadge.textContent = typeof data.generation === 'number' ? String(data.generation) : '';
-		applyArtboardHtml(
-			typeof data.html === 'string' ? data.html : '',
-			typeof data.cspNonce === 'string' ? data.cspNonce : '',
-		);
+	if (data.type === 'canvas:updated') {
+		if (!isValidCanvasUpdated(data)) {
+			return;
+		}
+		idBadge.textContent = data.activeArtboardId;
+		generationBadge.textContent = data.activeArtboardId === '' ? '' : String(data.generation);
+		reconcileCanvasFrames(data);
 		errorBanner.hidden = true;
 		errorBanner.textContent = '';
 		return;
@@ -348,6 +625,6 @@ window.addEventListener('message', (event) => {
 	}
 });
 
-window.addEventListener('pagehide', revokeCurrentBlob);
+window.addEventListener('pagehide', revokeAllFrameBlobs);
 vscodeApi.postMessage({ type: 'artboard:ready' });
 `;

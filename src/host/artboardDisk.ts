@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
 
 import { fileExists, logDiskError } from './hostFs';
+import {
+	canvasSnapshotErrorMessage,
+	canvasViewReadLogs,
+	emptyArtboardSnapshot,
+	snapshotForChrome as applyCanvasSnapshotTrust,
+	UNTRUSTED_WORKSPACE_MESSAGE,
+	type CanvasSnapshot,
+} from './canvasSnapshot';
+import { type CanvasView, readCanvasView } from '../disk/artboardFs';
 import { effectiveArtboardMeta } from '../disk/effectiveMeta';
 import {
-	ArtboardNotFoundError,
 	CorruptManifestError,
 	CorruptMetaError,
 	CursorDesignError,
@@ -14,7 +22,6 @@ import { hashHtml } from '../disk/hash';
 import {
 	DEFAULT_ARTBOARD_HTML,
 	DEFAULT_ARTBOARD_ID,
-	DEFAULT_VIEWPORT,
 	SCHEMA_VERSION,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
@@ -31,47 +38,22 @@ import {
 	serializeMeta,
 } from '../disk/parse';
 
+export {
+	emptyArtboardSnapshot,
+	UNTRUSTED_WORKSPACE_MESSAGE,
+	type CanvasSnapshot,
+};
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder('utf-8');
-
-export const UNTRUSTED_WORKSPACE_MESSAGE =
-	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
-
-export type ArtboardSnapshot = {
-	artboardId: string;
-	title: string;
-	generation: number;
-	html: string;
-	viewport: string;
-	handoffStale: boolean;
-	errorMessage?: string;
-};
 
 type WorkspaceDiskArgs = {
 	workspaceFolder: vscode.WorkspaceFolder;
 	outputChannel: vscode.OutputChannel;
 };
 
-export const emptyArtboardSnapshot = (errorMessage?: string): ArtboardSnapshot => ({
-	artboardId: '',
-	title: '',
-	generation: 0,
-	html: '',
-	viewport: DEFAULT_VIEWPORT,
-	handoffStale: false,
-	errorMessage,
-});
-
-export const snapshotForChrome = (snapshot: ArtboardSnapshot): ArtboardSnapshot => {
-	if (vscode.workspace.isTrusted) {
-		return snapshot;
-	}
-	return {
-		...snapshot,
-		html: '',
-		errorMessage: snapshot.errorMessage ?? UNTRUSTED_WORKSPACE_MESSAGE,
-	};
-};
+export const snapshotForChrome = (snapshot: CanvasSnapshot): CanvasSnapshot =>
+	applyCanvasSnapshotTrust({ snapshot, isTrusted: vscode.workspace.isTrusted });
 
 export const toSafeArtboardErrorMessage = (error: unknown): string => {
 	if (error instanceof CursorDesignError) {
@@ -98,15 +80,6 @@ const isExpectedMetaParseError = (error: unknown): boolean =>
 	error instanceof SyntaxError ||
 	error instanceof CorruptMetaError ||
 	error instanceof InvalidArtboardIdError;
-
-const snapshotFromMeta = (meta: ArtboardMeta, html: string): ArtboardSnapshot => ({
-	artboardId: meta.id,
-	title: meta.title,
-	generation: meta.generation,
-	html,
-	viewport: meta.viewport,
-	handoffStale: false,
-});
 
 const readParsedMeta = async (
 	metaUri: vscode.Uri,
@@ -181,7 +154,7 @@ const lastExportHandoffStale = async ({
 
 const initializeDefaultArtboard = async (
 	workspaceFolder: vscode.WorkspaceFolder,
-): Promise<ArtboardSnapshot> => {
+): Promise<void> => {
 	const artboardsUri = joinWorkspace(workspaceFolder, artboardsDirSegments);
 	const htmlUri = joinWorkspace(workspaceFolder, artboardHtmlPathSegments(DEFAULT_ARTBOARD_ID));
 	const metaUri = joinWorkspace(workspaceFolder, artboardMetaPathSegments(DEFAULT_ARTBOARD_ID));
@@ -217,63 +190,61 @@ const initializeDefaultArtboard = async (
 		updatedAt: new Date().toISOString(),
 	};
 	await writeTextFile(manifestUri, serializeManifest(manifest));
-	return snapshotFromMeta(
-		effectiveArtboardMeta({
-			html,
-			meta: storedMeta,
-			artboardId: DEFAULT_ARTBOARD_ID,
-		}),
-		html,
-	);
 };
 
-const loadExistingArtboard = async (
-	workspaceFolder: vscode.WorkspaceFolder,
-	manifestUri: vscode.Uri,
-): Promise<ArtboardSnapshot> => {
-	const manifest = await readManifest(manifestUri);
-	if (manifest.activeArtboardId === '') {
-		return emptyArtboardSnapshot('No active artboard. Ask the agent to set_artboard.');
+const logCanvasViewReadErrors = ({
+	view,
+	outputChannel,
+}: {
+	view: CanvasView;
+	outputChannel: vscode.OutputChannel;
+}): void => {
+	for (const readLog of canvasViewReadLogs(view)) {
+		outputChannel.appendLine(`${readLog.scope}: ${readLog.tileMessage}`);
+		if (readLog.error !== undefined) {
+			logDiskError({ scope: readLog.scope, error: readLog.error, outputChannel });
+		}
+	}
+};
+
+const snapshotFromCanvasView = async ({
+	workspaceFolder,
+	outputChannel,
+}: WorkspaceDiskArgs): Promise<CanvasSnapshot> => {
+	const view = await readCanvasView({ workspaceRoot: workspaceFolder.uri.fsPath });
+	logCanvasViewReadErrors({ view, outputChannel });
+	const activeFrame = view.frames.find((frame) => frame.id === view.activeArtboardId);
+	const errorMessage = canvasSnapshotErrorMessage({
+		activeArtboardId: view.activeArtboardId,
+		frames: view.frames,
+		layoutErrorMessage: view.layoutErrorMessage,
+	});
+
+	let handoffStale = false;
+	if (activeFrame !== undefined) {
+		try {
+			const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
+			const lastExport = (await fileExists(manifestUri))
+				? (await readManifest(manifestUri)).lastExport
+				: undefined;
+			handoffStale = await lastExportHandoffStale({
+				workspaceFolder,
+				lastExport,
+				activeArtboardId: view.activeArtboardId,
+				activeHtml: activeFrame.html,
+			});
+		} catch (error: unknown) {
+			logDiskError({ scope: 'artboardDisk.handoffStale', error, outputChannel });
+			handoffStale = true;
+		}
 	}
 
-	const htmlUri = joinWorkspace(
-		workspaceFolder,
-		artboardHtmlPathSegments(manifest.activeArtboardId),
-	);
-	const metaUri = joinWorkspace(
-		workspaceFolder,
-		artboardMetaPathSegments(manifest.activeArtboardId),
-	);
-	const parsedMeta = await readParsedMeta(metaUri, manifest.activeArtboardId);
-	if (!(await fileExists(htmlUri))) {
-		return {
-			artboardId: manifest.activeArtboardId,
-			title: parsedMeta?.title ?? '',
-			generation: parsedMeta?.generation ?? 0,
-			html: '',
-			viewport: parsedMeta?.viewport ?? DEFAULT_VIEWPORT,
-			handoffStale: false,
-			errorMessage: new ArtboardNotFoundError(manifest.activeArtboardId).message,
-		};
-	}
-
-	const html = await readTextFile(htmlUri);
-	const snapshot = snapshotFromMeta(
-		effectiveArtboardMeta({
-			html,
-			meta: parsedMeta,
-			artboardId: manifest.activeArtboardId,
-		}),
-		html,
-	);
 	return {
-		...snapshot,
-		handoffStale: await lastExportHandoffStale({
-			workspaceFolder,
-			lastExport: manifest.lastExport,
-			activeArtboardId: manifest.activeArtboardId,
-			activeHtml: html,
-		}),
+		activeArtboardId: view.activeArtboardId,
+		generation: activeFrame?.generation ?? 0,
+		frames: view.frames,
+		handoffStale,
+		errorMessage,
 	};
 };
 
@@ -287,7 +258,7 @@ const loadActiveSnapshot = async ({
 	outputChannel,
 	scope,
 	initializeWhenMissing,
-}: LoadActiveSnapshotArgs): Promise<ArtboardSnapshot> => {
+}: LoadActiveSnapshotArgs): Promise<CanvasSnapshot> => {
 	if (!vscode.workspace.isTrusted) {
 		return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 	}
@@ -295,22 +266,22 @@ const loadActiveSnapshot = async ({
 	const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
 	try {
 		if (!(await fileExists(manifestUri))) {
-			if (initializeWhenMissing) {
-				return await initializeDefaultArtboard(workspaceFolder);
+			if (!initializeWhenMissing) {
+				return emptyArtboardSnapshot();
 			}
-			return emptyArtboardSnapshot();
+			await initializeDefaultArtboard(workspaceFolder);
 		}
-		return await loadExistingArtboard(workspaceFolder, manifestUri);
+		return await snapshotFromCanvasView({ workspaceFolder, outputChannel });
 	} catch (error: unknown) {
 		logDiskError({ scope, error, outputChannel });
 		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
 	}
 };
 
-export const initAndLoadArtboard = async (args: WorkspaceDiskArgs): Promise<ArtboardSnapshot> =>
+export const initAndLoadArtboard = async (args: WorkspaceDiskArgs): Promise<CanvasSnapshot> =>
 	loadActiveSnapshot({ ...args, scope: 'artboardDisk.initAndLoad', initializeWhenMissing: true });
 
 export const readActiveArtboardFromDisk = async (
 	args: WorkspaceDiskArgs,
-): Promise<ArtboardSnapshot> =>
+): Promise<CanvasSnapshot> =>
 	loadActiveSnapshot({ ...args, scope: 'artboardDisk.readActive', initializeWhenMissing: false });
