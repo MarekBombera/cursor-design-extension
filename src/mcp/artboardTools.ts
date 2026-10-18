@@ -114,12 +114,11 @@ const setActiveArtboardInputSchema = toolInputSchema({
 });
 
 const exportArtboardInputSchema = toolInputSchema({
-	artboardId: {
-		description:
-			'Optional string artboard id to export. Defaults to the active artboard when omitted.',
-	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
+
+const EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE =
+	'export_artboard exports every frame. Omit artboardId and retry.';
 
 const handoffStatusInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
@@ -365,17 +364,15 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Export artboard',
 			description:
-				'Export an artboard to .cursor-design/handoff/<exportId>/ (index.html, IMPLEMENT.md, tokens.json) and record lastExport. artboardId optional (defaults to active). Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open.',
+				'Export every frame on the canvas to .cursor-design/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open.',
 			inputSchema: exportArtboardInputSchema,
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
+		// The passthrough schema still delivers a stray artboardId; reject it before any disk work.
 		async ({ artboardId, rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) =>
-				exportArtboard({
-					workspaceRoot,
-					artboardId,
-				}),
-			),
+			artboardId === undefined
+				? runQueued(rootPath, (workspaceRoot) => exportArtboard({ workspaceRoot }))
+				: toMcpToolError(new InvalidArgsError(EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE)),
 	);
 
 	server.registerTool(
@@ -383,7 +380,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Handoff status',
 			description:
-				'Read whether the recorded handoff is stale versus lastExport.artboardId HTML. Call this before implementing; if stale is true, re-export that artboardId. Does not write. Pass rootPath when more than one folder is open.',
+				'Read whether the recorded handoff is stale: any frame\'s HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. Does not write. Pass rootPath when more than one folder is open.',
 			inputSchema: handoffStatusInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},

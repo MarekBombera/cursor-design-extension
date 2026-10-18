@@ -12,6 +12,7 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 - **Host:** TypeScript + esbuild (`dist/extension.js`, `external: ['vscode']`)
 - **MCP process:** TypeScript + esbuild (`dist/mcp.js`); package `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`
 - **Chrome:** Svelte 5 + Vite, no SvelteKit. Artboard: nested sandboxed HTML iframe
+- **Validation:** `zod` v4 (same range as the MCP SDK) via `import * as z from 'zod/mini'` for disk JSON files in `src/disk/parse.ts` (the namespace import keeps esbuild tree-shaking; `import { z }` or classic `zod` bundles every locale). MCP tool inputs stay passthrough `fromJsonSchema` + authored errors; chrome stays dependency-free.
 - **Lint / format:** `oxlint`, `oxfmt`
 - **Verify UI:** **F5** Extension Development Host (`fixtures/dev-workspace`). There is no `npm run dev` / `localhost:3000` app server
 - **MCP register:** `vscode.cursor.mcp.registerServer` (stdio) only

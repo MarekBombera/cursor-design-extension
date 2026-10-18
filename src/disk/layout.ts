@@ -22,6 +22,10 @@ export const HANDOFF_INDEX_FILE = 'index.html' as const;
 
 export const IMPLEMENT_FILE = 'IMPLEMENT.md' as const;
 
+export const CANVAS_PREVIEW_FILE = 'canvas.html' as const;
+
+export const UNGROUPED_FOLDER = 'ungrouped' as const;
+
 export const CANVAS_FILE = 'canvas.json' as const;
 
 export const CANVAS_SCHEMA_VERSION = 1 as const;

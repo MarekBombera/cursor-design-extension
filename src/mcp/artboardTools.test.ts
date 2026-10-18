@@ -237,6 +237,18 @@ test('export_artboard with non-string artboardId returns INVALID_ARGS JSON', asy
 	});
 });
 
+test('export_artboard with any artboardId returns the authored INVALID_ARGS result', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceRootsEnv(workspaceRoot, async () => {
+		const result = await handlerFor(EXPORT_ARTBOARD_TOOL)({ artboardId: 'hero' });
+		assert.equal(result.isError, true);
+		assert.deepEqual(bodyOf(result), {
+			code: 'INVALID_ARGS',
+			message: 'export_artboard exports every frame. Omit artboardId and retry.',
+		});
+	});
+});
+
 const canvasFileOf = (workspaceRoot: string): string => join(workspaceRoot, ...canvasPathSegments);
 
 const readCanvasText = async (workspaceRoot: string): Promise<string | undefined> => {

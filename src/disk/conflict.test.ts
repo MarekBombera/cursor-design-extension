@@ -406,9 +406,11 @@ test('hand-edited HTML bumps read generation without writing meta', async () => 
 	);
 	assert.equal(await readFile(htmlPath, 'utf8'), handEditedHtml);
 
-	const exported = await exportArtboard({ workspaceRoot, artboardId: 'hero' });
-	assert.equal(exported.artboardHash, hashHtml(handEditedHtml));
-	assert.equal(exported.generation, created.generation + 1);
+	const exported = await exportArtboard({ workspaceRoot });
+	assert.equal(
+		exported.frames.find(({ artboardId }) => artboardId === 'hero')?.artboardHash,
+		hashHtml(handEditedHtml),
+	);
 	const healedMeta = JSON.parse(await readFile(metaPath, 'utf8')) as {
 		generation: number;
 		hash: string;

@@ -59,7 +59,7 @@ Commands:
 
 - **Cursor Design: Open Artboard** - open/reveal the panel
 - **Cursor Design: Reveal Design Folder** - reveal `.cursor-design/` if it exists (does not create it)
-- **Cursor Design: Export Handoff** - export the active artboard to `.cursor-design/handoff/<exportId>/`
+- **Cursor Design: Export Handoff** - export every frame on the canvas to `.cursor-design/handoff/<exportId>/`
 
 Output: **View → Output → Cursor Design**.
 

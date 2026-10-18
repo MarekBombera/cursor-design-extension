@@ -14,7 +14,8 @@ alwaysApply: false
 - set_artboard — create/init; may set active / open panel
 - update_artboard — requires baseGeneration; conflict on mismatch
 - read_artboard / list_artboards / set_active_artboard
-- export_artboard / handoff_status
+- export_artboard — exports every frame to handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html); takes no artboardId
+- handoff_status — stale when any frame's HTML changed or a frame was added or removed since the last export
 - place_frame — one frame's x / y / width / label / group in canvas.json; returns every frame
 
 Serialize writes per artboard id. MCP denied: edit .cursor-design/** and tell user to allowlist.

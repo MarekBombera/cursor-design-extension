@@ -17,7 +17,7 @@ import {
 	CursorDesignError,
 	InvalidArtboardIdError,
 } from '../disk/errors';
-import { compareHandoff } from '../disk/handoff';
+import { compareCanvasHandoff } from '../disk/handoff';
 import { hashHtml } from '../disk/hash';
 import {
 	DEFAULT_ARTBOARD_HTML,
@@ -31,7 +31,6 @@ import {
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
-	type LastExport,
 	parseManifest,
 	parseMeta,
 	serializeManifest,
@@ -112,46 +111,6 @@ const readManifest = async (manifestUri: vscode.Uri): Promise<ArtboardManifest> 
 	return parseManifest(parsedJson);
 };
 
-type LastExportHandoffStaleArgs = {
-	workspaceFolder: vscode.WorkspaceFolder;
-	lastExport: LastExport | undefined;
-	activeArtboardId: string;
-	activeHtml: string;
-};
-
-const lastExportHandoffStale = async ({
-	workspaceFolder,
-	lastExport,
-	activeArtboardId,
-	activeHtml,
-}: LastExportHandoffStaleArgs): Promise<boolean> => {
-	if (lastExport === undefined) {
-		return false;
-	}
-
-	let exportedHtml: string | undefined;
-	if (lastExport.artboardId === activeArtboardId) {
-		exportedHtml = activeHtml;
-	} else {
-		const exportedHtmlUri = joinWorkspace(
-			workspaceFolder,
-			artboardHtmlPathSegments(lastExport.artboardId),
-		);
-		if (await fileExists(exportedHtmlUri)) {
-			exportedHtml = await readTextFile(exportedHtmlUri);
-		}
-	}
-
-	if (exportedHtml === undefined) {
-		return true;
-	}
-	const compared = compareHandoff({
-		lastExport,
-		activeHash: hashHtml(exportedHtml),
-	});
-	return compared.exported && compared.stale;
-};
-
 const initializeDefaultArtboard = async (
 	workspaceFolder: vscode.WorkspaceFolder,
 ): Promise<void> => {
@@ -220,19 +179,22 @@ const snapshotFromCanvasView = async ({
 		layoutErrorMessage: view.layoutErrorMessage,
 	});
 
+	// Badge = exported && stale, so a never-exported canvas keeps it off.
 	let handoffStale = false;
-	if (activeFrame !== undefined) {
+	if (view.frames.length > 0) {
 		try {
 			const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
 			const lastExport = (await fileExists(manifestUri))
 				? (await readManifest(manifestUri)).lastExport
 				: undefined;
-			handoffStale = await lastExportHandoffStale({
-				workspaceFolder,
+			const compared = compareCanvasHandoff({
 				lastExport,
-				activeArtboardId: view.activeArtboardId,
-				activeHtml: activeFrame.html,
+				frames: view.frames.map((frame) => ({
+					artboardId: frame.id,
+					hash: frame.errorMessage === undefined ? hashHtml(frame.html) : undefined,
+				})),
 			});
+			handoffStale = compared.exported && compared.stale;
 		} catch (error: unknown) {
 			logDiskError({ scope: 'artboardDisk.handoffStale', error, outputChannel });
 			handoffStale = true;

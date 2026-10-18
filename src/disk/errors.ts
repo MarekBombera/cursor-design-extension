@@ -132,6 +132,16 @@ export class ArtboardNotFoundError extends CursorDesignError {
 	}
 }
 
+// Export has nothing to write: no artboards dir, or no artboard files. Same code as not-found.
+export class NoArtboardsToExportError extends CursorDesignError {
+	readonly code = 'ARTBOARD_NOT_FOUND' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super('No artboards to export. Ask the agent to `set_artboard` first.', options);
+		this.name = 'NoArtboardsToExportError';
+	}
+}
+
 export class NoWorkspaceError extends CursorDesignError {
 	readonly code = 'NO_WORKSPACE' as const;
 

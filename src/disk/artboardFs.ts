@@ -23,12 +23,21 @@ import {
 	DiskError,
 	InvalidArgsError,
 	InvalidArtboardIdError,
+	NoArtboardsToExportError,
 	UnsupportedCanvasVersionError,
 } from './errors';
 import { nextGeneration } from './generation';
-import { buildHandoffFiles, compareHandoff } from './handoff';
+import {
+	STUB_TOKENS_JSON,
+	assignGroupFolders,
+	buildCanvasImplementMarkdown,
+	compareCanvasHandoff,
+	makeCanvasExportId,
+} from './handoff';
+import { buildCanvasPreviewHtml } from './handoffCanvasHtml';
 import { hashHtml, isArtboardHash, normalizeHash } from './hash';
 import {
+	CANVAS_PREVIEW_FILE,
 	CANVAS_SCHEMA_VERSION,
 	CURSOR_DESIGN_DIR,
 	DEFAULT_ARTBOARD_TITLE,
@@ -37,6 +46,7 @@ import {
 	IMPLEMENT_FILE,
 	SCHEMA_VERSION,
 	TOKENS_FILE,
+	UNGROUPED_FOLDER,
 	artboardHtmlFileName,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
@@ -51,6 +61,7 @@ import {
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
+	type ExportedFrame,
 	type LastExport,
 	parseArtboardId,
 	parseManifest,
@@ -175,17 +186,18 @@ export type SetActiveArtboardArgs = {
 
 export type ExportArtboardArgs = {
 	workspaceRoot: string;
-	artboardId?: unknown;
 	now?: Date;
+};
+
+export type ExportedFrameResult = ExportedFrame & {
+	path: string;
 };
 
 export type ExportArtboardResult = {
 	exportId: string;
-	artboardId: string;
-	artboardHash: string;
 	exportedAt: string;
-	generation: number;
 	handoffPath: string;
+	frames: ExportedFrameResult[];
 };
 
 export type HandoffStatusResult = {
@@ -412,9 +424,12 @@ const isBenignMetaParseError = (error: unknown): boolean =>
 const parseMetaFromJsonText = (text: string): ArtboardMeta =>
 	parseMeta(JSON.parse(text) as unknown);
 
+// Tolerant by default: an unparsable meta reads as missing. Export passes rejectUnparsable so a
+// broken meta fails before any write instead of being silently restamped.
 const readStoredMeta = async (
 	workspaceRoot: string,
 	artboardId: string,
+	{ rejectUnparsable = false }: { rejectUnparsable?: boolean } = {},
 ): Promise<ArtboardMeta | undefined> => {
 	const text = await readUtf8IfExists(
 		workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(artboardId)),
@@ -427,6 +442,9 @@ const readStoredMeta = async (
 		meta = parseMetaFromJsonText(text);
 	} catch (error: unknown) {
 		if (isBenignMetaParseError(error)) {
+			if (rejectUnparsable) {
+				throw new CorruptMetaError(artboardId, { cause: error });
+			}
 			return undefined;
 		}
 		return throwDiskError(error);
@@ -700,6 +718,7 @@ type ScannedArtboards = {
 	activeArtboardId: string;
 	artboards: ScannedArtboard[];
 	artboardsDirMissing: boolean;
+	manifest?: ArtboardManifest;
 };
 
 const listedFromScan = (scanned: ScannedArtboard): ListedArtboard => {
@@ -857,7 +876,11 @@ const scanArtboardFiles = async ({
 		});
 	}
 	artboards.sort((left, right) => left.artboardId.localeCompare(right.artboardId));
-	return { activeArtboardId, artboards, artboardsDirMissing: false };
+	const scanned: ScannedArtboards = { activeArtboardId, artboards, artboardsDirMissing: false };
+	if (manifest !== undefined) {
+		scanned.manifest = manifest;
+	}
+	return scanned;
 };
 
 const resolveLayoutOrEmpty = async (
@@ -1004,20 +1027,6 @@ export const setActiveArtboard = async ({
 	return { activeArtboardId: resolvedId };
 };
 
-const resolveExportArtboardId = async ({
-	workspaceRoot,
-	artboardId,
-}: {
-	workspaceRoot: string;
-	artboardId: unknown;
-}): Promise<{ resolvedId: string; manifest: ArtboardManifest | undefined }> => {
-	const manifest = await readManifestFile(workspaceRoot);
-	if (artboardId === undefined) {
-		return { resolvedId: requireActiveManifest(manifest).activeArtboardId, manifest };
-	}
-	return { resolvedId: requireArtboardIdString(artboardId), manifest };
-};
-
 const readTokensJsonForExport = async (workspaceRoot: string): Promise<string | undefined> => {
 	const tokensPath = workspaceJoin(workspaceRoot, workspaceTokensPathSegments);
 	const entryKind = await layoutEntryKind(tokensPath);
@@ -1034,24 +1043,26 @@ const readTokensJsonForExport = async (workspaceRoot: string): Promise<string | 
 	}
 };
 
+type HandoffLeafFile = {
+	segments: readonly string[];
+	contents: string;
+};
+
+// Creates handoff/<exportId>/ (never reused) and writes files in order, creating subfolders as needed.
 const writeHandoffLeaf = async ({
 	workspaceRoot,
 	exportId,
-	indexHtml,
-	implementMd,
-	tokensJson,
+	files,
 }: {
 	workspaceRoot: string;
 	exportId: string;
-	indexHtml: string;
-	implementMd: string;
-	tokensJson: string;
+	files: readonly HandoffLeafFile[];
 }): Promise<void> => {
 	await ensureDir(workspaceJoin(workspaceRoot, handoffRootSegments));
 
-	const leafDir = workspaceJoin(workspaceRoot, handoffDirSegments(exportId));
+	const leafSegments = handoffDirSegments(exportId);
 	try {
-		await mkdir(leafDir, { recursive: false });
+		await mkdir(workspaceJoin(workspaceRoot, leafSegments), { recursive: false });
 	} catch (error: unknown) {
 		if (isErrno(error, 'EEXIST')) {
 			throw new DiskError('Handoff folder already exists. Retry export_artboard.');
@@ -1059,19 +1070,15 @@ const writeHandoffLeaf = async ({
 		throwDiskError(error);
 	}
 
-	const leafSegments = handoffDirSegments(exportId);
-	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, [...leafSegments, HANDOFF_INDEX_FILE]),
-		contents: indexHtml,
-	});
-	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, [...leafSegments, IMPLEMENT_FILE]),
-		contents: implementMd,
-	});
-	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, [...leafSegments, TOKENS_FILE]),
-		contents: tokensJson,
-	});
+	for (const { segments, contents } of files) {
+		if (segments.length > 1) {
+			await ensureDir(workspaceJoin(workspaceRoot, [...leafSegments, ...segments.slice(0, -1)]));
+		}
+		await writeUtf8({
+			...workspaceLayoutFile(workspaceRoot, [...leafSegments, ...segments]),
+			contents,
+		});
+	}
 	// ponytail: no journal / rollback; orphan dirs are harmless and never deleted
 };
 
@@ -1099,58 +1106,122 @@ const writeManifestLastExport = async ({
 	});
 };
 
+// `.` and `..` pass the artboard-id charset but cannot be a handoff folder name.
+const requireExportableFolderId = (artboardId: string): void => {
+	if (artboardId === '.' || artboardId === '..') {
+		throw new DiskError(
+			`Artboard id "${artboardId}" cannot be exported as a folder. Rename ${artboardHtmlPathSegments(artboardId).join('/')}.`,
+		);
+	}
+};
+
+type ExportPlanFrame = CanvasFrame & {
+	folder: string;
+	html: string;
+	storedMeta: ArtboardMeta | undefined;
+	effective: ArtboardMeta;
+};
+
+// Exports every resolved canvas frame. All reads (and every read error) happen before the
+// leaf mkdir; the scan's HTML string is the only source for index.html, hashes, and meta.
 export const exportArtboard = async ({
 	workspaceRoot,
-	artboardId,
 	now,
 }: ExportArtboardArgs): Promise<ExportArtboardResult> => {
 	const exportNow = now ?? new Date();
 	await assertLayoutDirsOwned(workspaceRoot);
-	const { resolvedId, manifest } = await resolveExportArtboardId({ workspaceRoot, artboardId });
+	const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: false });
+	const layout = await readCanvasLayoutFile(workspaceRoot);
+	const htmlById = new Map(scanned.artboards.map(({ artboardId, html }) => [artboardId, html]));
+	const resolved = resolveCanvasFrames({
+		stored: layout.frames,
+		artboards: scanned.artboards.map(({ artboardId, title }) => ({ artboardId, title })),
+	});
+	if (resolved.length === 0) {
+		throw new NoArtboardsToExportError();
+	}
+	for (const frame of resolved) {
+		requireExportableFolderId(frame.id);
+	}
 
-	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
-	const storedMeta = await readStoredMeta(workspaceRoot, resolvedId);
-	const meta = effectiveArtboardMeta({
-		html,
-		meta: storedMeta,
-		artboardId: resolvedId,
+	const folders = assignGroupFolders(resolved);
+	const planned: ExportPlanFrame[] = [];
+	for (const frame of resolved) {
+		const html = htmlById.get(frame.id) ?? '';
+		const storedMeta = await readStoredMeta(workspaceRoot, frame.id, { rejectUnparsable: true });
+		planned.push({
+			...frame,
+			folder: folders.get(frame.id) ?? UNGROUPED_FOLDER,
+			html,
+			storedMeta,
+			effective: effectiveArtboardMeta({ html, meta: storedMeta, artboardId: frame.id }),
+		});
+	}
+	const tokensJson = (await readTokensJsonForExport(workspaceRoot)) ?? STUB_TOKENS_JSON;
+
+	const exportId = makeCanvasExportId({ now: exportNow });
+	const exportedAt = exportNow.toISOString();
+	const exportedFrames: ExportedFrameResult[] = planned.map(({ id, folder, effective }) => ({
+		artboardId: id,
+		artboardHash: effective.hash,
+		path: `${folder}/${id}/${HANDOFF_INDEX_FILE}`,
+	}));
+	const activeArtboardId = scanned.manifest?.activeArtboardId ?? '';
+	const legacyFrame =
+		exportedFrames.find(({ artboardId }) => artboardId === activeArtboardId) ?? exportedFrames[0];
+	if (legacyFrame === undefined) {
+		throw new NoArtboardsToExportError();
+	}
+	const lastExport: LastExport = {
+		exportId,
+		artboardId: legacyFrame.artboardId,
+		artboardHash: legacyFrame.artboardHash,
+		exportedAt,
+		frames: exportedFrames.map(({ artboardId, artboardHash }) => ({ artboardId, artboardHash })),
+	};
+	const implementMd = buildCanvasImplementMarkdown({
+		exportId,
+		exportedAt,
+		frames: planned.map(({ id, label, width, group, folder, effective }) => {
+			const implementFrame = { id, label, width, folder, artboardHash: effective.hash };
+			return group === undefined ? implementFrame : { ...implementFrame, group };
+		}),
 	});
-	const tokensJson = await readTokensJsonForExport(workspaceRoot);
-	const files = buildHandoffFiles({
-		artboardId: resolvedId,
-		html,
-		meta,
-		tokensJson,
-		now: exportNow,
-	});
+	const canvasHtml = buildCanvasPreviewHtml({ exportId, frames: planned });
 
 	await writeHandoffLeaf({
 		workspaceRoot,
-		exportId: files.exportId,
-		indexHtml: files.indexHtml,
-		implementMd: files.implementMd,
-		tokensJson: files.tokensJson,
+		exportId,
+		files: [
+			{ segments: [IMPLEMENT_FILE], contents: implementMd },
+			{ segments: [CANVAS_PREVIEW_FILE], contents: canvasHtml },
+			{ segments: [TOKENS_FILE], contents: tokensJson },
+			...planned.map(({ id, folder, html }) => ({
+				segments: [folder, id, HANDOFF_INDEX_FILE],
+				contents: html,
+			})),
+		],
 	});
-	if (storedMeta === undefined || normalizeHash(storedMeta.hash) !== meta.hash) {
-		await writeUtf8({
-			...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
-			contents: serializeMeta({ ...meta, updatedAt: exportNow.toISOString() }),
-		});
+	for (const { id, storedMeta, effective } of planned) {
+		if (storedMeta === undefined || normalizeHash(storedMeta.hash) !== effective.hash) {
+			await writeUtf8({
+				...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(id)),
+				contents: serializeMeta({ ...effective, updatedAt: exportedAt }),
+			});
+		}
 	}
 	await writeManifestLastExport({
 		workspaceRoot,
-		existing: manifest,
-		artboardId: resolvedId,
-		lastExport: files.lastExport,
+		existing: scanned.manifest,
+		artboardId: legacyFrame.artboardId,
+		lastExport,
 	});
 
 	return {
-		exportId: files.exportId,
-		artboardId: resolvedId,
-		artboardHash: files.lastExport.artboardHash,
-		exportedAt: files.lastExport.exportedAt,
-		generation: meta.generation,
-		handoffPath: handoffDirSegments(files.exportId).join('/'),
+		exportId,
+		exportedAt,
+		handoffPath: handoffDirSegments(exportId).join('/'),
+		frames: exportedFrames,
 	};
 };
 
@@ -1169,19 +1240,17 @@ export const readHandoffStatus = async ({
 		artboardId: activeArtboardId,
 	});
 
-	let stale: boolean;
-	if (manifest.lastExport === undefined) {
-		stale = true;
-	} else {
-		const exportedHtml = await readUtf8IfExists(
-			workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(manifest.lastExport.artboardId)),
-		);
-		stale =
-			exportedHtml === undefined ||
-			compareHandoff({
-				lastExport: manifest.lastExport,
-				activeHash: hashHtml(exportedHtml),
-			}).stale;
+	// Never exported stays stale. Layout never affects staleness, so canvas.json is not read.
+	let stale = true;
+	if (manifest.lastExport !== undefined) {
+		const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: true });
+		stale = compareCanvasHandoff({
+			lastExport: manifest.lastExport,
+			frames: scanned.artboards.map(({ artboardId, html, errorMessage }) => ({
+				artboardId,
+				hash: errorMessage === undefined ? hashHtml(html) : undefined,
+			})),
+		}).stale;
 	}
 
 	const status: HandoffStatusResult = {
