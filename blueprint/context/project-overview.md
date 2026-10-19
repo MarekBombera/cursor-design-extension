@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash a9cb964863fc0a17d40ca34b050f01de490581ff5e9bb470a3c0b860786c0877 -->
+<!-- blueprint:source-hash 58ef1374ba791b1bca450c47f776426a944106838b9dbeb9eb69ed1675be25ed -->
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 turns the panel into a Figma-style multi-frame stage.
 
@@ -34,6 +34,15 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 6d. **Frames** - one blob iframe per frame at fixed width; full height via `cd:frame-height`; frames forward wheel/pinch to the stage; chrome labels + group headings; error tiles.
    - 6e. **Canvas export** - `export_artboard` exports every frame into one handoff: a folder per group, one `IMPLEMENT.md` index, a view-only `canvas.html`; `handoff_status` stale when any frame changed.
    - 6f. **Verify** - F5 dogfood: desktop page, mobile page, and two section frames on one canvas; export clean.
+7. **0.2.1 Tooling** - repo moves onto Vite+; replaced tools removed; quality checks added. No product features or behavior changes. Brief: https://app.notion.com/p/3fd500344e088166afe5e9295bf601fc. Plan review findings every 7x spec must carry: `blueprint/reference/0.2.1-tooling-review.md`.
+   - 7a. **Pack spike** - `vp pack` reproduces `esbuild.js` (two CJS entries, `vscode` external, MCP SDK + zod bundled); F5 chain, watch matcher, `package`/prepublish re-pointed; tsconfig fixed; pass removes esbuild, fail keeps it for the bundle.
+   - 7b. **vp check** - lint/fmt config into `vite.config.ts`; replaces `check-types`/`lint`/`fmt`; `pretest` removed; format drift in its own commit.
+   - 7c. **vp test** - Vitest runs the 178 unit tests from TS; Test command declared.
+   - 7d. **Electron suite home** - where `@vscode/test-electron` builds once `out/` goes; dead test deps removed; suite stays out of Verify.
+   - 7e. **Stricter static checks** - Oxlint type-aware rules with pure per-site fixes; knip clean.
+   - 7f. **Test depth** - fast-check properties, scrubbed snapshots, coverage script (no thresholds).
+   - 7g. **MCP contract tests** - real client over `InMemoryTransport` for all 8 tools + `listTools` set; characterise current errors.
+   - 7h. **Verify + CI** - one Verify command (check, test, pack); GitHub workflow on push/PR; final F5 + `.vsix` smoke.
 
 ### 0.2 canvas model
 
@@ -97,12 +106,12 @@ Height is never stored; it comes from the rendered content (`cd:frame-height`). 
 
 ## Tech stack
 
-- **Host** - TypeScript + esbuild Cursor/VS Code extension. `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
+- **Host** - TypeScript Cursor/VS Code extension (esbuild bundle through 0.2; see Tooling). `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
 - **Chrome** - TS template-string document (`src/panel/artboardChromeHtml.ts`) through 0.2; Svelte 5 + Vite deferred. `var(--vscode-*)` tokens.
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
-- **Tooling** - `pnpm`, oxlint, oxfmt. UI verify = F5 (`fixtures/dev-workspace`).
+- **Tooling** - `pnpm`, oxlint, oxfmt, esbuild through 0.2. From 0.2.1: Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown; esbuild kept for the bundle only if the pack spike fails), one Verify command (check, test, pack) also run by GitHub CI; `@vscode/test-electron` suite stays out of CI. UI verify = F5 (`fixtures/dev-workspace`).
 
 Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.cursor/rules/02-mcp-webview.mdc` lock v2 `@modelcontextprotocol/server`. Follow the repo.
 

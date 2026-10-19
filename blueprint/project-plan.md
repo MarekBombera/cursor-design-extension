@@ -49,12 +49,12 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 ## 5. Tech - What stack are we using?
 
 - **Product:** Cursor/VS Code extension (WebviewPanel + local MCP stdio). Not a Next.js app, not SvelteKit, not a Chrome extension.
-- **Host:** TypeScript, esbuild, `pnpm`. `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
+- **Host:** TypeScript, `pnpm`. Bundler esbuild through 0.2; from 0.2.1 Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown), with esbuild kept for the bundle only if the 0.2.1 pack spike fails. `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
 - **Chrome:** TS template-string document in `src/panel/artboardChromeHtml.ts` through 0.2 (Svelte 5 + Vite deferred, decided 2026-10-13). Theme tokens `var(--vscode-*)`.
 - **Artboard:** nested sandboxed HTML iframe (`sandbox="allow-scripts"`). Scripts allowed; parent never `eval`s artboard HTML.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
 - **Brain:** Cursor Agent only. Disk is SoT. Brand: `cursor-design`.
-- **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`.
+- **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR; the `@vscode/test-electron` suite stays out of CI.
 - **Coding SoT:** `.cursor/rules/00` through `07`, skills `cursor-design-build` and `cursor-design-agent-loop`.
 
 ## 6. Monetize - How will this make money?
