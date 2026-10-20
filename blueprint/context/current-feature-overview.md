@@ -1,34 +1,87 @@
-# README canvas export trial - Overview for review
+# Pack spike (7a) - Overview for review
 
-Source of truth: `blueprint/history/fixes/readme-canvas-export-trial.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/07a-pack-spike.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The README's "Export to implement trial" and two Limits bullets still described the 0.1 single-artboard export, so anyone following the trial looked for a root `index.html` that no longer exists. They now describe the 0.2 canvas export. Docs only; fixes F-12.
+`vp pack` replaced `esbuild.js` for both extension bundles. Same F5 path: `compile` still type-checks and lints, then packs `dist/extension.js` and `dist/mcp.js`. Esbuild is gone. Vite+ stays so 7b can add `vp check`.
+
+## Flow
+
+```mermaid
+flowchart LR
+  F5[F5 / pnpm compile] --> G[check-types + lint]
+  G --> P[vp pack]
+  P --> E[dist/extension.js<br/>vscode external]
+  P --> M[dist/mcp.js<br/>SDK + zod bundled]
+  M --> V[.vsix with no node_modules]
+```
+
+## System map
+
+```mermaid
+flowchart TB
+  srcExt[src/extension.ts] --> pack[vite.config.ts pack]
+  srcMcp[src/mcp/server.ts] --> pack
+  pack --> ext[dist/extension.js]
+  pack --> mcp[dist/mcp.js]
+  host[Extension host] --> ext
+  host -->|stdio spawn| mcp
+```
+
+## Key loop
+
+```mermaid
+sequenceDiagram
+  participant Dev as Developer
+  participant Compile as pnpm compile
+  participant Pack as vp pack
+  participant Dist as dist/
+  Dev->>Compile: F5 / package
+  Compile->>Compile: tsc + oxlint
+  Compile->>Pack: two CJS entries
+  Pack->>Dist: extension.js + mcp.js
+```
 
 ## What you will see
 
-In `README.md`:
-- **Trial step 3** confirms that `handoff/<exportId>/` holds `IMPLEMENT.md`, `canvas.html`, `tokens.json` and one `<group-folder>/<frame-id>/index.html` per frame, and that `lastExport.frames` lists every frame.
-- **Trial steps 2, 4 and 5** design two or more frames (for example desktop and mobile), implement one responsive page into `sample-app/`, and edit any frame to see the badge.
-- **The trial record** labels the 2026-09-12 run as the 0.1 trial and adds the 2026-10-18 0.2 canvas trial (6f dogfood).
-- **Limits** now say one canvas per folder, every artboard is a frame, and each frame's `index.html` carries its whole document.
+- `vite-plus@1.3.0` and a root `vite.config.ts` with only a `pack` block.
+- `pnpm compile` / `pnpm watch` / F5 / `pnpm vsix` still work.
+- No `esbuild.js`. Watch task is `npm: watch:pack`.
+
+## Data flow
+
+Host loads `dist/extension.js`. MCP process is `dist/mcp.js` with the version string baked in. The `.vsix` ships those two files and no `node_modules`, so anything left `require()`'d besides Node builtins (and `vscode` on the host) would break at runtime.
+
+## Architecture decisions
+
+- Two-config `pack` array, `clean: false`, `dts: false`. Production: `vp pack --minify --no-sourcemap`.
+- `deps.alwaysBundle` uses regexes so `zod/mini` and MCP `/stdio` stay inside `mcp.js`.
+- `allowBuilds: esbuild` stays because vite-plus-core still installs esbuild.
+- `.vscodeignore` now also drops `.pnpm-store/**`, `.cursor-design/**`, `notes.md`, `*.vsix`.
+
+## Decisions locked
+
+- Exact filenames, CJS, Node. `vscode` external on the extension only. Version define on MCP only.
+- Isolated MCP handshake + `require` scan are the pack proofs. F5 evidence is manual (passed 2026-10-20).
+- Real unit-test count is **177**, not 178.
 
 ## Out of scope
 
-Tool list, Install, Develop, Commands, other Limits bullets, and any code, rules or skills.
+`vp check`, Vitest, Electron suite home, knip, new tests, Verify + CI (7b–7h). No `src/` change.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Frame | One artboard file placed on the canvas |
-| Handoff | The `handoff/canvas-*/` folder an implementing Agent builds from |
+| `vp pack` | Vite+ / tsdown command that writes the two CJS bundles |
+| Isolated handshake | Run `mcp.js` in an empty folder so it cannot lean on repo `node_modules` |
+| `allowBuilds: esbuild` | pnpm still needs esbuild's install script for vite-plus-core |
 
 ## Your actions
 
-Run `/audit` sometime to move F-12 from `fixed` to `closed`. It's a P3, so it doesn't block anything.
+None required for the spike itself. Notion 0.2.1 is updated only if you ask.
 
 ## Done means
 
-Every file the README trial tells you to confirm exists in a real 0.2 handoff (checked against `canvas-20261018T160927516Z`).
+`compile` and 177 tests pass, F5 opens the stage, `.vsix` lists both dist files and no `node_modules`, and live docs name `vp pack` instead of esbuild.

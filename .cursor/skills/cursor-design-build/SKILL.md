@@ -23,6 +23,6 @@ description: Use when implementing or scaffolding the cursor-design VS Code/Curs
 
 - Cursor types: paste `declare module "vscode"` from https://cursor.com/docs/extension-api into `src/types/vscode.cursor.d.ts` **verbatim**. No imports in that file.
 - MCP package: `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`.
-- Two `esbuild.context()` builds (two `outfile`s): host `src/extension.ts` → `dist/extension.js` (`external: ['vscode']`); MCP `src/mcp/server.ts` → `dist/mcp.js` (bundle the server package). Never `entryPoints: [a, b]` + one `outfile`.
+- Two `pack` configs (array in `vite.config.ts`, one entry each): host `src/extension.ts` → `dist/extension.js` (`deps.neverBundle: ['vscode']`); MCP `src/mcp/server.ts` → `dist/mcp.js` (bundle the server package via `deps.alwaysBundle`). Never one config with both entries (shared chunks).
 - Spawn with `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. Env is explicit (`ELECTRON_RUN_AS_NODE`, `CURSOR_DESIGN_WORKSPACE_ROOT` only). Do **not** spread `process.env`.
 - `unregisterServer` then `registerServer` on activate; dispose unregisters. Stdio child: never `console.log` (stdout is MCP).

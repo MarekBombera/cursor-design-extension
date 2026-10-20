@@ -61,6 +61,6 @@ panel.onDidDispose(() => {
 Artboard HTML is executable workspace code. Declare `capabilities.untrustedWorkspaces` (`false` or `limited` + description — never `true`). Do not write `.cursor-design/` or load artboard scripts until `vscode.workspace.isTrusted`.
 
 - `extensionKind: ["workspace"]` — needs the folder, not the local UI host.
-- esbuild `external: ['vscode']`. Never depend on the `vscode` npm package.
+- `vp pack` `deps.neverBundle: ['vscode']`. Never depend on the `vscode` npm package.
 - No proposed APIs unless `enabledApiProposals` + matching `engines`.
 - Watch with `createFileSystemWatcher` + debounce (~200ms). Do not poll. No sync fs/CPU on the extension host thread.

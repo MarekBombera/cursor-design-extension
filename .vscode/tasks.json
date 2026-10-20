@@ -19,7 +19,7 @@
 		},
 		{
 			"label": "watch",
-			"dependsOn": ["npm: watch:tsc", "npm: watch:esbuild"],
+			"dependsOn": ["npm: watch:tsc", "npm: watch:pack"],
 			"presentation": {
 				"reveal": "never"
 			},
@@ -27,22 +27,22 @@
 		},
 		{
 			"type": "npm",
-			"script": "watch:esbuild",
+			"script": "watch:pack",
 			"group": "build",
 			"problemMatcher": {
-				"owner": "esbuild",
+				"owner": "vp-pack",
 				"pattern": {
-					"regexp": "^✘ \\[ERROR\\] (.+)$",
+					"regexp": "^\\[(?!ELIFECYCLE)[A-Z_]+\\] (.+)$",
 					"message": 1
 				},
 				"background": {
 					"activeOnStart": true,
-					"beginsPattern": "\\[watch\\] build started",
-					"endsPattern": "\\[watch\\] build finished"
+					"beginsPattern": "Build start|changed, rebuilding",
+					"endsPattern": "Rebuilt in \\d+ms|Build failed"
 				}
 			},
 			"isBackground": true,
-			"label": "npm: watch:esbuild",
+			"label": "npm: watch:pack",
 			"presentation": {
 				"group": "watch",
 				"reveal": "never"

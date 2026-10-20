@@ -15,10 +15,10 @@
 **Suggested fix:** Record the symlink layout as an intended local customization (for example a note in `AGENTS.md` or the doctor skill telling update tooling to target `.cursor` once), or refresh the manifest through the Blueprint updater rather than by hand. No product code change.
 **Resolution:**
 
-### F-12 [P3] fixed - README export trial still names the 0.1 handoff tree
+### F-14 [P2] open - Watch matcher misses the `vp pack` success line
 
-**File:** README.md:76
-**Found:** 2026-10-18 by /audit independent current (scope: current; lens: quality)
-**Why it matters:** The Commands list now says Export Handoff writes every frame, but the trial still tells the reader to confirm `.cursor-design/handoff/<exportId>/{index.html,IMPLEMENT.md,tokens.json}`. Canvas export no longer writes a root `index.html`; it writes `canvas.html` plus `<group>/<id>/index.html`. Someone following the trial looks for a file that is not there.
-**Suggested fix:** Point step 3 at `IMPLEMENT.md`, `canvas.html`, `tokens.json`, and one `<group>/<id>/index.html`, plus `lastExport.frames`.
-**Resolution:** Fixed 2026-10-18 by fix `readme-canvas-export-trial`: trial step 3 now names `IMPLEMENT.md`, `canvas.html`, `tokens.json`, `<group-folder>/<frame-id>/index.html` and `lastExport.frames`; Limits lines for one-active-artboard and single `index.html` updated. Awaiting /audit closure.
+**File:** .vscode/tasks.json:41
+**Found:** 2026-10-20 by /audit (scope: current; lens: quality)
+**Why it matters:** The `npm: watch:pack` matcher is `activeOnStart: true` and ends only on `Rebuilt in <n>ms` or `Build failed`. Both `vp pack` and `vp pack --minify --no-sourcemap` in this pass printed `Build start` then `✔ Build complete in <n>ms` (once per pack config). That success line does not match `endsPattern`. If the first watch cycle uses the same logger as one-shot pack, the VS Code `watch` task never becomes ready until a later incremental `Rebuilt in` (the spec captured that string after a file touch; this pass could not re-run watch outside the sandbox). F5 still uses `preLaunchTask: compile`, so the Extension Host path is not blocked.
+**Suggested fix:** Add `Build complete` to `endsPattern`, or wrap `watch:pack` so it prints the old `[watch] build started` / `[watch] build finished` lines the spec already allowed. Confirm the VS Code `watch` task reaches ready without a file touch.
+**Resolution:**

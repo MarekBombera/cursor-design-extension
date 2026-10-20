@@ -5,7 +5,6 @@ node_modules/**
 src/**
 .gitignore
 .yarnrc
-esbuild.js
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/*.map
@@ -25,3 +24,7 @@ CLAUDE.md
 pnpm-lock.yaml
 pnpm-workspace.yaml
 .github/**
+.pnpm-store/**
+.cursor-design/**
+notes.md
+*.vsix

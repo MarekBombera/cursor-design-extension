@@ -36,6 +36,6 @@ Multi-artboard + one active. No gallery. Gitignore .cursor-design/.
 
 ## Stack
 
-- Host: TS + esbuild
+- Host: TS + `vp pack` (tsdown)
 - Chrome: Svelte 5 + Vite (no Kit)
 - MCP: `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`
