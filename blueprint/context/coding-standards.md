@@ -55,9 +55,9 @@ One job per function. Split host / MCP / disk lib / webview when a module grows 
 
 ## Testing
 
-The blueprint installs no extra test runner. Testing is opt-in. The switch is a `test` command in the Commands section of `AGENTS.md`. Declare one and tests become a gate for logic-bearing steps; leave it out and the loop verifies with F5, compile, and other evidence already listed.
+The Blueprint test gate is on via `vp test` (declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `package.json`'s `vscode-test` script (`pnpm test`) does not count as this gate. `/ci` still owns a `Verify` command.
 
-`package.json` may already have `vscode-test`. That does **not** turn the Blueprint test gate on until Commands in `AGENTS.md` lists it. `/tests` owns that declaration. `/ci` owns a `Verify` command.
+Do not run `/tests` to add or replace the runner. The Core skills bullet for `tests` in `AGENTS.md` and the `/tests` skill stay as written until a later edit of those files.
 
 - **What to test:** pure logic where a wrong answer is possible (parsers, disk schema, generation/hash, conflict handling). Assert inputs/outputs and edge cases (empty, missing, malformed).
 - **What not to test:** Svelte chrome and the artboard iframe as brittle unit tests. Verify those with F5 and compile.

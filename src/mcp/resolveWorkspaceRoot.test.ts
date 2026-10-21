@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, test } from 'node:test';
+import { afterEach, test } from 'vite-plus/test';
 
 import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
 import { CURSOR_DESIGN_DIR } from '../disk/layout';

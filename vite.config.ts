@@ -77,4 +77,10 @@ export default defineConfig({
 			define: { 'process.env.CURSOR_DESIGN_VERSION': JSON.stringify(pkg.version) },
 		},
 	],
+	test: {
+		include: ['src/**/*.test.ts'],
+		exclude: ['src/test/**'],
+		pool: 'forks',
+		passWithNoTests: false,
+	},
 });

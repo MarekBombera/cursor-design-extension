@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vite-plus/test';
 import { runInNewContext } from 'node:vm';
 
 import { STAGE_GEOMETRY_SOURCE } from './stageGeometry';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { test } from 'vite-plus/test';
 
 import { FRAME_READ_ERROR_MESSAGE, type CanvasViewFrame } from '../disk/artboardFs';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';

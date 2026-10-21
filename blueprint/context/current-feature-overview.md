@@ -1,60 +1,79 @@
-# vp check (7b) - Overview for review
+# vp test - Overview for review
 
-Source of truth: `blueprint/history/features/07b-vp-check.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/07c-vp-test.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-`vp check` is now the one static-check command: format, lint, and type check, configured in
-`vite.config.ts`. The old `check-types`, `lint`, `fmt`, and `watch:tsc` scripts are gone, along with
-`pretest`, the rc files, and the direct oxlint / oxfmt deps. F5 is still gated by lint and types,
-never by formatting. No product behavior changed.
+`vp test` runs the 13 TypeScript unit files through Vite+'s bundled Vitest. AGENTS.md now declares `Test: vp test`. Product behavior (panel, MCP, disk) is unchanged.
+
+## Flow
+
+1. Config lives in `vite.config.ts` (`include` / `exclude` / `pool: 'forks'` / `passWithNoTests: false`).
+2. The 13 files import `test` / `afterEach` from `vite-plus/test` and still assert with `node:assert/strict`.
+3. `vp test` prints **177 passed** (or 175 + 2 skipped as root). `src/test/**` stays out.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  CFG[vite.config.ts<br/>pack + lint + fmt] --> VP[vp check]
-  F5[F5 / pnpm compile] --> C1["vp check --no-fmt"] --> P1[vp pack]
-  PKG[pnpm package / vscode:prepublish] --> C2["vp check --no-fmt"] --> P2["vp pack --minify"]
-  CHK[pnpm run check] --> VP
+  TS["13 src/**/*.test.ts"] --> VP["vp test"]
+  CFG["vite.config.ts test block"] --> VP
+  VP --> VIT["Vitest 5 forks"]
+  VIT --> OK["177 passed"]
+  ELEC["src/test/** mocha"] -.-> X["excluded"]
+  PKG["pnpm test / vscode-test"] -.-> ELEC
+```
+
+## Key loop
+
+```mermaid
+sequenceDiagram
+  participant Dev
+  participant VP as vp test
+  participant Vit as Vitest forks
+  Dev->>VP: run unit suite
+  VP->>Vit: load 13 files
+  Vit-->>VP: 177 passed
+  VP-->>Dev: exit 0
 ```
 
 ## What you will see
 
-- `pnpm run check` checks formatting on 60 files and lint + types on 52 files.
-- `pnpm exec vp check --fix` applies format and lint fixes.
-- No `.oxlintrc.json` / `.oxfmtrc.json` in the repo root.
-- `main` gets two commits: `style: apply vp fmt` (format only, 15 files), then the feature commit.
-- The VS Code `watch` task runs only the pack watcher.
+- `vp test` → 177 passed (non-root) or 175 passed + 2 skipped (root chmod cases).
+- AGENTS.md Commands: `Test: vp test` immediately after Check.
+- `package.json` `scripts.test` remains `vscode-test` (Electron; 7d).
+
+## Data flow
+
+Developer runs `vp test` → Vite+ resolves bundled Vitest → forks pool loads only `src/**/*.test.ts` excluding `src/test/**` → pass/fail totals.
+
+## Architecture decisions
+
+- Imports from `vite-plus/test`, not a direct `vitest` dependency.
+- Config in existing `vite.config.ts` (no `vitest.config.ts`).
+- Locked unit count is **177**; plan/overview “178” still includes the mocha sample.
+- Compile (`pnpm compile` writing `dist/extension.js` + `dist/mcp.js`) is the F5 proxy; no live Extension Host demo required for 7c.
 
 ## Decisions locked
 
-- `typeAware` + `typeCheck` are on, so `vp check` type-checks. 15 type-aware `typescript/*` rules
-  stay `off` until 7e (`no-floating-promises` would flag about 25 test lines today).
-- F5 and packaging skip the format check (`--no-fmt`).
-- Lint warnings are still reported without failing the run, as before.
-- The lint (52) and format (62) file sets match the old tools exactly. No extra ignores were added.
+- 177 (not 178) for the unit lock.
+- `pool: 'forks'`; no test-body or `fileParallelism` edits.
+- No `package.json` Test script; documented command only.
+- No Verify command yet (7h). Do not run `/tests`.
 
 ## Out of scope
 
-Type-aware rules and knip (7e), Vitest (7c), the Electron suite and `out/` build (7d), Verify + CI
-(7h), editor settings.
+Electron/`out`/mocha types (7d), type-aware lint/knip (7e), coverage/fast-check (7f), MCP client contracts (7g), Verify+CI (7h), product behavior.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| `vp check` | Vite+ command that runs Oxfmt, Oxlint, and the tsgolint type check together |
-| tsgolint | Type-aware lint and type check built on TypeScript Go (TS 7) |
-| Format drift | Files the formatter would rewrite; committed alone so code review stays readable |
-
-## Your actions
-
-- F5 and the VS Code `watch` task were not run by the agent. You accepted shipping as is.
-- F-14 [P2] is still open: the watch task's matcher may never report "ready" because it doesn't
-  match `Build complete`. Fix it with a `/fix`.
+| `vp test` | Documented unit Test command (Vite+ / Vitest). |
+| `vite-plus/test` | Re-export of bundled Vitest APIs; avoids a direct `vitest` dep. |
+| forks pool | Process isolation across test files (env / temp-dir safety). |
+| 177 | Frozen unit inventory; mocha sample in `src/test/` is excluded. |
 
 ## Done means
 
-`pnpm run check` is clean, `pnpm compile` writes both `dist/` files, unit tests are 177 / 0, and
-the `.vsix` lists the same 9 entries as 7a.
+`vp test` matches the locked totals; `pnpm run check` and `pnpm compile` (both `dist/` files) pass; Test command declared in AGENTS.md + coding-standards; no product change.
