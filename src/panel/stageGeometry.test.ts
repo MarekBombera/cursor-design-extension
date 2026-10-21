@@ -17,9 +17,7 @@ type StageGeometry = {
 	zoomStageTo: (args: { view: View; zoom: number; screenX: number; screenY: number }) => View;
 	panStage: (args: { view: View; deltaX: number; deltaY: number }) => View;
 	frameBounds: (args: { frames: Rect[] }) => Rect | null;
-	layoutCanvasChrome: (args: {
-		frames: Array<Rect & { id: string; group?: string }>;
-	}) => {
+	layoutCanvasChrome: (args: { frames: Array<Rect & { id: string; group?: string }> }) => {
 		labels: Array<{ id: string; x: number; y: number; width: number; height: number }>;
 		headings: Array<{ group: string; x: number; y: number; width: number; height: number }>;
 		bounds: Rect | null;
@@ -51,7 +49,8 @@ const TOLERANCE = 1e-9;
 
 const boxRect = (
 	box: { x: number; y: number; width: number; height: number } | undefined,
-): Rect | null => (box === undefined ? null : { x: box.x, y: box.y, width: box.width, height: box.height });
+): Rect | null =>
+	box === undefined ? null : { x: box.x, y: box.y, width: box.width, height: box.height };
 
 // vm results come from another realm, so compare field by field instead of deepStrictEqual.
 const assertClose = (

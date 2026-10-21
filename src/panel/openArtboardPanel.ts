@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 
-import { type CanvasSnapshot, postedFrameFromSnapshot, type PostedCanvasFrame } from '../host/canvasSnapshot';
+import {
+	type CanvasSnapshot,
+	postedFrameFromSnapshot,
+	type PostedCanvasFrame,
+} from '../host/canvasSnapshot';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;

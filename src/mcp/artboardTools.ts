@@ -380,7 +380,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Handoff status',
 			description:
-				'Read whether the recorded handoff is stale: any frame\'s HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. Does not write. Pass rootPath when more than one folder is open.',
+				"Read whether the recorded handoff is stale: any frame's HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. Does not write. Pass rootPath when more than one folder is open.",
 			inputSchema: handoffStatusInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},

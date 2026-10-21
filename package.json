@@ -7,22 +7,22 @@
 		"Other"
 	],
 	"keywords": [
-		"cursor",
-		"mcp",
-		"design",
 		"artboard",
+		"cursor",
+		"design",
+		"mcp",
 		"webview"
 	],
-	"license": "MIT",
-	"publisher": "cursor-design",
 	"homepage": "https://github.com/marekbombera/cursor-design-extension",
+	"bugs": {
+		"url": "https://github.com/marekbombera/cursor-design-extension/issues"
+	},
+	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/marekbombera/cursor-design-extension.git"
 	},
-	"bugs": {
-		"url": "https://github.com/marekbombera/cursor-design-extension/issues"
-	},
+	"publisher": "cursor-design",
 	"main": "./dist/extension.js",
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",

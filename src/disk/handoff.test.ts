@@ -175,10 +175,9 @@ test('assignGroupFolders slugs, caps, falls back, reserves ungrouped, and suffix
 });
 
 test('assignGroupFolders does not reserve ungrouped when every frame has a group', () => {
-	assert.deepEqual(
-		Object.fromEntries(assignGroupFolders([{ id: 'a', group: 'Ungrouped' }])),
-		{ a: 'ungrouped' },
-	);
+	assert.deepEqual(Object.fromEntries(assignGroupFolders([{ id: 'a', group: 'Ungrouped' }])), {
+		a: 'ungrouped',
+	});
 });
 
 test('buildCanvasImplementMarkdown orders sections and frames, collapses newlines, lists paths', () => {
@@ -188,12 +187,29 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 		exportedAt: FIXED_NOW.toISOString(),
 		frames: [
 			{ id: 'c', label: 'Card\r\nAlt', width: 390, folder: 'ungrouped', artboardHash: hash },
-			{ id: 'a', label: 'A', width: 1280, group: 'Desk\ntop', folder: 'desk-top', artboardHash: hash },
+			{
+				id: 'a',
+				label: 'A',
+				width: 1280,
+				group: 'Desk\ntop',
+				folder: 'desk-top',
+				artboardHash: hash,
+			},
 			{ id: 'd', label: 'D', width: 1280, folder: 'ungrouped', artboardHash: hash },
-			{ id: 'b', label: 'B', width: 1280, group: 'Desk\ntop', folder: 'desk-top', artboardHash: hash },
+			{
+				id: 'b',
+				label: 'B',
+				width: 1280,
+				group: 'Desk\ntop',
+				folder: 'desk-top',
+				artboardHash: hash,
+			},
 		],
 	});
-	assert.match(markdown, /^# Implement this canvas\n\nexportId: canvas-1\nexportedAt: \S+\nframes: 4\n/);
+	assert.match(
+		markdown,
+		/^# Implement this canvas\n\nexportId: canvas-1\nexportedAt: \S+\nframes: 4\n/,
+	);
 	const headings = markdown.split('\n').filter((line) => line.startsWith('### '));
 	assert.deepEqual(headings, ['### (no group) (`ungrouped/`)', '### Desk top (`desk-top/`)']);
 	const frameLines = markdown.split('\n').filter((line) => / - id `/.test(line));
@@ -216,10 +232,10 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 			'## Instructions',
 			'',
 			'1. Call `handoff_status` first. If `stale` is true, call `export_artboard` again (it exports the whole canvas) before implementing.',
-			'2. If MCP is unavailable, compare each frame\'s `hash` above with `.cursor-design/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.',
+			"2. If MCP is unavailable, compare each frame's `hash` above with `.cursor-design/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.",
 			'3. Implement each frame from its own `index.html` (HTML+CSS+JS inline), not from screenshots or `canvas.html`.',
-			'4. Each frame is a complete design at its `width`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same `group`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame\'s CSS and JS side by side, and keep each frame\'s classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame\'s width on `body`.',
-			'5. Target the user\'s app entry files. Never copy `.cursor-design/` into the app.',
+			"4. Each frame is a complete design at its `width`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same `group`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on `body`.",
+			"5. Target the user's app entry files. Never copy `.cursor-design/` into the app.",
 			'6. Keep semantic structure, classes, and behavior.',
 			'7. Assets referenced as `assets/...` resolve against `.cursor-design/assets/`. Copy them manually.',
 			'',
@@ -250,7 +266,13 @@ test('compareCanvasHandoff covers never exported, unchanged, changed, added, rem
 	const staleOf = (frames: { artboardId: string; hash: string | undefined }[]): boolean =>
 		compareCanvasHandoff({ lastExport: recorded, frames }).stale;
 	assert.equal(staleOf([...current].reverse()), false);
-	assert.equal(staleOf([{ artboardId: 'a', hash: hashA.toUpperCase().replace('SHA256:', 'sha256:') }, current[1]!]), false);
+	assert.equal(
+		staleOf([
+			{ artboardId: 'a', hash: hashA.toUpperCase().replace('SHA256:', 'sha256:') },
+			current[1]!,
+		]),
+		false,
+	);
 	assert.equal(staleOf([{ artboardId: 'a', hash: hashHtml('changed') }, current[1]!]), true);
 	assert.equal(staleOf([...current, { artboardId: 'c', hash: hashA }]), true);
 	assert.equal(staleOf([current[0]!]), true);
@@ -315,7 +337,9 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 	for (const file of [IMPLEMENT_FILE, TOKENS_FILE]) {
 		assert.ok(!(await readFile(join(leafDir, file), 'utf8')).includes('cd:frame-height'));
 	}
-	assert.ok((await readFile(join(leafDir, CANVAS_PREVIEW_FILE), 'utf8')).includes('cd:frame-height'));
+	assert.ok(
+		(await readFile(join(leafDir, CANVAS_PREVIEW_FILE), 'utf8')).includes('cd:frame-height'),
+	);
 
 	const expectedFrames = ['a', 'b', 'c', 'd'].map((id) => ({
 		artboardId: id,
@@ -405,12 +429,15 @@ test('export with no manifest creates it active on the legacy frame', async () =
 test('read failures write no handoff leaf and keep their codes', async () => {
 	const emptyRoot = await makeTempRoot();
 	await mkdir(join(emptyRoot, ...artboardsDirSegments), { recursive: true });
-	await assert.rejects(exportArtboard({ workspaceRoot: emptyRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof NoArtboardsToExportError);
-		assert.equal(error.code, 'ARTBOARD_NOT_FOUND');
-		assert.equal(error.message, 'No artboards to export. Ask the agent to `set_artboard` first.');
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ workspaceRoot: emptyRoot, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof NoArtboardsToExportError);
+			assert.equal(error.code, 'ARTBOARD_NOT_FOUND');
+			assert.equal(error.message, 'No artboards to export. Ask the agent to `set_artboard` first.');
+			return true;
+		},
+	);
 	assert.deepEqual(await handoffLeaves(emptyRoot), []);
 
 	const missingDirRoot = await makeTempRoot();
@@ -422,11 +449,14 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 	const corruptCanvasRoot = await makeTempRoot();
 	await createFourFrameCanvas(corruptCanvasRoot);
 	await writeFile(join(corruptCanvasRoot, ...canvasPathSegments), '{ not json', 'utf8');
-	await assert.rejects(exportArtboard({ workspaceRoot: corruptCanvasRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof CorruptCanvasError);
-		assert.equal(error.code, 'CORRUPT_CANVAS');
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ workspaceRoot: corruptCanvasRoot, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptCanvasError);
+			assert.equal(error.code, 'CORRUPT_CANVAS');
+			return true;
+		},
+	);
 	assert.deepEqual(await handoffLeaves(corruptCanvasRoot), []);
 
 	const corruptMetaRoot = await makeTempRoot();
@@ -434,25 +464,31 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 	const bMetaPath = join(corruptMetaRoot, ...artboardMetaPathSegments('b'));
 	const bMeta = JSON.parse(await readFile(bMetaPath, 'utf8')) as Record<string, unknown>;
 	await writeFile(bMetaPath, JSON.stringify({ ...bMeta, id: 'other' }), 'utf8');
-	await assert.rejects(exportArtboard({ workspaceRoot: corruptMetaRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof CorruptMetaError);
-		assert.equal(error.code, 'CORRUPT_META');
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ workspaceRoot: corruptMetaRoot, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptMetaError);
+			assert.equal(error.code, 'CORRUPT_META');
+			return true;
+		},
+	);
 	assert.deepEqual(await handoffLeaves(corruptMetaRoot), []);
 
 	const dotIdRoot = await makeTempRoot();
 	await createFourFrameCanvas(dotIdRoot);
 	await writeFile(join(dotIdRoot, ...artboardsDirSegments, '..html'), '<p>dot</p>', 'utf8');
-	await assert.rejects(exportArtboard({ workspaceRoot: dotIdRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof DiskError);
-		assert.equal(error.code, 'DISK_ERROR');
-		assert.equal(
-			error.message,
-			'Artboard id "." cannot be exported as a folder. Rename .cursor-design/artboards/..html.',
-		);
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ workspaceRoot: dotIdRoot, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof DiskError);
+			assert.equal(error.code, 'DISK_ERROR');
+			assert.equal(
+				error.message,
+				'Artboard id "." cannot be exported as a folder. Rename .cursor-design/artboards/..html.',
+			);
+			return true;
+		},
+	);
 	assert.deepEqual(await handoffLeaves(dotIdRoot), []);
 });
 
@@ -470,7 +506,10 @@ test('missing tokens writes stub; present tokens are copied byte-for-byte', asyn
 	await writeFile(join(workspaceRoot, ...workspaceTokensPathSegments), tokensBytes, 'utf8');
 	const second = await exportArtboard({ workspaceRoot, now: new Date('2026-09-11T17:40:00.000Z') });
 	assert.equal(
-		await readFile(join(workspaceRoot, ...handoffDirSegments(second.exportId), TOKENS_FILE), 'utf8'),
+		await readFile(
+			join(workspaceRoot, ...handoffDirSegments(second.exportId), TOKENS_FILE),
+			'utf8',
+		),
 		tokensBytes,
 	);
 });
@@ -555,7 +594,12 @@ test('status turns stale on any frame HTML change, add, or delete', async () => 
 		{
 			name: 'update_artboard on one frame',
 			change: async (workspaceRoot) => {
-				await updateArtboard({ workspaceRoot, artboardId: 'b', html: '<p>b2</p>', baseGeneration: 1 });
+				await updateArtboard({
+					workspaceRoot,
+					artboardId: 'b',
+					html: '<p>b2</p>',
+					baseGeneration: 1,
+				});
 			},
 		},
 		{
@@ -573,7 +617,11 @@ test('status turns stale on any frame HTML change, add, or delete', async () => 
 		{
 			name: 'direct HTML write without meta',
 			change: async (workspaceRoot) => {
-				await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('a')), '<p>hand</p>', 'utf8');
+				await writeFile(
+					join(workspaceRoot, ...artboardHtmlPathSegments('a')),
+					'<p>hand</p>',
+					'utf8',
+				);
 			},
 		},
 	];
@@ -643,7 +691,11 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 		() => parseManifest(badHash),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);
-	await writeFile(join(workspaceRoot, ...manifestPathSegments), `${JSON.stringify(badHash)}\n`, 'utf8');
+	await writeFile(
+		join(workspaceRoot, ...manifestPathSegments),
+		`${JSON.stringify(badHash)}\n`,
+		'utf8',
+	);
 	await assert.rejects(
 		readHandoffStatus({ workspaceRoot }),
 		(error: unknown) => error instanceof CorruptManifestError,
@@ -652,7 +704,11 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 		() =>
 			parseManifest({
 				...validBase,
-				lastExport: { ...badHash.lastExport, artboardHash: hashHtml(HERO_HTML), exportedAt: 'not-a-date' },
+				lastExport: {
+					...badHash.lastExport,
+					artboardHash: hashHtml(HERO_HTML),
+					exportedAt: 'not-a-date',
+				},
 			}),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);

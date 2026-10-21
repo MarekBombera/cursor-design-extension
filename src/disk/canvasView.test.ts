@@ -225,7 +225,10 @@ test('directory and symlink html files are skipped the same as listArtboards', a
 		view.frames.map((frame) => frame.id),
 		listed.frames.map((frame) => frame.id),
 	);
-	assert.deepEqual(view.frames.map((frame) => frame.id), ['hero']);
+	assert.deepEqual(
+		view.frames.map((frame) => frame.id),
+		['hero'],
+	);
 });
 
 test('unreadable meta maps generation to 0', async () => {

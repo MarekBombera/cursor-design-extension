@@ -36,14 +36,12 @@ const lastExportSchema = z.object({
 	artboardHash: artboardHashString,
 	exportedAt: nonEmptyString.check(z.refine((value) => !Number.isNaN(Date.parse(value)))),
 	frames: z.optional(
-		z
-			.array(exportedFrameSchema)
-			.check(
-				z.minLength(1),
-				z.refine(
-					(frames) => new Set(frames.map(({ artboardId }) => artboardId)).size === frames.length,
-				),
+		z.array(exportedFrameSchema).check(
+			z.minLength(1),
+			z.refine(
+				(frames) => new Set(frames.map(({ artboardId }) => artboardId)).size === frames.length,
 			),
+		),
 	),
 });
 

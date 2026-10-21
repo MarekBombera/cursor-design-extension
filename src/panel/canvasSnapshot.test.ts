@@ -17,7 +17,9 @@ import {
 	type CanvasSnapshot,
 } from '../host/canvasSnapshot';
 
-const viewFrame = (overrides: Partial<CanvasViewFrame> & Pick<CanvasViewFrame, 'id'>): CanvasViewFrame => {
+const viewFrame = (
+	overrides: Partial<CanvasViewFrame> & Pick<CanvasViewFrame, 'id'>,
+): CanvasViewFrame => {
 	const frame: CanvasViewFrame = {
 		id: overrides.id,
 		label: overrides.label ?? overrides.id,

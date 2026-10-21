@@ -914,7 +914,9 @@ export const listArtboards = async ({
 };
 
 // Panel canvas snapshot: same resolved frames as list_artboards, plus each artboard's HTML. Never writes.
-export const readCanvasView = async ({ workspaceRoot }: ReadCanvasViewArgs): Promise<CanvasView> => {
+export const readCanvasView = async ({
+	workspaceRoot,
+}: ReadCanvasViewArgs): Promise<CanvasView> => {
 	const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: true });
 	if (scanned.artboardsDirMissing) {
 		return { activeArtboardId: '', frames: [] };

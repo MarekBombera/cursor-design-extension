@@ -3,6 +3,7 @@
 **cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`.
 
 **Notion:**
+
 - Hub (locks, MCP/disk, Interact vs Edit): https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 - Active build brief **0.2 Interact**: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 - 0.1 archive (shipped, don’t re-litigate): https://app.notion.com/p/3da500344e0881e884dcc828fc49a395

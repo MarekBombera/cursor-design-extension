@@ -37,11 +37,7 @@ import {
 	serializeMeta,
 } from '../disk/parse';
 
-export {
-	emptyArtboardSnapshot,
-	UNTRUSTED_WORKSPACE_MESSAGE,
-	type CanvasSnapshot,
-};
+export { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE, type CanvasSnapshot };
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder('utf-8');

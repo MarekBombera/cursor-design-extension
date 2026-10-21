@@ -102,7 +102,9 @@ export const buildCanvasImplementMarkdown = ({
 		);
 		return `### ${heading} (\`${sectionFrames[0]?.folder ?? UNGROUPED_FOLDER}/\`)\n\n${lines.join('\n')}`;
 	});
-	const fileLines = frames.map((frame) => `- ${frameFile(frame)} - one complete document per frame`);
+	const fileLines = frames.map(
+		(frame) => `- ${frameFile(frame)} - one complete document per frame`,
+	);
 	return `# Implement this canvas
 
 exportId: ${exportId}
@@ -155,7 +157,9 @@ export const compareCanvasHandoff = ({
 		frames.length !== recordedHashById.size ||
 		frames.some(({ artboardId, hash }) => {
 			const recordedHash = recordedHashById.get(artboardId);
-			return recordedHash === undefined || hash === undefined || normalizeHash(hash) !== recordedHash;
+			return (
+				recordedHash === undefined || hash === undefined || normalizeHash(hash) !== recordedHash
+			);
 		});
 	return { exported: true, stale };
 };

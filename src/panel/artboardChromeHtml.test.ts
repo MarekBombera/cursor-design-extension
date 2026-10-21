@@ -140,7 +140,9 @@ test('chrome pans on plain wheel and zooms at the cursor on ctrl/meta wheel', ()
 	assert.ok(listenerIndex >= 0);
 	assert.ok(wheelIndex > listenerIndex);
 	assert.ok(passiveIndex > wheelIndex);
-	assert.ok(listenerSource.indexOf('event.preventDefault()') < listenerSource.indexOf('event.ctrlKey'));
+	assert.ok(
+		listenerSource.indexOf('event.preventDefault()') < listenerSource.indexOf('event.ctrlKey'),
+	);
 	assert.ok(listenerSource.includes('event.metaKey'));
 	assert.ok(listenerSource.includes('zoomStageAt('));
 	assert.ok(listenerSource.includes('screenX: point.screenX'));
@@ -185,8 +187,12 @@ test('chrome toolbar has the readout, nine presets in order, and a disabled Fit 
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 	const headerEnd = chrome.html.indexOf('</header>');
 	const readoutIndex = chrome.html.indexOf('<span id="zoom-readout" class="badge">100%</span>');
-	const selectIndex = chrome.html.indexOf('<select id="zoom-preset" aria-label="Zoom preset" disabled>');
-	const fitIndex = chrome.html.indexOf('<button id="zoom-fit" type="button" disabled>Fit all</button>');
+	const selectIndex = chrome.html.indexOf(
+		'<select id="zoom-preset" aria-label="Zoom preset" disabled>',
+	);
+	const fitIndex = chrome.html.indexOf(
+		'<button id="zoom-fit" type="button" disabled>Fit all</button>',
+	);
 
 	assert.ok(readoutIndex >= 0);
 	assert.ok(readoutIndex < selectIndex);
@@ -238,7 +244,14 @@ test('canvas runtime posts only frame height and wheel and never touches the art
 	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('20000'));
 	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('x: event.clientX'));
 	assert.ok(ARTBOARD_CANVAS_RUNTIME_SOURCE.includes('y: event.clientY'));
-	for (const forbidden of ['.style', 'classList', 'setAttribute', 'data-dc-', 'sc-host', 'design_doc_mode']) {
+	for (const forbidden of [
+		'.style',
+		'classList',
+		'setAttribute',
+		'data-dc-',
+		'sc-host',
+		'design_doc_mode',
+	]) {
 		assert.ok(!ARTBOARD_CANVAS_RUNTIME_SOURCE.includes(forbidden), forbidden);
 	}
 });
@@ -270,8 +283,8 @@ test('chrome validates canvas:updated and each frame before reconciling', () => 
 	const removeInvalidIndex = chrome.html.indexOf('removeFrameRecord(entry.id)');
 
 	assert.ok(chrome.html.includes('isValidCanvasUpdated(data)'));
-	assert.ok(chrome.html.includes('typeof data.activeArtboardId === \'string\''));
-	assert.ok(chrome.html.includes('typeof data.cspNonce === \'string\''));
+	assert.ok(chrome.html.includes("typeof data.activeArtboardId === 'string'"));
+	assert.ok(chrome.html.includes("typeof data.cspNonce === 'string'"));
 	assert.ok(chrome.html.includes('Number.isFinite(data.generation)'));
 	assert.ok(chrome.html.includes('Array.isArray(data.frames)'));
 	assert.ok(validFrameIndex >= 0);
@@ -289,7 +302,7 @@ test('chrome validates canvas:updated and each frame before reconciling', () => 
 test('chrome diffs frame html, revokes removed blobs, and toggles the active class', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 	const reloadIndex = chrome.html.indexOf(
-		'const shouldReload = record.kind !== \'iframe\' || html !== record.lastHtml',
+		"const shouldReload = record.kind !== 'iframe' || html !== record.lastHtml",
 	);
 	const heightGuardIndex = chrome.html.indexOf(
 		'record.heightGuard = { lastGrowth: 0, frozen: false }',
@@ -300,7 +313,7 @@ test('chrome diffs frame html, revokes removed blobs, and toggles the active cla
 	const renderTileIndex = chrome.html.indexOf("'Could not render this frame.'", tileErrorIndex);
 
 	assert.ok(chrome.html.includes('html !== record.lastHtml'));
-	assert.ok(chrome.html.includes('record.kind !== \'iframe\''));
+	assert.ok(chrome.html.includes("record.kind !== 'iframe'"));
 	assert.ok(reloadIndex >= 0);
 	assert.ok(heightGuardIndex > reloadIndex);
 	assert.ok(tileErrorIndex >= 0);
@@ -316,7 +329,9 @@ test('chrome diffs frame html, revokes removed blobs, and toggles the active cla
 test('chrome labels and headings use textContent and never innerHTML', () => {
 	const chrome = buildArtboardChromeHtml(fakeWebview);
 
-	assert.ok(chrome.html.includes('labelNode.textContent = record === undefined ? \'\' : record.label'));
+	assert.ok(
+		chrome.html.includes("labelNode.textContent = record === undefined ? '' : record.label"),
+	);
 	assert.ok(chrome.html.includes('headingNode.textContent = box.group'));
 	assert.ok(!chrome.html.includes('innerHTML'));
 });
@@ -326,7 +341,10 @@ test('every created iframe is sandboxed with scrolling disabled', () => {
 	const createIndex = chrome.html.indexOf("document.createElement('iframe')");
 
 	assert.ok(createIndex >= 0);
-	const createBlock = chrome.html.slice(createIndex, chrome.html.indexOf('record.iframe = iframe', createIndex));
+	const createBlock = chrome.html.slice(
+		createIndex,
+		chrome.html.indexOf('record.iframe = iframe', createIndex),
+	);
 	assert.ok(createBlock.includes("iframe.setAttribute('sandbox', 'allow-scripts')"));
 	assert.ok(createBlock.includes("iframe.setAttribute('scrolling', 'no')"));
 });
@@ -343,7 +361,10 @@ test('chrome frame-height validates height and applies nextFrameHeight', () => {
 });
 
 test('canvas:wheel is gone from runtime, chrome script, and the CSP rule line', () => {
-	const runtimeSource = readFileSync(join(process.cwd(), 'src/panel/artboardCanvasRuntime.ts'), 'utf8');
+	const runtimeSource = readFileSync(
+		join(process.cwd(), 'src/panel/artboardCanvasRuntime.ts'),
+		'utf8',
+	);
 	const chromeScriptSource = readFileSync(
 		join(process.cwd(), 'src/panel/artboardChromeScript.ts'),
 		'utf8',

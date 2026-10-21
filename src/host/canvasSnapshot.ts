@@ -41,7 +41,10 @@ type SnapshotForChromeArgs = {
 	isTrusted: boolean;
 };
 
-export const snapshotForChrome = ({ snapshot, isTrusted }: SnapshotForChromeArgs): CanvasSnapshot => {
+export const snapshotForChrome = ({
+	snapshot,
+	isTrusted,
+}: SnapshotForChromeArgs): CanvasSnapshot => {
 	if (isTrusted) {
 		return snapshot;
 	}
