@@ -1,33 +1,27 @@
-# Test depth - Overview for review
+# MCP contract tests - Overview for review
 
-Source of truth: `blueprint/history/features/07f-test-depth.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/07g-mcp-contract-tests.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-fast-check 4.10.2 properties lock stage geometry, the handoff stale check, and zod manifest/meta byte-equal round-trips. Scrubbed snapshots lock `IMPLEMENT.md` and `canvas.html` builder output. `pnpm coverage` writes a report with no thresholds. No product change. No Verify command yet (that is 7h).
+A real MCP client talks to the real server over `InMemoryTransport.createLinkedPair()`. Tests lock all 8 tools plus the exact `listTools` name set, including current errors. If the client path disagrees with the stub suite, the test changes, not the product. No product change. No Verify command yet (that is 7h).
 
 ## Flow
 
-1. Work sits on `feature/test-depth`, stacked on 7e (`feature/stricter-static-checks` `380143f`). `main` is still 7b (`43cce2c`).
-2. `vp test` is still the Test command. The lock moved from 177 to 186 passed.
-3. `pnpm coverage` runs `@vitest/coverage-v8` 5.0.5 and writes `coverage/`. Lint/fmt ignore that directory.
-4. `pnpm compile` still writes `dist/extension.js` and `dist/mcp.js`. Do not treat a live F5 session as 7f evidence.
+1. Work sits on `feature/mcp-contract-tests`, stacked on 7f (`feature/test-depth` `6634262`). `main` is still 7b (`43cce2c`).
+2. `@modelcontextprotocol/client` `^2.2.0` resolved to **2.3.1** as a test-only devDependency. It is not in pack `alwaysBundle`.
+3. `vp test` moved from **13 files / 186 passed** to **14 files / 204 passed**.
+4. `pnpm knip` still exits 0. `pnpm compile` still writes `dist/extension.js` and `dist/mcp.js`.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  GEO["stageGeometry source"] --> VM["vm eval"]
-  VM --> FC["fast-check properties"]
-  STALE["compareCanvasHandoff"] --> FC
-  ZOD["parse + serialize"] --> FC
-  MD["buildCanvasImplementMarkdown"] --> SCRUB["scrub exportId / time / tmp"]
-  HTML["buildCanvasPreviewHtml"] --> SCRUB
-  SCRUB --> SNAP["committed snapshots"]
-  FC --> TEST["vp test 186"]
-  SNAP --> TEST
-  TEST --> COV["pnpm coverage"]
-  COV --> REPORT["coverage/ no thresholds"]
+  TEST["contract test"] --> CLIENT["MCP client 2.3.1"]
+  CLIENT --> MEM["createLinkedPair"]
+  MEM --> SRV["McpServer + registerArtboardTools"]
+  SRV --> ENV["process.env workspace roots"]
+  SRV --> DISK["temp .cursor-design/"]
 ```
 
 ## Key loop
@@ -36,57 +30,59 @@ flowchart LR
 sequenceDiagram
   participant Dev
   participant Test as vp test
-  participant Cov as pnpm coverage
-  participant Pack as pnpm compile
-  Dev->>Test: properties + snapshots
-  Test-->>Dev: 186 passed
-  Dev->>Cov: vp test --coverage
-  Cov-->>Dev: coverage/ report
-  Dev->>Pack: check --no-fmt then pack
-  Pack-->>Dev: dist/extension.js + dist/mcp.js
+  participant Client
+  participant Server as McpServer
+  Dev->>Test: contract file + stub suite
+  Test->>Client: listTools exact 8 names
+  Test->>Client: callTool each name
+  Client->>Server: in-memory pair
+  Server-->>Client: current success or isError
+  Client-->>Test: lock observed shape
+  Dev->>Test: 14 files, 204 passed
 ```
 
 ## What you will see
 
-- `vp test` prints **186 passed** across the same 13 files (or 184 + 2 skipped if the process uid is 0).
-- Two committed snapshots under `src/disk/__snapshots__/` use `<exportId>` / `<exportedAt>` and keep hashes and frame ids.
-- `package.json` has `fast-check` 4.10.2, `@vitest/coverage-v8` 5.0.5, and a `coverage` script. `vite.config.ts` sets the v8 provider only: no `thresholds`, no `coverage.enabled: true`.
-- `coverage/` is in `.gitignore` and `.vscodeignore`, and ignored by lint/fmt.
-- AGENTS.md has a Coverage bullet. The coding-standards Testing line names the script as report-only, not Verify.
-- `pnpm knip` still exits 0. `pnpm compile` still writes both `dist/` files.
+- New `src/mcp/artboardTools.contract.test.ts`. The stub handler suite stays.
+- `package.json` has `@modelcontextprotocol/client` `^2.2.0` under `devDependencies` only.
+- Each case builds a fresh pair, then `afterEach` closes the client, then the server, then removes the temp workspace.
+- `listTools` is a sorted-set of the 8 imported tool-name constants. Happy-path is a record keyed by that same array.
+- Failure cases lock current codes: `NO_WORKSPACE`, `INVALID_ROOT`, `conflict`, `ARTBOARD_NOT_FOUND`, `INVALID_ARGS`.
+- F5 behavior unchanged. No F5 or `.vsix` proof required for 7g.
 
 ## Data flow
 
-Properties run against current helpers only: geometry through the existing `node:vm` eval, stale through `compareCanvasHandoff`, zod through parse/serialize. Snapshots scrub builder strings, not temp export trees. Coverage is a local report, not a gate.
+Tests set both workspace-root env names, call tools through the client, and restore env. Tool errors resolve as `isError` on the returned value. After export, handoff status is `stale: false` with `lastExport` present. There is no `exported` field on that result.
 
 ## Architecture decisions
 
-- Properties characterise current functions. Existing example tests win if a property disagrees. No product file under `src/` except `*.test.ts` changed.
-- Never-exported `compareCanvasHandoff` stays `{ exported: false, stale: false }` and wins even when a current hash is undefined. Do not "fix" that to match `handoff_status`.
-- Snapshots import `expect` / `toMatchSnapshot` from `vite-plus/test`. No direct `vitest` dependency.
-- Coverage is a script only. It is not inside `vp check`, compile, or Verify.
+- Client is test-only. Production MCP still uses stdio. Do not bundle the client into `dist/mcp.js`.
+- Both pair halves come from `@modelcontextprotocol/client`. Do not mix a server-package transport.
+- `ARTBOARD_TOOL_NAMES` lives in the contract file only. Do not add an export to `toolNames.ts`.
+- `set_artboard` currently sets the active pointer. The `set_active_artboard` case seeds two ids so it is not implied by create.
+- Concurrent `update_artboard` is in-process FIFO. First `Promise.all` element wins; the other is `conflict`.
 
 ## Decisions locked
 
-- Branch from 7e (`380143f`), not from `main` (`43cce2c`).
-- fast-check 4.10.2. `@vitest/coverage-v8` 5.0.5.
-- Unit lock is **186 passed**. Starting lock was 177.
-- Scrub tokens are `<exportId>`, `<exportedAt>`, `<tmp>` only.
-- No F5 or `.vsix` proof required for 7f. No Verify command.
+- Branch from 7f (`6634262`), not from `main`. Attempt 1. Archive `blueprint/history/features/07g-mcp-contract-tests.md`.
+- Resolved client **2.3.1**. Proven import: `Client` + `InMemoryTransport` from `@modelcontextprotocol/client`, then `createLinkedPair()`.
+- Unit lock is **204 passed** across **14** files. Starting lock was 186 / 13.
+- Verify is undeclared. Test command is `vp test`.
+- No product source files changed.
 
 ## Out of scope
 
-MCP contract tests (7g), Verify + CI (7h), coverage thresholds, product/MCP/disk edits, Electron suite, importing `vitest` as a package, F5 / `.vsix` proof.
+Verify + CI (7h), F5 / `.vsix` smoke, product/MCP/disk edits, deleting the stub suite, bundling the client, Electron suite, coverage thresholds, inventing a transport.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| fast-check | Property tests that generate many inputs. They lock today's helper behavior. |
-| Scrubbed snapshot | Stored builder output with ids/times/tmp paths replaced so the file does not flake. |
-| Coverage script | `pnpm coverage` writes `coverage/`. No fail-under number. Not Verify. |
-| Never-exported | `lastExport` missing. The helper reports `{ exported: false, stale: false }`. |
+| Contract test | Drives tools through the real MCP client and server, not a captured handler. |
+| Characterise | Lock today's result. Do not "fix" the product to match a nicer error. |
+| Linked pair | `InMemoryTransport.createLinkedPair()`. Production still uses stdio. |
+| Stub suite | Existing handler tests that bypass SDK validation. They stay. |
 
 ## Done means
 
-Properties and snapshots are green at 186; coverage script writes a report with no thresholds; knip stays 0; `pnpm compile` still writes both `dist/` files; no product behavior change.
+`vp test` is 14 / 204; knip is 0; compile still writes both `dist/` files; client is a test-only 2.3.1 dep; no product behavior change.
