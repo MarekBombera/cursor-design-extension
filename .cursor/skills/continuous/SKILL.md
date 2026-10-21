@@ -137,6 +137,7 @@ plans.
 
 Do not invent an unanswered product, data, architecture, auth, billing, or visual
 decision. Stop with the exact decision needed.
+Follow the proportional-engineering contract in `AGENTS.md` throughout this run.
 
 ### 2.2 Create or resume the feature branch
 
@@ -193,9 +194,12 @@ Use `qualityGates.continuous`, not the regular or Autopilot gates:
   when a done-when needs observed runtime behavior such as a click, request, CLI
   command, download, background job, or multi-screen flow; `always` checks
   every feature.
-- **Try guide:** `manual` skips automatic generation; `when-user-facing`
+- **Try guide (`qualityGates.continuous.tryGuide`):** use `/check guide`.
+  `manual` skips automatic generation; `when-user-facing`
   generates a guide for UI, navigation, copy, public API or CLI, output, or
-  another workflow a person directly uses; `always` generates one for every
+  another workflow a person directly uses; `when-testable` runs after Verify
+  and required Check, emitting `## Try it now` only for a safe meaningful direct
+  observation and recording a skip otherwise; `always` generates one for every
   feature.
 
 Run required gates in this order: check, review, then try guide. Use independent
@@ -209,9 +213,10 @@ blockers always apply even when audit is manual.
 ### 2.5 Repair and re-review findings
 
 Validate audit findings before editing. Repair confirmed P0 and P1 findings only
-when the repair stays within feature scope and needs no user decision. Use
-`continuous.maxRepairAttempts` as the maximum attempts for the same failing
-check or finding; `0` disables automatic repair.
+when the repair stays within feature scope, needs no user decision, and does not
+remove or change shipped behavior. Use `continuous.maxRepairAttempts` as the
+maximum attempts for the same failing check or finding; `0` disables automatic
+repair.
 
 After a repair, rerun affected verification and acceptance evidence, then
 re-audit the repaired area. Move `fixed` to `closed` only when the audit
@@ -263,9 +268,11 @@ For the finished feature:
 3. Confirm all steps are checked, configured gates ran, no unrelated files are
    mixed in, adapters remain aligned, and no P0/P1 blocker remains.
 4. Reuse the spec's frozen build attempt and exact Complete archive destination.
-   Capture Complete's source-tree/annotation proof before any logging edits.
+   Capture Complete's source-tree/annotation proof before any logging edits,
+   recording `landing` as `local-merge` even when project configuration selects
+   pull-request landing for the regular workflow.
    Fully prepare the archive with the exact verified spec, resolved findings,
-   original passing receipt, and any generated `## Manual try guide` section.
+   original passing receipt, and any generated `## Try it now` section.
 5. Validate and place that archive, update the exact build-plan item/parent and
    overview hash, then reset live evidence last using Complete's canonical rules.
    Preserve unresolved findings; reuse a matching archive during recovery.
@@ -338,6 +345,7 @@ On any stop, report:
 - active feature and next unchecked step, if blocked mid-feature
 - exact checks and quality gates run per feature
 - generated try-guide archive locations
+- generated `## Try it now` sections, or recorded non-testable skip reasons
 - audit findings and repairs
 - current build-plan progress and next unchecked item
 - why the loop stopped

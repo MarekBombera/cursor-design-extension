@@ -31,6 +31,8 @@ or with a description, for example `/fix F-03`. Pull the problem statement from
 that ledger entry. Use this form only between work items, when
 `current-feature.md` is the reset stub: this skill overwrites that file, so
 while a spec is active, repair its findings through `/implement` instead.
+Never replace another worker's active spec. Parallel work uses one clone or Git
+worktree per work item, with a separate branch in each checkout.
 
 ## Step 1 - write the fix spec
 
@@ -50,7 +52,12 @@ lighter than a feature spec:
   stamp makes the repair traceable: `/implement` marks that finding `fixed`
   when the repairing step lands, and `/audit` re-reviews it before it closes.
 - **The problem** - what's wrong or what needs to change, and where.
-- **The fix** - the approach, and anything it must not break.
+- **The fix** - the root-cause repair, and anything it must not break. Do not add
+  an abstraction, dependency, service, configuration surface, compatibility
+  layer, or security mechanism unless the defect is in that layer or an
+  established repository requirement needs it now. Adding a missing
+  authorization, ownership, validation, escaping, or redaction check is a
+  root-cause repair, not new machinery.
 - **Build steps** - usually one small step; split only if the diff would be too
   big to read. Each ends with an observable "done when".
 - **Verify** - how to confirm it's fixed (what to click or test).

@@ -69,7 +69,7 @@ Do not run `/tests` to add or replace the runner. The Core skills bullet for `te
 
 There is no web app on `localhost:3000`. UI proof is **F5** in Cursor (Extension Development Host + webview).
 
-- `/browser-tests` remains the explicit opt-in for a harness. Do not add Playwright mid-feature to pretend this is a Next app.
+- `/tests browser` remains the explicit opt-in for a harness. Do not add Playwright mid-feature to pretend this is a Next app.
 - When `Browser tests` is declared in `AGENTS.md`, use it for stable behavioral done-whens only. It does not replace F5 for webview CSP, MCP registration, or Extension Host behavior.
 - Browser tests are not part of default Verify/CI unless chosen separately.
 

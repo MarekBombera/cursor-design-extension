@@ -15,9 +15,9 @@
 **Status:** MVP shipped; next = 0.2 Interact canvas per §18 / 0.2 page.
 
 Instructions for AI coding agents working in this project. This is the cross-tool
-entry point: Codex, OpenCode, Cursor, GitHub Copilot, Gemini CLI, Aider, Zed,
-Windsurf, and others read `AGENTS.md`. Claude Code reads `CLAUDE.md`, which imports
-this file, so there is a single source of truth.
+entry point. Codex, Google Antigravity, and OpenCode read `AGENTS.md`. Other
+compatible tools do too. Claude Code reads `CLAUDE.md`, which imports this file,
+so there is a single source of truth.
 
 Claude Code, Codex, and every other AI tool must not add AI attribution to
 commits or pull requests, including AI `Co-Authored-By` trailers or generated-by
@@ -36,13 +36,33 @@ SvelteKit, etc.) inside this directory; the extension scaffold already exists.
 
 The workflow is defined by the local skills and context files below.
 
+## Proportional engineering
+
+Build for established requirements, not hypothetical scale, threats, or future
+flexibility. Reuse existing code, the standard library, native platform features,
+and installed dependencies before adding machinery.
+
+- Unknown scale or extensibility defaults to the smaller reversible design. Do
+  not infer enterprise, multi-tenant, hostile-user, or compliance requirements.
+- Derive trust and data-integrity boundaries from actual reachability: untrusted
+  input, auth/session/ownership, shared persisted data, destructive operations,
+  payments, secrets, and sensitive data.
+- Ask only when an unknown materially changes behavior, architecture, persisted
+  data, interoperability, a real security boundary, or cost. Otherwise choose the
+  simplest repository-native implementation.
+- Add an abstraction, dependency, service, configuration surface, compatibility
+  layer, or security mechanism only for a current requirement.
+- Simplicity never removes real trust-boundary validation, data-loss prevention,
+  accessibility, explicit security requirements, configured tests, or project rules.
+- Stack-specific template standards apply only when the project uses that stack.
+
 ## Read these when relevant
 
 - `blueprint/config.json` - deterministic project workflow settings
 - `blueprint/context/project-overview.md` - durable product context from the plans (coding SoT remains `.cursor/rules/`)
 - `blueprint/context/coding-standards.md` - read before changing code
 - `blueprint/context/ai-interaction.md` - read when running the Blueprint workflow
-- `blueprint/context/current-feature.md` - the one feature, fix, or rollback being built right now
+- `blueprint/context/current-feature.md` - the one feature, fix, or rollback being built in this checkout
 
 Reuse relevant context already loaded in the session. Claude Code imports only
 this file; its Blueprint skills load the other files on demand.
@@ -63,14 +83,18 @@ a finding. Those approval and safety boundaries are not configurable.
 `qualityGates.regular` controls automatic audit, independent-review, check, and
 try-guide behavior for the normal workflow and Autopilot.
 `qualityGates.continuous` controls the same per-feature gates for Continuous
-Mode. Independent review defaults to `when-sensitive` in both workflows, while
-audit, check, and try guide default to `manual`. Sensitive or unusually broad
-work therefore selects independent review automatically; ordinary small work
-does not. Setting a workflow's independent review to `manual` disables that
-automatic selection, while an explicit `/audit independent current` remains
-available. The other conditional modes are `when-sensitive` for audit,
-`when-behavioral` for check, and `when-user-facing` for try guides. `always`
-runs the gate for every work item in that workflow.
+Mode. The existing `tryGuide` keys select `/check guide`, which generates
+instructions without performing verification or recording acceptance.
+Independent review defaults to `when-sensitive` in both workflows, while
+audit and check default to `manual`. Try guide defaults to `when-testable`,
+which generates one small `## Try it now` demonstration only when the work has
+a safe, meaningful direct observation path. Sensitive or unusually broad work
+therefore selects independent review automatically; ordinary small work does
+not. Setting a workflow's independent review to `manual` disables that automatic
+selection, while an explicit `/audit independent current` remains available.
+The other conditional modes are `when-sensitive` for audit, `when-behavioral`
+for check, and `when-user-facing` for try guides. Existing `manual`, `always`,
+and `when-user-facing` try-guide policies remain supported.
 
 `review.independentExecution` controls how a selected independent-review gate
 runs. Its default, `automatic`, uses a fresh isolated reviewer child when the
@@ -84,6 +108,13 @@ or discovers global agent roles, skills, prompts, or TraversyFlow components.
 New review requests record requested execution and completed receipts record
 actual execution. Manual uses `fresh session`; automatic uses `fresh subagent`;
 an explicit automatic fallback records actual manual with `fresh session`.
+
+`git.landing` controls only how `/complete` offers to land finished regular
+work. Its default, `local-merge`, keeps the local squash-merge flow. Set it to
+`pull-request` when completed branches should be pushed and opened as pull
+requests for provider review and squash merge. Configuration never supplies the
+required push, pull-request, or merge approvals. Continuous Mode remains
+local-only and ignores this setting.
 
 New projects default to one review packet after all small implementation steps
 (`workflow.stepReview: "feature"`) with step checkpoint commits disabled. This
@@ -106,57 +137,95 @@ exposed through tool-specific adapters:
 - Codex: `.agents/skills/<skill>/SKILL.md`
 - Claude Code: `.claude/skills/<skill>/SKILL.md`
 - GitHub Copilot: `AGENTS.md` plus `.agents/skills/<skill>/SKILL.md`
+- Google Antigravity: `AGENTS.md` plus `.agents/skills/<skill>/SKILL.md`
 - OpenCode: `AGENTS.md` plus the compatible `.agents/skills/` or
   `.claude/skills/` tree already installed for the selected tools
 
-Unused adapters can be removed. Codex, GitHub Copilot, and OpenCode can share
-`.agents/`. OpenCode can also reuse `.claude/` when Claude Code is selected.
-Codex-only, Copilot-only, or OpenCode-only projects can delete `CLAUDE.md` and
-`.claude/`. Claude Code-only projects can delete `.agents/`, but should keep
-`AGENTS.md` because `CLAUDE.md` imports it. Do not duplicate the same Blueprint
-skills under `.opencode/skills/`; OpenCode already discovers the compatible
-trees.
+Unused adapters can be removed. Codex and GitHub Copilot share `.agents/`, and
+Google Antigravity uses that tree too. OpenCode can reuse `.agents/` or
+`.claude/`. Projects without Claude Code can delete `CLAUDE.md` and `.claude/`.
+Claude Code-only projects can delete `.agents/`, but should keep `AGENTS.md`
+because `CLAUDE.md` imports it. Do not create `.opencode/skills/` or an
+Antigravity-specific skill tree. Both tools use the supported shared trees.
 
 When changing shared workflow behavior, edit the file under `.cursor` only.
 The `.claude` and `.agents` trees follow via symlink. Do not duplicate a skill
 or rule into another adapter folder.
 
+### Parallel work
+
+Blueprint supports parallel work through isolated Git checkouts, without a
+separate team mode. Give each developer or agent its own clone or Git worktree
+and one dedicated branch before starting `/feature` or `/fix`. The branch must
+use the configured prefix and the work item's lowercase kebab-case title. Each
+checkout keeps its own
+`blueprint/context/current-feature.md`, findings, and review state. Never run two
+active work items in the same working directory or replace another worker's
+active spec.
+
+Parallel branches may both update `blueprint/build-plan.md`; resolve any normal
+Git conflict when the later branch lands. Use `git.landing: "pull-request"` when
+the default branch is protected or several isolated checkouts are active. This
+model intentionally does not add per-item state folders or automatic agent
+coordination.
+
+Learn the feature loop: `/feature` -> `/feature-review` -> `/feature-review-fix` ->
+`/implement` -> `/check` -> `/audit current` -> `/complete`. Approve the spec
+`/feature-review-fix` rewrote before Implement. Check proves behavior;
+Audit reviews code and records findings. Showing both in this path does not
+change configured gates or make Audit mandatory. `/check guide` only generates
+manual instructions and never performs verification or records acceptance.
+
 Core skills:
 
-- `onboard` - tune commands, standards, visibility, ignore rules, and tool adapters after overlaying the Blueprint onto a freshly scaffolded or early project
-- `discovery` - optional deep, multi-turn planning conversation that drafts the two user-owned plans only after review and approval; direct plan writing remains fully supported
+### Build
+
+- `feature` - turn a build-plan item into a spec, or propose a reviewed plan addition for a genuinely new feature
+- `feature-review` - two isolated Grok reviews of the active spec; writes full reports to `blueprint/context/feature-review.md` and stops
+- `feature-review-fix` - judge reads both reports, researches, rewrites the spec; does not build
+- `implement` - build the current spec one small, reviewed step at a time
+- `check` - prove the current spec against the running app, or use `check guide`
+  for a read-only manual review guide: where to go, what to click, what to expect
+- `complete` - run the final safety pass, log features, fixes, or rollbacks under `blueprint/history/`, then request approval for the configured local merge or pull-request landing
+
+### Understand and review
+
+- `explore` - investigate an idea against the actual code without writing files or requiring plans
+- `brief` - read-only briefing on an upcoming build-plan feature (scope, dependencies, size) before you spec it
+- `status` - read-only progress summary, workflow drift warning, and suggested next action
+- `debug` - reproduce and isolate a failure without editing code, then hand the evidence to `fix` or `implement`
+- `audit` - branch-aware or full-project review across all concerns or a focused quality, security, performance, or tests lens; `audit independent current` prepares an immutable checkpoint for a fresh reviewer session or configured isolated reviewer child; records findings in `blueprint/context/findings.md` and independent receipts in `blueprint/context/review.md`, where blocking findings or stale review state stop `complete`
 - `doctor` - Blueprint health check for setup, adapters, plans, overview freshness, dashboard state, and workflow drift; it may offer to reset only malformed generated dashboard state after approval
+
+### Plan and set up
+
+- `onboard` - tune commands, standards, visibility, ignore rules, and tool adapters after overlaying the Blueprint onto a freshly scaffolded or early project
 - `adopt` - bootstrap the Blueprint into an existing brownfield app with shipped features
+- `discovery` - optional deep, multi-turn planning conversation that drafts the two user-owned plans only after review and approval; direct plan writing remains fully supported
 - `overview` - distill the two planning docs into
   `blueprint/context/project-overview.md`, then offer a reviewed initial planning
   baseline commit before Feature 1
-- `brief` - read-only briefing on an upcoming build-plan feature (scope, dependencies, size) before you spec it
-- `feature` - turn a build-plan item into a spec, or propose a reviewed plan addition for a genuinely new feature
-- `debug` - reproduce and isolate a failure without editing code, then hand the evidence to `fix` or `implement`
-- `fix` - document an ad-hoc bug or change into `blueprint/context/current-feature.md`
-- `feature-review` - two isolated Grok reviews of the active spec; writes full reports to `blueprint/context/feature-review.md` and stops
-- `feature-review-fix` - judge reads both reports, researches, rewrites the spec; does not build
-- `tests` - add or normalize unit testing and turn on the test gate
-- `browser-tests` - explicitly add or normalize a repeatable browser test harness and document its command
-- `ci` - explicitly set up one project-specific Verify command and matching automatic GitHub checks
-- `implement` - build the current spec one small, reviewed step at a time
-- `check` - prove the current spec against the running app
-- `try` - read-only manual review guide: where to go, what to click, what to expect
-- `audit` - branch-aware or full-project review across all concerns or a focused quality, security, performance, or tests lens; `audit independent current` prepares an immutable checkpoint for a fresh reviewer session or configured isolated reviewer child; records findings in `blueprint/context/findings.md` and independent receipts in `blueprint/context/review.md`, where blocking findings or stale review state stop `complete`
-- `rollback` - plan a safe reversal of a completed feature from its archive and exact git commit, with later-dependency review before code changes
-- `complete` - run the final safety pass, log features, fixes, or rollbacks under `blueprint/history/`, then merge with approval
-- `release` - optional Render or Vercel deployment readiness, local config, env review, and smoke-test planning
 - `prototype` - optional, pre-build static mockups to lock the look
-- `status` - read-only progress summary, workflow drift warning, and suggested next action
+- `tests` - set up unit testing by default, or a repeatable browser harness with `tests browser`
+- `ci` - explicitly set up one project-specific Verify command and matching automatic GitHub checks, with an optional local pre-push hook
+
+### Recover and release
+
+- `fix` - document an ad-hoc bug or change into `blueprint/context/current-feature.md`
+- `rollback` - plan a safe reversal of a completed feature from its archive and exact git commit, with later-dependency review before code changes
+- `release` - optional Render or Vercel deployment readiness, local config, env review, and smoke-test planning
 
 In Codex, invoke these as skills (`$onboard`, `$discovery`, `$overview`, `$feature`,
 `$implement`, and so on) or ask naturally, such as "run the overview." In Claude
-Code, use the slash commands (`/onboard`, `/discovery`, `/overview`, `/feature`,
-and so on). In OpenCode or other tools without a dedicated invocation syntax,
-ask the agent to run the matching skill or follow its `SKILL.md` manually. The
+Code and Google Antigravity, use slash commands such as `/onboard` or `/feature`.
+These are AI chat commands, not terminal commands. In OpenCode or other tools
+without a dedicated invocation syntax, ask the agent to run the matching skill
+or follow its `SKILL.md` manually. The
 conventions in `blueprint/context/` apply however a step is invoked. `/discovery`
 is never required: users may write detailed plans directly or develop them
 through any conversation before running `/overview`.
+
+### Automation
 
 Optional explicit-only skill: `autopilot` combines `feature` or `fix` with
 `implement` in one bounded pass when directly invoked, including the configured
@@ -186,10 +255,11 @@ Git, and never part of a feature commit.
 Commands with meaningful progress or a durable handoff should write it when the
 state directory exists: `onboard`, `adopt`, `discovery`, `overview`, `feature`,
 `fix`, `feature-review`, `feature-review-fix`, `rollback`, `implement`, `debug`, `check`, `audit`, `tests`,
-`browser-tests`, `ci`, `prototype`, `autopilot`, `continuous`, `complete`, and
-`release`. Short orientation commands such as `brief`, `try`, `status`, and
-`doctor` do not need activity state. Doctor's optional approved reset removes
-malformed activity instead of recording another run.
+`ci`, `prototype`, `autopilot`, `continuous`, `complete`, and
+`release`. Short orientation commands such as `explore`, `brief`, `status`, and `doctor`
+do not write activity state. The `check guide` mode also never writes activity
+state; select the Check mode before any activity call. Doctor's optional
+approved reset removes malformed activity instead of recording another run.
 
 Writing the initial activity record is the first action of a tracked command,
 before project inspection, preflight, or other tool calls. This one generated
@@ -254,8 +324,10 @@ runner or exact combined command. Record the exact command under Commands below.
 The optional `.github/workflows/verify.yml` must run that same command for pull
 requests and pushes to the default branch. Preserve existing workflows, use the
 project's real runtime and install command, and grant only `contents: read` by
-default. This setup does not add local git hooks, coverage, browser tests,
-security scans, or version matrices. Those remain later project choices.
+default. This setup does not add coverage, browser tests, security scans, or
+version matrices; those remain later project choices. A local pre-push hook that
+runs the same `Verify` command is offered as an opt-in at the end of `/ci`, and
+`git push --no-verify` still bypasses it, so the remote ruleset stays the lock.
 
 GitHub branch protection or a ruleset can require the check after the repository
 is pushed, but that is a separate remote setting. Missing automatic GitHub
@@ -280,7 +352,7 @@ Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Exten
 
 The unit Test command is `vp test` (Vite+ / Vitest; the 13 `src/**/*.test.ts` files excluding `src/test/**`). It is not `pnpm test` (`vscode-test`, Electron). Build Electron with `pnpm compile-electron-tests` (writes `out/test/**/*.test.js`), then `pnpm test`; that suite needs a display and is not Verify. Verify is `pnpm verify`.
 
-Browser testing is also opt-in. Run `/browser-tests` or `$browser-tests` to add
+Browser testing is also opt-in. Run `/tests browser` or `$tests browser` to add
 or normalize a browser harness and document its exact command as `Browser
 tests`. Check and Continuous Mode can then reuse it without installing tooling
 mid-feature.

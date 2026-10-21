@@ -42,8 +42,8 @@ state.
    try-guide policies, plus `review.independentExecution`. Explain that
    independent review defaults to `when-sensitive` for both workflows and
    execution defaults to `automatic`, which uses an isolated reviewer only when
-   the current adapter supports it. Audit, check, and try guide default to
-   `manual`.
+   the current adapter supports it. Audit and check default to `manual`; try
+   guide defaults to `when-testable`.
    Before recommending `/overview`, check whether `AGENTS.md` still contains
    the shipped `For a standard Next.js project` command marker. When it does,
    onboarding is incomplete and `/onboard` is the next action.
@@ -78,9 +78,10 @@ state.
 8. **Progress drift** - flag active spec on `main`, a spec in progress but no
    branch matching the configured feature, fix, or rollback prefix, all spec steps checked but
    not completed, or disagreement between `build-plan.md` and
-   `current-feature.md`. A rollback legitimately targets a checked build-plan
-   item until `/complete` unchecks it, so do not compare it to the next unchecked
-   feature.
+   `current-feature.md`. With `git.landing: "pull-request"`, an active feature
+   may differ from the next unchecked item because parallel branches can be
+   active. A rollback legitimately targets a checked build-plan item until
+   `/complete` unchecks it, so do not compare it to the next unchecked feature.
 9. **Dashboard activity** - read `blueprint/.state/run.json` when it exists.
    Report the command, mode, status, progress, boundary, and safe resume command.
    A missing file simply means no activity has been recorded. Invalid activity
@@ -105,7 +106,7 @@ A short, scannable summary, not a wall of text. Aim for something like:
     Status: Building feature 4 - PDF export
     Config: Project settings.
     Review execution: automatic.
-    Gates: regular audit manual, independent review when-sensitive, check when-behavioral, try guide manual;
+    Gates: regular audit manual, independent review when-sensitive, check when-behavioral, try guide when-testable;
            Continuous audit always, independent review manual, check always, try guide when-user-facing.
     Plans: Overview current. Build plan 3 of 9 complete.
     Current work: Step 2 of 3 done. Next step: Download PDF button.
@@ -127,7 +128,7 @@ End with a single suggested next action, chosen in this order:
 - The overview is missing or stale and no feature is in progress -> `/overview`.
 - A spec is in progress with unchecked steps -> `/implement` and name the step.
 - A spec is in progress and all implementation steps are checked -> `/check` if
-  proof is not recorded, `/try` if the user wants a manual review path,
+  proof is not recorded, `/check guide` if the user wants a manual review path,
   `/implement` when a P0 or P1 finding is still `open` (the repair is an extra
   reviewed step), `/audit` when one is `fixed` and awaiting re-review (both
   block `/complete`), `/audit independent current` when independent review is

@@ -1,9 +1,9 @@
 ---
 name: complete
-description: Complete a finished feature, fix, or rollback by running final gates, archiving its spec, updating plans, creating the work commit, and requesting approval before squash merge. Use for /complete or requests to finish, wrap up, merge, or close the current work item.
+description: Complete a finished feature, fix, or rollback by running final gates, archiving its spec, updating plans, creating the work commit, and requesting approval to land it locally or by pull request. Use for /complete or requests to finish, wrap up, merge, or close the current work item.
 ---
 
-# complete - log the finished work, make the work commit, and merge
+# complete - log the finished work, make the work commit, and land it
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
@@ -14,13 +14,15 @@ contract in `AGENTS.md`.
 Where this sits in the workflow:
 
     /feature, /fix, or /rollback  ->  /implement  ->  [complete]  ->  next
-    (the spec)                         (build it)      (commit + merge + log)
+    (the spec)                         (build it)      (commit + land + log)
 
 `/implement` built the feature, fix, or rollback on its branch, with optional per-step commit
 checkpoints. This skill closes it out: it logs the work, makes the single
-work-level commit, and squash-merges. Run it only when the work is done,
-reviewed, and the documented `Verify` command, or the fallback build and tests,
-passes.
+work-level commit, then follows `git.landing`. The default `local-merge` path
+squash-merges locally. The optional `pull-request` path pushes the work branch
+and opens a pull request for a later squash merge. Run it only when the work is
+done, reviewed, and the documented `Verify` command, or the fallback build and
+tests, passes.
 
 ## Before you start
 
@@ -28,6 +30,9 @@ Read `blueprint/config.json`. A missing file means the built-in defaults apply.
 If the file exists but is invalid, stop and point the user to `/doctor`.
 Configuration can strengthen or shape the completion gates, but it never grants
 permission to commit, merge, push, deploy, publish, or take destructive action.
+Record `git.landing`; a missing value defaults to `local-merge`. The
+`pull-request` value applies only to this skill. Continuous Mode remains a
+local-only serial workflow and never pushes or opens pull requests.
 
 Before requiring a real active spec, check for pending completion using
 `reference/completion-recovery.md`. A matching archive may mean archival was
@@ -70,18 +75,22 @@ Use `qualityGates.regular` for this work item:
   when a done-when needs observed runtime behavior such as a click, request, CLI
   command, download, background job, or multi-screen flow; `always` runs for
   every work item.
-- **Try guide:** `manual` runs only when explicitly requested;
+- **Try guide (`qualityGates.regular.tryGuide`):** use `/check guide`.
+  `manual` runs only when explicitly requested;
   `when-user-facing` generates a guide when the change affects UI, navigation,
   copy, a public API or CLI, output, or another workflow a person directly uses;
+  `when-testable` generates `## Try it now` when guide mode finds a safe,
+  meaningful direct observation for UI, CLI, library, API, file-generation,
+  configuration, or data behavior, and skips without fabricating one otherwise;
   `always` generates one for every work item.
 
-Apply automatic gates in this order: `/check`, review, then `/try`. When
+Apply automatic gates in this order: `/check`, review, then `/check guide`. When
 independent review is selected, follow the independent execution flow below and
 continue only after a fresh reviewer writes a current passing receipt. Otherwise
 run `/audit current` when Audit is selected.
 Reuse adequate evidence produced during the current work item instead of
-repeating it. A required gate that cannot run is a blocker. `/try` only generates
-instructions for human review; never claim the user performed them. P0 and P1
+repeating it. A required gate that cannot run is a blocker. `/check guide` only
+generates instructions for human review; never claim the user performed them. P0 and P1
 finding blockers remain enforced regardless of these settings.
 
 ### Independent review execution
@@ -128,8 +137,8 @@ Before logging or committing, run a short safety pass and report blockers only:
 - the exact `Verify` command from `AGENTS.md` passed in this session, when one is
   declared; otherwise the build passed, and tests passed when the project has a
   declared test command and the change touched logic
-- any check required by `qualityGates.regular` has evidence, and there is a clear
-  manual try path
+- any check required by `qualityGates.regular` has evidence, and testable work
+  has a clear manual try path while non-testable work has a recorded skip reason
 - with `verification.logicTests: "required"`, logic changes have a configured
   runner and passing focused tests; otherwise completion is blocked and `/tests`
   is the next setup step
@@ -151,7 +160,11 @@ Before logging or committing, run a short safety pass and report blockers only:
   and `.claude` stay in sync via symlink; do not require a second copy
 - no P0 or P1 finding in `blueprint/context/findings.md` is `open` or `fixed`.
   `fixed` still blocks on purpose: the repair exists but no review has looked at
-  it - run `/audit` to close it. The only waivers are `accepted` (the user's
+  it - run `/audit` to close it. While the current spec is active, append the
+  repair as a new checklist step and run `/implement`; do not start a separate
+  `/fix`. After the repair passes its focused check and the finding is marked
+  `fixed`, run `/audit current` to re-review the updated code, close the finding,
+  and then retry `/complete`. The only waivers are `accepted` (the user's
   explicit decision in the current chat, reason recorded; never set it for
   them) or `invalid` (an `/audit` re-examination verdict with recorded
   evidence, or the user's explicit call). A missing ledger file means no
@@ -257,7 +270,7 @@ same way if the file is missing (an older install):
     > **Generated file.** The findings ledger: review findings raised by `/audit`
     > against the work in progress, each with a durable ID, severity (P0-P3), and
     > status. `/implement` marks repaired findings `fixed`, a later `/audit` pass
-    > moves them to `closed`, and `/complete` refuses to merge while any P0 or P1
+    > moves them to `closed`, and `/complete` refuses to land while any P0 or P1
     > finding is `open` or `fixed`, then archives resolved findings with the work
     > and resets this file.
 
@@ -323,10 +336,10 @@ work" stub. Before committing, read the file and confirm it exactly matches:
 
     # Current Feature
 
-    > **Generated file.** Holds the one feature, fix, or rollback being built right now. Run
+    > **Generated file.** Holds the one feature, fix, or rollback being built in this checkout. Run
     > `/feature <number-or-name>` to spec a build-plan feature, or `/fix "<bug>"` for
     > an ad-hoc fix. Use `/rollback <completed-feature>` to plan a safe reversal.
-    > Build one thing at a time; `/complete` archives it under
+    > Build one thing at a time in this checkout; `/complete` archives it under
     > `blueprint/history/` and resets this file.
 
     _Nothing in progress. Run `/feature`, `/fix`, or `/rollback` to start._
@@ -363,32 +376,64 @@ then obtain explicit commit approval. Only then stage the reviewed branch work
 `fix: <name>`, or `revert: roll back <feature>`). `Verify`, or the fallback build
 and tests, must pass first.
 
-## Step 3 - merge
+## Step 3 - land the work
+
+Follow only the configured path.
+
+### Local merge
+
+With `git.landing: "local-merge"`:
 
 1. Confirm the recorded local default branch has not advanced and the final work
    commit is unchanged. Squash-merge into that default branch only with the user's
-   explicit go-ahead, so
-   the feature lands as one clean commit regardless of how many checkpoints the
-   branch carried.
+   explicit go-ahead, so the work lands as one clean commit regardless of how many
+   checkpoints the branch carried.
 2. Verify the resulting default-branch commit, parent, archive, and full tree
    using `reference/completion-recovery.md`, then perform approved branch cleanup.
-3. Stop and ask whether to push local `main` to its upstream. The merge approval
-   does not count as push approval.
-4. Push main only after a separate explicit yes to push main in the current chat.
-   If the repo has no remote or upstream, say so instead of guessing.
+3. Stop and ask whether to push the local default branch to its upstream. The
+   merge approval does not count as push approval.
+4. Push the default branch only after a separate explicit yes in the current
+   chat. If the repo has no remote or upstream, say so instead of guessing.
+
+### Pull request
+
+With `git.landing: "pull-request"`:
+
+1. Require a selected configured remote, a known remote default branch, and an
+   available authenticated hosting CLI or API. Prefer the work branch's configured
+   upstream remote; otherwise use the only unambiguous remote or ask the user to
+   choose. Confirm the exact work commit and branch are unchanged. Do not fall
+   back to a local merge or direct default-branch push when any prerequisite is
+   missing.
+2. Show the target remote and base branch, exact branch to push, proposed pull
+   request title, and concise body. State that the pull request must use squash
+   merge to preserve Blueprint's one-work-item, one-default-branch-commit history.
+3. Obtain one explicit approval for the feature-branch push and pull request
+   creation. Configuration never supplies this approval. Only after approval,
+   push that branch with upstream tracking and open the pull request against the
+   confirmed default branch.
+4. Verify that the pull request head is the exact final work commit and report its
+   URL plus check status. Never merge the pull request, enable auto-merge, delete
+   the remote branch, or push the default branch from this approval.
+5. Stop with the work ready for provider review and squash merge. If `/complete`
+   is resumed after the provider reports it merged, follow
+   `reference/completion-recovery.md`; verify the exact pull request and squash
+   commit before reporting completion or offering local branch cleanup.
 
 Then point the user at `/feature`, `/fix`, or `/rollback` for the next thing.
 
-Finish with a concise **How to try it** note for the completed work. For a
+Finish with the generated `## Try it now` section when one exists. For a
 rollback, explain how to confirm the removed behavior is gone and name one
-unaffected regression path. If the
-manual path is more than a couple of steps, tell the user to run `/try latest`;
-that command can read the archived feature after `current-feature.md` is reset.
+unaffected regression path. If there is no safe direct observation, omit the
+section and say so plainly. For an optional deeper walkthrough, point to
+`/check guide latest`; that command can read the archived feature after
+`current-feature.md` is reset.
 
 ## Rules
 
 - The work item is the unit of history: one squashed feature, fix, or rollback
-  commit on main, even if the branch carried several checkpoint commits.
+  commit on the default branch, even if the branch carried several checkpoint
+  commits.
 - A rollback preserves the original feature archive and adds a separate rollback
   archive. Never rewrite history to make the feature look as if it never existed.
 - Don't merge unfinished or failing work. The documented `Verify` command, or
@@ -402,10 +447,11 @@ that command can read the archived feature after `current-feature.md` is reset.
   is missing, pending, changes-requested, malformed, or stale. The user may
   explicitly cancel a manual review before completion, but the agent never
   resets or waives it on the user's behalf.
-- Merging and pushing are the user's calls: get an explicit yes for the merge,
-  then ask whether to push main. Do not treat merge approval, `/complete`, or
-  "looks good" as permission to push.
-- Push main only after a separate explicit yes to push main in the current chat.
+- Merging and pushing are the user's calls. Local landing needs explicit merge
+  approval, then separate default-branch push approval. Pull-request landing needs
+  explicit branch-push and pull-request approval, and never includes merge approval.
+- Never treat `/complete`, configuration, or "looks good" as permission to push,
+  open a pull request, enable auto-merge, or merge.
 - One item per completion. If a parent feature still has unchecked sub-features,
   leave the parent unchecked.
 

@@ -31,8 +31,21 @@ The loop we use for every feature. The spec for the feature being built lives in
 @blueprint/context/current-feature.md.
 
 Run `/feature` (or `/fix` for a bug or change that isn't a planned feature) to
-write the spec, `/implement` to build it on a branch, and `/complete` to log it
-and merge. The numbered loop below is what those skills follow.
+write the spec and approve it before `/implement` builds it on a branch. Use
+`/check` to prove behavior, `/audit` to review code and record findings, and
+`/complete` to log the work and merge with approval. This teaching path does not
+change the configured gates; Audit is not mandatory for every feature.
+`/check guide` only explains how the user can test the work and never runs checks
+or records acceptance. The numbered loop below is what those skills follow.
+
+In this project, every spec from `/feature`, `/fix`, or `/rollback` also goes
+through `/feature-review` (two isolated Grok reviews) and `/feature-review-fix`
+(the judge rewrites the spec) before `/implement`.
+
+Before planning, `/explore <topic>` investigates an idea against the actual code
+without requiring plans or writing files. `/brief` instead explains an existing
+build-plan item. Run these skills in AI chat, using the `$` form in Codex, not as
+terminal commands.
 
 After the first successful `/overview`, Blueprint offers a reviewed local commit
 for the initial workflow setup and plans before Feature 1. It shows the exact
@@ -69,15 +82,17 @@ when you just want something done.
    adds logic must ship a passing test when the test gate is on. When `AGENTS.md`
    declares `Browser tests`, stable browser behavior can include focused harness
    coverage, while remaining UI and integration claims ride on direct browser,
-   screenshot, API, and build evidence. Run `/tests` or `/browser-tests`
+   screenshot, API, and build evidence. Run `/tests` or `/tests browser`
    explicitly rather than adding a missing runner mid-feature. See the Testing
    section of `coding-standards.md` for the gates.
    Run `/ci` separately when you want one Verify command and matching automatic
    GitHub checks; CI setup is not part of this feature loop.
-6. **Try manually (optional)** - Run `/try` when you want a human walkthrough:
-   what to start, where to go, what to click or run, what to expect, and what
-   would count as wrong. `/check` proves behavior from the agent side; `/try`
-   gives you the manual review path.
+6. **Try it now** - After Verify and any required `/check` pass, the default
+   `when-testable` guide policy adds one small user-run command or interaction
+   with the exact expected result whenever a safe meaningful path exists. Run
+   `/check guide` explicitly for a deeper human walkthrough. `/check` proves
+   behavior from the agent side; Try It Now is a user demonstration and never
+   replaces tests, Verify, or Check.
 7. **Audit (optional)** - Run `/audit` when you want a read-only code quality pass
    before closing a feature or after a larger automated run. It checks for
    duplication, dead code, missing tests for logic, standards drift, and
@@ -105,10 +120,11 @@ when you just want something done.
    checkpoints are optional rollback points; `/complete` still makes the real
    feature-level commit. Verify, or the fallback checks, must pass first. When
    implementation is done, end with a compact review packet: changed files,
-   checks run, manual try path, risks, and next action. The per-step walkthrough
+   checks run, the generated `## Try it now` section when applicable, risks, and
+   next action. The per-step walkthrough
    is part of the Guided checkpoint prompt. The final code walkthrough is always
    available and is separate from the manual product-review path produced by
-   `/try`.
+   `/check guide`.
 
 `workflow.stepReview: "every"` restores per-step approval pauses but does not
 enable checkpoint prompts by itself. The previous workflow uses
@@ -124,9 +140,11 @@ enable checkpoint prompts by itself. The previous workflow uses
    `blueprint/context/review.md` to their stubs.
 11. **Feature commit** - `/complete` stages everything on the branch (step work
    plus the logging changes) into one conventional feature commit.
-12. **Squash-merge** - `/complete` squash-merges the branch to main (explicit yes)
-    and deletes it, so the feature lands as one commit. Then it must ask
-    separately before pushing main; merge approval does not approve a push.
+12. **Land** - `/complete` follows `git.landing`. The default local path asks to
+    squash-merge the branch and later asks separately before pushing the default
+    branch. The `pull-request` path asks once before pushing the work branch and
+    opening a pull request, then leaves provider review and squash merge to the
+    user. Neither path infers approval from configuration.
 13. **Release prep (optional)** - `/release render` or `/release vercel` is a
     Blueprint web-host helper. This product ships as a VS Code/Cursor extension
     (`pnpm package`, F5), not a Vercel/Render app. Skip those paths unless Marek

@@ -123,6 +123,7 @@ If there is no active spec:
 
 Autopilot may continue past this spec gate because the user explicitly invoked
 Autopilot. Still report what the critique changed in the final packet.
+Follow the proportional-engineering contract in `AGENTS.md` throughout this run.
 
 ## Step 3 - create or reuse the branch
 
@@ -258,8 +259,9 @@ For every finding:
    local project patterns. An audit finding is evidence to investigate, not an
    automatic instruction to edit.
 2. Repair confirmed P0 and P1 findings when the fix stays inside the approved
-   feature scope and does not require a product or architecture decision. Set
-   the repaired finding to `fixed` in the ledger, never `closed`.
+   feature scope, does not require a product or architecture decision, and does
+   not remove or change shipped behavior. Set the repaired finding to `fixed` in
+   the ledger, never `closed`.
 3. Report P2 and P3 findings in the final packet. Fix them only when the change
    is small, directly caused by the current feature, and clearly required by the
    project standards.
@@ -288,11 +290,14 @@ step into a full-project hardening pass. A broader cleanup remains a separate
 
 Apply `qualityGates.regular.tryGuide`:
 
-- `manual` - skip automatic generation; `/try` remains available when explicitly
-  requested.
-- `when-user-facing` - generate the `/try` guide when the change affects UI,
+- `manual` - skip automatic generation; `/check guide` remains available when
+  explicitly requested.
+- `when-user-facing` - run `/check guide` when the change affects UI,
   navigation, copy, a public API or CLI, output, or another workflow a person
   directly uses.
+- `when-testable` - run `/check guide` after Verify and required Check. Guide
+  mode emits `## Try it now` only when it finds a safe, meaningful direct
+  observation and otherwise records a skip without inventing instructions.
 - `always` - generate a guide for every work item.
 
 The guide is a review artifact, not proof. Never claim the user performed it.
@@ -312,7 +317,8 @@ a full audit report:
   skipped
 - independent-review target, selected reviewer and model, and receipt state
 - screenshots or output paths, when relevant
-- how to try it manually, or a pointer to `/try` for the full walkthrough
+- the generated `## Try it now` section when one exists, or the recorded reason
+  it was omitted
 - checkpoint commits created
 - self-review findings
 - targeted audit scope and findings, when the audit gate ran
@@ -322,12 +328,12 @@ a full audit report:
 - unresolved risks or skipped checks
 - exact next action
 
-If everything is green, the next action is usually: review the diff, run `/try`
+If everything is green, the next action is usually: review the diff, run `/check guide`
 if its gate was manual and a walkthrough is wanted, then `/complete`.
 
 Always offer a read-only walkthrough of the completed code after the packet.
 Follow the spec's build steps, explain the key files, symbols, flow, and
-non-obvious decisions, then offer a focused deep dive. Keep `/try` distinct as
+non-obvious decisions, then offer a focused deep dive. Keep `/check guide` distinct as
 the manual product-review path.
 
 If something failed, name the failing check and the next fix target.

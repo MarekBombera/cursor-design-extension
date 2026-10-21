@@ -58,6 +58,13 @@ Follow build steps in order. Build only what the spec says. If a step requires a
 unresolved product decision, unsafe action, missing prerequisite, or material
 scope expansion, stop and revise the spec instead of improvising.
 
+Add an abstraction, dependency, service, configuration surface, compatibility
+layer, or security mechanism only when the approved spec or an established
+repository requirement needs it now. Prefer existing code, the standard library,
+native platform features, and installed dependencies. If the simplest complete
+implementation conflicts with the spec, stop and revise the spec instead of
+silently building a larger design.
+
 For each step:
 
 1. Make the smallest coherent change that satisfies its `Done when`.
@@ -98,6 +105,13 @@ classification of each required state. Catch only known expected errors at a
 boundary; unexpected failures must reach the unexpected-error path. Fix any
 missing or contradicted contract before marking the spec verified.
 
+Run a proportionality check before final verification: every new abstraction,
+dependency, service, configuration surface, compatibility layer, and security
+mechanism must trace to the approved spec or an established repository
+requirement. Remove speculative machinery this work added without weakening real
+trust-boundary validation, data-loss prevention, accessibility, or configured
+verification.
+
 ## Verification
 
 After all steps pass, run the project's final automated gate once. If
@@ -110,8 +124,16 @@ Apply configured regular gates:
 - Audit and independent review follow `qualityGates.regular`.
 - Check runs for `always`, for behavioral work under `when-behavioral`, or when
   explicitly requested.
-- Try guide runs for `always`, for user-facing work under `when-user-facing`, or
-  when explicitly requested.
+- `/check guide` follows `qualityGates.regular.tryGuide`: it runs for `always`,
+  for user-facing work under `when-user-facing`, for work with a safe meaningful
+  direct observation under `when-testable`, or when explicitly requested.
+
+After final Verify and required Check pass, apply the selected try-guide policy.
+For `when-testable`, let `/check guide` perform its conservative classification.
+Keep its generated `## Try it now` section for the final packet. When no safe,
+meaningful direct observation exists, record that the gate was skipped and do
+not fabricate a section. Guide output never counts as verification or user
+acceptance.
 
 Do not start a dev server. When a required runtime check needs one, ask the user
 to start it. Build output does not prove visual, persisted-data, authenticated,
@@ -158,9 +180,13 @@ spec checklist step, mark it fixed after its check passes, then send it back to
 When all steps and required gates pass:
 
 - Update activity to `ready` with `/complete` as the resume command.
-- Present the branch, changes grouped by area, exact checks run, how to try it,
-  findings and independent-review state, known risks, configured gate outcomes,
-  and `/complete` as the next action.
+- Present the branch, changes grouped by area, exact checks run, findings and
+  independent-review state, known risks, configured gate outcomes, and
+  `/complete` as the next action.
+- Include the generated `## Try it now` section verbatim when guide mode produced
+  one. Do not replace it with a vague summary or a pointer. When the selected
+  policy found no safe direct path, omit the section and state that outcome with
+  the gate results.
 
 After the final packet, always offer these choices:
 
@@ -170,7 +196,7 @@ After the final packet, always offer these choices:
 
 The final walkthrough is available with either `workflow.stepReview` value and
 regardless of `workflow.checkpointCommits`. It is a read-only code tour, not the
-manual product-review path produced by `/try`, and it is not verification.
+manual product-review path produced by `/check guide`, and it is not verification.
 
 When the user chooses the walkthrough, begin with a short map of the completed
 feature, then follow the spec's build steps. For each step, explain its purpose,

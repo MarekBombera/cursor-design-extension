@@ -61,8 +61,8 @@ Gather these, then summarize. Do not dump file contents.
      Report the effective workflow, git, verification, review execution, regular
      quality-gate, Continuous quality-gate, and Continuous Mode settings. Confirm each audit,
      independent-review, check, and try-guide gate uses its supported values.
-     Independent review defaults to `when-sensitive` for both workflows; audit,
-     check, and try guide default to `manual`. Confirm
+     Independent review defaults to `when-sensitive` for both workflows; audit
+     and check default to `manual`, while try guide defaults to `when-testable`. Confirm
      `review.independentExecution` is `manual` or `automatic` and defaults to
      `automatic`. Do not claim automatic capability is available from installed
      project files alone.
@@ -70,10 +70,11 @@ Gather these, then summarize. Do not dump file contents.
      they must not guess which policy to follow.
 2. **Tool adapters**
    - Read `blueprint/.state/manifest.json` when present and report its exact
-     logical adapters: Codex, Claude Code, GitHub Copilot, and OpenCode.
-   - Confirm at least one compatible skill tree exists. Codex and GitHub Copilot
-     use `.agents/skills/`. Claude Code uses `.claude/skills/`. OpenCode can use
-     either tree.
+     logical adapters. Supported values include Codex, Claude Code, and GitHub
+     Copilot. Google Antigravity and OpenCode are supported too.
+   - Confirm at least one compatible skill tree exists. Codex, GitHub Copilot,
+     and Google Antigravity use `.agents/skills/`. Claude Code uses
+     `.claude/skills/`. OpenCode can use either tree.
    - If both skill trees are present, say that is healthy when the selected
      tools require both. This repo keeps `.cursor` as SoT and points
      `.agents/skills`, `.claude/skills`, `.claude/rules`, and `.claude/agents`
@@ -102,6 +103,18 @@ Gather these, then summarize. Do not dump file contents.
      not token counts. Recommend Claude Code's `/context all` for the live token
      breakdown.
 3. **Commands and project setup**
+   - Read existing `AGENTS.md` for substantive proportional-engineering guidance,
+     under `## Proportional engineering` or equivalent customized wording.
+     Accept equivalent guidance anywhere in the file; do not require exact prose.
+     Look for current requirements over hypothetical scale, reuse before new
+     machinery, smaller reversible defaults, questions for material unknowns,
+     and trust boundaries grounded in actual reachability. Simplicity must
+     preserve real validation, data-loss prevention, accessibility, security,
+     configured tests, and project rules; stack-specific standards apply only
+     to the project's stack. A heading or a single slogan is not sufficient.
+     If guidance is missing or incomplete, identify the missing substance as a
+     warning, not a setup blocker. The updater preserves existing `AGENTS.md`,
+     so updating Blueprint alone does not repair this warning.
    - Check whether root `README.md` is still the copied Blueprint workflow doc
      by looking for `# AI Coding Blueprint` or opening text that describes the
      Blueprint workflow instead of the app. If so, warn that `/onboard` should
@@ -144,6 +157,9 @@ Gather these, then summarize. Do not dump file contents.
    - Check whether `blueprint/project-plan.md` and `blueprint/build-plan.md` look
      filled in or still template-like. Treat obvious TODO, TBD, example-only text,
      or empty required sections as not ready.
+   - Follow the proportional-engineering contract in `AGENTS.md`: treat a blank
+     or template-only optional Usage model and constraints section as healthy
+     unknown context, not an incomplete requirement.
    - Check whether `blueprint/build-plan.md` is a numbered checkbox list. Raw
      bullets are allowed as a first draft, but they should be normalized by
      `/overview` before the build loop starts.
@@ -180,14 +196,20 @@ Gather these, then summarize. Do not dump file contents.
      changes, warn that work is happening without an active spec.
    - Flag active spec on `main`, all spec steps checked but no completion, or a
      branch that does not match the configured feature, fix, or rollback prefix
-     for the spec type. For a feature, also flag a mismatch with the next
-     unchecked build-plan item. For a rollback, confirm its target is a checked item and do
-     not compare it to the next unchecked item.
+     for the spec type. For a feature using `git.landing: "local-merge"`, also
+     flag a mismatch with the next unchecked build-plan item. Pull-request
+     landing permits another unchecked feature because parallel branches can be
+     active. For a rollback, confirm its target is a checked item and do not
+     compare it to the next unchecked item.
 8. **Git**
    - Report current branch, clean vs dirty working tree, rough changed-file count,
      last commit subject, and whether the branch is ahead of upstream.
    - If the directory is not a git repo, report that as a setup issue and keep
      going.
+   - When `git.landing` is `pull-request`, report the configured remote, resolved
+     remote default branch, and whether an authenticated hosting CLI or API is
+     available. Missing pull-request prerequisites need attention but do not make
+     the local Blueprint workflow unhealthy.
 
 ## Output
 
@@ -226,6 +248,12 @@ Choose the repair order in this priority:
   `ai-interaction.md` that are present in `CLAUDE.md`, then rerun `/doctor`. The
   files stay in the project and workflow skills still read them on demand.
 - Onboarding incomplete -> run `/onboard`.
+- Proportional-engineering guidance missing or incomplete -> review the current
+  Blueprint template's `AGENTS.md` Proportional engineering section and manually
+  merge only the missing guidance into the project's `AGENTS.md`. Preserve
+  existing project rules and equivalent customized wording. In local-only mode,
+  keep `AGENTS.md` public-safe without adding hidden workflow paths or skill lists.
+  Doctor must not edit or replace `AGENTS.md`.
 - Root README is still the Blueprint workflow doc -> run `/onboard` to replace
   it with a project README before publishing.
 - Local-only visibility selected but ignored Blueprint files are missing ->
