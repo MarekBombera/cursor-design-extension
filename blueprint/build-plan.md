@@ -32,7 +32,7 @@ Rule: no product features and no behavior changes. Plan review findings (read be
   - [x] 7b. **vp check** - oxlint + oxfmt config moved into `vite.config.ts`; `vp check` replaces `check-types` / `lint` / `fmt`; rc files, deps, `watch:tsc` and `pretest` removed; formatting drift in its own commit
   - [x] 7c. **vp test** - Vitest runs the 178 `src/**/*.test.ts` tests from TS (`node:test` imports rewritten, `src/test/**` excluded, forks pool); Test command declared in AGENTS.md
   - [x] 7d. **Electron suite home** - decide how `@vscode/test-electron` builds once `out/` goes; remove `compile-tests` / `watch-tests`, `@types/mocha` from the main tsconfig, and now-dead `@vscode/test-cli` / `npm-run-all`; suite stays out of Verify
-  - [ ] 7e. **Stricter static checks** - Oxlint type-aware rules on and clean with pure fixes only (`void` or already-ordered `await`, per site); knip with explicit entries clean, dead deps removed
+  - [x] 7e. **Stricter static checks** - Oxlint type-aware rules on and clean with pure fixes only (`void` or already-ordered `await`, per site); knip with explicit entries clean, dead deps removed
   - [ ] 7f. **Test depth** - fast-check properties (stage geometry, stale check, zod round-trips); scrubbed snapshots for `IMPLEMENT.md` / `canvas.html`; coverage script via `@vitest/coverage-v8`, no thresholds
   - [ ] 7g. **MCP contract tests** - `@modelcontextprotocol/client` over `InMemoryTransport` through the real server for all 8 tools plus the full `listTools` set; tests characterise current errors, never change product
   - [ ] 7h. **Verify + CI** - one Verify command (check, test, pack) in AGENTS.md and README; `.github/workflows/verify.yml` on push/PR (Node 24, Vite+ install, `contents: read`); final F5 + `.vsix` smoke

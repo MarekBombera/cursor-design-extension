@@ -1,0 +1,14 @@
+{
+	"entry": [
+		"src/extension.ts",
+		"src/mcp/server.ts",
+		"src/**/*.test.ts",
+		"src/test/**/*.ts",
+		"vite.config.ts",
+		".vscode-test.mjs"
+	],
+	"project": ["src/**/*.ts", "vite.config.ts", ".vscode-test.mjs"],
+	"ignore": ["src/types/vscode.cursor.d.ts"],
+	"ignoreDependencies": ["vscode", "@types/vscode", "@vscode/test-electron"],
+	"include": ["files", "dependencies", "unlisted", "binaries", "unresolved"]
+}

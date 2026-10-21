@@ -44,8 +44,7 @@ afterEach(async () => {
 const captureHandlers = (): Map<string, CapturedHandler> => {
 	const handlers = new Map<string, CapturedHandler>();
 	const stubServer = {
-		registerTool: (name: string, config: unknown, handler: CapturedHandler): void => {
-			void config;
+		registerTool: (name: string, _config: unknown, handler: CapturedHandler): void => {
 			handlers.set(name, handler);
 		},
 	} as unknown as McpServer;

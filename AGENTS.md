@@ -272,6 +272,7 @@ checks do not make the Blueprint unusable.
 - Debug: **F5** (Run Extension) — Extension Development Host opens `fixtures/dev-workspace`
 - Package: `pnpm package` (builds `dist/` only)
 - Package `.vsix`: `pnpm vsix`
+- Knip: `pnpm knip` (unused files/deps; not Verify)
 
 Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Extension Development Host.
 
