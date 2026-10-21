@@ -44,7 +44,7 @@ export default defineConfig({
 			'typescript/restrict-template-expressions': 'off',
 			'typescript/unbound-method': 'off',
 		},
-		ignorePatterns: ['dist', 'out', 'node_modules', '.vscode-test'],
+		ignorePatterns: ['dist', 'out', 'node_modules', '.vscode-test', 'src/test'],
 		options: { typeAware: true, typeCheck: true },
 	},
 	fmt: {
