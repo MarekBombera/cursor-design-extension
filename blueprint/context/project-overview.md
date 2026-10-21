@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 58ef1374ba791b1bca450c47f776426a944106838b9dbeb9eb69ed1675be25ed -->
+<!-- blueprint:source-hash 16e20c2699bc1c63a8077d239ea72072635aeb4ad08977c5b56d57054a886c20 -->
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 turns the panel into a Figma-style multi-frame stage.
 

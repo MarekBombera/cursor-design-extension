@@ -19,7 +19,7 @@
 		},
 		{
 			"label": "watch",
-			"dependsOn": ["npm: watch:pack"],
+			"dependsOn": ["npm: watch:pack", "npm: watch:webview"],
 			"presentation": {
 				"reveal": "never"
 			},
@@ -43,6 +43,29 @@
 			},
 			"isBackground": true,
 			"label": "npm: watch:pack",
+			"presentation": {
+				"group": "watch",
+				"reveal": "never"
+			}
+		},
+		{
+			"type": "npm",
+			"script": "watch:webview",
+			"group": "build",
+			"problemMatcher": {
+				"owner": "vite-webview",
+				"pattern": {
+					"regexp": "^.*$",
+					"message": 0
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "transforming|building for|vite v",
+					"endsPattern": "built in|watching for file changes"
+				}
+			},
+			"isBackground": true,
+			"label": "npm: watch:webview",
 			"presentation": {
 				"group": "watch",
 				"reveal": "never"

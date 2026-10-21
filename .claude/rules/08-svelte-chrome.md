@@ -24,6 +24,12 @@ The official Svelte tooling is installed per tool: the Cursor `svelte` plugin, a
 
 The feature that adds Svelte also adds `svelte-check` to `pnpm verify` (tsc does not type-check `.svelte` files). Oxlint already lints `<script>` blocks.
 
+## Toolchain
+
+- `typescript` package is `~6.0.3` (`ponytail:` TS 6 only until `svelte-check` supports TS 7, then `^7`). Lint and type-aware check still run on TS 7 via tsgolint; do not remove `typeAware` / `typeCheck`.
+- Webview build: `vp build -c vite.webview.config.ts` (`-c` is honored). Outputs `dist/webview/chrome.js` and `dist/webview/chrome.css`.
+- Type gate: `svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings`. If `svelte-check` fails on TS 6, fall back to `svelte-check-native` and record it here; do not downgrade lint.
+
 ## Container vs view
 
 - **One container** owns the host bridge: `acquireVsCodeApi()` once, the `message` listener, message validation (unknown `type` or malformed payload is ignored), and chrome state. Keep the bridge in one `*.svelte.ts` module; components never call `postMessage` or add `message` listeners themselves.

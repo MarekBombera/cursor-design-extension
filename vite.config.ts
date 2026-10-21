@@ -102,6 +102,24 @@ export default defineConfig({
 				},
 			},
 			{
+				files: ['src/webview/**'],
+				rules: {
+					'no-restricted-imports': [
+						'error',
+						{
+							paths: [...bannedLibraries, vscodeOnlyInHost],
+							patterns: [
+								...bannedPatterns,
+								{
+									group: ['node:*', 'fs', 'path', 'child_process', 'crypto'],
+									message: 'Webview chrome cannot import vscode or Node built-ins.',
+								},
+							],
+						},
+					],
+				},
+			},
+			{
 				files: ['**/*.test.ts'],
 				rules: { 'id-length': 'off', 'typescript/explicit-module-boundary-types': 'off' },
 			},
@@ -137,6 +155,7 @@ export default defineConfig({
 			'**/.claude/**',
 			'**/blueprint/**',
 			'src/types/vscode.cursor.d.ts',
+			'**/*.svelte',
 		],
 	},
 	pack: [

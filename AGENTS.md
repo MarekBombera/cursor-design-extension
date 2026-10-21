@@ -126,14 +126,15 @@ protection is a separate remote setting.
 
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`: format, lint, type check; then the agent rules layout check)
-- Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && vp test && vp pack`)
+- Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && vp test && vp pack && vp build -c vite.webview.config.ts`)
 - Test: `vp test` (unit suite via Vite+ / Vitest; not `pnpm test`)
 - Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
 - Fix: `pnpm exec vp check --fix`
-- Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack`; writes `dist/extension.js` and `dist/mcp.js`)
-- Watch: `pnpm watch`
+- Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack && vp build -c vite.webview.config.ts`; writes `dist/extension.js`, `dist/mcp.js`, and `dist/webview/chrome.js` + `chrome.css`)
+- Watch: `pnpm watch` (`pnpm run --parallel "/^watch:/"` — `watch:pack` and `watch:webview`)
 - Debug: **F5** (Run Extension): Extension Development Host opens `fixtures/dev-workspace`
-- Package: `pnpm package` (builds `dist/` only)
+- Package: `pnpm package` (`vp check --no-fmt && vp pack --minify --no-sourcemap && vp build -c vite.webview.config.ts --sourcemap false`)
+- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint / type-aware check still run on TS 7 via tsgolint
 - Package `.vsix`: `pnpm vsix`
 - Knip: `pnpm knip` (unused files/deps; not Verify)
 

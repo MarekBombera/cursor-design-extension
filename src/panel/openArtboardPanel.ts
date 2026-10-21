@@ -121,6 +121,7 @@ export type OpenArtboardPanelArgs = {
 };
 
 export const openArtboardPanel = ({
+	context,
 	preserveFocus: preserveFocusFlag,
 }: OpenArtboardPanelArgs): vscode.WebviewPanel => {
 	const preserveFocus = preserveFocusFlag === true;
@@ -134,9 +135,12 @@ export const openArtboardPanel = ({
 		: vscode.ViewColumn.One;
 	const panel = vscode.window.createWebviewPanel(ARTBOARD_VIEW_TYPE, 'Artboard', showOptions, {
 		enableScripts: true,
-		localResourceRoots: [],
+		localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
 	});
-	const chrome = buildArtboardChromeHtml(panel.webview);
+	const chrome = buildArtboardChromeHtml({
+		webview: panel.webview,
+		extensionUri: context.extensionUri,
+	});
 	chromeCspNonce = chrome.cspNonce;
 	panel.webview.html = chrome.html;
 	panel.webview.onDidReceiveMessage((message: unknown) => {

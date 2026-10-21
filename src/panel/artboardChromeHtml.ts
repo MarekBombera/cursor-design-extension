@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 
 import {
 	ARTBOARD_CANVAS_RUNTIME_SOURCE,
@@ -23,8 +23,22 @@ export type ArtboardChromeDocument = {
 	cspNonce: string;
 };
 
-export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChromeDocument => {
+export type BuildArtboardChromeHtmlArgs = {
+	webview: vscode.Webview;
+	extensionUri: vscode.Uri;
+};
+
+export const buildArtboardChromeHtml = ({
+	webview,
+	extensionUri,
+}: BuildArtboardChromeHtmlArgs): ArtboardChromeDocument => {
 	const nonce = createCspNonce();
+	const chromeCssUri = webview.asWebviewUri(
+		vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'chrome.css'),
+	);
+	const chromeJsUri = webview.asWebviewUri(
+		vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'chrome.js'),
+	);
 	const csp = [
 		"default-src 'none'",
 		`style-src 'nonce-${nonce}' ${webview.cspSource}`,
@@ -46,6 +60,7 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 	<meta http-equiv="Content-Security-Policy" content="${csp}" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Cursor Design</title>
+	<link rel="stylesheet" nonce="${nonce}" href="${chromeCssUri.toString()}">
 	<style nonce="${nonce}">
 		html,
 		body {
@@ -187,6 +202,8 @@ export const buildArtboardChromeHtml = (webview: vscode.Webview): ArtboardChrome
 		${STAGE_GEOMETRY_SOURCE}
 		${chromeScript}
 	</script>
+	<div id="svelte-root" hidden></div>
+	<script type="module" nonce="${nonce}" src="${chromeJsUri.toString()}"></script>
 </body>
 </html>`,
 		cspNonce: nonce,

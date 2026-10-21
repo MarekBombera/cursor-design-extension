@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'vite-plus/test';
+import { test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import {
@@ -10,14 +10,36 @@ import {
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
 } from './artboardCanvasRuntime';
-import { buildArtboardChromeHtml, embedScriptSource } from './artboardChromeHtml';
+import {
+	type ArtboardChromeDocument,
+	buildArtboardChromeHtml,
+	embedScriptSource,
+} from './artboardChromeHtml';
 import { buildArtboardChromeScript } from './artboardChromeScript';
 import { STAGE_GEOMETRY_SOURCE } from './stageGeometry';
 
-const fakeWebview = { cspSource: 'vscode-webview://test' } as vscode.Webview;
+vi.mock('vscode', () => ({
+	Uri: {
+		joinPath: (base: { path: string }, ...segments: string[]) => ({
+			path: `/${[base.path.replace(/^\/+|\/+$/g, ''), ...segments].filter(Boolean).join('/')}`,
+		}),
+	},
+}));
+
+const fakeExtensionUri = { path: '/extension', scheme: 'file' } as vscode.Uri;
+const fakeWebview = {
+	cspSource: 'vscode-webview://test',
+	asWebviewUri: (uri: vscode.Uri): vscode.Uri =>
+		({
+			toString: (): string => `vscode-webview://test${uri.path}`,
+		}) as vscode.Uri,
+} as vscode.Webview;
+
+const buildChrome = (): ArtboardChromeDocument =>
+	buildArtboardChromeHtml({ webview: fakeWebview, extensionUri: fakeExtensionUri });
 
 test('chrome document is complete and carries one CSP nonce everywhere', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.equal(chrome.cspNonce.length, 32);
 	assert.ok(chrome.html.startsWith('<!DOCTYPE html>'));
@@ -28,26 +50,34 @@ test('chrome document is complete and carries one CSP nonce everywhere', () => {
 	assert.ok(chrome.html.includes(`script-src 'nonce-${chrome.cspNonce}' vscode-webview://test`));
 	assert.ok(chrome.html.includes(`<style nonce="${chrome.cspNonce}">`));
 	assert.ok(chrome.html.includes(`<script nonce="${chrome.cspNonce}">`));
+	assert.ok(chrome.html.includes(`<link rel="stylesheet" nonce="${chrome.cspNonce}" href="`));
+	assert.ok(chrome.html.includes(`<script type="module" nonce="${chrome.cspNonce}" src="`));
+	const tagged = chrome.html.match(/<(?:script|style|link)\b[^>]*>/g) ?? [];
+	assert.ok(tagged.length >= 3);
+	for (const tag of tagged) {
+		assert.ok(tag.includes(`nonce="${chrome.cspNonce}"`), tag);
+	}
 });
 
 test('chrome document has no static iframe, one vscode api, and no remote resources', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(!chrome.html.includes('id="artboard-frame"'));
 	assert.ok(chrome.html.includes('<div id="stage-layer"></div>'));
 	assert.equal(chrome.html.split('acquireVsCodeApi').length - 1, 1);
 	assert.ok(!chrome.html.includes('http:'));
+	assert.ok(!chrome.html.includes('https:'));
 	assert.ok(chrome.html.includes('MCP unavailable. Artboard still loads from disk.'));
 });
 
 test('chrome script ignores nested-frame null origin', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes("event.origin === 'null'"));
 });
 
 test('chrome script hides the stage and disables the toolbar when there are no frames', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const reconcileIndex = chrome.html.indexOf('const reconcileCanvasFrames');
 	const emptyIndex = chrome.html.indexOf('if (frameRecords.size === 0)', reconcileIndex);
 
@@ -61,7 +91,7 @@ test('chrome script hides the stage and disables the toolbar when there are no f
 });
 
 test('a non-empty artboard shows the stage, enables the toolbar, then applies the initial view', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const showIndex = chrome.html.indexOf('stageViewport.hidden = false');
 
 	assert.ok(showIndex >= 0);
@@ -92,7 +122,7 @@ test('embedScriptSource escapes every less-than', () => {
 });
 
 test('chrome starts with an empty stage layer and injects the canvas runtime once', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const viewportIndex = chrome.html.indexOf('<div id="stage-viewport" hidden>');
 	const layerIndex = chrome.html.indexOf('<div id="stage-layer"></div>');
 
@@ -101,11 +131,12 @@ test('chrome starts with an empty stage layer and injects the canvas runtime onc
 	assert.ok(chrome.html.includes(CANVAS_RUNTIME_ATTRIBUTE));
 	assert.ok(chrome.html.includes(embedScriptSource(ARTBOARD_CANVAS_RUNTIME_SOURCE)));
 	assert.equal(chrome.html.split('<script nonce="').length - 1, 1);
-	assert.equal(chrome.html.split('</script>').length - 1, 1);
+	assert.equal(chrome.html.split('<script type="module"').length - 1, 1);
+	assert.equal(chrome.html.split('</script>').length - 1, 2);
 });
 
 test('chrome inlines the stage geometry and transforms only the stage layer', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes(STAGE_GEOMETRY_SOURCE));
 	assert.ok(chrome.html.includes('stageView = clampStageView('));
@@ -117,7 +148,7 @@ test('chrome inlines the stage geometry and transforms only the stage layer', ()
 });
 
 test('chrome restores a validated saved view and fits only once on first layout', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes('vscodeApi.getState()'));
 	assert.ok(chrome.html.includes('Number.isFinite(view.zoom)'));
@@ -131,7 +162,7 @@ test('chrome restores a validated saved view and fits only once on first layout'
 });
 
 test('chrome pans on plain wheel and zooms at the cursor on ctrl/meta wheel', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const listenerIndex = chrome.html.indexOf('stageViewport.addEventListener(');
 	const wheelIndex = chrome.html.indexOf("'wheel'", listenerIndex);
 	const passiveIndex = chrome.html.indexOf('{ passive: false }', wheelIndex);
@@ -156,7 +187,7 @@ test('chrome pans on plain wheel and zooms at the cursor on ctrl/meta wheel', ()
 });
 
 test('chrome frame-wheel validates every field and passes raw deltas', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes('Number.isFinite(data.deltaX)'));
 	assert.ok(chrome.html.includes('Number.isFinite(data.deltaY)'));
@@ -171,7 +202,7 @@ test('chrome frame-wheel validates every field and passes raw deltas', () => {
 });
 
 test('chrome drags the empty stage with pointer capture in the pointer direction', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes('event.button !== 0'));
 	assert.ok(chrome.html.includes('event.target !== stageViewport && event.target !== stageLayer'));
@@ -184,7 +215,7 @@ test('chrome drags the empty stage with pointer capture in the pointer direction
 });
 
 test('chrome toolbar has the readout, nine presets in order, and a disabled Fit all', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const headerEnd = chrome.html.indexOf('</header>');
 	const readoutIndex = chrome.html.indexOf('<span id="zoom-readout" class="badge">100%</span>');
 	const selectIndex = chrome.html.indexOf(
@@ -209,7 +240,7 @@ test('chrome toolbar has the readout, nine presets in order, and a disabled Fit 
 });
 
 test('chrome presets zoom around the viewport center and Fit all refits', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes('zoom: Number(zoomPreset.value)'));
 	assert.ok(chrome.html.includes('screenX: stageViewport.clientWidth / 2'));
@@ -220,7 +251,7 @@ test('chrome presets zoom around the viewport center and Fit all refits', () => 
 });
 
 test('chrome routes iframe messages to canvas before the null-origin drop', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const sourceCheckIndex = chrome.html.indexOf('frameRecordForSource(event.source)');
 
 	assert.ok(sourceCheckIndex >= 0);
@@ -256,15 +287,37 @@ test('canvas runtime posts only frame height and wheel and never touches the art
 	}
 });
 
+test('chrome loads the svelte bundle after the inline script from asWebviewUri', () => {
+	const chrome = buildChrome();
+	const inlineIndex = chrome.html.indexOf(`<script nonce="${chrome.cspNonce}">`);
+	const rootIndex = chrome.html.indexOf('<div id="svelte-root" hidden></div>');
+	const moduleIndex = chrome.html.indexOf('<script type="module"');
+	const cssHref = 'vscode-webview://test/extension/dist/webview/chrome.css';
+	const jsSrc = 'vscode-webview://test/extension/dist/webview/chrome.js';
+
+	assert.ok(inlineIndex >= 0);
+	assert.ok(rootIndex > inlineIndex);
+	assert.ok(moduleIndex > rootIndex);
+	assert.ok(
+		chrome.html.includes(`<link rel="stylesheet" nonce="${chrome.cspNonce}" href="${cssHref}">`),
+	);
+	assert.ok(
+		chrome.html.includes(
+			`<script type="module" nonce="${chrome.cspNonce}" src="${jsSrc}"></script>`,
+		),
+	);
+	assert.ok(!chrome.html.includes('type="module">'));
+});
+
 test('each chrome document gets a fresh nonce', () => {
-	const first = buildArtboardChromeHtml(fakeWebview);
-	const second = buildArtboardChromeHtml(fakeWebview);
+	const first = buildChrome();
+	const second = buildChrome();
 
 	assert.notEqual(first.cspNonce, second.cspNonce);
 });
 
 test('canvas:updated replaces artboard:updated in host types and chrome', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const panelSource = readFileSync(join(process.cwd(), 'src/panel/openArtboardPanel.ts'), 'utf8');
 	const diskSource = readFileSync(join(process.cwd(), 'src/host/artboardDisk.ts'), 'utf8');
 
@@ -278,7 +331,7 @@ test('canvas:updated replaces artboard:updated in host types and chrome', () => 
 });
 
 test('chrome validates canvas:updated and each frame before reconciling', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const validFrameIndex = chrome.html.indexOf('isValidPostedFrame(entry)');
 	const removeInvalidIndex = chrome.html.indexOf('removeFrameRecord(entry.id)');
 
@@ -300,7 +353,7 @@ test('chrome validates canvas:updated and each frame before reconciling', () => 
 });
 
 test('chrome diffs frame html, revokes removed blobs, and toggles the active class', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const reloadIndex = chrome.html.indexOf(
 		"const shouldReload = record.kind !== 'iframe' || html !== record.lastHtml",
 	);
@@ -327,7 +380,7 @@ test('chrome diffs frame html, revokes removed blobs, and toggles the active cla
 });
 
 test('chrome labels and headings use textContent and never innerHTML', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(
 		chrome.html.includes("labelNode.textContent = record === undefined ? '' : record.label"),
@@ -337,7 +390,7 @@ test('chrome labels and headings use textContent and never innerHTML', () => {
 });
 
 test('every created iframe is sandboxed with scrolling disabled', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 	const createIndex = chrome.html.indexOf("document.createElement('iframe')");
 
 	assert.ok(createIndex >= 0);
@@ -350,7 +403,7 @@ test('every created iframe is sandboxed with scrolling disabled', () => {
 });
 
 test('chrome frame-height validates height and applies nextFrameHeight', () => {
-	const chrome = buildArtboardChromeHtml(fakeWebview);
+	const chrome = buildChrome();
 
 	assert.ok(chrome.html.includes('data.type === frameHeightMessage'));
 	assert.ok(chrome.html.includes('Number.isFinite(data.height)'));

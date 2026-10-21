@@ -1,75 +1,89 @@
-# Verify + CI - Overview for review
+# Svelte toolchain - Overview for review
 
-Source of truth: `blueprint/history/features/07h-verify-ci.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/08a-svelte-toolchain.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-One local command, `pnpm verify` (`vp check && vp test && vp pack`), and a GitHub workflow that runs that same command on push to `main` and on pull requests. Electron, coverage, and knip stay out. No product behavior change.
+Svelte 5 now builds to `dist/webview/chrome.js` and `chrome.css`, loads in the artboard webview under the existing CSP, and `svelte-check` plus that webview build run in `pnpm verify` (and CI). The 0.2 template-string chrome is unchanged. You should see nothing new in the panel.
 
 ## Flow
 
-1. Work sat on `feature/verify-ci`, stacked on 7g (`d9b719c`). `main` was still 7b (`43cce2c`).
-2. `package.json` gained `scripts.verify` only. `compile` stayed `vp check --no-fmt && vp pack` so F5 stays fast.
-3. `AGENTS.md` Commands lists Verify immediately after Check. README Develop fence is `pnpm install` / `pnpm compile` / `pnpm verify`.
-4. `.github/workflows/verify.yml` is `contents: read`, Node 24, pnpm 12, frozen install, `pnpm exec vp --version`, then `pnpm verify`.
-5. Observed `pnpm verify`: 64 files formatted, 52 lint/type clean, 14 files / 204 tests, pack wrote both dist files.
-6. `.vsix` listing: `extension/dist/extension.js` and `extension/dist/mcp.js`, no `node_modules`. Live F5 was waived in the complete session (no `src/` change).
+1. `src/webview/main.ts` mounts hidden `App.svelte` onto `#svelte-root`.
+2. `vp build -c vite.webview.config.ts` emits `dist/webview/chrome.js` + `chrome.css`.
+3. The host shell nonce-loads those files via `asWebviewUri`, with `localResourceRoots = dist/webview`.
+4. If the bundle is missing or throws, the 0.2 chrome still runs: separate script, separate root, CSP unchanged.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  trigger["push main or pull_request"] --> wf["verify.yml"]
-  wf --> install["pnpm install --frozen-lockfile"]
-  install --> prove["pnpm exec vp --version"]
-  prove --> verify["pnpm verify"]
-  verify --> check["vp check"]
-  check --> test["vp test"]
-  test --> pack["vp pack"]
-  pack --> dist["dist/extension.js and dist/mcp.js"]
+  src["src/webview/main.ts + App.svelte"] -->|"vp build -c vite.webview.config.ts"| dist["dist/webview/chrome.js + chrome.css"]
+  host["openArtboardPanel"] -->|"asWebviewUri + nonce"| shell["webview document"]
+  dist --> shell
+  shell --> old["0.2 inline chrome: unchanged"]
+  shell --> hello["#svelte-root hidden hello"]
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant Dev
   participant Verify as pnpm verify
-  participant CI as GitHub Actions
-  Dev->>Verify: check then test then pack
-  CI->>Verify: same command after frozen install
-  Verify-->>Dev: exit 0 or fail on format, unit, or pack
+  participant Build as vp build webview
+  participant Host as artboard panel
+  participant Chrome as 0.2 inline chrome
+  participant Hello as hidden Svelte root
+  Verify->>Verify: vp check, svelte-check, vp test, vp pack
+  Verify->>Build: vp build -c vite.webview.config.ts
+  Build-->>Host: chrome.js + chrome.css
+  Host->>Chrome: inline script (first)
+  Host->>Hello: module script after inline
+  Hello-->>Host: data-svelte-chrome=ready inside #svelte-root
 ```
 
 ## What you will see
 
-- `pnpm verify` in package scripts, AGENTS.md, and README.
-- A Verify workflow on push to `main` and on pull requests.
-- Product chrome, MCP, and disk unchanged versus 7g.
+- Same 0.2 toolbar, frames, zoom, and pan.
+- In webview devtools: hidden `#svelte-root` with `data-svelte-chrome="ready"`, and no new CSP violations.
+- `pnpm verify` now runs `svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings` and the webview build.
+- This session: user started the Extension Development Host and reported no errors. Hidden hello root and missing-bundle path were not confirmed.
 
-## Locked decisions
+## Data flow
 
-- Verify is check + unit test + unminified pack. Never Electron, coverage, or knip.
-- Format drift fails `vp check` on purpose. Do not weaken Verify to `--no-fmt`.
-- Vite+ comes from `vite-plus` 1.3.0. Prove it with `pnpm exec vp --version`. No second install.
-- Workflow permissions are `contents: read` only. No secrets.
-- `pnpm vsix` minifies `dist/` via prepublish. F5 compile rewrites the unminified bundle.
+Source files -> webview Vite build -> `dist/webview/` -> nonce'd `<link>` + `<script type="module">` in the chrome document. No disk, MCP, or message-contract change.
+
+## Architecture decisions
+
+- One Vite instance: `vite` is aliased to `@voidzero-dev/vite-plus-core@1.3.0`.
+- TypeScript package is `~6.0.3` for `svelte-check`; lint and type-aware check stay on TS 7 via tsgolint.
+- Frame-runtime IIFE plugin and `happy-dom` wait for 8b.
+
+## Decisions locked
+
+- No CSP loosening (`unsafe-inline` / `unsafe-eval` stay out).
+- Bundle failure cannot take down 0.2 chrome.
+- `localResourceRoots` is extension `dist/webview` only, never the workspace.
 
 ## Out of scope
 
-Product edits, Electron in CI, coverage thresholds, knip in Verify, husky, `act`, Docker, branch protection, `/ci` skill, `packageManager`, committed `.vsix`.
+Porting chrome to Svelte (8b), frame-runtime bundling, `happy-dom`, CSP / MCP / disk / message changes.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Verify | The one check + test + pack command CI and local both run |
-| `vp pack` | Unminified bundle used by Verify and by F5 compile |
-| Electron suite | `pnpm test`; needs a display; not Verify |
+| `#svelte-root` | Hidden mount point that proves the toolchain without changing 0.2 UI |
+| `chrome.js` / `chrome.css` | Fixed bundle names the host shell loads |
+| `svelte-check` | Type gate for `.svelte` files; `tsc` does not type-check them |
+| Vite+ core alias | Keeps vite-plugin-svelte on the same Vite as `vp` |
+
+## Your actions
+
+Optional F5 leftovers: confirm `[data-svelte-chrome="ready"]` inside `#svelte-root`, zero CSP violations, then delete `dist/webview/chrome.js` and reload — 0.2 chrome should still work.
 
 ## Done means
 
-- `pnpm verify` exits 0 locally.
-- Workflow file matches the locked contract.
-- `.vsix` lists both dist files and no `node_modules`.
-- No `src/` change.
+- `pnpm verify` includes svelte-check and the webview build, and exits 0.
+- A clean webview build writes `dist/webview/chrome.js` and `chrome.css`.
+- Host HTML has nonce'd module script + stylesheet from `asWebviewUri` on those files, plus hidden `#svelte-root`.
+- 0.2 chrome behavior is unchanged.
