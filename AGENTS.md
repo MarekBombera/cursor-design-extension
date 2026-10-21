@@ -264,9 +264,9 @@ checks do not make the Blueprint unusable.
 ## Commands
 
 - Install: `pnpm install`
-- Typecheck: `pnpm check-types`
-- Lint: `pnpm lint`
-- Compile: `pnpm compile` (writes `dist/extension.js` and `dist/mcp.js`)
+- Check: `pnpm run check` (`vp check`: format, lint, type check)
+- Fix: `pnpm exec vp check --fix`
+- Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack`; writes `dist/extension.js` and `dist/mcp.js`)
 - Watch: `pnpm watch`
 - Debug: **F5** (Run Extension) — Extension Development Host opens `fixtures/dev-workspace`
 - Package: `pnpm package` (builds `dist/` only)

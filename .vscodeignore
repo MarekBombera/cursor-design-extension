@@ -10,10 +10,6 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
-.oxlintrc.json
-.oxfmtrc.json
-oxlint*
-oxfmt*
 .cursor/**
 .agents/**
 .claude/**

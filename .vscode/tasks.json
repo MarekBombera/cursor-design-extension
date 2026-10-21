@@ -19,7 +19,7 @@
 		},
 		{
 			"label": "watch",
-			"dependsOn": ["npm: watch:tsc", "npm: watch:pack"],
+			"dependsOn": ["npm: watch:pack"],
 			"presentation": {
 				"reveal": "never"
 			},
@@ -43,18 +43,6 @@
 			},
 			"isBackground": true,
 			"label": "npm: watch:pack",
-			"presentation": {
-				"group": "watch",
-				"reveal": "never"
-			}
-		},
-		{
-			"type": "npm",
-			"script": "watch:tsc",
-			"group": "build",
-			"problemMatcher": "$tsc-watch",
-			"isBackground": true,
-			"label": "npm: watch:tsc",
 			"presentation": {
 				"group": "watch",
 				"reveal": "never"
