@@ -36,3 +36,21 @@ Rule: no product features and no behavior changes. Plan review findings (read be
   - [x] 7f. **Test depth** - fast-check properties (stage geometry, stale check, zod round-trips); scrubbed snapshots for `IMPLEMENT.md` / `canvas.html`; coverage script via `@vitest/coverage-v8`, no thresholds
   - [x] 7g. **MCP contract tests** - `@modelcontextprotocol/client` over `InMemoryTransport` through the real server for all 8 tools plus the full `listTools` set; tests characterise current errors, never change product
   - [x] 7h. **Verify + CI** - one Verify command (check, test, pack) in AGENTS.md and README; `.github/workflows/verify.yml` on push/PR (Node 24, Vite+ install, `contents: read`); final F5 + `.vsix` smoke
+
+## 0.3 Comments for Agent + frame drag/resize
+
+From the Notion 0.3 page (scope changed 2026-10-21: comments only, no editing): https://app.notion.com/p/3fd500344e088171925dd51bc542c00c
+Plan, library choices, decisions D1-D4 (Bombic 2026-10-21), error and status tables, gotchas and edge-case tests (read before each `/feature`; adversarial review applied 2026-10-21): `blueprint/reference/0.3-comments-plan.md`. Order: 8a, 8b, 8c, 8d1, 8d2, 8e, 8f1, 8f2, 8g, 8h, 8i.
+
+- [ ] 8. **0.3 Comments for Agent** - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with copy-prompt handoff; disk and export HTML stay pristine
+  - [ ] 8a. **Svelte toolchain** - Svelte 5 + vite-plugin-svelte bundle in `dist/webview/` under the existing CSP (one Vite instance); frame runtime bundled to an IIFE string; `svelte-check` on TS 6 (lint stays TS 7 via tsgolint) and the webview build in Verify and CI; `src/webview/**` lint override; chrome behavior unchanged
+  - [ ] 8b. **Svelte port** - template-string chrome replaced by Svelte components with one host bridge; stage geometry and frame runtime become real TS modules; every 0.2 behavior passes the F5 parity checklist; rules 04/05 updated
+  - [ ] 8c. **Frame drag/resize** - drag by label, resize width by right handle, 8px snap, width 120-3840, one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins
+  - [ ] 8d1. **Picking channel** - chrome-to-frame channel; Comment-mode click blocking in the frame runtime; `elementsFromPoint` + overlay rules; hover outline drawn in chrome; Alt+click or ↑ parent, ↓ child; untrusted-message guards
+  - [ ] 8d2. **Selectors** - `@medv/finder` selectors with generated-name filters; tag, text, styles, sanitizers; happy-dom round-trip tests on the picking fixture
+  - [ ] 8e. **Comments disk + MCP** - `comments.json` CRUD under the lock with a status machine; creation cross-check (tag, text, generation); `list_comments`, `get_comment` (stale when the target element's own hash changed, targetMissing, via parse5 + css-select, bundled), `resolve_comment`; comment errors never blank the canvas; contract tests
+  - [ ] 8f1. **Comment mode + popover** - `C` toggles mode; popover adds comments with D3 keys; panel replay of comment messages
+  - [ ] 8f2. **Pins** - pins follow elements (resize, scroll, load, font, animation), show open/sent/resolved/stale/missing/unchecked; page comments
+  - [ ] 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump
+  - [ ] 8h. **Copy prompt** - locked template word for word (literal test), Copy all open, marks sent only after the clipboard write, host clipboard
+  - [ ] 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code

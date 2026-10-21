@@ -5,10 +5,11 @@
 **Notion:**
 
 - Hub (locks, MCP/disk, Interact vs Edit): https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
-- Active build brief **0.2 Interact**: https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
+- Active build brief **0.3 Comments for Agent**: https://app.notion.com/p/3fd500344e088171925dd51bc542c00c
+- 0.2 Interact (shipped): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 - 0.1 archive (shipped, don’t re-litigate): https://app.notion.com/p/3da500344e0881e884dcc828fc49a395
 
-**Status:** MVP shipped; next = 0.2 Interact canvas per §18 / 0.2 page.
+**Status:** 0.2 shipped; building 0.3 Comments for Agent (build-plan item 8, plan in `blueprint/reference/0.3-comments-plan.md`).
 
 **After work:** run `pnpm verify`. Do not skip it.
 
