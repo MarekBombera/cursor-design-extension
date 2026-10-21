@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { test } from 'vite-plus/test';
+import { tmpdir } from 'node:os';
+import { expect, test } from 'vite-plus/test';
 
 import {
 	type CanvasPreviewFrame,
@@ -7,6 +8,20 @@ import {
 	buildPreviewFrameHtml,
 } from './handoffCanvasHtml';
 import { ARTBOARD_CANVAS_RUNTIME_SOURCE } from '../panel/artboardCanvasRuntime';
+
+const scrubHandoffSnapshot = ({ text, exportId }: { text: string; exportId: string }): string => {
+	const prefixes = [...new Set([tmpdir(), '/var/folders/', '/tmp/'])].sort(
+		(left, right) => right.length - left.length,
+	);
+	let scrubbed = text;
+	for (const prefix of prefixes) {
+		scrubbed = scrubbed.split(prefix).join('<tmp>');
+	}
+	return scrubbed
+		.split(exportId)
+		.join('<exportId>')
+		.replaceAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, '<exportedAt>');
+};
 
 const decodeAttribute = (value: string): string =>
 	value
@@ -148,6 +163,7 @@ test('one heading per distinct non-empty group, none for ungrouped frames', () =
 		[...html.matchAll(/class="cd-heading"[^>]*>([^<]*)</g)].map((match) => match[1]),
 		['Desktop', 'Mobile'],
 	);
+	expect(scrubHandoffSnapshot({ text: html, exportId: 'canvas-1' })).toMatchSnapshot();
 });
 
 test('parent document has exactly one script and it is free of closing-tag sequences', () => {

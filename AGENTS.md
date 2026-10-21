@@ -266,6 +266,7 @@ checks do not make the Blueprint unusable.
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`: format, lint, type check)
 - Test: `vp test` (unit suite via Vite+ / Vitest; not `pnpm test`)
+- Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
 - Fix: `pnpm exec vp check --fix`
 - Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack`; writes `dist/extension.js` and `dist/mcp.js`)
 - Watch: `pnpm watch`

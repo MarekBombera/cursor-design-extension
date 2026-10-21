@@ -55,7 +55,7 @@ One job per function. Split host / MCP / disk lib / webview when a module grows 
 
 ## Testing
 
-The Blueprint test gate is on via `vp test` (declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `package.json`'s `vscode-test` script (`pnpm test`) does not count as this gate. `/ci` still owns a `Verify` command. The Electron sample is compiled with `pnpm compile-electron-tests` and run with `pnpm test`; it is not this gate and stays out of Verify.
+The Blueprint test gate is on via `vp test` (declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `package.json`'s `vscode-test` script (`pnpm test`) does not count as this gate. `/ci` still owns a `Verify` command. The Electron sample is compiled with `pnpm compile-electron-tests` and run with `pnpm test`; it is not this gate and stays out of Verify. A coverage script (`pnpm coverage`) exists for a local report; it has no thresholds and is not part of Verify.
 
 Do not run `/tests` to add or replace the runner. The Core skills bullet for `tests` in `AGENTS.md` and the `/tests` skill stay as written until a later edit of those files.
 

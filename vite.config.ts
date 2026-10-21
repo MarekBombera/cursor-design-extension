@@ -28,7 +28,7 @@ export default defineConfig({
 			eqeqeq: 'warn',
 			'no-throw-literal': 'warn',
 		},
-		ignorePatterns: ['dist', 'out', 'node_modules', '.vscode-test', 'src/test'],
+		ignorePatterns: ['dist', 'out', 'coverage', 'node_modules', '.vscode-test', 'src/test'],
 		options: { typeAware: true, typeCheck: true },
 	},
 	fmt: {
@@ -39,6 +39,7 @@ export default defineConfig({
 		ignorePatterns: [
 			'**/dist/**',
 			'**/out/**',
+			'**/coverage/**',
 			'**/node_modules/**',
 			'**/.vscode-test/**',
 			'**/.agents/**',
@@ -66,5 +67,8 @@ export default defineConfig({
 		exclude: ['src/test/**'],
 		pool: 'forks',
 		passWithNoTests: false,
+		coverage: {
+			provider: 'v8',
+		},
 	},
 });

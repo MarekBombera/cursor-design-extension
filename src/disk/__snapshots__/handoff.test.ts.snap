@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildCanvasImplementMarkdown orders sections and frames, collapses newlines, lists paths 1`] = `
+"# Implement this canvas
+
+exportId: <exportId>
+exportedAt: <exportedAt>
+frames: 4
+
+## Frames
+
+### (no group) (\`ungrouped/\`)
+
+- Card Alt - id \`c\`, width 390, hash \`sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\`, file \`ungrouped/c/index.html\`
+- D - id \`d\`, width 1280, hash \`sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\`, file \`ungrouped/d/index.html\`
+
+### Desk top (\`desk-top/\`)
+
+- A - id \`a\`, width 1280, hash \`sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\`, file \`desk-top/a/index.html\`
+- B - id \`b\`, width 1280, hash \`sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\`, file \`desk-top/b/index.html\`
+
+## Files
+
+- canvas.html - view-only preview of the canvas layout; open it in a browser. It embeds preview copies with a measuring script; never implement from it
+- tokens.json
+- ungrouped/c/index.html - one complete document per frame
+- desk-top/a/index.html - one complete document per frame
+- ungrouped/d/index.html - one complete document per frame
+- desk-top/b/index.html - one complete document per frame
+
+## Instructions
+
+1. Call \`handoff_status\` first. If \`stale\` is true, call \`export_artboard\` again (it exports the whole canvas) before implementing.
+2. If MCP is unavailable, compare each frame's \`hash\` above with \`.cursor-design/artboards/<id>.meta.json\` \`hash\`, and the frame list with \`.cursor-design/artboards/*.html\`. On any difference, re-export, or ask the user to run **Export Handoff**.
+3. Implement each frame from its own \`index.html\` (HTML+CSS+JS inline), not from screenshots or \`canvas.html\`.
+4. Each frame is a complete design at its \`width\`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same \`group\`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on \`body\`.
+5. Target the user's app entry files. Never copy \`.cursor-design/\` into the app.
+6. Keep semantic structure, classes, and behavior.
+7. Assets referenced as \`assets/...\` resolve against \`.cursor-design/assets/\`. Copy them manually.
+"
+`;

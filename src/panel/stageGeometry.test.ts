@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { test } from 'vite-plus/test';
 import { runInNewContext } from 'node:vm';
+import * as fc from 'fast-check';
+import { test } from 'vite-plus/test';
 
 import { STAGE_GEOMETRY_SOURCE } from './stageGeometry';
 
@@ -445,4 +446,220 @@ test('source has no backtick, dollar-brace, or closing tag sequence', () => {
 	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('`'));
 	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('${'));
 	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('</'));
+});
+
+const finiteCoord = fc.integer({ min: -4000, max: 4000 });
+const inRangeZoom = fc.double({
+	min: geometry.MIN_STAGE_ZOOM,
+	max: geometry.MAX_STAGE_ZOOM,
+	noNaN: true,
+});
+const finiteZoom = fc.double({ min: -50, max: 50, noNaN: true });
+const positiveSize = fc.integer({ min: 1, max: 2000 });
+const positiveViewport = fc.integer({ min: 1, max: 4000 });
+
+const viewInRangeArb = fc.record({
+	x: finiteCoord,
+	y: finiteCoord,
+	zoom: inRangeZoom,
+});
+
+const assertZoomClamped = (zoom: number): void => {
+	assert.ok(zoom >= geometry.MIN_STAGE_ZOOM - TOLERANCE);
+	assert.ok(zoom <= geometry.MAX_STAGE_ZOOM + TOLERANCE);
+};
+
+const assertKeepVisible = ({
+	view,
+	bounds,
+	viewportWidth,
+	viewportHeight,
+}: {
+	view: View;
+	bounds: Rect;
+	viewportWidth: number;
+	viewportHeight: number;
+}): void => {
+	const keepX = Math.min(48, bounds.width * view.zoom, viewportWidth);
+	const keepY = Math.min(48, bounds.height * view.zoom, viewportHeight);
+	const left = bounds.x * view.zoom + view.x;
+	const right = (bounds.x + bounds.width) * view.zoom + view.x;
+	const top = bounds.y * view.zoom + view.y;
+	const bottom = (bounds.y + bounds.height) * view.zoom + view.y;
+	const visibleWidth = Math.min(viewportWidth, right) - Math.max(0, left);
+	const visibleHeight = Math.min(viewportHeight, bottom) - Math.max(0, top);
+	assert.ok(visibleWidth + TOLERANCE >= keepX, `visible width ${visibleWidth} < keep ${keepX}`);
+	assert.ok(visibleHeight + TOLERANCE >= keepY, `visible height ${visibleHeight} < keep ${keepY}`);
+};
+
+const assertBoxInsideViewport = ({
+	view,
+	box,
+	viewportWidth,
+	viewportHeight,
+}: {
+	view: View;
+	box: Rect;
+	viewportWidth: number;
+	viewportHeight: number;
+}): void => {
+	const corners: Point[] = [
+		{ x: box.x, y: box.y },
+		{ x: box.x + box.width, y: box.y },
+		{ x: box.x, y: box.y + box.height },
+		{ x: box.x + box.width, y: box.y + box.height },
+	];
+	for (const corner of corners) {
+		const screen = geometry.stageToScreen({
+			view,
+			stageX: corner.x,
+			stageY: corner.y,
+		});
+		assert.ok(screen.x >= -TOLERANCE, `x ${screen.x} < 0`);
+		assert.ok(screen.y >= -TOLERANCE, `y ${screen.y} < 0`);
+		assert.ok(screen.x <= viewportWidth + TOLERANCE, `x ${screen.x} > ${viewportWidth}`);
+		assert.ok(screen.y <= viewportHeight + TOLERANCE, `y ${screen.y} > ${viewportHeight}`);
+	}
+};
+
+const chromeFrameArb = fc
+	.record({
+		id: fc.string({ minLength: 1, maxLength: 12, unit: 'grapheme-ascii' }),
+		x: finiteCoord,
+		y: finiteCoord,
+		width: positiveSize,
+		height: positiveSize,
+		group: fc.option(fc.string({ minLength: 1, maxLength: 16, unit: 'grapheme-ascii' }), {
+			nil: undefined,
+		}),
+	})
+	.map(({ group, ...frame }) => (group === undefined ? frame : { ...frame, group }));
+
+test('property: zoom-at-cursor keeps the screen pixel', () => {
+	fc.assert(
+		fc.property(
+			viewInRangeArb,
+			finiteCoord,
+			finiteCoord,
+			finiteZoom,
+			fc.double({ min: -2000, max: 2000, noNaN: true }),
+			(view, screenX, screenY, targetZoom, deltaY) => {
+				const anchor = geometry.screenToStage({ view, screenX, screenY });
+				const zoomedTo = geometry.zoomStageTo({ view, zoom: targetZoom, screenX, screenY });
+				const zoomedAt = geometry.zoomStageAt({ view, deltaY, screenX, screenY });
+				assertClose(
+					geometry.stageToScreen({ view: zoomedTo, stageX: anchor.x, stageY: anchor.y }),
+					{
+						x: screenX,
+						y: screenY,
+					},
+				);
+				assertClose(
+					geometry.stageToScreen({ view: zoomedAt, stageX: anchor.x, stageY: anchor.y }),
+					{
+						x: screenX,
+						y: screenY,
+					},
+				);
+			},
+		),
+	);
+});
+
+test('property: result zoom clamps and clampStageView keeps bounds visible', () => {
+	fc.assert(
+		fc.property(
+			fc.record({
+				x: finiteCoord,
+				y: finiteCoord,
+				zoom: finiteZoom,
+			}),
+			finiteZoom,
+			fc.double({ min: -2000, max: 2000, noNaN: true }),
+			fc.record({
+				x: finiteCoord,
+				y: finiteCoord,
+				width: positiveSize,
+				height: positiveSize,
+			}),
+			positiveViewport,
+			positiveViewport,
+			(view, targetZoom, deltaY, bounds, viewportWidth, viewportHeight) => {
+				const zoomedTo = geometry.zoomStageTo({
+					view,
+					zoom: targetZoom,
+					screenX: 0,
+					screenY: 0,
+				});
+				const zoomedAt = geometry.zoomStageAt({
+					view,
+					deltaY,
+					screenX: 0,
+					screenY: 0,
+				});
+				const clamped = geometry.clampStageView({
+					view,
+					bounds,
+					viewportWidth,
+					viewportHeight,
+				});
+				assertZoomClamped(zoomedTo.zoom);
+				assertZoomClamped(zoomedAt.zoom);
+				assertZoomClamped(clamped.zoom);
+				assertKeepVisible({
+					view: clamped,
+					bounds,
+					viewportWidth,
+					viewportHeight,
+				});
+			},
+		),
+	);
+});
+
+test('property: fit-all contains every chrome box', () => {
+	fc.assert(
+		fc.property(
+			fc.uniqueArray(chromeFrameArb, {
+				minLength: 0,
+				maxLength: 5,
+				selector: (frame) => frame.id,
+			}),
+			fc.integer({ min: 97, max: 4000 }),
+			fc.integer({ min: 97, max: 4000 }),
+			(frames, viewportWidth, viewportHeight) => {
+				const union = geometry.frameBounds({ frames });
+				const layout = geometry.layoutCanvasChrome({ frames });
+				if (frames.length === 0) {
+					assert.equal(union, null);
+					assert.equal(layout.bounds, null);
+					return;
+				}
+				if (layout.bounds === null) {
+					return;
+				}
+				const neededZoom = Math.min(
+					(viewportWidth - 2 * 48) / layout.bounds.width,
+					(viewportHeight - 2 * 48) / layout.bounds.height,
+				);
+				// Current fit clamps zoom up to MIN_STAGE_ZOOM, so oversized bounds overflow.
+				if (neededZoom < geometry.MIN_STAGE_ZOOM) {
+					return;
+				}
+				const view = geometry.fitStageView({
+					bounds: layout.bounds,
+					viewportWidth,
+					viewportHeight,
+				});
+				for (const box of [...frames, ...layout.labels, ...layout.headings]) {
+					assertBoxInsideViewport({
+						view,
+						box,
+						viewportWidth,
+						viewportHeight,
+					});
+				}
+			},
+		),
+	);
 });

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as fc from 'fast-check';
 import { test } from 'vite-plus/test';
 
 import * as z from 'zod/mini';
@@ -153,4 +154,87 @@ test('corrupt lastExport.frames is CorruptManifestError', () => {
 			(error: unknown) => error instanceof CorruptManifestError,
 		);
 	}
+});
+
+const artboardIdArb = fc.stringMatching(/^[a-zA-Z0-9._-]{1,64}$/);
+const hashArb = fc.stringMatching(/^[0-9a-fA-F]{64}$/).map((hex) => `sha256:${hex}`);
+const nonEmptyTextArb = fc.string({ minLength: 1, maxLength: 64, unit: 'grapheme-ascii' });
+const exportedAtArb = fc
+	.date({
+		min: new Date('1970-01-01T00:00:00.000Z'),
+		max: new Date('9999-12-31T23:59:59.999Z'),
+		noInvalidDate: true,
+	})
+	.map((date) => date.toISOString());
+const exportedFrameArb = fc.record({
+	artboardId: artboardIdArb,
+	artboardHash: hashArb,
+});
+const exportedFramesArb = fc.uniqueArray(exportedFrameArb, {
+	minLength: 1,
+	maxLength: 6,
+	selector: (frame) => frame.artboardId,
+});
+
+const lastExportArb = fc
+	.record({
+		exportId: nonEmptyTextArb,
+		artboardId: artboardIdArb,
+		artboardHash: hashArb,
+		exportedAt: exportedAtArb,
+		frames: fc.option(exportedFramesArb, { nil: undefined }),
+	})
+	.map(({ frames, ...lastExport }) =>
+		frames === undefined ? lastExport : { ...lastExport, frames },
+	);
+
+const manifestArb = fc
+	.record({
+		activeArtboardId: artboardIdArb,
+		workspaceFolder: nonEmptyTextArb,
+		updatedAt: nonEmptyTextArb,
+		lastExport: fc.option(lastExportArb, { nil: undefined }),
+	})
+	.map(({ lastExport, ...fields }): ArtboardManifest => {
+		const manifest: ArtboardManifest = {
+			version: 1,
+			activeArtboardId: fields.activeArtboardId,
+			workspaceFolder: fields.workspaceFolder,
+			updatedAt: fields.updatedAt,
+		};
+		if (lastExport !== undefined) {
+			manifest.lastExport = lastExport;
+		}
+		return manifest;
+	});
+
+const metaArb = fc.record({
+	id: artboardIdArb,
+	title: fc.string({ maxLength: 64, unit: 'grapheme-ascii' }),
+	generation: fc.integer({ min: 1, max: 1_000_000_000 }),
+	hash: hashArb,
+	viewport: nonEmptyTextArb,
+	updatedAt: nonEmptyTextArb,
+});
+
+test('property: valid manifest serialize-parse is byte-equal', () => {
+	fc.assert(
+		fc.property(manifestArb, (valid) => {
+			assert.equal(
+				serializeManifest(parseManifest(JSON.parse(serializeManifest(valid)))),
+				serializeManifest(valid),
+			);
+		}),
+	);
+});
+
+test('property: valid meta serialize-parse is byte-equal', () => {
+	fc.assert(
+		fc.property(metaArb, (valid) => {
+			assert.equal(
+				serializeMeta(parseMeta(JSON.parse(serializeMeta(valid)))),
+				serializeMeta(valid),
+			);
+		}),
+	);
 });

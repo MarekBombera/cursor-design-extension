@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, test } from 'vite-plus/test';
+import * as fc from 'fast-check';
+import { afterEach, expect, test } from 'vite-plus/test';
 
 import {
 	createArtboard,
@@ -126,6 +127,20 @@ const handoffLeaves = async (workspaceRoot: string): Promise<string[]> => {
 	}
 };
 
+const scrubHandoffSnapshot = ({ text, exportId }: { text: string; exportId: string }): string => {
+	const prefixes = [...new Set([tmpdir(), '/var/folders/', '/tmp/'])].sort(
+		(left, right) => right.length - left.length,
+	);
+	let scrubbed = text;
+	for (const prefix of prefixes) {
+		scrubbed = scrubbed.split(prefix).join('<tmp>');
+	}
+	return scrubbed
+		.split(exportId)
+		.join('<exportId>')
+		.replaceAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, '<exportedAt>');
+};
+
 const lastExportOf = (
 	frames: { artboardId: string; artboardHash: string }[] | undefined,
 	legacy = { artboardId: 'a', artboardHash: hashHtml('<p>a</p>') },
@@ -242,6 +257,7 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 		].join('\n'),
 	);
 	assert.ok(!markdown.includes('Never merge their CSS or JS'));
+	expect(scrubHandoffSnapshot({ text: markdown, exportId: 'canvas-1' })).toMatchSnapshot();
 });
 
 test('compareCanvasHandoff covers never exported, unchanged, changed, added, removed, unreadable, order', () => {
@@ -293,6 +309,133 @@ test('compareCanvasHandoff treats legacy lastExport as a one-frame set', () => {
 			{ artboardId: 'b', hash: hashA },
 		]),
 		true,
+	);
+});
+
+const artboardIdArb = fc.stringMatching(/^[a-zA-Z0-9._-]{1,64}$/);
+const hashArb = fc.stringMatching(/^[0-9a-fA-F]{64}$/).map((hex) => `sha256:${hex}`);
+const currentFrameArb = fc.record({
+	artboardId: artboardIdArb,
+	hash: fc.option(hashArb, { nil: undefined }),
+});
+const currentFramesArb = fc.uniqueArray(currentFrameArb, {
+	minLength: 0,
+	maxLength: 8,
+	selector: (frame) => frame.artboardId,
+});
+const recordedFrameArb = fc.record({
+	artboardId: artboardIdArb,
+	artboardHash: hashArb,
+});
+const recordedFramesArb = fc.uniqueArray(recordedFrameArb, {
+	minLength: 1,
+	maxLength: 8,
+	selector: (frame) => frame.artboardId,
+});
+
+const foldHashCase = (hash: string): string => {
+	const body = hash.slice('sha256:'.length);
+	let folded = 'sha256:';
+	for (let index = 0; index < body.length; index += 1) {
+		const char = body[index]!;
+		folded += index % 2 === 0 ? char.toUpperCase() : char.toLowerCase();
+	}
+	return folded;
+};
+
+const flipHash = (hash: string): string => {
+	const body = hash.slice('sha256:'.length);
+	const first = body[0] === '0' ? '1' : '0';
+	return `sha256:${first}${body.slice(1)}`;
+};
+
+test('property: never-exported lastExport is not stale', () => {
+	fc.assert(
+		fc.property(currentFramesArb, (frames) => {
+			assert.deepEqual(compareCanvasHandoff({ lastExport: undefined, frames }), {
+				exported: false,
+				stale: false,
+			});
+		}),
+	);
+});
+
+test('property: same id set and hashes is not stale', () => {
+	fc.assert(
+		fc.property(
+			recordedFramesArb.chain((recorded) =>
+				fc
+					.shuffledSubarray(recorded, { minLength: recorded.length, maxLength: recorded.length })
+					.map((shuffled) => ({ recorded, shuffled })),
+			),
+			({ recorded, shuffled }) => {
+				const lastExport = lastExportOf(recorded);
+				const frames = shuffled.map(({ artboardId, artboardHash }) => ({
+					artboardId,
+					hash: foldHashCase(artboardHash),
+				}));
+				assert.deepEqual(compareCanvasHandoff({ lastExport, frames }), {
+					exported: true,
+					stale: false,
+				});
+			},
+		),
+	);
+});
+
+test('property: hash change, add, remove, or unreadable hash is stale', () => {
+	fc.assert(
+		fc.property(
+			recordedFramesArb.chain((recorded) =>
+				fc
+					.record({
+						mutation: fc.constantFrom('hashChanged', 'idAdded', 'idRemoved', 'unreadableHash'),
+						extraId: artboardIdArb,
+						index: fc.integer({ min: 0, max: recorded.length - 1 }),
+					})
+					.filter(
+						({ mutation, extraId }) =>
+							mutation !== 'idAdded' || !recorded.some((frame) => frame.artboardId === extraId),
+					)
+					.map((choice) => ({ recorded, ...choice })),
+			),
+			({ recorded, mutation, extraId, index }) => {
+				const lastExport = lastExportOf(recorded);
+				const current = recorded.map(({ artboardId, artboardHash }) => ({
+					artboardId,
+					hash: artboardHash as string | undefined,
+				}));
+				if (mutation === 'hashChanged') {
+					current[index] = {
+						artboardId: recorded[index]!.artboardId,
+						hash: flipHash(recorded[index]!.artboardHash),
+					};
+				} else if (mutation === 'idAdded') {
+					current.push({ artboardId: extraId, hash: recorded[0]!.artboardHash });
+				} else if (mutation === 'idRemoved') {
+					current.splice(index, 1);
+				} else {
+					current[index] = { artboardId: recorded[index]!.artboardId, hash: undefined };
+				}
+				assert.deepEqual(compareCanvasHandoff({ lastExport, frames: current }), {
+					exported: true,
+					stale: true,
+				});
+			},
+		),
+	);
+});
+
+test('property: legacy lastExport behaves as a one-frame set', () => {
+	fc.assert(
+		fc.property(artboardIdArb, hashArb, currentFramesArb, (artboardId, artboardHash, frames) => {
+			const lastExport = lastExportOf(undefined, { artboardId, artboardHash });
+			const asOneFrame = lastExportOf([{ artboardId, artboardHash }]);
+			assert.deepEqual(
+				compareCanvasHandoff({ lastExport, frames }),
+				compareCanvasHandoff({ lastExport: asOneFrame, frames }),
+			);
+		}),
 	);
 });
 
