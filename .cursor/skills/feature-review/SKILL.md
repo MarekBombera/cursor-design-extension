@@ -35,7 +35,7 @@ Read the smallest packet that judges the spec (distill, do not dump):
 - `blueprint/build-plan.md`: the feature's checklist line, its parent, and nearby hierarchy only
 - `blueprint/context/project-overview.md`: the feature passage plus only the passages it directly depends on
 - `blueprint/context/coding-standards.md`: applicable sections only
-- `.cursor/rules/`: all rules (this project's hard constraints)
+- `.claude/rules/`: all rules (this project's hard constraints)
 - `AGENTS.md` Commands section when judging test/verify claims
 
 Do not read source, findings, review records, or history. This review judges the spec against plans, overview, standards, and rules — not against code.

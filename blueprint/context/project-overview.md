@@ -4,7 +4,7 @@
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 turns the panel into a Figma-style multi-frame stage.
 
-Coding SoT remains `.cursor/rules/` (00-07) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 ## Problem
 
@@ -113,7 +113,7 @@ Height is never stored; it comes from the rendered content (`cd:frame-height`). 
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
 - **Tooling** - `pnpm`, oxlint, oxfmt, esbuild through 0.2. From 0.2.1: Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown; esbuild kept for the bundle only if the pack spike fails), one Verify command (check, test, pack) also run by GitHub CI; `@vscode/test-electron` suite stays out of CI. UI verify = F5 (`fixtures/dev-workspace`).
 
-Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.cursor/rules/02-mcp-webview.mdc` lock v2 `@modelcontextprotocol/server`. Follow the repo.
+Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.claude/rules/02-mcp-webview.md` lock v2 `@modelcontextprotocol/server`. Follow the repo.
 
 ## Monetization
 

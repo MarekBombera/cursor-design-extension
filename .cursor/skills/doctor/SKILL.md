@@ -76,11 +76,12 @@ Gather these, then summarize. Do not dump file contents.
      and Google Antigravity use `.agents/skills/`. Claude Code uses
      `.claude/skills/`. OpenCode can use either tree.
    - If both skill trees are present, say that is healthy when the selected
-     tools require both. This repo keeps `.cursor` as SoT and points
-     `.agents/skills`, `.claude/skills`, `.claude/rules`, and `.claude/agents`
-     at it with relative symlinks. Confirm those four paths are symlinks into
-     `.cursor`. Warn if any is a real directory (copy drift) instead of telling
-     the user to duplicate files.
+     tools require both. This repo authors skills and agents under `.cursor`
+     (`.agents/skills`, `.claude/skills`, `.claude/agents` are relative symlinks
+     into it) and rules as real `.claude/rules/*.md` files with
+     `.cursor/rules/*.mdc` symlinks to them. Run
+     `node scripts/check-agent-rules.mjs` and report its output. Warn on copy
+     drift instead of telling the user to duplicate files.
    - If OpenCode is selected, do not require `.opencode/skills/`. If it contains
      duplicate Blueprint skills alongside `.agents/skills/` or `.claude/skills/`,
      warn that OpenCode discovers all of those locations and the duplicate tree
@@ -239,8 +240,10 @@ Choose the repair order in this priority:
   `/doctor`. Do not mutate project work while configuration is ambiguous.
 - No git repo -> initialize git before using the build loop.
 - No tool adapter -> restore the `.cursor` skill tree and the adapter
-  symlinks (`.agents/skills` → `.cursor/skills`, `.claude/{skills,rules,agents}`
-  → `.cursor/...`) for the selected tool. OpenCode can use either compatible tree.
+  symlinks (`.agents/skills` and `.claude/skills` → `.cursor/skills`,
+  `.claude/agents` → `.cursor/agents`, `.cursor/rules/<name>.mdc` →
+  `.claude/rules/<name>.md`), then rerun `node scripts/check-agent-rules.mjs`.
+  OpenCode can use either compatible tree.
 - Installed adapter is missing `doctor/scripts/run-state.mjs` -> update
   Blueprint before relying on dashboard activity.
 - Claude uses legacy direct context imports -> remove the exact direct imports

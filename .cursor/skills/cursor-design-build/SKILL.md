@@ -1,23 +1,17 @@
 ---
 name: cursor-design-build
-description: Use when implementing or scaffolding the cursor-design VS Code/Cursor extension (webview, MCP server, phases 0–4).
+description: Use when changing how the cursor-design extension is wired - extension host activation, MCP server registration and spawn, the two vp pack bundles, Cursor API types, or the webview chrome build.
 ---
 
 # Build cursor-design extension
 
-## Steps
+Product constraints are in `.claude/rules/00-cursor-design-core.md`; the MCP / webview contract in `02`. This skill holds the wiring details those rules do not repeat.
 
-1. Fetch Notion hub + active version page (0.2) via Notion MCP:
-   - Hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
-   - Active (0.2): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
-2. Confirm phase gate you are targeting (0–4). Do not skip gates.
-3. For Cursor MCP registration use **only** `vscode.cursor.mcp.registerServer` with stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
-4. Webview chrome = Svelte 5 + Vite; artboard = nested sandboxed iframe with scripts allowed.
-5. Before webview/CSP HTML work: `npx -y modern-web-guidance@latest search "<use case>"` then retrieve.
-6. Use Context7 for current VS Code webview / MCP docs when unsure.
-7. Verify with **F5** Extension Development Host in Cursor.
-8. Keep tools allowlist-friendly; disk under `.cursor-design/` remains fallback if MCP is denied.
-9. Do not add in-panel chat, Next.js, CustomTextEditor, or Grok Build messaging in v1.
+## Before you start
+
+1. Fetch the active Notion version page (link in `AGENTS.md`) via Notion MCP when the change touches product behavior.
+2. Use Context7 for current VS Code webview / MCP docs when unsure. Before webview or CSP HTML work, run `npx -y modern-web-guidance@latest search "<use case>"` and retrieve.
+3. Prove the result with **F5** (Extension Development Host). Confirm `dist/mcp.js` exists first.
 
 ## Host / MCP wiring
 
@@ -25,4 +19,10 @@ description: Use when implementing or scaffolding the cursor-design VS Code/Curs
 - MCP package: `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`.
 - Two `pack` configs (array in `vite.config.ts`, one entry each): host `src/extension.ts` → `dist/extension.js` (`deps.neverBundle: ['vscode']`); MCP `src/mcp/server.ts` → `dist/mcp.js` (bundle the server package via `deps.alwaysBundle`). Never one config with both entries (shared chunks).
 - Spawn with `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. Env is explicit (`ELECTRON_RUN_AS_NODE`, `CURSOR_DESIGN_WORKSPACE_ROOT` only). Do **not** spread `process.env`.
-- `unregisterServer` then `registerServer` on activate; dispose unregisters. Stdio child: never `console.log` (stdout is MCP).
+- `unregisterServer` then `registerServer` on activate; dispose unregisters. Stdio child: never write to stdout (it is the MCP protocol); log to stderr.
+- Keep tools allowlist-friendly; editing `.cursor-design/**` directly remains the fallback when MCP is denied.
+
+## Webview chrome
+
+- Chrome = Svelte 5 + Vite (no Kit), see `08-svelte-chrome` (Svelte MCP docs before writing, `svelte-autofixer` after every edit, `svelte-check` in Verify). Today it is inlined JS from `src/panel/artboardChrome*.ts`.
+- Artboard = nested sandboxed iframe (`allow-scripts`), never chrome-themed, never `{@html}` in chrome.

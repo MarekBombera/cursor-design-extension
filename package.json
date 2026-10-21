@@ -26,8 +26,8 @@
 	"main": "./dist/extension.js",
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",
-		"check": "vp check",
-		"verify": "vp check && vp test && vp pack",
+		"check": "vp check && node scripts/check-agent-rules.mjs",
+		"verify": "vp check && node scripts/check-agent-rules.mjs && vp test && vp pack",
 		"compile": "vp check --no-fmt && vp pack",
 		"watch": "vp pack --watch",
 		"watch:pack": "vp pack --watch",

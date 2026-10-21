@@ -1,6 +1,6 @@
 # Project Plan
 
-Product SoT is the Notion spec and `.cursor/rules/`. This plan is the Blueprint-owned distill, not a second product spec. Do not invent features outside that spec.
+Product SoT is the Notion spec and `.claude/rules/`. This plan is the Blueprint-owned distill, not a second product spec. Do not invent features outside that spec.
 
 Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
@@ -20,7 +20,7 @@ Open-source (MIT). Not a multi-tenant SaaS. No accounts in v1.
 
 ## 3. Features - What does the MVP need?
 
-Match build phases in `.cursor/rules/01-phase-protocol.mdc` and Notion section 12:
+Match build phases in Notion section 12:
 
 - Empty Artboard WebviewPanel + MCP `registerServer` on activate (Phase 0).
 - Disk `.cursor-design/` as SoT; file saves refresh the nested iframe; generation bumps (Phase 1).
@@ -55,7 +55,7 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
 - **Brain:** Cursor Agent only. Disk is SoT. Brand: `cursor-design`.
 - **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR; the `@vscode/test-electron` suite stays out of CI.
-- **Coding SoT:** `.cursor/rules/00` through `07`, skills `cursor-design-build` and `cursor-design-agent-loop`.
+- **Coding SoT:** `.claude/rules/` (00, 02-09), skills `cursor-design-build` and `cursor-design-agent-loop`.
 
 ## 6. Monetize - How will this make money?
 

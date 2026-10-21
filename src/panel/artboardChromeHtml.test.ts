@@ -369,7 +369,7 @@ test('canvas:wheel is gone from runtime, chrome script, and the CSP rule line', 
 		join(process.cwd(), 'src/panel/artboardChromeScript.ts'),
 		'utf8',
 	);
-	const ruleSource = readFileSync(join(process.cwd(), '.cursor/rules/02-mcp-webview.mdc'), 'utf8');
+	const ruleSource = readFileSync(join(process.cwd(), '.claude/rules/02-mcp-webview.md'), 'utf8');
 	const ruleLine =
 		'5. Messages: artboard:ready (chrome → host), canvas:updated|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: cd:frame-height { height }, cd:frame-wheel { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.';
 

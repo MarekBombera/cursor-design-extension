@@ -1,6 +1,6 @@
 # Build Plan
 
-Ordered MVP phases from Notion section 12 and `.cursor/rules/01-phase-protocol.mdc`. Details belong in `/feature`. Do not add items outside that spec.
+Ordered MVP phases from Notion section 12. Details belong in `/feature`. Do not add items outside that spec.
 
 ## Your features
 

@@ -2,7 +2,7 @@
 
 > **This blueprint is an overlay layer** on the cursor-design VS Code/Cursor
 > extension. Never run a framework scaffolder (`create-next-app`, SvelteKit,
-> etc.) inside this directory. Coding SoT is `.cursor/rules/`.
+> etc.) inside this directory. Coding SoT is `.claude/rules/`.
 
 ## Communication
 
@@ -249,4 +249,4 @@ Review AI-generated code periodically, especially for:
 - Security (webview CSP, untrusted `postMessage`, workspace trust, no `eval` of artboard HTML)
 - Performance (watcher debounce ~200ms, no host-thread polling)
 - Logic errors (`baseGeneration` conflicts, missing workspace, MCP denied)
-- Patterns (matches `.cursor/rules/` and the host / MCP / webview split)
+- Patterns (matches `.claude/rules/` and the host / MCP / webview split)

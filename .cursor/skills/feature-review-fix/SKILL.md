@@ -36,7 +36,7 @@ Read the spec in full and the same small judging packet `/feature-review` uses:
 - `blueprint/build-plan.md`: the feature's checklist line, its parent, and nearby hierarchy only
 - `blueprint/context/project-overview.md`: the feature passage plus only the passages it directly depends on
 - `blueprint/context/coding-standards.md`: applicable sections only
-- `.cursor/rules/`: all rules (this project's hard constraints)
+- `.claude/rules/`: all rules (this project's hard constraints)
 - `AGENTS.md` Commands section when judging test/verify claims
 
 This time the judge **may read source** when a claim depends on current code (for example "does this file exist", "is this already true"). That is the own research this skill exists for. Do not implement product code. Do not expand into a repo survey.
