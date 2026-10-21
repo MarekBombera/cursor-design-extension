@@ -265,6 +265,7 @@ checks do not make the Blueprint unusable.
 
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`: format, lint, type check)
+- Verify: `pnpm verify` (`vp check && vp test && vp pack`)
 - Test: `vp test` (unit suite via Vite+ / Vitest; not `pnpm test`)
 - Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
 - Fix: `pnpm exec vp check --fix`
@@ -277,7 +278,7 @@ checks do not make the Blueprint unusable.
 
 Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Extension Development Host.
 
-The unit Test command is `vp test` (Vite+ / Vitest; the 13 `src/**/*.test.ts` files excluding `src/test/**`). It is not `pnpm test` (`vscode-test`, Electron). Build Electron with `pnpm compile-electron-tests` (writes `out/test/**/*.test.js`), then `pnpm test`; that suite needs a display and is not Verify.
+The unit Test command is `vp test` (Vite+ / Vitest; the 13 `src/**/*.test.ts` files excluding `src/test/**`). It is not `pnpm test` (`vscode-test`, Electron). Build Electron with `pnpm compile-electron-tests` (writes `out/test/**/*.test.js`), then `pnpm test`; that suite needs a display and is not Verify. Verify is `pnpm verify`.
 
 Browser testing is also opt-in. Run `/browser-tests` or `$browser-tests` to add
 or normalize a browser harness and document its exact command as `Browser

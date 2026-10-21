@@ -43,6 +43,7 @@ Smoke-tested 2026-09-13, Cursor 3.20.17.
 ```bash
 pnpm install
 pnpm compile
+pnpm verify
 ```
 
 Confirm `dist/mcp.js` exists after compile or the watch/`preLaunchTask` build. F5 will not register a working stdio server without it.

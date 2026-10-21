@@ -1,27 +1,32 @@
-# MCP contract tests - Overview for review
+# Verify + CI - Overview for review
 
-Source of truth: `blueprint/history/features/07g-mcp-contract-tests.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/07h-verify-ci.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-A real MCP client talks to the real server over `InMemoryTransport.createLinkedPair()`. Tests lock all 8 tools plus the exact `listTools` name set, including current errors. If the client path disagrees with the stub suite, the test changes, not the product. No product change. No Verify command yet (that is 7h).
+One local command, `pnpm verify` (`vp check && vp test && vp pack`), and a GitHub workflow that runs that same command on push to `main` and on pull requests. Electron, coverage, and knip stay out. No product behavior change.
 
 ## Flow
 
-1. Work sits on `feature/mcp-contract-tests`, stacked on 7f (`feature/test-depth` `6634262`). `main` is still 7b (`43cce2c`).
-2. `@modelcontextprotocol/client` `^2.2.0` resolved to **2.3.1** as a test-only devDependency. It is not in pack `alwaysBundle`.
-3. `vp test` moved from **13 files / 186 passed** to **14 files / 204 passed**.
-4. `pnpm knip` still exits 0. `pnpm compile` still writes `dist/extension.js` and `dist/mcp.js`.
+1. Work sat on `feature/verify-ci`, stacked on 7g (`d9b719c`). `main` was still 7b (`43cce2c`).
+2. `package.json` gained `scripts.verify` only. `compile` stayed `vp check --no-fmt && vp pack` so F5 stays fast.
+3. `AGENTS.md` Commands lists Verify immediately after Check. README Develop fence is `pnpm install` / `pnpm compile` / `pnpm verify`.
+4. `.github/workflows/verify.yml` is `contents: read`, Node 24, pnpm 12, frozen install, `pnpm exec vp --version`, then `pnpm verify`.
+5. Observed `pnpm verify`: 64 files formatted, 52 lint/type clean, 14 files / 204 tests, pack wrote both dist files.
+6. `.vsix` listing: `extension/dist/extension.js` and `extension/dist/mcp.js`, no `node_modules`. Live F5 was waived in the complete session (no `src/` change).
 
 ## System map
 
 ```mermaid
 flowchart LR
-  TEST["contract test"] --> CLIENT["MCP client 2.3.1"]
-  CLIENT --> MEM["createLinkedPair"]
-  MEM --> SRV["McpServer + registerArtboardTools"]
-  SRV --> ENV["process.env workspace roots"]
-  SRV --> DISK["temp .cursor-design/"]
+  trigger["push main or pull_request"] --> wf["verify.yml"]
+  wf --> install["pnpm install --frozen-lockfile"]
+  install --> prove["pnpm exec vp --version"]
+  prove --> verify["pnpm verify"]
+  verify --> check["vp check"]
+  check --> test["vp test"]
+  test --> pack["vp pack"]
+  pack --> dist["dist/extension.js and dist/mcp.js"]
 ```
 
 ## Key loop
@@ -29,60 +34,42 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant Dev
-  participant Test as vp test
-  participant Client
-  participant Server as McpServer
-  Dev->>Test: contract file + stub suite
-  Test->>Client: listTools exact 8 names
-  Test->>Client: callTool each name
-  Client->>Server: in-memory pair
-  Server-->>Client: current success or isError
-  Client-->>Test: lock observed shape
-  Dev->>Test: 14 files, 204 passed
+  participant Verify as pnpm verify
+  participant CI as GitHub Actions
+  Dev->>Verify: check then test then pack
+  CI->>Verify: same command after frozen install
+  Verify-->>Dev: exit 0 or fail on format, unit, or pack
 ```
 
 ## What you will see
 
-- New `src/mcp/artboardTools.contract.test.ts`. The stub handler suite stays.
-- `package.json` has `@modelcontextprotocol/client` `^2.2.0` under `devDependencies` only.
-- Each case builds a fresh pair, then `afterEach` closes the client, then the server, then removes the temp workspace.
-- `listTools` is a sorted-set of the 8 imported tool-name constants. Happy-path is a record keyed by that same array.
-- Failure cases lock current codes: `NO_WORKSPACE`, `INVALID_ROOT`, `conflict`, `ARTBOARD_NOT_FOUND`, `INVALID_ARGS`.
-- F5 behavior unchanged. No F5 or `.vsix` proof required for 7g.
+- `pnpm verify` in package scripts, AGENTS.md, and README.
+- A Verify workflow on push to `main` and on pull requests.
+- Product chrome, MCP, and disk unchanged versus 7g.
 
-## Data flow
+## Locked decisions
 
-Tests set both workspace-root env names, call tools through the client, and restore env. Tool errors resolve as `isError` on the returned value. After export, handoff status is `stale: false` with `lastExport` present. There is no `exported` field on that result.
-
-## Architecture decisions
-
-- Client is test-only. Production MCP still uses stdio. Do not bundle the client into `dist/mcp.js`.
-- Both pair halves come from `@modelcontextprotocol/client`. Do not mix a server-package transport.
-- `ARTBOARD_TOOL_NAMES` lives in the contract file only. Do not add an export to `toolNames.ts`.
-- `set_artboard` currently sets the active pointer. The `set_active_artboard` case seeds two ids so it is not implied by create.
-- Concurrent `update_artboard` is in-process FIFO. First `Promise.all` element wins; the other is `conflict`.
-
-## Decisions locked
-
-- Branch from 7f (`6634262`), not from `main`. Attempt 1. Archive `blueprint/history/features/07g-mcp-contract-tests.md`.
-- Resolved client **2.3.1**. Proven import: `Client` + `InMemoryTransport` from `@modelcontextprotocol/client`, then `createLinkedPair()`.
-- Unit lock is **204 passed** across **14** files. Starting lock was 186 / 13.
-- Verify is undeclared. Test command is `vp test`.
-- No product source files changed.
+- Verify is check + unit test + unminified pack. Never Electron, coverage, or knip.
+- Format drift fails `vp check` on purpose. Do not weaken Verify to `--no-fmt`.
+- Vite+ comes from `vite-plus` 1.3.0. Prove it with `pnpm exec vp --version`. No second install.
+- Workflow permissions are `contents: read` only. No secrets.
+- `pnpm vsix` minifies `dist/` via prepublish. F5 compile rewrites the unminified bundle.
 
 ## Out of scope
 
-Verify + CI (7h), F5 / `.vsix` smoke, product/MCP/disk edits, deleting the stub suite, bundling the client, Electron suite, coverage thresholds, inventing a transport.
+Product edits, Electron in CI, coverage thresholds, knip in Verify, husky, `act`, Docker, branch protection, `/ci` skill, `packageManager`, committed `.vsix`.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Contract test | Drives tools through the real MCP client and server, not a captured handler. |
-| Characterise | Lock today's result. Do not "fix" the product to match a nicer error. |
-| Linked pair | `InMemoryTransport.createLinkedPair()`. Production still uses stdio. |
-| Stub suite | Existing handler tests that bypass SDK validation. They stay. |
+| Verify | The one check + test + pack command CI and local both run |
+| `vp pack` | Unminified bundle used by Verify and by F5 compile |
+| Electron suite | `pnpm test`; needs a display; not Verify |
 
 ## Done means
 
-`vp test` is 14 / 204; knip is 0; compile still writes both `dist/` files; client is a test-only 2.3.1 dep; no product behavior change.
+- `pnpm verify` exits 0 locally.
+- Workflow file matches the locked contract.
+- `.vsix` lists both dist files and no `node_modules`.
+- No `src/` change.

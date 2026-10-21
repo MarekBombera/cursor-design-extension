@@ -27,7 +27,7 @@ From the Notion 0.2 page (rewritten 2026-10-13): https://app.notion.com/p/3da500
 From the Notion 0.2.1 page (2026-10-18): https://app.notion.com/p/3fd500344e088166afe5e9295bf601fc
 Rule: no product features and no behavior changes. Plan review findings (read before each `/feature`): `blueprint/reference/0.2.1-tooling-review.md`.
 
-- [ ] 7. **0.2.1 Tooling** - repo moves onto Vite+, replaced tools removed, quality checks added; F5 behavior unchanged
+- [x] 7. **0.2.1 Tooling** - repo moves onto Vite+, replaced tools removed, quality checks added; F5 behavior unchanged
   - [x] 7a. **Pack spike** - `vp pack` reproduces `esbuild.js` (two CJS entries, `vscode` external on extension only, version define on mcp only, `dist/*.js` names, MCP SDK + zod bundled); `node dist/mcp.js` handshakes, `.vsix` lists no `node_modules`, F5 works; `compile` / `package` / `vscode:prepublish` / watch task + matcher re-pointed; tsconfig fixed for root `vite.config.ts`; result recorded (pass removes esbuild, fail keeps it for the bundle only)
   - [x] 7b. **vp check** - oxlint + oxfmt config moved into `vite.config.ts`; `vp check` replaces `check-types` / `lint` / `fmt`; rc files, deps, `watch:tsc` and `pretest` removed; formatting drift in its own commit
   - [x] 7c. **vp test** - Vitest runs the 178 `src/**/*.test.ts` tests from TS (`node:test` imports rewritten, `src/test/**` excluded, forks pool); Test command declared in AGENTS.md
@@ -35,4 +35,4 @@ Rule: no product features and no behavior changes. Plan review findings (read be
   - [x] 7e. **Stricter static checks** - Oxlint type-aware rules on and clean with pure fixes only (`void` or already-ordered `await`, per site); knip with explicit entries clean, dead deps removed
   - [x] 7f. **Test depth** - fast-check properties (stage geometry, stale check, zod round-trips); scrubbed snapshots for `IMPLEMENT.md` / `canvas.html`; coverage script via `@vitest/coverage-v8`, no thresholds
   - [x] 7g. **MCP contract tests** - `@modelcontextprotocol/client` over `InMemoryTransport` through the real server for all 8 tools plus the full `listTools` set; tests characterise current errors, never change product
-  - [ ] 7h. **Verify + CI** - one Verify command (check, test, pack) in AGENTS.md and README; `.github/workflows/verify.yml` on push/PR (Node 24, Vite+ install, `contents: read`); final F5 + `.vsix` smoke
+  - [x] 7h. **Verify + CI** - one Verify command (check, test, pack) in AGENTS.md and README; `.github/workflows/verify.yml` on push/PR (Node 24, Vite+ install, `contents: read`); final F5 + `.vsix` smoke

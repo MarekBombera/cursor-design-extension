@@ -27,6 +27,7 @@
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",
 		"check": "vp check",
+		"verify": "vp check && vp test && vp pack",
 		"compile": "vp check --no-fmt && vp pack",
 		"watch": "vp pack --watch",
 		"watch:pack": "vp pack --watch",
