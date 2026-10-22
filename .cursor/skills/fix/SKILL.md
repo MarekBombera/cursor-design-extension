@@ -65,7 +65,11 @@ lighter than a feature spec:
 After that spec write, write `blueprint/context/current-feature-overview.md` as
 the trimmed readable version of the fix spec (same banner, sections, and
 constraints as `/feature`). A brief stub mid-command is allowed if needed; the
-handoff must leave a real overview, never the empty placeholder.
+handoff must leave a real overview, never the empty placeholder. When the fix
+touches a cross-process or cross-document flow:
+- Read `blueprint/context/system-map.md`, and correct any drift from the code you
+  read.
+- Draw the overview chart under its **Chart checklist**.
 
 Also reset `blueprint/context/feature-review.md` to exactly the canonical stub
 below. Do not paraphrase it. A leftover dual-review packet must not follow the

@@ -170,7 +170,10 @@ Red-team the draft before presenting it:
 Tighten the spec, then write `blueprint/context/current-feature-overview.md` as
 the trimmed readable version of that rollback spec (same banner, sections, and
 constraints as `/feature`). A brief stub mid-command is allowed if needed; the
-handoff must leave a real overview, never the empty placeholder.
+handoff must leave a real overview, never the empty placeholder. The overview
+chart follows the **Chart checklist** in `blueprint/context/system-map.md` and
+marks the flows the rollback removes. `/complete` deletes them from the map
+once the rollback is built.
 
 Also reset `blueprint/context/feature-review.md` to exactly the canonical stub
 below. Do not paraphrase it. A leftover dual-review packet must not follow the

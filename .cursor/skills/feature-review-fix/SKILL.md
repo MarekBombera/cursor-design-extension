@@ -62,6 +62,7 @@ Rewrite `blueprint/context/current-feature.md` **once**. Draft and merge in cont
 - Apply accepted and adjusted findings and nits. Omit rejected ones from the spec change; they live in the chat report.
 - Never broaden scope, invent contracts, or pull in later features to satisfy a finding.
 - If this step rewrites the spec, also refresh `blueprint/context/current-feature-overview.md` so it stays the trimmed readable version of the new spec (same sections and constraints as `/feature`). Never leave the overview stale or as a stub after a spec rewrite.
+- Re-run the **Chart checklist** in `blueprint/context/system-map.md` on the overview's data-flow chart against the rewritten spec. Accepted findings often move where an event is handled or add a handshake. Redraw the chart rather than patching prose around a stale chart.
 
 Do not edit the packet. `blueprint/context/feature-review.md` stays as `/feature-review` wrote it until `/feature`, `/fix`, `/rollback`, or `/complete` resets it.
 

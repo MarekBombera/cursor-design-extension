@@ -57,6 +57,7 @@ and installed dependencies before adding machinery.
 
 - `blueprint/config.json` - workflow policy: review cadence, quality gates, branch prefixes, `git.landing`. Skills read it themselves; an invalid file stops mutating commands and points to `/doctor`. Configuration never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
 - `blueprint/context/project-overview.md` - durable product context from the plans
+- `blueprint/context/system-map.md` - shipped data flow (processes, messages, disk) with the chart checklist; read before changing a cross-process flow
 - `blueprint/context/coding-standards.md` - stack, testing, and writing standards (code rules live in `.claude/rules/`)
 - `blueprint/context/ai-interaction.md` - read when running the Blueprint workflow
 - `blueprint/context/current-feature.md` - the one feature, fix, or rollback being built in this checkout

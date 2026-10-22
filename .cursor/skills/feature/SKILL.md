@@ -63,7 +63,11 @@ Gather the smallest packet that can answer what must be built:
    by default.
 2. Inspect the repository once, starting from paths named by those passages.
    Follow only relevant imports, callers, tests, schemas, and configuration.
-   Batch related searches and reads when supported.
+   Batch related searches and reads when supported. Read
+   `blueprint/context/system-map.md` in that same batch. It is the baseline
+   shipped data flow. When a flow this feature touches no longer matches the code
+   you read, correct that part of the map from the code. The map describes
+   shipped code only, so never add this feature's planned flows to it.
 3. Use the Commands section already loaded from `AGENTS.md`. Read it from disk
    only when it is absent or changed. Read only applicable sections of
    `blueprint/context/coding-standards.md`.
@@ -175,6 +179,17 @@ agent-only implementation minutiae (file:line, Done when checklists, string-leve
 test asserts). Do not invent contracts the spec does not have. Source of truth
 is `blueprint/context/current-feature.md` until `/complete` points it at the
 archive.
+
+The data-flow chart is required whenever the work item adds or changes a
+message, call, or disk write between processes or documents. It must be
+correct, not plausible:
+- Run the **Chart checklist** in `blueprint/context/system-map.md` against the
+  spec you just wrote. Trace each user and Agent action end to end, including
+  where focus and event routing actually deliver it.
+- Draw this feature's planned flows on top of the shipped flows from the map,
+  and label the chart with the feature id.
+- Before the handoff, list in chat any arrow you could not ground in the spec's
+  Data / contracts or in the code.
 
 Build steps are ordered checklist items. Each step must leave the project
 working, stay small enough to review, and end with a concrete `Done when` that

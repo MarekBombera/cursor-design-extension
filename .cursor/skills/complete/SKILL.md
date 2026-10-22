@@ -331,6 +331,19 @@ no file-by-file breakdown (the archive holds the build detail). `Source of truth
 placed above, since the live spec is reset next. After `current-feature.md` is
 reset, this overview stays until the next starting skill replaces it.
 
+Update `blueprint/context/system-map.md` in the same work commit so it stays the
+shipped data flow:
+- Merge in the flows this work item built, or remove the flows a rollback took
+  out.
+- Check each changed arrow against the **built code**, not the spec, using the
+  map's **Chart checklist**.
+- Keep the message table in step with rule 02.
+- Set **Last verified against code** to this work item.
+- When the work item changed no cross-process or cross-document flow, change
+  only that line.
+- Redraw the overview's charts from the same verified trace, so the archive and
+  the map agree.
+
 After archiving
 resolved findings, replace `blueprint/context/current-feature.md` with
 the canonical stub below. Do not paraphrase it or substitute an abbreviated "no
