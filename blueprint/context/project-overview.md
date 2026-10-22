@@ -2,7 +2,7 @@
 
 <!-- blueprint:source-hash 5dc04e358d82e5084ec2f56e7a29700fa21d3e591c13945cb5f7301aef722b3d -->
 
-> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 turns the panel into a Figma-style multi-frame stage.
+> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 (in progress) adds Svelte chrome, frame drag/resize, element picking and comments for the Agent.
 
 Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
@@ -43,6 +43,18 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 7f. **Test depth** - fast-check properties, scrubbed snapshots, coverage script (no thresholds).
    - 7g. **MCP contract tests** - real client over `InMemoryTransport` for all 8 tools + `listTools` set; characterise current errors.
    - 7h. **Verify + CI** - one Verify command (check, test, pack); GitHub workflow on push/PR; final F5 + `.vsix` smoke.
+8. **0.3 Comments for Agent** (in progress) - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with a copy-prompt handoff; disk and export HTML stay pristine. Scope changed 2026-10-21 to comments only, no editing. Brief: https://app.notion.com/p/3fd500344e088171925dd51bc542c00c. Plan, decisions D1-D4, error tables and edge-case tests (read before each `/feature`): `blueprint/reference/0.3-comments-plan.md`.
+   - 8a. **Svelte toolchain** (shipped) - Svelte 5 + vite-plugin-svelte bundle in `dist/webview/` under the existing CSP; frame runtime as an IIFE string; `svelte-check` and the webview build in Verify and CI.
+   - 8b. **Svelte port** (shipped) - Svelte components behind one host bridge; stage geometry and frame runtime are real TS modules; F5 parity checklist passed.
+   - 8c. **Frame drag/resize** - drag by label, resize width by right handle, 8px snap, width 120-3840; one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins.
+   - 8d1. **Picking channel** - chrome-to-frame channel; Comment-mode click blocking in the frame runtime; `elementsFromPoint` + overlay rules; hover outline drawn in chrome; Alt+click or ↑ parent, ↓ child; untrusted-message guards.
+   - 8d2. **Selectors** - `@medv/finder` selectors with generated-name filters; tag, text, styles, sanitizers; happy-dom round-trip tests.
+   - 8e. **Comments disk + MCP** - `comments.json` CRUD under the lock with a status machine; creation cross-check (tag, text, generation); `list_comments`, `get_comment` (stale when the target element's hash changed, targetMissing; parse5 + css-select, bundled), `resolve_comment`; comment errors never blank the canvas.
+   - 8f1. **Comment mode + popover** - `C` toggles mode; popover adds comments (D3 keys); panel replay of comment messages.
+   - 8f2. **Pins** - pins follow elements (resize, scroll, load, font, animation); open/sent/resolved/stale/missing/unchecked; page comments.
+   - 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump.
+   - 8h. **Copy prompt** - locked template word for word (literal test); Copy all open; marks sent only after the clipboard write; host clipboard.
+   - 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code.
 
 ### 0.2 canvas model
 
@@ -106,12 +118,12 @@ Height is never stored; it comes from the rendered content (`cd:frame-height`). 
 
 ## Tech stack
 
-- **Host** - TypeScript Cursor/VS Code extension (esbuild bundle through 0.2; see Tooling). `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
-- **Chrome** - TS template-string document (`src/panel/artboardChromeHtml.ts`) through 0.2; Svelte 5 + Vite deferred. `var(--vscode-*)` tokens.
+- **Host** - TypeScript Cursor/VS Code extension, `pnpm`, bundled by `vp pack` (tsdown) from 0.2.1. `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
+- **Chrome** - Svelte 5 + Vite under `src/webview/` from 0.3 (8b); the host keeps only the shell `src/panel/artboardChromeHtml.ts` (CSP, `chrome.css`, `chrome.js`). Through 0.2 it was a TS template-string document. `var(--vscode-*)` tokens.
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
-- **Tooling** - `pnpm`, oxlint, oxfmt, esbuild through 0.2. From 0.2.1: Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown; esbuild kept for the bundle only if the pack spike fails), one Verify command (check, test, pack) also run by GitHub CI; `@vscode/test-electron` suite stays out of CI. UI verify = F5 (`fixtures/dev-workspace`).
+- **Tooling** - Vite+ from 0.2.1 (`vp check` lint/fmt/types, `vp test` on Vitest, `vp pack` on tsdown), plus `svelte-check` for the webview. One Verify command (`pnpm verify`) runs locally and in GitHub CI on push/PR; the `@vscode/test-electron` suite stays out of CI. UI verify = F5 (`fixtures/dev-workspace`).
 
 Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.claude/rules/02-mcp-webview.md` lock v2 `@modelcontextprotocol/server`. Follow the repo.
 
