@@ -40,6 +40,6 @@ test('non-objects and other types are rejected', () => {
 
 test('rule 02 message line names exactly these frame messages', () => {
 	const ruleSource = readFileSync(join(process.cwd(), '.claude/rules/02-mcp-webview.md'), 'utf8');
-	const ruleLine = `5. Messages: artboard:ready (chrome → host), canvas:updated|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.`;
+	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure); canvas:updated (frames carry \`generation\`)|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.`;
 	assert.ok(ruleSource.includes(ruleLine));
 });

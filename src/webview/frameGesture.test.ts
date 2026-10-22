@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict';
+import { test } from 'vite-plus/test';
+
+import {
+	type FrameGesture,
+	type StageFrameGesture,
+	settleFrameGesture,
+	stepFrameGesture,
+} from './frameGesture';
+import type { FramePlacement } from './hostMessages';
+
+const VIEW = { x: 0, y: 0, zoom: 1 };
+const disk: Record<string, FramePlacement> = {
+	a: { x: 10, y: 20, width: 400 },
+	b: { x: 600, y: 20, width: 300 },
+};
+const diskPlacement = (id: string): FramePlacement | undefined => disk[id];
+
+const step = (gesture: FrameGesture | undefined, event: StageFrameGesture, view = VIEW) =>
+	stepFrameGesture({ gesture, event, diskPlacement, view });
+
+const pointer = (
+	phase: 'start' | 'move' | 'end' | 'cancel',
+	screenX: number,
+	screenY = 0,
+	id = 'a',
+	kind: 'move' | 'resize' = 'move',
+): StageFrameGesture => ({ id, kind, source: 'pointer', phase, screenX, screenY });
+
+const nudge = (stepX: number, repeat = false, id = 'a'): StageFrameGesture => ({
+	id,
+	kind: 'move',
+	source: 'keyboard',
+	phase: 'nudge',
+	stepX,
+	stepY: 0,
+	repeat,
+});
+
+const dragTo = (screenX: number, screenY = 0): FrameGesture | undefined => {
+	const started = step(undefined, pointer('start', 0)).gesture;
+	return step(started, pointer('move', screenX, screenY)).gesture;
+};
+
+test('a pointer drag previews whole px and commits once with the base', () => {
+	const moved = dragTo(25.4, 7.6);
+	assert.deepEqual(moved?.override, { x: 35, y: 28, width: 400 });
+	const ended = step(moved, pointer('end', 25.4, 7.6));
+	assert.equal(ended.gesture?.phase, 'committing');
+	assert.deepEqual(ended.commit, {
+		type: 'frame:place',
+		id: 'a',
+		x: 35,
+		y: 28,
+		width: 400,
+		base: { x: 10, y: 20, width: 400 },
+	});
+	// A late lostpointercapture end or move does nothing while committing.
+	assert.deepEqual(step(ended.gesture, pointer('end', 0)), { gesture: ended.gesture });
+	assert.deepEqual(step(ended.gesture, pointer('move', 90)), { gesture: ended.gesture });
+});
+
+test('a plain click (under the 3px threshold) writes nothing', () => {
+	const clicked = dragTo(2, 2);
+	assert.equal(clicked?.override, undefined);
+	assert.deepEqual(step(clicked, pointer('end', 2, 2)), { gesture: undefined });
+});
+
+test('a resize changes width only and clamps to the minimum', () => {
+	const started = step(undefined, pointer('start', 0, 0, 'a', 'resize')).gesture;
+	const resized = step(started, pointer('move', -1000, 0, 'a', 'resize')).gesture;
+	assert.deepEqual(resized?.override, { x: 10, y: 20, width: 120 });
+});
+
+test('a zoom change mid-drag keeps the frame under the cursor in stage space', () => {
+	const started = step(undefined, pointer('start', 100)).gesture;
+	const zoomed = step(started, pointer('move', 104), { x: 0, y: 0, zoom: 2 }).gesture;
+	// Start: screen 100 = stage 100 at zoom 1. Now: screen 104 = stage 52 at zoom 2. Delta -48.
+	assert.deepEqual(zoomed?.override, { x: -38, y: 20, width: 400 });
+});
+
+test('Escape cancels an active gesture; one gesture at a time; source and id must match', () => {
+	const moved = dragTo(50);
+	assert.deepEqual(step(moved, pointer('cancel', 50)), { gesture: undefined });
+	assert.equal(step(moved, pointer('start', 0, 0, 'b')).gesture, moved);
+	assert.equal(step(moved, nudge(8, false, 'b')).gesture, moved);
+	assert.equal(
+		step(moved, { id: 'a', kind: 'move', source: 'keyboard', phase: 'end' }).gesture,
+		moved,
+	);
+	assert.equal(step(moved, pointer('end', 50, 0, 'b')).gesture, moved);
+});
+
+test('keyboard nudges step from the last preview; end commits', () => {
+	const first = step(undefined, nudge(8)).gesture;
+	const second = step(first, nudge(64, true)).gesture;
+	assert.deepEqual(second?.override, { x: 82, y: 20, width: 400 });
+	const ended = step(second, { id: 'a', kind: 'move', source: 'keyboard', phase: 'end' });
+	assert.equal(ended.commit?.x, 82);
+});
+
+test('F-17: auto-repeat never starts a gesture after Agent-wins cleared one', () => {
+	const held = step(undefined, nudge(8)).gesture;
+	const afterAgent = settleFrameGesture({
+		gesture: held,
+		diskPlacement: () => ({ x: 500, y: 20, width: 400 }),
+	});
+	assert.equal(afterAgent, undefined);
+	assert.deepEqual(step(afterAgent, nudge(8, true)), { gesture: undefined });
+	assert.deepEqual(step(afterAgent, { id: 'a', kind: 'move', source: 'keyboard', phase: 'end' }), {
+		gesture: undefined,
+	});
+	assert.notEqual(step(afterAgent, nudge(8, false)).gesture, undefined);
+});
+
+test('settle: active drops on a disk move, committing waits for the host answer', () => {
+	const moved = dragTo(50);
+	assert.equal(settleFrameGesture({ gesture: moved, diskPlacement }), moved);
+	assert.equal(settleFrameGesture({ gesture: moved, diskPlacement: () => undefined }), undefined);
+	const committing = step(moved, pointer('end', 50)).gesture;
+	assert.equal(settleFrameGesture({ gesture: committing, diskPlacement }), committing);
+	assert.equal(
+		settleFrameGesture({
+			gesture: committing,
+			diskPlacement: () => ({ x: 60, y: 20, width: 400 }),
+		}),
+		undefined,
+	);
+});

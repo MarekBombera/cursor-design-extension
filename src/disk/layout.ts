@@ -38,6 +38,12 @@ export const MAX_FRAME_WIDTH = 3840;
 
 export const FRAME_GAP = 24;
 
+// Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
+export const MAX_FRAME_COORDINATE = 100_000;
+
+// Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
+export const LOCK_FILE = '.lock' as const;
+
 export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>

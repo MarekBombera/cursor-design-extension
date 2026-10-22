@@ -53,6 +53,7 @@ export const postedFrameFromSnapshot = (frame: CanvasViewFrame): PostedCanvasFra
 		x: frame.x,
 		y: frame.y,
 		width: frame.width,
+		generation: frame.generation,
 		html: htmlTooLarge ? '' : frame.html,
 	};
 	if (frame.group !== undefined) {

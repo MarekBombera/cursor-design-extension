@@ -3,6 +3,9 @@
 // View { x, y, zoom } maps stage px to screen px: screen = stage * zoom + (x, y), which is
 // CSS translate(x, y) scale(zoom) with transform-origin 0 0.
 
+import { MAX_FRAME_COORDINATE, MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
+import type { FramePlacement } from './hostMessages';
+
 export type StageView = { x: number; y: number; zoom: number };
 
 export type StagePoint = { x: number; y: number };
@@ -313,3 +316,58 @@ export const fitStageView = ({
 		zoom,
 	};
 };
+
+// Frame drag/resize gestures land on whole stage px (no grid, like Figma's pixel snap).
+export const GESTURE_THRESHOLD_PX = 3;
+export const NUDGE_STEP = 8;
+export const NUDGE_STEP_LARGE = 64;
+
+// `+ 0` turns -0 into 0 so a rounded value never serializes as -0.
+export const roundToPixel = (value: number): number => Math.round(value) + 0;
+
+const clampCoordinate = (value: number): number =>
+	clampNumber({ value, min: -MAX_FRAME_COORDINATE, max: MAX_FRAME_COORDINATE });
+
+// Rounds the absolute target, so a fractional position from the Agent lands on a whole px.
+export const dragFrame = ({
+	start,
+	stageDelta,
+}: {
+	start: StagePoint;
+	stageDelta: StagePoint;
+}): StagePoint => ({
+	x: clampCoordinate(roundToPixel(start.x + stageDelta.x)),
+	y: clampCoordinate(roundToPixel(start.y + stageDelta.y)),
+});
+
+export const resizeFrameWidth = ({
+	startWidth,
+	stageDeltaX,
+}: {
+	startWidth: number;
+	stageDeltaX: number;
+}): number =>
+	clampNumber({
+		value: roundToPixel(startWidth + stageDeltaX),
+		min: MIN_FRAME_WIDTH,
+		max: MAX_FRAME_WIDTH,
+	});
+
+// Per axis, not diagonal distance, so a plain click never moves a frame.
+export const passedGestureThreshold = ({
+	startScreen,
+	screen,
+}: {
+	startScreen: StagePoint;
+	screen: StagePoint;
+}): boolean =>
+	Math.abs(screen.x - startScreen.x) >= GESTURE_THRESHOLD_PX ||
+	Math.abs(screen.y - startScreen.y) >= GESTURE_THRESHOLD_PX;
+
+export const placementChanged = ({
+	base,
+	next,
+}: {
+	base: FramePlacement;
+	next: FramePlacement;
+}): boolean => base.x !== next.x || base.y !== next.y || base.width !== next.width;

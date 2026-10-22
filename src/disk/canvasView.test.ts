@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
@@ -8,10 +8,16 @@ import {
 	createArtboard,
 	FRAME_READ_ERROR_MESSAGE,
 	listArtboards,
+	placeFrame,
 	readCanvasView,
 } from './artboardFs';
 import { serializeCanvasLayout } from './canvasLayout';
-import { CorruptCanvasError, DiskError, UnsupportedCanvasVersionError } from './errors';
+import {
+	CorruptCanvasError,
+	DiskError,
+	FrameMovedError,
+	UnsupportedCanvasVersionError,
+} from './errors';
 import { hashHtml } from './hash';
 import {
 	ARTBOARDS_DIR,
@@ -19,6 +25,7 @@ import {
 	CURSOR_DESIGN_DIR,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
+	LOCK_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	canvasPathSegments,
@@ -301,4 +308,97 @@ test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async 
 	} finally {
 		await chmod(brokenPath, 0o644);
 	}
+});
+
+const createPlainArtboard = async (workspaceRoot: string, artboardId: string): Promise<void> => {
+	await createArtboard({
+		workspaceRoot,
+		artboardId,
+		html: '<p>x</p>',
+		writeEnsurePanelMarker: false,
+	});
+};
+
+test('placeFrame with a matching base writes; a stale base throws FRAME_MOVED and writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createPlainArtboard(workspaceRoot, 'a');
+	await placeFrame({
+		workspaceRoot,
+		id: 'a',
+		x: 8,
+		y: 16,
+		width: 400,
+		label: 'Hero',
+		group: 'Web',
+	});
+	const before = await readFile(canvasFileOf(workspaceRoot), 'utf8');
+
+	for (const base of [
+		{ x: 0, y: 16, width: 400 },
+		{ x: 8, y: 0, width: 400 },
+		{ x: 8, y: 16, width: 408 },
+	]) {
+		await assert.rejects(
+			placeFrame({ workspaceRoot, id: 'a', x: 64, y: 64, width: 480, base }),
+			(error: unknown) => error instanceof FrameMovedError && error.code === 'FRAME_MOVED',
+		);
+		assert.equal(await readFile(canvasFileOf(workspaceRoot), 'utf8'), before);
+	}
+
+	const { frames } = await placeFrame({
+		workspaceRoot,
+		id: 'a',
+		x: 64,
+		y: 72,
+		width: 480,
+		base: { x: 8, y: 16, width: 400 },
+	});
+	assert.deepEqual(frames, [{ id: 'a', label: 'Hero', x: 64, y: 72, width: 480, group: 'Web' }]);
+});
+
+test('placeFrame with base appends an auto-placed frame, and a stale base leaves canvas.json absent', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createPlainArtboard(workspaceRoot, 'a');
+	await assert.rejects(
+		placeFrame({
+			workspaceRoot,
+			id: 'a',
+			x: 8,
+			y: 8,
+			width: 800,
+			base: { x: 1, y: 0, width: DEFAULT_FRAME_WIDTH },
+		}),
+		FrameMovedError,
+	);
+	await assert.rejects(readFile(canvasFileOf(workspaceRoot), 'utf8'), { code: 'ENOENT' });
+
+	await placeFrame({
+		workspaceRoot,
+		id: 'a',
+		x: 8,
+		y: 8,
+		width: 800,
+		base: { x: 0, y: 0, width: DEFAULT_FRAME_WIDTH },
+	});
+	const stored = JSON.parse(await readFile(canvasFileOf(workspaceRoot), 'utf8')) as unknown;
+	assert.deepEqual(stored, {
+		version: CANVAS_SCHEMA_VERSION,
+		frames: [{ id: 'a', label: 'Artboard', x: 8, y: 8, width: 800 }],
+	});
+});
+
+test('placeFrame clamps width through the disk path and stores negative x/y as given', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createPlainArtboard(workspaceRoot, 'a');
+	const narrow = await placeFrame({ workspaceRoot, id: 'a', x: -40, y: -8, width: 119 });
+	assert.deepEqual(narrow.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 120 });
+	const wide = await placeFrame({
+		workspaceRoot,
+		id: 'a',
+		width: 3841,
+		base: { x: -40, y: -8, width: 120 },
+	});
+	assert.deepEqual(wide.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 3840 });
+	const entries = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
+	assert.ok(!entries.includes(LOCK_FILE), 'lock released');
 });

@@ -1,7 +1,8 @@
 import type { StageView } from './stageGeometry';
 
-// Host → chrome message contract, defined once. The host `import type`s these; the chrome
-// parses every posted value through `parseHostMessage` first. DOM-free on purpose: the root
+// Host ↔ chrome message contract, defined once. The host `import type`s these; the chrome
+// parses every posted value through `parseHostMessage` first, and the host parses chrome
+// messages with `parseChromeMessage` (src/host/chromeMessages.ts). DOM-free on purpose: the root
 // tsconfig (no DOM lib) type-checks this file through the host imports.
 
 export type PostedCanvasFrame = {
@@ -11,6 +12,8 @@ export type PostedCanvasFrame = {
 	y: number;
 	width: number;
 	group?: string;
+	// This frame's artboard meta generation (0 when meta is absent).
+	generation: number;
 	html: string;
 	errorMessage?: string;
 };
@@ -36,6 +39,20 @@ export type UiStatusMessage = {
 
 export type HostMessage = CanvasUpdatedMessage | ArtboardErrorMessage | UiStatusMessage;
 
+export type FramePlacement = { x: number; y: number; width: number };
+
+// Sent once per drag/resize/nudge on release. `base` is the frame's placement at gesture start.
+export type FramePlaceMessage = {
+	type: 'frame:place';
+	id: string;
+	x: number;
+	y: number;
+	width: number;
+	base: FramePlacement;
+};
+
+export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage;
+
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -55,6 +72,7 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		!isFiniteNumber(entry.x) ||
 		!isFiniteNumber(entry.y) ||
 		!isFiniteNumber(entry.width) ||
+		!isFiniteNumber(entry.generation) ||
 		!isOptionalString(entry.group) ||
 		!isOptionalString(entry.errorMessage)
 	) {
@@ -66,6 +84,7 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		x: entry.x,
 		y: entry.y,
 		width: entry.width,
+		generation: entry.generation,
 		html: entry.html,
 	};
 	if (entry.group !== undefined) {

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { type CanvasSnapshot, postedFrameFromSnapshot } from '../host/canvasSnapshot';
+import { isFramePlaceAttempt, parseChromeMessage } from '../host/chromeMessages';
 import type {
 	ArtboardErrorMessage,
 	CanvasUpdatedMessage,
@@ -25,14 +26,8 @@ let chromeReady = false;
 let pendingView: CanvasHostView | undefined;
 let pendingUiStatus: { mcpAvailable?: boolean; handoffStale: boolean } = { handoffStale: false };
 let onPanelBecameVisible: (() => void) | undefined;
+let onFramePlace: ((value: unknown) => void) | undefined;
 let chromeCspNonce = '';
-
-const isArtboardReadyMessage = (value: unknown): boolean => {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		return false;
-	}
-	return 'type' in value && value.type === 'artboard:ready';
-};
 
 const flushPendingArtboardView = (): void => {
 	if (!currentPanel || !chromeReady || pendingView === undefined) {
@@ -68,6 +63,11 @@ export const hasCurrentArtboardPanel = (): boolean => currentPanel !== undefined
 
 export const setArtboardPanelOnVisible = (handler: () => void): void => {
 	onPanelBecameVisible = handler;
+};
+
+// Gets every frame:place attempt raw, valid or not; the handler owns the one answer.
+export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void): void => {
+	onFramePlace = handler;
 };
 
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
@@ -125,7 +125,11 @@ export const openArtboardPanel = ({
 	chromeCspNonce = chrome.cspNonce;
 	panel.webview.html = chrome.html;
 	panel.webview.onDidReceiveMessage((message: unknown) => {
-		if (!isArtboardReadyMessage(message)) {
+		if (isFramePlaceAttempt(message)) {
+			onFramePlace?.(message);
+			return;
+		}
+		if (parseChromeMessage(message)?.type !== 'artboard:ready') {
 			return;
 		}
 		chromeReady = true;

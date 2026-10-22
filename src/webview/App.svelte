@@ -2,8 +2,19 @@
 	import Banners from './Banners.svelte';
 	import type { FrameMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
-	import { connectHostBridge, readSavedStageView, saveStageView } from './hostBridge.svelte';
-	import type { CanvasUpdatedMessage, HostMessage } from './hostMessages';
+	import {
+		connectHostBridge,
+		postFramePlace,
+		readSavedStageView,
+		saveStageView,
+	} from './hostBridge.svelte';
+	import type { CanvasUpdatedMessage, FramePlacement, HostMessage } from './hostMessages';
+	import {
+		type FrameGesture,
+		type StageFrameGesture,
+		settleFrameGesture,
+		stepFrameGesture,
+	} from './frameGesture';
 	import Stage, { type StageFrame, type StageWheel } from './Stage.svelte';
 	import {
 		type ChromeFrame,
@@ -40,6 +51,7 @@
 	let mcpUnavailable = $state(false);
 	let handoffStale = $state(false);
 	let committedView: StageView | undefined = $state();
+	let gesture: FrameGesture | undefined = $state();
 
 	// Not reactive: the iframe registry is matched against event.source at message time, and
 	// the view / viewport size are read by handlers when they run.
@@ -50,9 +62,19 @@
 	let viewportWidth = 0;
 	let viewportHeight = 0;
 
+	// What the stage draws: disk frames, with the gesture preview applied to one of them.
+	// Keyed order is unchanged, and left/top/width never reload an iframe.
+	const displayFrames = $derived(
+		frames.map((frame) =>
+			gesture?.override !== undefined && frame.id === gesture.id
+				? { ...frame, ...gesture.override }
+				: frame,
+		),
+	);
+
 	const layout = $derived(
 		layoutCanvasChrome({
-			frames: frames.map(({ id, x, y, width, height, group }): ChromeFrame => {
+			frames: displayFrames.map(({ id, x, y, width, height, group }): ChromeFrame => {
 				const box = { id, x, y, width, height };
 				return group !== undefined && group.length > 0 ? { ...box, group } : box;
 			}),
@@ -61,7 +83,7 @@
 	const labels = $derived(
 		layout.labels.map((box) => ({
 			...box,
-			text: frames.find((frame) => frame.id === box.id)?.label ?? '',
+			text: displayFrames.find((frame) => frame.id === box.id)?.label ?? '',
 		})),
 	);
 	const transform = $derived(
@@ -152,6 +174,7 @@
 		// A deleted artboard file (or an entry that failed validation) leaves the stage; its
 		// Frame unmounts and revokes its blob URL.
 		frames = frames.filter((frame) => seenIds.has(frame.id));
+		settleGestureOnCanvasUpdated();
 		errorMessage = undefined;
 		if (frames.length === 0) {
 			return;
@@ -167,6 +190,9 @@
 		}
 		if (message.type === 'artboard:error') {
 			errorMessage = message.message;
+			// The host posts this after the answering canvas:updated of a failed frame:place,
+			// which is how a failure that leaves disk equal to base drops the preview.
+			gesture = undefined;
 			return;
 		}
 		mcpUnavailable = !message.mcpAvailable;
@@ -223,6 +249,23 @@
 
 	const handleDragPan = (deltaX: number, deltaY: number): void => {
 		commitStageView(panStage({ view: stageView, deltaX, deltaY }));
+	};
+
+	const diskPlacement = (id: string): FramePlacement | undefined => {
+		const frame = frames.find((candidate) => candidate.id === id);
+		return frame === undefined ? undefined : { x: frame.x, y: frame.y, width: frame.width };
+	};
+
+	const settleGestureOnCanvasUpdated = (): void => {
+		gesture = settleFrameGesture({ gesture, diskPlacement });
+	};
+
+	const handleFrameGesture = (event: StageFrameGesture): void => {
+		const step = stepFrameGesture({ gesture, event, diskPlacement, view: stageView });
+		gesture = step.gesture;
+		if (step.commit !== undefined) {
+			postFramePlace(step.commit);
+		}
 	};
 
 	const handleViewportSize = (width: number, height: number): void => {
@@ -287,19 +330,21 @@
 <Banners {errorMessage} {mcpUnavailable} />
 <p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
 <Stage
-	{frames}
+	frames={displayFrames}
 	{labels}
 	headings={layout.headings}
 	activeId={artboardId}
 	{nonce}
 	{runtimeSource}
 	{transform}
+	zoom={committedView?.zoom ?? 1}
 	hidden={frames.length === 0}
 	onWheel={handleStageWheel}
 	onDragPan={handleDragPan}
 	onViewportSize={handleViewportSize}
 	onIframe={handleIframe}
 	onRenderError={handleRenderError}
+	onFrameGesture={handleFrameGesture}
 />
 
 <style>

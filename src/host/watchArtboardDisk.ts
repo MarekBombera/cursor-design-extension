@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
+import { isLockOrTempPath } from '../disk/workspaceLock';
 import { readActiveArtboardFromDisk, snapshotForChrome } from './artboardDisk';
 import { fileExists, isFileNotFound, logDiskError } from './hostFs';
 import {
@@ -138,6 +139,9 @@ export const replaceArtboardWatcher = ({
 		new vscode.RelativePattern(workspaceFolder, `${CURSOR_DESIGN_DIR}/**`),
 	);
 	const onArtboardDiskEvent = (uri: vscode.Uri): void => {
+		if (isLockOrTempPath(uri.fsPath)) {
+			return;
+		}
 		if (isMarkerUri(uri)) {
 			pendingMarkerEnsure = true;
 		}
@@ -146,6 +150,9 @@ export const replaceArtboardWatcher = ({
 	artboardWatcher.onDidCreate(onArtboardDiskEvent);
 	artboardWatcher.onDidChange(onArtboardDiskEvent);
 	artboardWatcher.onDidDelete((uri) => {
+		if (isLockOrTempPath(uri.fsPath)) {
+			return;
+		}
 		if (isMarkerUri(uri)) {
 			pendingMarkerEnsure = false;
 			return;

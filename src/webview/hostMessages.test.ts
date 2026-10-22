@@ -3,7 +3,15 @@ import { test } from 'vite-plus/test';
 
 import { parseHostMessage, parseSavedStageView } from './hostMessages';
 
-const validFrame = { id: 'a', label: 'A', x: 0, y: 10, width: 400, html: '<p>a</p>' };
+const validFrame = {
+	id: 'a',
+	label: 'A',
+	x: 0,
+	y: 10,
+	width: 400,
+	generation: 2,
+	html: '<p>a</p>',
+};
 const validUpdate = {
 	type: 'canvas:updated',
 	activeArtboardId: 'a',
@@ -51,6 +59,9 @@ test('invalid frame entries are dropped and the valid ones kept in order', () =>
 			{ ...validFrame, x: Number.POSITIVE_INFINITY },
 			{ ...validFrame, y: '0' },
 			{ ...validFrame, width: Number.NaN },
+			{ ...validFrame, generation: undefined },
+			{ ...validFrame, generation: Number.NaN },
+			{ ...validFrame, generation: '2' },
 			{ ...validFrame, group: 1 },
 			{ ...validFrame, errorMessage: false },
 			second,

@@ -358,6 +358,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 (() => {
 var stageGeometry = (function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+	//#region src/disk/layout.ts
+	var MAX_FRAME_WIDTH = 3840;
+	var MAX_FRAME_COORDINATE = 1e5;
+	//#endregion
 	//#region src/webview/stageGeometry.ts
 	var MIN_STAGE_ZOOM = .05;
 	var MAX_STAGE_ZOOM = 10;
@@ -561,15 +565,43 @@ var stageGeometry = (function(exports) {
 			zoom
 		};
 	};
+	var GESTURE_THRESHOLD_PX = 3;
+	var NUDGE_STEP = 8;
+	var NUDGE_STEP_LARGE = 64;
+	var roundToPixel = (value) => Math.round(value) + 0;
+	var clampCoordinate = (value) => clampNumber({
+		value,
+		min: -MAX_FRAME_COORDINATE,
+		max: MAX_FRAME_COORDINATE
+	});
+	var dragFrame = ({ start, stageDelta }) => ({
+		x: clampCoordinate(roundToPixel(start.x + stageDelta.x)),
+		y: clampCoordinate(roundToPixel(start.y + stageDelta.y))
+	});
+	var resizeFrameWidth = ({ startWidth, stageDeltaX }) => clampNumber({
+		value: roundToPixel(startWidth + stageDeltaX),
+		min: 120,
+		max: MAX_FRAME_WIDTH
+	});
+	var passedGestureThreshold = ({ startScreen, screen }) => Math.abs(screen.x - startScreen.x) >= 3 || Math.abs(screen.y - startScreen.y) >= 3;
+	var placementChanged = ({ base, next }) => base.x !== next.x || base.y !== next.y || base.width !== next.width;
 	//#endregion
+	exports.GESTURE_THRESHOLD_PX = GESTURE_THRESHOLD_PX;
 	exports.MAX_STAGE_ZOOM = MAX_STAGE_ZOOM;
 	exports.MIN_STAGE_ZOOM = MIN_STAGE_ZOOM;
+	exports.NUDGE_STEP = NUDGE_STEP;
+	exports.NUDGE_STEP_LARGE = NUDGE_STEP_LARGE;
 	exports.clampStageView = clampStageView;
+	exports.dragFrame = dragFrame;
 	exports.fitStageView = fitStageView;
 	exports.frameBounds = frameBounds;
 	exports.layoutCanvasChrome = layoutCanvasChrome;
 	exports.nextFrameHeight = nextFrameHeight;
 	exports.panStage = panStage;
+	exports.passedGestureThreshold = passedGestureThreshold;
+	exports.placementChanged = placementChanged;
+	exports.resizeFrameWidth = resizeFrameWidth;
+	exports.roundToPixel = roundToPixel;
 	exports.screenToStage = screenToStage;
 	exports.stageToScreen = stageToScreen;
 	exports.zoomStageAt = zoomStageAt;

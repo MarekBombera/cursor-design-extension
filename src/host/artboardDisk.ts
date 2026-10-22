@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { parseChromeMessage } from './chromeMessages';
 import { fileExists, logDiskError } from './hostFs';
 import {
 	canvasSnapshotErrorMessage,
@@ -9,13 +10,15 @@ import {
 	UNTRUSTED_WORKSPACE_MESSAGE,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
-import { type CanvasView, readCanvasView } from '../disk/artboardFs';
+import { type CanvasView, placeFrame, readCanvasView } from '../disk/artboardFs';
 import { effectiveArtboardMeta } from '../disk/effectiveMeta';
 import {
 	CorruptManifestError,
 	CorruptMetaError,
 	CursorDesignError,
+	InvalidArgsError,
 	InvalidArtboardIdError,
+	NoWorkspaceError,
 } from '../disk/errors';
 import { compareCanvasHandoff } from '../disk/handoff';
 import { hashHtml } from '../disk/hash';
@@ -243,3 +246,58 @@ export const readActiveArtboardFromDisk = async (
 	args: WorkspaceDiskArgs,
 ): Promise<CanvasSnapshot> =>
 	loadActiveSnapshot({ ...args, scope: 'artboardDisk.readActive', initializeWhenMissing: false });
+
+const MALFORMED_FRAME_PLACE_MESSAGE = 'Could not move the frame. Try again.';
+
+// Panel drag/resize commit. Never rejects: every attempt is answered with one fresh snapshot,
+// carrying errorMessage when the write failed (posted as artboard:error after canvas:updated).
+export const placeFrameFromChrome = async ({
+	value,
+	outputChannel,
+}: {
+	value: unknown;
+	outputChannel: vscode.OutputChannel;
+}): Promise<CanvasSnapshot> => {
+	try {
+		if (!vscode.workspace.isTrusted) {
+			return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
+		}
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			return emptyArtboardSnapshot(new NoWorkspaceError().message);
+		}
+		let placeErrorMessage: string | undefined;
+		const message = parseChromeMessage(value);
+		if (message?.type !== 'frame:place') {
+			logDiskError({
+				scope: 'artboardDisk.placeFrame',
+				error: new InvalidArgsError('Malformed frame:place message from the panel.'),
+				outputChannel,
+			});
+			placeErrorMessage = MALFORMED_FRAME_PLACE_MESSAGE;
+		} else {
+			try {
+				await placeFrame({
+					workspaceRoot: workspaceFolder.uri.fsPath,
+					id: message.id,
+					x: message.x,
+					y: message.y,
+					width: message.width,
+					base: message.base,
+				});
+			} catch (error: unknown) {
+				logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
+				placeErrorMessage = toSafeArtboardErrorMessage(error);
+			}
+		}
+		const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
+		if (placeErrorMessage === undefined) {
+			return snapshot;
+		}
+		// A layout error already on the snapshot is the more severe one.
+		return { ...snapshot, errorMessage: snapshot.errorMessage ?? placeErrorMessage };
+	} catch (error: unknown) {
+		logDiskError({ scope: 'artboardDisk.placeFrameFromChrome', error, outputChannel });
+		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
+	}
+};

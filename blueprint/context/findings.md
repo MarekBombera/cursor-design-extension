@@ -40,3 +40,12 @@
 **Why it matters:** Unit tests cover the shell HTML (nonce, `asWebviewUri` stubs, `#svelte-root`, module-after-inline). Verify built `dist/webview/chrome.js` (22 kB) + `chrome.css` with no `eval` / `new Function`. The compiled Svelte runtime assigns a static template via `template.innerHTML` (not user HTML). Spec Testing and step 4 done-when still require F5: hello root present, zero CSP violations, 0.2 parity, and a missing-bundle failure path. Implement recorded F5 not run. Without that, a webview CSP or `type=module` miss would not have been caught.
 **Suggested fix:** Run F5 against `fixtures/dev-workspace` as the spec Testing section lists. Record the hello marker, CSP console, 0.2 toolbar/zoom/pan/edit, and the deleted-`chrome.js` path. No product change unless F5 fails.
 **Resolution:**
+2026-10-22 /audit (scope: current; 8c) user-reported F5 in `fixtures/dev-workspace` (B1-B13 plus retests, not re-run by this audit) reports no CSP errors in the webview console, with zoom tracking, drag/resize persistence and watcher updates working. That covers the module-load, CSP console and 0.2 parity parts of this lead. Still unproven: the deleted-`chrome.js` failure path. Stays `unverified` (never gates `/complete`); close it when that one path is exercised.
+
+### F-23 [P3] fixed - Crashed-breaker recovery in the workspace lock has no test
+
+**File:** src/disk/workspaceLock.ts:99
+**Found:** 2026-10-22 by /audit (scope: current; lens: tests)
+**Why it matters:** The new break protocol adds one recovery branch: a `.lock.break` older than `staleMs` (left by a breaker that crashed) is removed so the next attempt can break the stale lock. If that branch regressed, one crash would leave every writer on `WORKSPACE_BUSY` permanently (the sub-lock would never age out of the way). The stress test and the stale-lock tests only ever see a live breaker, so nothing fails if lines 99-102 are deleted. Rule 03: non-trivial logic leaves one runnable check.
+**Suggested fix:** Add one test next to the existing stale-lock ones: write a foreign `.lock` and a foreign `.lock.break`, both with `utimes` 60s ago, then assert `withWorkspaceLock` runs the operation (give it a `timeoutMs` of about 1000) and `lockDirEntries` is empty afterward. No product change.
+**Resolution:** 2026-10-22 /implement: added the suggested test to `src/disk/workspaceLock.test.ts`. A foreign `.lock` and a foreign `.lock.break`, both aged 60s with `utimes`: the operation runs and `.cursor-design/` ends empty. No product change.

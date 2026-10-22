@@ -624,3 +624,121 @@ test('property: fit-all contains every chrome box', () => {
 		),
 	);
 });
+
+test('resizeFrameWidth rounds the width to whole px and clamps to 120..3840', () => {
+	for (const [target, expected] of [
+		[119, 120],
+		[120, 120],
+		[3840, 3840],
+		[3841, 3840],
+	]) {
+		assert.equal(geometry.resizeFrameWidth({ startWidth: target, stageDeltaX: 0 }), expected);
+	}
+	assert.equal(geometry.resizeFrameWidth({ startWidth: 400, stageDeltaX: 5.4 }), 405);
+	assert.equal(geometry.resizeFrameWidth({ startWidth: 400, stageDeltaX: 3.6 }), 404);
+});
+
+test('dragFrame follows the delta exactly and rounds the absolute position to whole px', () => {
+	const at = (startX: number, deltaX: number): number =>
+		geometry.dragFrame({ start: { x: startX, y: 0 }, stageDelta: { x: deltaX, y: 0 } }).x;
+	assert.equal(at(13, 0), 13);
+	assert.equal(at(13, 5), 18);
+	assert.equal(at(17366, 8), 17374);
+	assert.equal(at(13.4, 0), 13);
+	assert.equal(at(13, 0.6), 14);
+});
+
+test('dragFrame normalizes -0 and clamps to ±MAX_FRAME_COORDINATE', () => {
+	const near = geometry.dragFrame({ start: { x: -0.3, y: -0.1 }, stageDelta: { x: 0, y: 0 } });
+	assert.ok(Object.is(near.x, 0) && Object.is(near.y, 0));
+	assert.ok(Object.is(geometry.roundToPixel(-0), 0));
+	assert.deepEqual(
+		geometry.dragFrame({ start: { x: 99_999, y: -99_999 }, stageDelta: { x: 500, y: -500 } }),
+		{ x: 100_000, y: -100_000 },
+	);
+});
+
+test('passedGestureThreshold checks each axis on its own', () => {
+	const passed = (x: number, y: number): boolean =>
+		geometry.passedGestureThreshold({
+			startScreen: { x: 10, y: 10 },
+			screen: { x: 10 + x, y: 10 + y },
+		});
+	assert.equal(passed(2, 0), false);
+	assert.equal(passed(3, 0), true);
+	assert.equal(passed(0, 3), true);
+	assert.equal(passed(0, -3), true);
+	assert.equal(passed(2, 2), false);
+});
+
+test('placementChanged is true when any of x, y, width differs', () => {
+	const base = { x: 0, y: 8, width: 400 };
+	assert.equal(geometry.placementChanged({ base, next: { ...base } }), false);
+	assert.equal(geometry.placementChanged({ base, next: { ...base, x: 8 } }), true);
+	assert.equal(geometry.placementChanged({ base, next: { ...base, y: 0 } }), true);
+	assert.equal(geometry.placementChanged({ base, next: { ...base, width: 408 } }), true);
+});
+
+const MAX_COORDINATE = 100_000;
+const gestureCoordinate = fc.oneof(
+	fc.integer({ min: -MAX_COORDINATE, max: MAX_COORDINATE }),
+	fc.double({ min: -MAX_COORDINATE, max: MAX_COORDINATE, noNaN: true }),
+);
+const gestureView = fc.record({
+	x: fc.double({ min: -10_000, max: 10_000, noNaN: true }),
+	y: fc.double({ min: -10_000, max: 10_000, noNaN: true }),
+	zoom: fc.double({ min: 0.05, max: 10, noNaN: true }),
+});
+
+// Stage delta comes from two screen points through screenToStage, as the chrome computes it.
+const stageDeltaOf = (view: View, startScreen: Point, screen: Point): Point => {
+	const from = geometry.screenToStage({ view, screenX: startScreen.x, screenY: startScreen.y });
+	const to = geometry.screenToStage({ view, screenX: screen.x, screenY: screen.y });
+	return { x: to.x - from.x, y: to.y - from.y };
+};
+
+const screenPoint = fc.record({
+	x: fc.double({ min: -5_000, max: 5_000, noNaN: true }),
+	y: fc.double({ min: -5_000, max: 5_000, noNaN: true }),
+});
+
+test('property: dragFrame lands on a whole px within ±MAX_FRAME_COORDINATE', () => {
+	fc.assert(
+		fc.property(
+			gestureCoordinate,
+			gestureCoordinate,
+			gestureView,
+			screenPoint,
+			screenPoint,
+			(startX, startY, view, startScreen, screen) => {
+				const placed = geometry.dragFrame({
+					start: { x: startX, y: startY },
+					stageDelta: stageDeltaOf(view, startScreen, screen),
+				});
+				for (const value of [placed.x, placed.y]) {
+					assert.ok(Math.abs(value) <= MAX_COORDINATE);
+					assert.ok(Number.isInteger(value));
+				}
+			},
+		),
+	);
+});
+
+test('property: resizeFrameWidth lands on a whole px within 120..3840', () => {
+	fc.assert(
+		fc.property(
+			fc.integer({ min: 120, max: 3840 }),
+			gestureView,
+			screenPoint,
+			screenPoint,
+			(startWidth, view, startScreen, screen) => {
+				const width = geometry.resizeFrameWidth({
+					startWidth,
+					stageDeltaX: stageDeltaOf(view, startScreen, screen).x,
+				});
+				assert.ok(width >= 120 && width <= 3840);
+				assert.ok(Number.isInteger(width));
+			},
+		),
+	);
+});

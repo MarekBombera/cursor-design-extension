@@ -1,72 +1,89 @@
-# Svelte port - Overview for review
+# Frame drag/resize - Overview for review
 
-Source of truth: `blueprint/history/features/08b-svelte-port.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/08c-frame-drag-resize.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The artboard panel now runs on Svelte 5 with no behavior change. The template-string chrome is gone. The iframe runtime and the stage geometry are real TS modules, each with one source, shared by the panel and the exported `canvas.html`. `pnpm verify` is green (201 tests, svelte-check 0/0), and the full F5 parity checklist passed on 2026-10-22.
+Drag a frame by its label, or resize its width with the right-edge handle. Positions round to whole stage pixels (no grid) and persist in `canvas.json` on release. If the Agent moves the same frame during or after the drag, the Agent wins.
+
+## Flow
+
+1. Grab the label to move, or the right-edge handle to change width.
+2. Chrome shows a local preview while you drag.
+3. Release writes once through `frame:place` → locked `placeFrame` with a `base` check.
+4. Host answers with a fresh snapshot. A failed write also posts `artboard:error`, so the preview never sticks.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  host["openArtboardPanel (host)"] -->|"canvas:updated / artboard:error / ui:status"| bridge["hostBridge.svelte.ts"]
-  bridge --> app["App.svelte (state)"]
-  app --> views["Toolbar / Banners / Stage / Frame"]
-  views -->|"stampArtboardHtml + runtime ?iife"| frames["sandboxed blob iframes"]
-  frames -->|"cd:frame-height / cd:frame-wheel"| bridge
-  rt["frame/runtime.ts"] -->|"?iife"| views
-  rt -->|"?iife"| export["exported canvas.html"]
-  geo["stageGeometry.ts"] --> app
-  geo -->|"?iife"| export
+  U[User] --> C[Svelte chrome]
+  C -->|frame:place + base| H[Extension host]
+  H -->|withWorkspaceLock| D[".cursor-design/canvas.json"]
+  A[Agent place_frame] --> D
+  D -->|watcher ignores .lock| H
+  H -->|canvas:updated / artboard:error| C
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant Host
-  participant Bridge as hostBridge
-  participant App
-  participant Frame as Frame iframe
-  Host->>Bridge: canvas:updated
-  Bridge->>App: parsed message
-  App->>Frame: kind / html / position (new doc only if html changed)
-  Frame-->>Bridge: cd:frame-height
-  Bridge->>App: frame message (matched by event.source)
-  App->>App: nextFrameHeight, re-clamp view, setState
+  participant U as User
+  participant C as Chrome
+  participant H as Host
+  participant D as canvas.json
+  U->>C: drag label / handle
+  C->>C: local whole-px preview
+  U->>C: release
+  C->>H: frame:place {id, x, y, width, base}
+  H->>D: lock, compare base, write
+  H->>C: canvas:updated
+  Note over C: Agent write mid-drag clears the gesture
 ```
 
 ## What you will see
 
-Nothing new in the panel: same toolbar, banners, frames, labels, zoom, pan, presets and Fit all. Webview DevTools show Svelte-rendered DOM and zero CSP violations.
+- Labels are move buttons. A thin handle sits on each frame’s right edge.
+- Drag follows the cursor in whole pixels. Escape snaps back. A click under 3px writes nothing.
+- Keyboard: Tab to a label, arrows nudge 8px (Shift 64). Tab to the handle, Left/Right resize. Release the last arrow to commit.
+- Agent-wins, lock-busy, and corrupt-canvas failures show a banner and restore the disk position.
+
+## Data flow
+
+Chrome sends one `frame:place` on release. Host parses it, refuses untrusted workspaces, then `placeFrame` under `.cursor-design/.lock`. `base` must still match disk or the write is skipped (`FRAME_MOVED`). `canvas:updated` frames now carry `generation`.
 
 ## Architecture decisions
 
-- **`?iife` plugin** (`scripts/iifeStringPlugin.ts`): imports a TS module as an IIFE string, so script text can be inlined without a hand-written copy. Built with Vite's `build`, unminified, with `</` escaped.
-- **Export shares the panel's code**: `canvas.html` embeds the same runtime and geometry, rather than keeping string copies.
-- **One host bridge**: only `hostBridge.svelte.ts` posts or listens. Components take props in and send callbacks out.
-- **Plain `Map` iframe registry**: matched against `event.source` at message time, registered before `src` is set.
-- **No inline styles**: positions use `style:` directives (CSSOM), so the CSP stays unchanged.
+- In-house gestures, no Moveable.
+- Lock is a `wx` file plus a `.lock.break` sub-lock for stale (30s) breakers. Only the small `canvas.json` read-modify-write sits inside the lock.
+- Gesture rules live in pure `frameGesture.ts` so they have unit tests.
+- Chrome-written coords are whole px within ±100000; width 120–3840. MCP `place_frame` is unchanged and never sends `base`.
+
+## Decisions locked
+
+- No 8px snap grid (F5 2026-10-22).
+- Agent wins mid-drag. Failed writes that leave disk equal to `base` clear via `artboard:error`.
+- Per-frame `generation` on the wire; no wire `hash`.
+- Comment-mode inertness is 8f1’s job.
 
 ## Out of scope
 
-Drag/resize (8c), picking and chrome → frame messages (8d1), selectors (8d2), comments (8e+), any CSP, disk or MCP change, restyling.
+Comment mode, picking, height editing, multi-select, guides, undo, locking writers other than `canvas.json`, MCP schema changes.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| IIFE string | A module bundled as one self-running script, so it can be pasted into a document |
-| Blob iframe | Each artboard renders from an in-memory URL inside a sandbox, isolated from the chrome |
-| Height guard | Stops a `100vh` page from growing forever while it measures itself |
-| Parity checklist | The F5 list proving every 0.2 behavior still works |
+| `base` | The frame’s x/y/width at gesture start. If disk moved, the chrome write is skipped. |
+| Workspace lock | Cross-process `.lock` so Agent and chrome cannot interleave a `canvas.json` write. |
+| Agent wins | A mid-drag `place_frame` (or disk edit) cancels the gesture and shows the disk position. |
+| `generation` | Artboard meta generation copied onto each posted frame for later features. |
 
 ## Your actions
 
-- Run `/overview` sometime: the project overview body still describes the chrome as a template string.
-- Consider a `/fix` for `.vscodeignore`: the `.vsix` currently packs `.remember/**`.
+F5 in `fixtures/dev-workspace` to drag, resize, press Escape, and try the Agent-wins snippet in the archive.
 
 ## Done means
 
-Svelte chrome live, old template files deleted, one source each for the runtime and the geometry, `pnpm verify` green, and the F5 parity checklist all passing.
+Frame drag/resize works with no Moveable. Positions persist after reload. Agent `place_frame` during or after a drag is reflected correctly.

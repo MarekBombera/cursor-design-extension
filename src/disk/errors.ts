@@ -10,6 +10,12 @@ export abstract class CursorDesignError extends Error {
 	abstract readonly code: string;
 }
 
+export const isErrno = (error: unknown, code: string): boolean =>
+	typeof error === 'object' &&
+	error !== null &&
+	'code' in error &&
+	(error as { code: unknown }).code === code;
+
 export class InvalidArtboardIdError extends CursorDesignError {
 	readonly code = 'INVALID_ARTBOARD_ID' as const;
 
@@ -201,3 +207,33 @@ export class ConflictError extends CursorDesignError {
 		this.name = 'ConflictError';
 	}
 }
+
+export class LockTimeoutError extends CursorDesignError {
+	readonly code = 'WORKSPACE_BUSY' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super('Another Cursor Design write is in progress. Retry in a moment.', options);
+		this.name = 'LockTimeoutError';
+	}
+}
+
+// The panel's frame:place base no longer matches disk (the Agent or another write moved it).
+export class FrameMovedError extends CursorDesignError {
+	readonly code = 'FRAME_MOVED' as const;
+
+	constructor(
+		readonly frameId: string,
+		options?: { cause?: unknown },
+	) {
+		super('This frame moved while you were dragging it. Showing its current position.', options);
+		this.name = 'FrameMovedError';
+	}
+}
+
+// Rethrows a domain error as is; any other fs failure becomes DISK_ERROR with the cause kept.
+export const throwDiskError = (error: unknown): never => {
+	if (error instanceof CursorDesignError) {
+		throw error;
+	}
+	throw new DiskError({ cause: error });
+};

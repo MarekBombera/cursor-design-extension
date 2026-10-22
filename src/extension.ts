@@ -7,10 +7,17 @@ import {
 } from './commands/commandIds';
 import { exportHandoff } from './commands/exportHandoff';
 import { revealDesignFolder } from './commands/revealDesignFolder';
+import { placeFrameFromChrome, snapshotForChrome } from './host/artboardDisk';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
+import { logDiskError } from './host/hostFs';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
-import { postUiStatusToPanel, setArtboardPanelOnVisible } from './panel/openArtboardPanel';
+import {
+	postArtboardSnapshotToPanel,
+	postUiStatusToPanel,
+	setArtboardPanelOnFramePlace,
+	setArtboardPanelOnVisible,
+} from './panel/openArtboardPanel';
 
 export const activate = (context: vscode.ExtensionContext): void => {
 	const outputChannel = vscode.window.createOutputChannel('Cursor Design');
@@ -24,6 +31,16 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
 	setArtboardPanelOnVisible(() => {
 		void reloadVisibleArtboardFromDisk(outputChannel);
+	});
+
+	setArtboardPanelOnFramePlace((value) => {
+		void placeFrameFromChrome({ value, outputChannel })
+			.then((snapshot) => {
+				postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
+			})
+			.catch((error: unknown) => {
+				logDiskError({ scope: 'extension.framePlace', error, outputChannel });
+			});
 	});
 
 	if (vscode.workspace.isTrusted) {

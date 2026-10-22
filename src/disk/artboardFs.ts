@@ -19,12 +19,14 @@ import {
 	CorruptCanvasError,
 	CorruptManifestError,
 	CorruptMetaError,
-	CursorDesignError,
 	DiskError,
+	FrameMovedError,
 	InvalidArgsError,
 	InvalidArtboardIdError,
 	NoArtboardsToExportError,
 	UnsupportedCanvasVersionError,
+	isErrno,
+	throwDiskError,
 } from './errors';
 import { nextGeneration } from './generation';
 import {
@@ -69,6 +71,7 @@ import {
 	serializeManifest,
 	serializeMeta,
 } from './parse';
+import { withWorkspaceLock } from './workspaceLock';
 
 export type CreateArtboardArgs = {
 	workspaceRoot: string;
@@ -173,6 +176,8 @@ export type PlaceFrameArgs = {
 	width?: unknown;
 	label?: unknown;
 	group?: unknown;
+	// Host-only (panel drag): the frame's x/y/width when the gesture started. The MCP tool never passes it.
+	base?: Pick<CanvasFrame, 'x' | 'y' | 'width'>;
 };
 
 export type PlaceFrameResult = {
@@ -205,19 +210,6 @@ export type HandoffStatusResult = {
 	activeArtboardId: string;
 	activeHash: string;
 	lastExport?: LastExport;
-};
-
-const isErrno = (error: unknown, code: string): boolean =>
-	typeof error === 'object' &&
-	error !== null &&
-	'code' in error &&
-	(error as { code: unknown }).code === code;
-
-const throwDiskError = (error: unknown): never => {
-	if (error instanceof CursorDesignError) {
-		throw error;
-	}
-	throw new DiskError({ cause: error });
 };
 
 const workspaceJoin = (workspaceRoot: string, segments: readonly string[]): string =>
@@ -971,6 +963,7 @@ export const placeFrame = async ({
 	width,
 	label,
 	group,
+	base,
 }: PlaceFrameArgs): Promise<PlaceFrameResult> => {
 	const resolvedId = parseArtboardId(id);
 	const placement = {
@@ -987,18 +980,36 @@ export const placeFrame = async ({
 		resolvedId,
 	);
 	await requireExactHtmlFileName(workspaceRoot, resolvedId);
-	const stored = await readCanvasLayoutFile(workspaceRoot);
 	const listed = await listArtboards({ workspaceRoot });
-	const current = listed.frames.find((frame) => frame.id === resolvedId);
-	if (current === undefined) {
+	if (!listed.artboards.some(({ artboardId }) => artboardId === resolvedId)) {
 		throw new ArtboardNotFoundError(resolvedId);
 	}
-	const next = placeCanvasFrame({ layout: stored, current, placement });
 
-	await ensureDir(workspaceJoin(workspaceRoot, [CURSOR_DESIGN_DIR]));
-	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, canvasPathSegments),
-		contents: serializeCanvasLayout(next),
+	// Only the canvas.json read-modify-write runs under the lock, so the hold stays tiny.
+	const next = await withWorkspaceLock({
+		workspaceRoot,
+		operation: async () => {
+			const stored = await readCanvasLayoutFile(workspaceRoot);
+			const current = resolveCanvasFrames({
+				stored: stored.frames,
+				artboards: listed.artboards,
+			}).find((frame) => frame.id === resolvedId);
+			if (current === undefined) {
+				throw new ArtboardNotFoundError(resolvedId);
+			}
+			if (
+				base !== undefined &&
+				(base.x !== current.x || base.y !== current.y || base.width !== current.width)
+			) {
+				throw new FrameMovedError(resolvedId);
+			}
+			const placed = placeCanvasFrame({ layout: stored, current, placement });
+			await writeUtf8({
+				...workspaceLayoutFile(workspaceRoot, canvasPathSegments),
+				contents: serializeCanvasLayout(placed),
+			});
+			return placed;
+		},
 	});
 	return {
 		frames: resolveCanvasFrames({ stored: next.frames, artboards: listed.artboards }),

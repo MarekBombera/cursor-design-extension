@@ -28,7 +28,7 @@ Import, never re-type:
 - `.cursor-design/` path segments, file names, schema versions, defaults: `src/disk/layout.ts`
 - MCP tool names: `src/mcp/toolNames.ts`. MCP server name and env names: `src/mcp/mcpIdentity.ts`
 - Command ids: `src/commands/commandIds.ts`
-- Webview message types: `src/webview/hostMessages.ts` (host → chrome, `import type`d by the host) and `src/webview/frame/frameMessages.ts` (frame ↔ chrome)
+- Webview message types: `src/webview/hostMessages.ts` (host → chrome and chrome → host, `import type`d by the host) and `src/webview/frame/frameMessages.ts` (frame ↔ chrome)
 
 ## Wire values are `unknown` until a guard checks them
 

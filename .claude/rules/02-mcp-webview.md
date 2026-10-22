@@ -18,7 +18,7 @@ alwaysApply: false
 - `handoff_status`: stale when any frame's HTML changed or a frame was added or removed since the last export
 - `place_frame`: one frame's x / y / width / label / group in `canvas.json`; returns every frame
 
-Serialize writes (`enqueueDiskOp`). MCP denied: edit `.cursor-design/**` directly and tell the user to allowlist the tools.
+Serialize writes (`enqueueDiskOp`). The `canvas.json` read-modify-write also runs under the cross-process `withWorkspaceLock` (`.cursor-design/.lock`), shared with the panel's drag commit. MCP denied: edit `.cursor-design/**` directly and tell the user to allowlist the tools.
 
 ## Disk (user workspace)
 
@@ -30,7 +30,7 @@ Serialize writes (`enqueueDiskOp`). MCP denied: edit `.cursor-design/**` directl
 2. Nested iframe `sandbox="allow-scripts"`; artboard JS is required.
 3. Iframe-to-chrome `postMessage` is untrusted.
 4. `asWebviewUri` + `localResourceRoots`.
-5. Messages: artboard:ready (chrome → host), canvas:updated|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: cd:frame-height { height }, cd:frame-wheel { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.
+5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: `parseChromeMessage`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure); canvas:updated (frames carry `generation`)|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed: cd:frame-height { height }, cd:frame-wheel { deltaX, deltaY, ctrlKey, x, y } (frame-local CSS px). Chrome → iframe: none.
 
 ## Stack
 

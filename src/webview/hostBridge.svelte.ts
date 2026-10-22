@@ -1,5 +1,10 @@
 import { type FrameMessage, parseFrameMessage } from './frame/frameMessages';
-import { type HostMessage, parseHostMessage, parseSavedStageView } from './hostMessages';
+import {
+	type FramePlaceMessage,
+	type HostMessage,
+	parseHostMessage,
+	parseSavedStageView,
+} from './hostMessages';
 import type { StageView } from './stageGeometry';
 
 // The one place that talks to the host: acquireVsCodeApi once, one message listener, webview
@@ -26,6 +31,12 @@ export const readSavedStageView = (): StageView | undefined => {
 
 export const saveStageView = (stageView: StageView): void => {
 	vscodeApi.setState({ stageView });
+};
+
+// Snapshot: callers pass gesture fields that are $state proxies, and postMessage's structured
+// clone throws DataCloneError on a Proxy.
+export const postFramePlace = (message: FramePlaceMessage): void => {
+	vscodeApi.postMessage($state.snapshot(message));
 };
 
 type HostBridgeArgs = {
