@@ -1,89 +1,72 @@
-# Svelte toolchain - Overview for review
+# Svelte port - Overview for review
 
-Source of truth: `blueprint/history/features/08a-svelte-toolchain.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/08b-svelte-port.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Svelte 5 now builds to `dist/webview/chrome.js` and `chrome.css`, loads in the artboard webview under the existing CSP, and `svelte-check` plus that webview build run in `pnpm verify` (and CI). The 0.2 template-string chrome is unchanged. You should see nothing new in the panel.
-
-## Flow
-
-1. `src/webview/main.ts` mounts hidden `App.svelte` onto `#svelte-root`.
-2. `vp build -c vite.webview.config.ts` emits `dist/webview/chrome.js` + `chrome.css`.
-3. The host shell nonce-loads those files via `asWebviewUri`, with `localResourceRoots = dist/webview`.
-4. If the bundle is missing or throws, the 0.2 chrome still runs: separate script, separate root, CSP unchanged.
+The artboard panel now runs on Svelte 5 with no behavior change. The template-string chrome is gone. The iframe runtime and the stage geometry are real TS modules, each with one source, shared by the panel and the exported `canvas.html`. `pnpm verify` is green (201 tests, svelte-check 0/0), and the full F5 parity checklist passed on 2026-10-22.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  src["src/webview/main.ts + App.svelte"] -->|"vp build -c vite.webview.config.ts"| dist["dist/webview/chrome.js + chrome.css"]
-  host["openArtboardPanel"] -->|"asWebviewUri + nonce"| shell["webview document"]
-  dist --> shell
-  shell --> old["0.2 inline chrome: unchanged"]
-  shell --> hello["#svelte-root hidden hello"]
+  host["openArtboardPanel (host)"] -->|"canvas:updated / artboard:error / ui:status"| bridge["hostBridge.svelte.ts"]
+  bridge --> app["App.svelte (state)"]
+  app --> views["Toolbar / Banners / Stage / Frame"]
+  views -->|"stampArtboardHtml + runtime ?iife"| frames["sandboxed blob iframes"]
+  frames -->|"cd:frame-height / cd:frame-wheel"| bridge
+  rt["frame/runtime.ts"] -->|"?iife"| views
+  rt -->|"?iife"| export["exported canvas.html"]
+  geo["stageGeometry.ts"] --> app
+  geo -->|"?iife"| export
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant Verify as pnpm verify
-  participant Build as vp build webview
-  participant Host as artboard panel
-  participant Chrome as 0.2 inline chrome
-  participant Hello as hidden Svelte root
-  Verify->>Verify: vp check, svelte-check, vp test, vp pack
-  Verify->>Build: vp build -c vite.webview.config.ts
-  Build-->>Host: chrome.js + chrome.css
-  Host->>Chrome: inline script (first)
-  Host->>Hello: module script after inline
-  Hello-->>Host: data-svelte-chrome=ready inside #svelte-root
+  participant Host
+  participant Bridge as hostBridge
+  participant App
+  participant Frame as Frame iframe
+  Host->>Bridge: canvas:updated
+  Bridge->>App: parsed message
+  App->>Frame: kind / html / position (new doc only if html changed)
+  Frame-->>Bridge: cd:frame-height
+  Bridge->>App: frame message (matched by event.source)
+  App->>App: nextFrameHeight, re-clamp view, setState
 ```
 
 ## What you will see
 
-- Same 0.2 toolbar, frames, zoom, and pan.
-- In webview devtools: hidden `#svelte-root` with `data-svelte-chrome="ready"`, and no new CSP violations.
-- `pnpm verify` now runs `svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings` and the webview build.
-- This session: user started the Extension Development Host and reported no errors. Hidden hello root and missing-bundle path were not confirmed.
-
-## Data flow
-
-Source files -> webview Vite build -> `dist/webview/` -> nonce'd `<link>` + `<script type="module">` in the chrome document. No disk, MCP, or message-contract change.
+Nothing new in the panel: same toolbar, banners, frames, labels, zoom, pan, presets and Fit all. Webview DevTools show Svelte-rendered DOM and zero CSP violations.
 
 ## Architecture decisions
 
-- One Vite instance: `vite` is aliased to `@voidzero-dev/vite-plus-core@1.3.0`.
-- TypeScript package is `~6.0.3` for `svelte-check`; lint and type-aware check stay on TS 7 via tsgolint.
-- Frame-runtime IIFE plugin and `happy-dom` wait for 8b.
-
-## Decisions locked
-
-- No CSP loosening (`unsafe-inline` / `unsafe-eval` stay out).
-- Bundle failure cannot take down 0.2 chrome.
-- `localResourceRoots` is extension `dist/webview` only, never the workspace.
+- **`?iife` plugin** (`scripts/iifeStringPlugin.ts`): imports a TS module as an IIFE string, so script text can be inlined without a hand-written copy. Built with Vite's `build`, unminified, with `</` escaped.
+- **Export shares the panel's code**: `canvas.html` embeds the same runtime and geometry, rather than keeping string copies.
+- **One host bridge**: only `hostBridge.svelte.ts` posts or listens. Components take props in and send callbacks out.
+- **Plain `Map` iframe registry**: matched against `event.source` at message time, registered before `src` is set.
+- **No inline styles**: positions use `style:` directives (CSSOM), so the CSP stays unchanged.
 
 ## Out of scope
 
-Porting chrome to Svelte (8b), frame-runtime bundling, `happy-dom`, CSP / MCP / disk / message changes.
+Drag/resize (8c), picking and chrome → frame messages (8d1), selectors (8d2), comments (8e+), any CSP, disk or MCP change, restyling.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| `#svelte-root` | Hidden mount point that proves the toolchain without changing 0.2 UI |
-| `chrome.js` / `chrome.css` | Fixed bundle names the host shell loads |
-| `svelte-check` | Type gate for `.svelte` files; `tsc` does not type-check them |
-| Vite+ core alias | Keeps vite-plugin-svelte on the same Vite as `vp` |
+| IIFE string | A module bundled as one self-running script, so it can be pasted into a document |
+| Blob iframe | Each artboard renders from an in-memory URL inside a sandbox, isolated from the chrome |
+| Height guard | Stops a `100vh` page from growing forever while it measures itself |
+| Parity checklist | The F5 list proving every 0.2 behavior still works |
 
 ## Your actions
 
-Optional F5 leftovers: confirm `[data-svelte-chrome="ready"]` inside `#svelte-root`, zero CSP violations, then delete `dist/webview/chrome.js` and reload — 0.2 chrome should still work.
+- Run `/overview` sometime: the project overview body still describes the chrome as a template string.
+- Consider a `/fix` for `.vscodeignore`: the `.vsix` currently packs `.remember/**`.
 
 ## Done means
 
-- `pnpm verify` includes svelte-check and the webview build, and exits 0.
-- A clean webview build writes `dist/webview/chrome.js` and `chrome.css`.
-- Host HTML has nonce'd module script + stylesheet from `asWebviewUri` on those files, plus hidden `#svelte-root`.
-- 0.2 chrome behavior is unchanged.
+Svelte chrome live, old template files deleted, one source each for the runtime and the geometry, `pnpm verify` green, and the F5 parity checklist all passing.

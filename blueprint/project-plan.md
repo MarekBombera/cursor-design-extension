@@ -50,7 +50,7 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 
 - **Product:** Cursor/VS Code extension (WebviewPanel + local MCP stdio). Not a Next.js app, not SvelteKit, not a Chrome extension.
 - **Host:** TypeScript, `pnpm`. Bundler esbuild through 0.2; from 0.2.1 Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown), with esbuild kept for the bundle only if the 0.2.1 pack spike fails. `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
-- **Chrome:** TS template-string document in `src/panel/artboardChromeHtml.ts` through 0.2 (Svelte 5 + Vite deferred, decided 2026-10-13). Theme tokens `var(--vscode-*)`.
+- **Chrome:** Svelte 5 + Vite under `src/webview/` from 0.3 (8b); shell in `src/panel/artboardChromeHtml.ts`. Through 0.2 it was a TS template-string document (decided 2026-10-13). Theme tokens `var(--vscode-*)`.
 - **Artboard:** nested sandboxed HTML iframe (`sandbox="allow-scripts"`). Scripts allowed; parent never `eval`s artboard HTML.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
 - **Brain:** Cursor Agent only. Disk is SoT. Brand: `cursor-design`.

@@ -17,7 +17,7 @@ Extract **a real job**, not a forwarder. `const save = (args) => writeArtboard(a
 | Extension host | `src/extension.ts`, `src/commands/`, `src/host/`, `src/panel/openArtboardPanel.ts`, `src/mcp/registerCursorDesignMcp.ts` | activate, commands, panel lifetime, watchers, MCP registration, `postMessage` |
 | MCP process | rest of `src/mcp/` | stdio server + tool handlers over the disk lib. No UI, no `vscode` (lint) |
 | Disk SoT | `src/disk/` | artboard / canvas / handoff CRUD, parse, generation, hash. No MCP transport, no DOM, no `vscode` (lint) |
-| Webview chrome | `src/panel/artboardChrome*.ts`, `artboardCanvasRuntime.ts`, `stageGeometry.ts` (inlined JS); Svelte 5 under `src/webview/` from 0.2 | render what the host posts. No MCP, no workspace fs |
+| Webview chrome | `src/webview/`: Svelte 5 components, `hostBridge.svelte.ts`, pure modules `stageGeometry.ts`, `hostMessages.ts`, `stampArtboardHtml.ts`, `frame/` (iframe runtime + frame messages). The host keeps the shell `src/panel/artboardChromeHtml.ts` | render what the host posts. No MCP, no workspace fs |
 
 ```ts
 // ✅ owner wires; jobs are named
@@ -42,4 +42,5 @@ Grep this before writing a helper. Extend the owner (new param, variant) instead
 - **Artboard operations:** `src/disk/artboardFs.ts` (create / update / read / list / place / setActive / export / `readHandoffStatus`). `generation.ts`, `hash.ts`, `conflict.ts` for concurrency. `handoff.ts`, `handoffCanvasHtml.ts`, `effectiveMeta.ts` for export.
 - **Host I/O:** `fileExists`, `isFileNotFound` (`src/host/hostFs.ts`), `ensureArtboardWatcher` / `replaceArtboardWatcher`, snapshots in `src/host/canvasSnapshot.ts`.
 - **MCP plumbing:** `enqueueDiskOp` (`mcpQueue.ts`), `resolveWorkspaceRoot`, `toolNames.ts`, `mcpIdentity.ts`.
-- **Panel:** `openArtboardPanel` + `post*ToPanel`, `buildArtboardChromeHtml`, `buildArtboardChromeScript`, `stageGeometry.ts`.
+- **Panel:** `openArtboardPanel` + `post*ToPanel`, `buildArtboardChromeHtml` (shell). Chrome: `parseHostMessage` / `parseSavedStageView` (`src/webview/hostMessages.ts`), `parseFrameMessage` (`src/webview/frame/frameMessages.ts`), `stampArtboardHtml`, stage math in `src/webview/stageGeometry.ts`, host I/O only in `hostBridge.svelte.ts`.
+- **Inline scripts:** `scripts/iifeStringPlugin.ts` (`import source from './x.ts?iife'` = the module bundled as an IIFE string). `src/disk/handoffCanvasHtml.ts` embeds `frame/runtime.ts?iife` and `stageGeometry.ts?iife` into the exported `canvas.html`; never hand-copy either as a string.

@@ -1,32 +1,78 @@
-// Plain JS for 6c to inline raw into the chrome script (no bundler there). Every function
+// Pure stage math for the chrome and, through `?iife`, the exported canvas.html. Every function
 // takes one object and returns new values, with no DOM and nothing global except Math.
-// Must stay free of backticks, dollar-brace, and less-than-slash so it can never break out
-// of the template literal that inlines it or close the chrome script element.
 // View { x, y, zoom } maps stage px to screen px: screen = stage * zoom + (x, y), which is
 // CSS translate(x, y) scale(zoom) with transform-origin 0 0.
-export const STAGE_GEOMETRY_SOURCE = `const MIN_STAGE_ZOOM = 0.05;
-const MAX_STAGE_ZOOM = 10;
+
+export type StageView = { x: number; y: number; zoom: number };
+
+export type StagePoint = { x: number; y: number };
+
+export type StageRect = { x: number; y: number; width: number; height: number };
+
+export type ChromeFrame = StageRect & { id: string; group?: string };
+
+export type FrameLabelBox = StageRect & { id: string };
+
+export type GroupHeadingBox = StageRect & { group: string };
+
+export type CanvasChromeLayout = {
+	labels: FrameLabelBox[];
+	headings: GroupHeadingBox[];
+	bounds: StageRect | null;
+};
+
+export type FrameHeightGuard = { lastGrowth: number; frozen: boolean };
+
+export const MIN_STAGE_ZOOM = 0.05;
+export const MAX_STAGE_ZOOM = 10;
 const ZOOM_STEP_CAP = 0.2;
 const ZOOM_SENSITIVITY = 0.01;
 const FIT_PADDING = 48;
 const KEEP_VISIBLE = 48;
 
-const clampNumber = ({ value, min, max }) => Math.min(max, Math.max(min, value));
+const clampNumber = ({ value, min, max }: { value: number; min: number; max: number }): number =>
+	Math.min(max, Math.max(min, value));
 
-const clampStageZoom = ({ zoom }) =>
+const clampStageZoom = ({ zoom }: { zoom: number }): number =>
 	clampNumber({ value: zoom, min: MIN_STAGE_ZOOM, max: MAX_STAGE_ZOOM });
 
-const stageToScreen = ({ view, stageX, stageY }) => ({
+export const stageToScreen = ({
+	view,
+	stageX,
+	stageY,
+}: {
+	view: StageView;
+	stageX: number;
+	stageY: number;
+}): StagePoint => ({
 	x: stageX * view.zoom + view.x,
 	y: stageY * view.zoom + view.y,
 });
 
-const screenToStage = ({ view, screenX, screenY }) => ({
+export const screenToStage = ({
+	view,
+	screenX,
+	screenY,
+}: {
+	view: StageView;
+	screenX: number;
+	screenY: number;
+}): StagePoint => ({
 	x: (screenX - view.x) / view.zoom,
 	y: (screenY - view.y) / view.zoom,
 });
 
-const zoomStageTo = ({ view, zoom: targetZoom, screenX, screenY }) => {
+export const zoomStageTo = ({
+	view,
+	zoom: targetZoom,
+	screenX,
+	screenY,
+}: {
+	view: StageView;
+	zoom: number;
+	screenX: number;
+	screenY: number;
+}): StageView => {
 	const fromZoom = clampStageZoom({ zoom: view.zoom });
 	const zoom = clampStageZoom({ zoom: targetZoom });
 	return {
@@ -36,7 +82,17 @@ const zoomStageTo = ({ view, zoom: targetZoom, screenX, screenY }) => {
 	};
 };
 
-const zoomStageAt = ({ view, deltaY, screenX, screenY }) => {
+export const zoomStageAt = ({
+	view,
+	deltaY,
+	screenX,
+	screenY,
+}: {
+	view: StageView;
+	deltaY: number;
+	screenX: number;
+	screenY: number;
+}): StageView => {
 	const step = clampNumber({
 		value: -deltaY * ZOOM_SENSITIVITY,
 		min: -ZOOM_STEP_CAP,
@@ -50,20 +106,29 @@ const zoomStageAt = ({ view, deltaY, screenX, screenY }) => {
 	});
 };
 
-const panStage = ({ view, deltaX, deltaY }) => ({
+export const panStage = ({
+	view,
+	deltaX,
+	deltaY,
+}: {
+	view: StageView;
+	deltaX: number;
+	deltaY: number;
+}): StageView => ({
 	x: view.x - deltaX,
 	y: view.y - deltaY,
 	zoom: view.zoom,
 });
 
-const frameBounds = ({ frames }) => {
-	if (frames.length === 0) {
+export const frameBounds = ({ frames }: { frames: readonly StageRect[] }): StageRect | null => {
+	const [first] = frames;
+	if (first === undefined) {
 		return null;
 	}
-	let left = frames[0].x;
-	let top = frames[0].y;
-	let right = frames[0].x + frames[0].width;
-	let bottom = frames[0].y + frames[0].height;
+	let left = first.x;
+	let top = first.y;
+	let right = first.x + first.width;
+	let bottom = first.y + first.height;
 	for (const frame of frames) {
 		left = Math.min(left, frame.x);
 		top = Math.min(top, frame.y);
@@ -76,9 +141,15 @@ const frameBounds = ({ frames }) => {
 const FRAME_LABEL_BAND = 24;
 const GROUP_HEADING_BAND = 32;
 
-const layoutCanvasChrome = ({ frames }) => {
-	const labels = [];
-	const headingAcc = [];
+type HeadingAccumulator = { group: string; minX: number; minY: number; maxRight: number };
+
+export const layoutCanvasChrome = ({
+	frames,
+}: {
+	frames: readonly ChromeFrame[];
+}): CanvasChromeLayout => {
+	const labels: FrameLabelBox[] = [];
+	const headingAcc: HeadingAccumulator[] = [];
 	for (const frame of frames) {
 		labels.push({
 			id: frame.id,
@@ -90,13 +161,7 @@ const layoutCanvasChrome = ({ frames }) => {
 		if (typeof frame.group !== 'string' || frame.group.length === 0) {
 			continue;
 		}
-		let found;
-		for (const entry of headingAcc) {
-			if (entry.group === frame.group) {
-				found = entry;
-				break;
-			}
-		}
+		const found = headingAcc.find((entry) => entry.group === frame.group);
 		if (found === undefined) {
 			headingAcc.push({
 				group: frame.group,
@@ -116,35 +181,36 @@ const layoutCanvasChrome = ({ frames }) => {
 			found.maxRight = frame.x + frame.width;
 		}
 	}
-	const headings = [];
-	for (const entry of headingAcc) {
-		headings.push({
-			group: entry.group,
-			x: entry.minX,
-			y: entry.minY - FRAME_LABEL_BAND - GROUP_HEADING_BAND,
-			width: entry.maxRight - entry.minX,
-			height: GROUP_HEADING_BAND,
-		});
-	}
-	const boxes = [];
-	for (const frame of frames) {
-		boxes.push({ x: frame.x, y: frame.y, width: frame.width, height: frame.height });
-	}
-	for (const label of labels) {
-		boxes.push({ x: label.x, y: label.y, width: label.width, height: label.height });
-	}
-	for (const heading of headings) {
-		boxes.push({ x: heading.x, y: heading.y, width: heading.width, height: heading.height });
-	}
-	return { labels: labels, headings: headings, bounds: frameBounds({ frames: boxes }) };
+	const headings: GroupHeadingBox[] = headingAcc.map((entry) => ({
+		group: entry.group,
+		x: entry.minX,
+		y: entry.minY - FRAME_LABEL_BAND - GROUP_HEADING_BAND,
+		width: entry.maxRight - entry.minX,
+		height: GROUP_HEADING_BAND,
+	}));
+	const boxes: StageRect[] = [...frames, ...labels, ...headings].map(({ x, y, width, height }) => ({
+		x,
+		y,
+		width,
+		height,
+	}));
+	return { labels, headings, bounds: frameBounds({ frames: boxes }) };
 };
 
 const MIN_FRAME_HEIGHT = 1;
 const MAX_FRAME_HEIGHT = 20000;
 
-const nextFrameHeight = ({ current, reported, state }) => {
+export const nextFrameHeight = ({
+	current,
+	reported,
+	state,
+}: {
+	current: number;
+	reported: number;
+	state: FrameHeightGuard;
+}): { height: number; state: FrameHeightGuard } => {
 	if (!Number.isFinite(reported)) {
-		return { height: current, state: state };
+		return { height: current, state };
 	}
 	const clamped = clampNumber({ value: reported, min: MIN_FRAME_HEIGHT, max: MAX_FRAME_HEIGHT });
 	const growth = clamped - current;
@@ -152,7 +218,7 @@ const nextFrameHeight = ({ current, reported, state }) => {
 		return { height: clamped, state: { lastGrowth: 0, frozen: state.frozen } };
 	}
 	if (state.frozen) {
-		return { height: current, state: state };
+		return { height: current, state };
 	}
 	if (state.lastGrowth > 0 && 1 >= Math.abs(growth - state.lastGrowth)) {
 		return { height: current, state: { lastGrowth: state.lastGrowth, frozen: true } };
@@ -160,7 +226,19 @@ const nextFrameHeight = ({ current, reported, state }) => {
 	return { height: clamped, state: { lastGrowth: growth, frozen: state.frozen } };
 };
 
-const clampStageAxis = ({ offset, start, size, zoom, viewportSize }) => {
+const clampStageAxis = ({
+	offset,
+	start,
+	size,
+	zoom,
+	viewportSize,
+}: {
+	offset: number;
+	start: number;
+	size: number;
+	zoom: number;
+	viewportSize: number;
+}): number => {
 	const scaledSize = size * zoom;
 	const keep = Math.min(KEEP_VISIBLE, scaledSize, viewportSize);
 	return clampNumber({
@@ -170,7 +248,17 @@ const clampStageAxis = ({ offset, start, size, zoom, viewportSize }) => {
 	});
 };
 
-const clampStageView = ({ view, bounds, viewportWidth, viewportHeight }) => {
+export const clampStageView = ({
+	view,
+	bounds,
+	viewportWidth,
+	viewportHeight,
+}: {
+	view: StageView;
+	bounds: StageRect | null;
+	viewportWidth: number;
+	viewportHeight: number;
+}): StageView => {
 	const zoom = clampStageZoom({ zoom: view.zoom });
 	if (bounds === null || viewportWidth <= 0 || viewportHeight <= 0) {
 		return { x: view.x, y: view.y, zoom };
@@ -194,7 +282,15 @@ const clampStageView = ({ view, bounds, viewportWidth, viewportHeight }) => {
 	};
 };
 
-const fitStageView = ({ bounds, viewportWidth, viewportHeight }) => {
+export const fitStageView = ({
+	bounds,
+	viewportWidth,
+	viewportHeight,
+}: {
+	bounds: StageRect | null;
+	viewportWidth: number;
+	viewportHeight: number;
+}): StageView => {
 	if (
 		bounds === null ||
 		bounds.width <= 0 ||
@@ -217,4 +313,3 @@ const fitStageView = ({ bounds, viewportWidth, viewportHeight }) => {
 		zoom,
 	};
 };
-`;

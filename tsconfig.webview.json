@@ -9,6 +9,6 @@
 		"verbatimModuleSyntax": true,
 		"noEmit": true
 	},
-	"include": ["src/webview/**/*.ts", "src/webview/**/*.svelte"],
+	"include": ["src/webview/**/*.ts", "src/webview/**/*.svelte", "src/types/iife.d.ts"],
 	"exclude": ["src/webview/**/*.test.ts"]
 }

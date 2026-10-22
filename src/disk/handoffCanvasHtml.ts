@@ -1,10 +1,10 @@
+import canvasRuntimeSource from '../webview/frame/runtime.ts?iife';
+import stageGeometrySource from '../webview/stageGeometry.ts?iife';
 import {
-	ARTBOARD_CANVAS_RUNTIME_SOURCE,
 	CANVAS_RUNTIME_ATTRIBUTE,
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
-} from '../panel/artboardCanvasRuntime';
-import { STAGE_GEOMETRY_SOURCE } from '../panel/stageGeometry';
+} from '../webview/frame/frameMessages';
 
 // View-only canvas.html for a handoff: every frame at its layout position, at scale 1, growing
 // to its measured height. Frame index.html files stay pristine; only the srcdoc copies here carry
@@ -14,7 +14,7 @@ import { STAGE_GEOMETRY_SOURCE } from '../panel/stageGeometry';
 // ponytail: assets/ is not copied into the handoff, so relative images may be missing.
 // ponytail: an empty artboard file previews as an empty frame (no error tile).
 
-// Mirrors layoutCanvasChrome in stageGeometry.ts (label band, heading band) and its fit padding.
+// Mirrors layoutCanvasChrome in src/webview/stageGeometry.ts (label band, heading band) and its fit padding.
 const FRAME_LABEL_BAND = 24;
 const GROUP_HEADING_BAND = 32;
 const PAGE_PADDING = 48;
@@ -63,7 +63,7 @@ export const buildPreviewFrameHtml = ({
 	id: string;
 }): string => {
 	const baseHref = `${encodeURIComponent(folder)}/${encodeURIComponent(id)}/`;
-	const block = `<base href="${baseHref}"><script ${CANVAS_RUNTIME_ATTRIBUTE}>${ARTBOARD_CANVAS_RUNTIME_SOURCE}</script>`;
+	const block = `<base href="${baseHref}"><script ${CANVAS_RUNTIME_ATTRIBUTE}>${canvasRuntimeSource}</script>`;
 	const index = injectionIndex(html);
 	return `${html.slice(0, index)}${block}${html.slice(index)}`;
 };
@@ -105,12 +105,12 @@ const groupHeadings = (frames: readonly CanvasPreviewFrame[]): GroupHeading[] =>
 	return headings;
 };
 
-// Plain JS, free of the less-than-slash sequence, backticks and dollar-brace. Accepts only
+// Plain JS, free of the less-than-slash sequence (the ?iife strings are escaped). Accepts only
 // allowlisted messages from its own frames' windows and never posts to frames.
 const previewControllerSource = (
 	entries: readonly { id: string; top: number; right: number }[],
 ): string => `(() => {
-${STAGE_GEOMETRY_SOURCE}
+${stageGeometrySource}
 const PAGE_PADDING = ${PAGE_PADDING};
 const heightType = ${JSON.stringify(FRAME_HEIGHT_MESSAGE)};
 const wheelType = ${JSON.stringify(FRAME_WHEEL_MESSAGE)};
@@ -155,7 +155,7 @@ window.addEventListener('message', (event) => {
 		if (!Number.isFinite(data.height)) {
 			return;
 		}
-		const next = nextFrameHeight({ current: record.height, reported: data.height, state: record.guard });
+		const next = stageGeometry.nextFrameHeight({ current: record.height, reported: data.height, state: record.guard });
 		record.height = next.height;
 		record.guard = next.state;
 		record.iframe.style.height = next.height + 'px';

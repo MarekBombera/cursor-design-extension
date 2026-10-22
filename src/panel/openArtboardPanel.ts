@@ -1,40 +1,21 @@
 import * as vscode from 'vscode';
 
-import {
-	type CanvasSnapshot,
-	postedFrameFromSnapshot,
-	type PostedCanvasFrame,
-} from '../host/canvasSnapshot';
+import { type CanvasSnapshot, postedFrameFromSnapshot } from '../host/canvasSnapshot';
+import type {
+	ArtboardErrorMessage,
+	CanvasUpdatedMessage,
+	PostedCanvasFrame,
+	UiStatusMessage,
+} from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
-
-export type CanvasUpdatedFrame = PostedCanvasFrame;
-
-export type CanvasUpdatedMessage = {
-	type: 'canvas:updated';
-	activeArtboardId: string;
-	generation: number;
-	cspNonce: string;
-	frames: CanvasUpdatedFrame[];
-};
-
-export type ArtboardErrorMessage = {
-	type: 'artboard:error';
-	message: string;
-};
-
-export type UiStatusMessage = {
-	type: 'ui:status';
-	mcpAvailable: boolean;
-	handoffStale: boolean;
-};
 
 type CanvasHostView = {
 	updated: {
 		activeArtboardId: string;
 		generation: number;
-		frames: CanvasUpdatedFrame[];
+		frames: PostedCanvasFrame[];
 	};
 	errorMessage?: string;
 };

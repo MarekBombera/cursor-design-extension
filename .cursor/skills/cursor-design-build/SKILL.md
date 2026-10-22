@@ -25,5 +25,6 @@ Product constraints are in `.claude/rules/00-cursor-design-core.md`; the MCP / w
 
 ## Webview chrome
 
-- Chrome = Svelte 5 + Vite (no Kit), see `08-svelte-chrome` (Svelte MCP docs before writing, `svelte-autofixer` after every edit, `svelte-check` in Verify). 0.2 behavior is still inlined JS from `src/panel/artboardChrome*.ts`; `src/webview/` is the hidden hello root that de-risks the toolchain before 8b.
+- Chrome = Svelte 5 + Vite (no Kit), see `08-svelte-chrome` (Svelte MCP docs before writing, `svelte-autofixer` after every edit, `svelte-check` in Verify). The chrome lives in `src/webview/` (from 0.3, 8b); `src/panel/artboardChromeHtml.ts` is only the shell (CSP, `chrome.css`, `chrome.js`, `#svelte-root`).
+- `?iife` imports (`scripts/iifeStringPlugin.ts`) inline a TS module as an IIFE string: the iframe runtime (`src/webview/frame/runtime.ts`) and the stage geometry for the exported `canvas.html`. The plugin is registered in the webview build, both `pack` entries and `vp test`.
 - Artboard = nested sandboxed iframe (`allow-scripts`), never chrome-themed, never `{@html}` in chrome.

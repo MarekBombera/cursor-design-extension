@@ -1,50 +1,10 @@
 import assert from 'node:assert/strict';
-import { runInNewContext } from 'node:vm';
 import * as fc from 'fast-check';
 import { test } from 'vite-plus/test';
 
-import { STAGE_GEOMETRY_SOURCE } from './stageGeometry';
-
-type View = { x: number; y: number; zoom: number };
-type Point = { x: number; y: number };
-type Rect = { x: number; y: number; width: number; height: number };
-
-type StageGeometry = {
-	MIN_STAGE_ZOOM: number;
-	MAX_STAGE_ZOOM: number;
-	stageToScreen: (args: { view: View; stageX: number; stageY: number }) => Point;
-	screenToStage: (args: { view: View; screenX: number; screenY: number }) => Point;
-	zoomStageAt: (args: { view: View; deltaY: number; screenX: number; screenY: number }) => View;
-	zoomStageTo: (args: { view: View; zoom: number; screenX: number; screenY: number }) => View;
-	panStage: (args: { view: View; deltaX: number; deltaY: number }) => View;
-	frameBounds: (args: { frames: Rect[] }) => Rect | null;
-	layoutCanvasChrome: (args: { frames: Array<Rect & { id: string; group?: string }> }) => {
-		labels: Array<{ id: string; x: number; y: number; width: number; height: number }>;
-		headings: Array<{ group: string; x: number; y: number; width: number; height: number }>;
-		bounds: Rect | null;
-	};
-	nextFrameHeight: (args: {
-		current: number;
-		reported: number;
-		state: { lastGrowth: number; frozen: boolean };
-	}) => { height: number; state: { lastGrowth: number; frozen: boolean } };
-	clampStageView: (args: {
-		view: View;
-		bounds: Rect | null;
-		viewportWidth: number;
-		viewportHeight: number;
-	}) => View;
-	fitStageView: (args: {
-		bounds: Rect | null;
-		viewportWidth: number;
-		viewportHeight: number;
-	}) => View;
-};
-
-// Evaluates the exact shipped string; a fresh context has its own Math and nothing else.
-const geometry = runInNewContext(
-	`${STAGE_GEOMETRY_SOURCE}\n;({ MIN_STAGE_ZOOM, MAX_STAGE_ZOOM, stageToScreen, screenToStage, zoomStageAt, zoomStageTo, panStage, frameBounds, layoutCanvasChrome, nextFrameHeight, clampStageView, fitStageView })`,
-) as StageGeometry;
+import * as geometry from './stageGeometry';
+import type { StagePoint as Point, StageRect as Rect, StageView as View } from './stageGeometry';
+import stageGeometrySource from './stageGeometry.ts?iife';
 
 const TOLERANCE = 1e-9;
 
@@ -53,7 +13,7 @@ const boxRect = (
 ): Rect | null =>
 	box === undefined ? null : { x: box.x, y: box.y, width: box.width, height: box.height };
 
-// vm results come from another realm, so compare field by field instead of deepStrictEqual.
+// Float results (zoom, exp) compare within a tolerance; exact cases use deepEqual.
 const assertClose = (
 	actual: Record<string, number> | null,
 	expected: Record<string, number>,
@@ -176,7 +136,7 @@ test('a zero input zoom still yields a finite view', () => {
 });
 
 test('pan moves the view against the wheel delta and keeps zoom', () => {
-	assertClose(geometry.panStage({ view: { x: 10, y: 20, zoom: 2 }, deltaX: 5, deltaY: -7 }), {
+	assert.deepEqual(geometry.panStage({ view: { x: 10, y: 20, zoom: 2 }, deltaX: 5, deltaY: -7 }), {
 		x: 5,
 		y: 27,
 		zoom: 2,
@@ -193,15 +153,15 @@ test('layoutCanvasChrome places labels, one heading per group, and includes them
 	});
 	assert.equal(layout.labels.length, 3);
 	assert.equal(layout.labels[0]?.id, 'a');
-	assertClose(boxRect(layout.labels[0]), { x: 0, y: 76, width: 1280, height: 24 });
+	assert.deepEqual(boxRect(layout.labels[0]), { x: 0, y: 76, width: 1280, height: 24 });
 	assert.equal(layout.labels[1]?.id, 'b');
-	assertClose(boxRect(layout.labels[1]), { x: 1304, y: 76, width: 390, height: 24 });
+	assert.deepEqual(boxRect(layout.labels[1]), { x: 1304, y: 76, width: 390, height: 24 });
 	assert.equal(layout.labels[2]?.id, 'c');
-	assertClose(boxRect(layout.labels[2]), { x: 0, y: 976, width: 600, height: 24 });
+	assert.deepEqual(boxRect(layout.labels[2]), { x: 0, y: 976, width: 600, height: 24 });
 	assert.equal(layout.headings.length, 1);
 	assert.equal(layout.headings[0]?.group, 'Desktop');
-	assertClose(boxRect(layout.headings[0]), { x: 0, y: 44, width: 1694, height: 32 });
-	assertClose(layout.bounds, { x: 0, y: 44, width: 1694, height: 1356 });
+	assert.deepEqual(boxRect(layout.headings[0]), { x: 0, y: 44, width: 1694, height: 32 });
+	assert.deepEqual(layout.bounds, { x: 0, y: 44, width: 1694, height: 1356 });
 });
 
 test('layoutCanvasChrome has no heading for ungrouped frames and null bounds for none', () => {
@@ -210,7 +170,7 @@ test('layoutCanvasChrome has no heading for ungrouped frames and null bounds for
 	});
 	assert.equal(ungrouped.headings.length, 0);
 	assert.equal(ungrouped.labels.length, 1);
-	assertClose(ungrouped.bounds, { x: 10, y: 26, width: 100, height: 104 });
+	assert.deepEqual(ungrouped.bounds, { x: 10, y: 26, width: 100, height: 104 });
 	const empty = geometry.layoutCanvasChrome({ frames: [] });
 	assert.equal(empty.bounds, null);
 	assert.equal(empty.labels.length, 0);
@@ -227,12 +187,12 @@ test('layoutCanvasChrome headings follow first-seen group order', () => {
 	assert.equal(layout.headings.length, 2);
 	assert.equal(layout.headings[0]?.group, 'Mobile');
 	assert.equal(layout.headings[1]?.group, 'Desktop');
-	assertClose(boxRect(layout.headings[0]), { x: 0, y: -16, width: 100, height: 32 });
-	assertClose(boxRect(layout.headings[1]), { x: 200, y: -46, width: 120, height: 32 });
+	assert.deepEqual(boxRect(layout.headings[0]), { x: 0, y: -16, width: 100, height: 32 });
+	assert.deepEqual(boxRect(layout.headings[1]), { x: 200, y: -46, width: 120, height: 32 });
 });
 
 test('frame bounds are the union rect, or null for no frames', () => {
-	assertClose(
+	assert.deepEqual(
 		geometry.frameBounds({
 			frames: [
 				{ x: 0, y: 0, width: 100, height: 50 },
@@ -247,7 +207,7 @@ test('frame bounds are the union rect, or null for no frames', () => {
 test('clamp keeps exactly 48px of large bounds visible at each edge', () => {
 	const bounds = { x: 0, y: 0, width: 2000, height: 1500 };
 	const viewport = { viewportWidth: 800, viewportHeight: 600 };
-	assertClose(
+	assert.deepEqual(
 		geometry.clampStageView({ view: { x: 5000, y: 5000, zoom: 1 }, bounds, ...viewport }),
 		{
 			x: 752,
@@ -255,7 +215,7 @@ test('clamp keeps exactly 48px of large bounds visible at each edge', () => {
 			zoom: 1,
 		},
 	);
-	assertClose(
+	assert.deepEqual(
 		geometry.clampStageView({ view: { x: -5000, y: -5000, zoom: 1 }, bounds, ...viewport }),
 		{ x: -1952, y: -1452, zoom: 1 },
 	);
@@ -266,8 +226,8 @@ test('clamp keeps exactly 48px of large bounds visible at each edge', () => {
 		bounds: offsetBounds,
 		...viewport,
 	});
-	assertClose(clamped, { x: 552, y: 452, zoom: 2 });
-	assertClose(geometry.stageToScreen({ view: clamped, stageX: 100, stageY: 50 }), {
+	assert.deepEqual(clamped, { x: 552, y: 452, zoom: 2 });
+	assert.deepEqual(geometry.stageToScreen({ view: clamped, stageX: 100, stageY: 50 }), {
 		x: 800 - 48,
 		y: 600 - 48,
 	});
@@ -276,11 +236,11 @@ test('clamp keeps exactly 48px of large bounds visible at each edge', () => {
 test('clamp keeps small bounds fully visible', () => {
 	const bounds = { x: 0, y: 0, width: 20, height: 10 };
 	const viewport = { viewportWidth: 800, viewportHeight: 600 };
-	assertClose(
+	assert.deepEqual(
 		geometry.clampStageView({ view: { x: -500, y: -500, zoom: 1 }, bounds, ...viewport }),
 		{ x: 0, y: 0, zoom: 1 },
 	);
-	assertClose(
+	assert.deepEqual(
 		geometry.clampStageView({ view: { x: 5000, y: 5000, zoom: 1 }, bounds, ...viewport }),
 		{
 			x: 780,
@@ -293,19 +253,22 @@ test('clamp keeps small bounds fully visible', () => {
 test('clamp in a 30x30 viewport keeps 30px visible', () => {
 	const bounds = { x: 0, y: 0, width: 2000, height: 1500 };
 	const viewport = { viewportWidth: 30, viewportHeight: 30 };
-	assertClose(geometry.clampStageView({ view: { x: 100, y: 100, zoom: 1 }, bounds, ...viewport }), {
-		x: 0,
-		y: 0,
-		zoom: 1,
-	});
-	assertClose(
+	assert.deepEqual(
+		geometry.clampStageView({ view: { x: 100, y: 100, zoom: 1 }, bounds, ...viewport }),
+		{
+			x: 0,
+			y: 0,
+			zoom: 1,
+		},
+	);
+	assert.deepEqual(
 		geometry.clampStageView({ view: { x: -5000, y: -5000, zoom: 1 }, bounds, ...viewport }),
 		{ x: -1970, y: -1470, zoom: 1 },
 	);
 });
 
 test('clamp with null bounds only clamps zoom', () => {
-	assertClose(
+	assert.deepEqual(
 		geometry.clampStageView({
 			view: { x: 999, y: -999, zoom: 50 },
 			bounds: null,
@@ -317,7 +280,7 @@ test('clamp with null bounds only clamps zoom', () => {
 });
 
 test('fit centers the bounds inside the padded viewport', () => {
-	assertClose(
+	assert.deepEqual(
 		geometry.fitStageView({
 			bounds: { x: 100, y: 50, width: 2000, height: 1000 },
 			viewportWidth: 1096,
@@ -328,7 +291,7 @@ test('fit centers the bounds inside the padded viewport', () => {
 });
 
 test('fit never zooms past 100%', () => {
-	assertClose(
+	assert.deepEqual(
 		geometry.fitStageView({
 			bounds: { x: 10, y: 20, width: 100, height: 100 },
 			viewportWidth: 800,
@@ -340,11 +303,11 @@ test('fit never zooms past 100%', () => {
 
 test('fit returns the default view for empty, zero-size, or tiny inputs', () => {
 	const defaultView = { x: 0, y: 0, zoom: 1 };
-	assertClose(
+	assert.deepEqual(
 		geometry.fitStageView({ bounds: null, viewportWidth: 800, viewportHeight: 600 }),
 		defaultView,
 	);
-	assertClose(
+	assert.deepEqual(
 		geometry.fitStageView({
 			bounds: { x: 5, y: 5, width: 0, height: 100 },
 			viewportWidth: 800,
@@ -352,7 +315,7 @@ test('fit returns the default view for empty, zero-size, or tiny inputs', () => 
 		}),
 		defaultView,
 	);
-	assertClose(
+	assert.deepEqual(
 		geometry.fitStageView({
 			bounds: { x: 5, y: 5, width: 100, height: 100 },
 			viewportWidth: 50,
@@ -442,10 +405,8 @@ test('nextFrameHeight applies first report, shrink, growth, clamps, and freeze',
 	assert.equal(afterReset.state.lastGrowth, 400);
 });
 
-test('source has no backtick, dollar-brace, or closing tag sequence', () => {
-	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('`'));
-	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('${'));
-	assert.ok(!STAGE_GEOMETRY_SOURCE.includes('</'));
+test('the ?iife string has no closing tag sequence', () => {
+	assert.ok(!stageGeometrySource.includes('</'));
 });
 
 const finiteCoord = fc.integer({ min: -4000, max: 4000 });

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
+import { runInNewContext } from 'node:vm';
 import { expect, test } from 'vite-plus/test';
 
 import {
@@ -7,7 +8,9 @@ import {
 	buildCanvasPreviewHtml,
 	buildPreviewFrameHtml,
 } from './handoffCanvasHtml';
-import { ARTBOARD_CANVAS_RUNTIME_SOURCE } from '../panel/artboardCanvasRuntime';
+import canvasRuntimeSource from '../webview/frame/runtime.ts?iife';
+import { nextFrameHeight } from '../webview/stageGeometry';
+import stageGeometrySource from '../webview/stageGeometry.ts?iife';
 
 const scrubHandoffSnapshot = ({ text, exportId }: { text: string; exportId: string }): string => {
 	const prefixes = [...new Set([tmpdir(), '/var/folders/', '/tmp/'])].sort(
@@ -53,7 +56,7 @@ const styleNumber = (tag: string, property: string): number => {
 };
 
 const runtimeBlock = (folder: string, id: string): string =>
-	`<base href="${folder}/${id}/"><script data-cd-canvas-runtime>${ARTBOARD_CANVAS_RUNTIME_SOURCE}</script>`;
+	`<base href="${folder}/${id}/"><script data-cd-canvas-runtime>${canvasRuntimeSource}</script>`;
 
 test('labels and group headings are escaped and appear only as text', () => {
 	const hostile = `<img src=x onerror=alert(1)> & "q" 'a'`;
@@ -176,4 +179,17 @@ test('parent document has exactly one script and it is free of closing-tag seque
 	assert.ok(scriptBody !== undefined);
 	assert.ok(!scriptBody.includes('</'));
 	assert.ok(scriptBody.includes('nextFrameHeight'));
+});
+
+test('the embedded geometry IIFE defines stageGeometry.nextFrameHeight like the direct import', () => {
+	const sandbox: { stageGeometry?: { nextFrameHeight?: unknown } } = {};
+	runInNewContext(stageGeometrySource, sandbox);
+	const embedded = sandbox.stageGeometry?.nextFrameHeight;
+	assert.equal(typeof embedded, 'function');
+	const input = { current: 800, reported: 1200, state: { lastGrowth: 0, frozen: false } };
+	// The vm result comes from another realm, so compare as JSON.
+	assert.equal(
+		JSON.stringify((embedded as typeof nextFrameHeight)(input)),
+		JSON.stringify(nextFrameHeight(input)),
+	);
 });

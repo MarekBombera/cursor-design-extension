@@ -1,5 +1,9 @@
-import { defineConfig } from 'vite-plus';
+import { defineConfig, type Plugin } from 'vite-plus';
 import pkg from './package.json' with { type: 'json' };
+import { iifeStringPlugin } from './scripts/iifeStringPlugin';
+
+// Outside `shared` so `as const` does not make the array readonly (tsdown wants Plugin[]).
+const packPlugins: Plugin[] = [iifeStringPlugin()];
 
 // Two CJS bundles for VS Code. The .vsix ships without node_modules, so runtime deps are bundled.
 // Production: `vp pack --minify --no-sourcemap`.
@@ -14,6 +18,7 @@ const shared = {
 	hash: false,
 	sourcemap: true,
 	outputOptions: { sourcemapExcludeSources: true },
+	plugins: packPlugins,
 } as const;
 
 // Regexes so subpath imports (`zod/mini`, `@modelcontextprotocol/server/stdio`) are bundled too.
@@ -43,6 +48,8 @@ const vscodeOnlyInHost = {
 };
 
 export default defineConfig({
+	// `?iife` imports for `vp test` (the pack entries register it in `shared`).
+	plugins: [iifeStringPlugin()],
 	lint: {
 		plugins: ['typescript', 'unicorn', 'import', 'node'],
 		categories: { correctness: 'error' },
@@ -71,6 +78,10 @@ export default defineConfig({
 					message: 'Brain = Cursor Agent only. Never vscode.lm.',
 				},
 			],
+
+			// The resolver cannot see `?iife` default exports (scripts/iifeStringPlugin.ts); type-aware
+			// checking already fails a default import the module does not have.
+			'import/default': 'off',
 
 			curly: 'error',
 			eqeqeq: ['error', 'smart'],
@@ -116,6 +127,16 @@ export default defineConfig({
 								},
 							],
 						},
+					],
+				},
+			},
+			{
+				// Webview unit tests run in Node (Vitest), so Node built-ins are fine there.
+				files: ['src/webview/**/*.test.ts'],
+				rules: {
+					'no-restricted-imports': [
+						'error',
+						{ paths: [...bannedLibraries, vscodeOnlyInHost], patterns: bannedPatterns },
 					],
 				},
 			},

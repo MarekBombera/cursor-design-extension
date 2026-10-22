@@ -29,6 +29,9 @@ The feature that adds Svelte also adds `svelte-check` to `pnpm verify` (tsc does
 - `typescript` package is `~6.0.3` (`ponytail:` TS 6 only until `svelte-check` supports TS 7, then `^7`). Lint and type-aware check still run on TS 7 via tsgolint; do not remove `typeAware` / `typeCheck`.
 - Webview build: `vp build -c vite.webview.config.ts` (`-c` is honored). Outputs `dist/webview/chrome.js` and `dist/webview/chrome.css`.
 - Type gate: `svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings`. If `svelte-check` fails on TS 6, fall back to `svelte-check-native` and record it here; do not downgrade lint.
+- Webview tests type gate: `tsc -p tsconfig.webview-tests.json` (DOM lib + node types over `src/webview/**/*.test.ts`), in Verify right after `svelte-check`. `src/webview/tsconfig.json` is a solution-style file referencing both webview configs so type-aware lint (tsgolint) finds them; it has no options of its own.
+- `?iife` imports: `scripts/iifeStringPlugin.ts`, registered in `vite.webview.config.ts`, the top-level `plugins` in `vite.config.ts` (`vp test`) and the shared `pack` options. It runs Vite `build` (from `vite-plus`, `write: false`, `configFile: false`, lib `iife`, unminified, no sourcemap), escapes every `</` as `<\/`, and `addWatchFile`s each bundled module so `pnpm watch` rebuilds. Lint rule `import/default` is off because its resolver cannot see the virtual default export; type checking still catches a missing one.
+- `happy-dom` is a per-file Vitest environment (`// @vitest-environment happy-dom`) for pure DOM helpers only (`stampArtboardHtml.test.ts`). ponytail: never for components or iframe behavior; those are proven in F5 (09).
 
 ## Container vs view
 

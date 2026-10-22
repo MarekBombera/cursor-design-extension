@@ -27,7 +27,7 @@
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",
 		"check": "vp check && node scripts/check-agent-rules.mjs",
-		"verify": "vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && vp test && vp pack && vp build -c vite.webview.config.ts",
+		"verify": "vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && tsc -p tsconfig.webview-tests.json && vp test && vp pack && vp build -c vite.webview.config.ts",
 		"compile": "vp check --no-fmt && vp pack && vp build -c vite.webview.config.ts",
 		"watch": "pnpm run --parallel \"/^watch:/\"",
 		"watch:pack": "vp pack --watch",
@@ -53,6 +53,7 @@
 		"@vscode/test-cli": "^0.0.15",
 		"@vscode/test-electron": "^3.1.0",
 		"fast-check": "^4.10.2",
+		"happy-dom": "^21.0.4",
 		"knip": "^6.42.1",
 		"svelte": "^5.57.2",
 		"svelte-check": "^4.7.7",

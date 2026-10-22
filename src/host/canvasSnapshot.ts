@@ -1,5 +1,6 @@
 import { type CanvasView, type CanvasViewFrame } from '../disk/artboardFs';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
+import type { PostedCanvasFrame } from '../webview/hostMessages';
 
 export const UNTRUSTED_WORKSPACE_MESSAGE =
 	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
@@ -14,17 +15,6 @@ export type CanvasSnapshot = {
 	generation: number;
 	frames: CanvasViewFrame[];
 	handoffStale: boolean;
-	errorMessage?: string;
-};
-
-export type PostedCanvasFrame = {
-	id: string;
-	label: string;
-	x: number;
-	y: number;
-	width: number;
-	group?: string;
-	html: string;
 	errorMessage?: string;
 };
 

@@ -1,8 +1,10 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite-plus';
 
+import { iifeStringPlugin } from './scripts/iifeStringPlugin';
+
 export default defineConfig({
-	plugins: [svelte()],
+	plugins: [svelte(), iifeStringPlugin()],
 	base: './',
 	build: {
 		outDir: 'dist/webview',

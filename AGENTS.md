@@ -126,7 +126,7 @@ protection is a separate remote setting.
 
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`: format, lint, type check; then the agent rules layout check)
-- Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && vp test && vp pack && vp build -c vite.webview.config.ts`)
+- Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && tsc -p tsconfig.webview-tests.json && vp test && vp pack && vp build -c vite.webview.config.ts`)
 - Test: `vp test` (unit suite via Vite+ / Vitest; not `pnpm test`)
 - Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
 - Fix: `pnpm exec vp check --fix`
