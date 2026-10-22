@@ -9,6 +9,9 @@ src/**
 vsc-extension-quickstart.md
 **/tsconfig.json
 tsconfig.test.json
+tsconfig.*.json
+svelte.config.js
+scripts/**
 knip.json
 **/*.map
 **/*.ts
@@ -25,5 +28,7 @@ pnpm-workspace.yaml
 .github/**
 .pnpm-store/**
 .cursor-design/**
+# git-ignored via .remember/.gitignore, but vsce does not read .gitignore
+.remember/**
 notes.md
 *.vsix
