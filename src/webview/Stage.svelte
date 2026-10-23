@@ -1,13 +1,3 @@
-<script lang="ts" module>
-	export type StageWheel = {
-		deltaX: number;
-		deltaY: number;
-		zoom: boolean;
-		screenX: number;
-		screenY: number;
-	};
-</script>
-
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
 
@@ -20,6 +10,7 @@
 		type FrameGestureKind,
 		revealOffset,
 		type StageFrameGesture,
+		type StageWheel,
 	} from './frameGesture';
 	import {
 		type FrameLabelBox,

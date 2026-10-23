@@ -5,6 +5,7 @@ import {
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
 } from '../webview/frame/frameMessages';
+import { FIT_PADDING, layoutCanvasChrome } from '../webview/stageGeometry';
 
 // View-only canvas.html for a handoff: every frame at its layout position, at scale 1, growing
 // to its measured height. Frame index.html files stay pristine; only the srcdoc copies here carry
@@ -14,10 +15,6 @@ import {
 // ponytail: assets/ is not copied into the handoff, so relative images may be missing.
 // ponytail: an empty artboard file previews as an empty frame (no error tile).
 
-// Mirrors layoutCanvasChrome in src/webview/stageGeometry.ts (label band, heading band) and its fit padding.
-const FRAME_LABEL_BAND = 24;
-const GROUP_HEADING_BAND = 32;
-const PAGE_PADDING = 48;
 const PROVISIONAL_FRAME_HEIGHT = 800;
 
 export type CanvasPreviewFrame = {
@@ -80,38 +77,13 @@ const boxStyle = ({
 	height: number;
 }): string => `left:${x}px;top:${y}px;width:${width}px;height:${height}px`;
 
-type GroupHeading = { group: string; minX: number; minY: number; maxRight: number };
-
-const groupHeadings = (frames: readonly CanvasPreviewFrame[]): GroupHeading[] => {
-	const headings: GroupHeading[] = [];
-	for (const frame of frames) {
-		if (frame.group === undefined || frame.group.length === 0) {
-			continue;
-		}
-		const found = headings.find(({ group }) => group === frame.group);
-		if (found === undefined) {
-			headings.push({
-				group: frame.group,
-				minX: frame.x,
-				minY: frame.y,
-				maxRight: frame.x + frame.width,
-			});
-			continue;
-		}
-		found.minX = Math.min(found.minX, frame.x);
-		found.minY = Math.min(found.minY, frame.y);
-		found.maxRight = Math.max(found.maxRight, frame.x + frame.width);
-	}
-	return headings;
-};
-
 // Plain JS, free of the less-than-slash sequence (the ?iife strings are escaped). Accepts only
 // allowlisted messages from its own frames' windows and never posts to frames.
 const previewControllerSource = (
 	entries: readonly { id: string; top: number; right: number }[],
 ): string => `(() => {
 ${stageGeometrySource}
-const PAGE_PADDING = ${PAGE_PADDING};
+const PAGE_PADDING = ${FIT_PADDING};
 const heightType = ${JSON.stringify(FRAME_HEIGHT_MESSAGE)};
 const wheelType = ${JSON.stringify(FRAME_WHEEL_MESSAGE)};
 const entries = ${JSON.stringify(entries).replaceAll('<', '\\u003c')};
@@ -186,31 +158,32 @@ export const buildCanvasPreviewHtml = ({
 	exportId: string;
 	frames: readonly CanvasPreviewFrame[];
 }): string => {
-	const headings = groupHeadings(frames);
-	// Offsets depend only on x/y/width, so they are fixed at build time; heights change at runtime.
-	const minLeft = Math.min(...frames.map(({ x }) => x));
-	const minTop = Math.min(
-		...frames.map(({ y }) => y - FRAME_LABEL_BAND),
-		...headings.map(({ minY }) => minY - FRAME_LABEL_BAND - GROUP_HEADING_BAND),
-	);
-	const dx = frames.length === 0 ? 0 : PAGE_PADDING - minLeft;
-	const dy = frames.length === 0 ? 0 : PAGE_PADDING - minTop;
+	// Same label and heading boxes as the live stage. Offsets depend only on x/y/width, so they are
+	// fixed at build time; heights change at runtime.
+	const { labels, headings, bounds } = layoutCanvasChrome({
+		frames: frames.map(({ id, x, y, width, group }) => ({
+			id,
+			x,
+			y,
+			width,
+			height: PROVISIONAL_FRAME_HEIGHT,
+			group,
+		})),
+	});
+	const dx = bounds === null ? 0 : FIT_PADDING - bounds.x;
+	const dy = bounds === null ? 0 : FIT_PADDING - bounds.y;
 
 	const headingMarkup = headings.map(
-		({ group, minX, minY, maxRight }) =>
-			`<div class="cd-heading" style="${boxStyle({
-				x: minX + dx,
-				y: minY - FRAME_LABEL_BAND - GROUP_HEADING_BAND + dy,
-				width: maxRight - minX,
-				height: GROUP_HEADING_BAND,
-			})}">${escapeHtml(group)}</div>`,
+		({ group, ...box }) =>
+			`<div class="cd-heading" style="${boxStyle({ ...box, x: box.x + dx, y: box.y + dy })}">${escapeHtml(group)}</div>`,
 	);
-	const frameMarkup = frames.map((frame) => {
+	const frameMarkup = frames.map((frame, index) => {
 		const x = frame.x + dx;
 		const y = frame.y + dy;
 		const label = escapeHtml(frame.label);
 		const srcdoc = escapeHtml(buildPreviewFrameHtml(frame));
-		return `<div class="cd-label" style="${boxStyle({ x, y: y - FRAME_LABEL_BAND, width: frame.width, height: FRAME_LABEL_BAND })}">${label}</div>
+		const labelBox = labels[index];
+		return `<div class="cd-label" style="${boxStyle({ ...labelBox, x: labelBox.x + dx, y: labelBox.y + dy })}">${label}</div>
 <iframe data-cd-frame="${escapeHtml(frame.id)}" sandbox="allow-scripts" scrolling="no" title="${label}" style="${boxStyle({ x, y, width: frame.width, height: PROVISIONAL_FRAME_HEIGHT })}" srcdoc="${srcdoc}"></iframe>`;
 	});
 	const entries = frames.map((frame) => ({

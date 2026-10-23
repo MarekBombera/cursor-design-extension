@@ -1475,6 +1475,7 @@ var stageGeometry = (function(exports) {
 	var MAX_STAGE_ZOOM = 10;
 	var ZOOM_STEP_CAP = .2;
 	var ZOOM_SENSITIVITY = .01;
+	var FIT_PADDING = 48;
 	var KEEP_VISIBLE = 48;
 	var clampNumber = ({ value, min, max }) => Math.min(max, Math.max(min, value));
 	var clampStageZoom = ({ zoom }) => clampNumber({
@@ -1704,10 +1705,10 @@ var stageGeometry = (function(exports) {
 		min: 120,
 		max: MAX_FRAME_WIDTH
 	});
-	var passedGestureThreshold = ({ startScreen, screen }) => Math.abs(screen.x - startScreen.x) >= 3 || Math.abs(screen.y - startScreen.y) >= 3;
+	var passedGestureThreshold = ({ startScreen, screen }) => Math.abs(screen.x - startScreen.x) >= GESTURE_THRESHOLD_PX || Math.abs(screen.y - startScreen.y) >= GESTURE_THRESHOLD_PX;
 	var placementChanged = ({ base, next }) => base.x !== next.x || base.y !== next.y || base.width !== next.width;
 	//#endregion
-	exports.GESTURE_THRESHOLD_PX = GESTURE_THRESHOLD_PX;
+	exports.FIT_PADDING = FIT_PADDING;
 	exports.MAX_STAGE_ZOOM = MAX_STAGE_ZOOM;
 	exports.MIN_STAGE_ZOOM = MIN_STAGE_ZOOM;
 	exports.NUDGE_STEP = NUDGE_STEP;

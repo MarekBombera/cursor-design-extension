@@ -1,23 +1,18 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import {
 	createArtboard,
+	exportArtboard,
 	FRAME_READ_ERROR_MESSAGE,
 	listArtboards,
-	placeFrame,
 	readCanvasView,
 } from './artboardFs';
 import { serializeCanvasLayout } from './canvasLayout';
-import {
-	CorruptCanvasError,
-	DiskError,
-	FrameMovedError,
-	UnsupportedCanvasVersionError,
-} from './errors';
+import { CorruptCanvasError, DiskError, UnsupportedCanvasVersionError } from './errors';
 import { hashHtml } from './hash';
 import {
 	ARTBOARDS_DIR,
@@ -25,7 +20,6 @@ import {
 	CURSOR_DESIGN_DIR,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
-	LOCK_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	canvasPathSegments,
@@ -72,7 +66,7 @@ const frameGeometry = ({
 test('readCanvasView is empty when artboards and canvas.json are missing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const view = await readCanvasView({ workspaceRoot });
-	assert.deepEqual(view, { activeArtboardId: '', frames: [] });
+	assert.deepEqual(view, { activeArtboardId: '', frames: [], handoffStale: false });
 	assert.equal('layoutErrorMessage' in view, false);
 });
 
@@ -310,95 +304,57 @@ test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async 
 	}
 });
 
-const createPlainArtboard = async (workspaceRoot: string, artboardId: string): Promise<void> => {
+test('handoffStale is off before export and right after it, on after an HTML change', async () => {
+	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
 		workspaceRoot,
-		artboardId,
-		html: '<p>x</p>',
+		artboardId: 'hero',
+		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-};
+	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, false);
 
-test('placeFrame with a matching base writes; a stale base throws FRAME_MOVED and writes nothing', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await createPlainArtboard(workspaceRoot, 'a');
-	await placeFrame({
-		workspaceRoot,
-		id: 'a',
-		x: 8,
-		y: 16,
-		width: 400,
-		label: 'Hero',
-		group: 'Web',
-	});
-	const before = await readFile(canvasFileOf(workspaceRoot), 'utf8');
+	await exportArtboard({ workspaceRoot });
+	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, false);
 
-	for (const base of [
-		{ x: 0, y: 16, width: 400 },
-		{ x: 8, y: 0, width: 400 },
-		{ x: 8, y: 16, width: 408 },
-	]) {
-		await assert.rejects(
-			placeFrame({ workspaceRoot, id: 'a', x: 64, y: 64, width: 480, base }),
-			(error: unknown) => error instanceof FrameMovedError && error.code === 'FRAME_MOVED',
-		);
-		assert.equal(await readFile(canvasFileOf(workspaceRoot), 'utf8'), before);
+	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), '<p>edited</p>');
+	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, true);
+});
+
+test('handoffStale fails closed on an unreadable frame even when its bytes match the export', async (context) => {
+	if (process.getuid?.() === 0) {
+		context.skip('root ignores chmod');
+		return;
 	}
-
-	const { frames } = await placeFrame({
+	const workspaceRoot = await makeTempRoot();
+	// Exported empty, so a read error that tiles as '' would hash equal without the guard.
+	await createArtboard({
 		workspaceRoot,
-		id: 'a',
-		x: 64,
-		y: 72,
-		width: 480,
-		base: { x: 8, y: 16, width: 400 },
+		artboardId: 'blank',
+		html: '',
+		writeEnsurePanelMarker: false,
 	});
-	assert.deepEqual(frames, [{ id: 'a', label: 'Hero', x: 64, y: 72, width: 480, group: 'Web' }]);
+	await exportArtboard({ workspaceRoot });
+	const blankPath = join(workspaceRoot, ...artboardHtmlPathSegments('blank'));
+	await chmod(blankPath, 0o000);
+	try {
+		assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, true);
+	} finally {
+		await chmod(blankPath, 0o644);
+	}
 });
 
-test('placeFrame with base appends an auto-placed frame, and a stale base leaves canvas.json absent', async () => {
+test('handoffStale stays off once every exported frame is deleted', async () => {
 	const workspaceRoot = await makeTempRoot();
-	await createPlainArtboard(workspaceRoot, 'a');
-	await assert.rejects(
-		placeFrame({
-			workspaceRoot,
-			id: 'a',
-			x: 8,
-			y: 8,
-			width: 800,
-			base: { x: 1, y: 0, width: DEFAULT_FRAME_WIDTH },
-		}),
-		FrameMovedError,
-	);
-	await assert.rejects(readFile(canvasFileOf(workspaceRoot), 'utf8'), { code: 'ENOENT' });
-
-	await placeFrame({
+	await createArtboard({
 		workspaceRoot,
-		id: 'a',
-		x: 8,
-		y: 8,
-		width: 800,
-		base: { x: 0, y: 0, width: DEFAULT_FRAME_WIDTH },
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
 	});
-	const stored = JSON.parse(await readFile(canvasFileOf(workspaceRoot), 'utf8')) as unknown;
-	assert.deepEqual(stored, {
-		version: CANVAS_SCHEMA_VERSION,
-		frames: [{ id: 'a', label: 'Artboard', x: 8, y: 8, width: 800 }],
-	});
-});
-
-test('placeFrame clamps width through the disk path and stores negative x/y as given', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await createPlainArtboard(workspaceRoot, 'a');
-	const narrow = await placeFrame({ workspaceRoot, id: 'a', x: -40, y: -8, width: 119 });
-	assert.deepEqual(narrow.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 120 });
-	const wide = await placeFrame({
-		workspaceRoot,
-		id: 'a',
-		width: 3841,
-		base: { x: -40, y: -8, width: 120 },
-	});
-	assert.deepEqual(wide.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 3840 });
-	const entries = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
-	assert.ok(!entries.includes(LOCK_FILE), 'lock released');
+	await exportArtboard({ workspaceRoot });
+	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments('hero')));
+	const view = await readCanvasView({ workspaceRoot });
+	assert.deepEqual(view.frames, []);
+	assert.equal(view.handoffStale, false);
 });

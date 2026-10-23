@@ -10,7 +10,7 @@ import {
 	MAX_FRAME_WIDTH,
 	MIN_FRAME_WIDTH,
 } from './layout';
-import { parseArtboardId } from './parse';
+import { isJsonRecord, parseArtboardId } from './parse';
 
 // One artboard's slot on the shared stage, in stage px. Height is never stored; the panel measures it.
 export type CanvasFrame = {
@@ -35,9 +35,6 @@ export type CanvasPlacement = {
 	label?: string;
 	group?: string;
 };
-
-const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
-	value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const isFiniteNumber = (value: unknown): value is number =>
 	typeof value === 'number' && Number.isFinite(value);

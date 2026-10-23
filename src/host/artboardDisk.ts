@@ -1,59 +1,37 @@
 import * as vscode from 'vscode';
 
 import { parseChromeMessage } from './chromeMessages';
-import { fileExists, logDiskError } from './hostFs';
+import { fileExists, firstWorkspaceFolder, logDiskError } from './hostFs';
 import {
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
-	snapshotForChrome as applyCanvasSnapshotTrust,
 	UNTRUSTED_WORKSPACE_MESSAGE,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
-import { type CanvasView, placeFrame, readCanvasView } from '../disk/artboardFs';
-import { effectiveArtboardMeta } from '../disk/effectiveMeta';
 import {
-	CorruptManifestError,
-	CorruptMetaError,
+	type CanvasView,
+	createArtboard,
+	placeFrame,
+	readCanvasView,
+	setActiveArtboard,
+} from '../disk/artboardFs';
+import {
+	ArtboardExistsError,
 	CursorDesignError,
 	InvalidArgsError,
-	InvalidArtboardIdError,
 	NoWorkspaceError,
 } from '../disk/errors';
-import { compareCanvasHandoff } from '../disk/handoff';
-import { hashHtml } from '../disk/hash';
-import {
-	DEFAULT_ARTBOARD_HTML,
-	DEFAULT_ARTBOARD_ID,
-	SCHEMA_VERSION,
-	artboardHtmlPathSegments,
-	artboardMetaPathSegments,
-	artboardsDirSegments,
-	manifestPathSegments,
-} from '../disk/layout';
-import {
-	type ArtboardManifest,
-	type ArtboardMeta,
-	parseManifest,
-	parseMeta,
-	serializeManifest,
-	serializeMeta,
-} from '../disk/parse';
+import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from '../disk/layout';
 
 export { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE, type CanvasSnapshot };
-
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder('utf-8');
 
 type WorkspaceDiskArgs = {
 	workspaceFolder: vscode.WorkspaceFolder;
 	outputChannel: vscode.OutputChannel;
 };
 
-export const snapshotForChrome = (snapshot: CanvasSnapshot): CanvasSnapshot =>
-	applyCanvasSnapshotTrust({ snapshot, isTrusted: vscode.workspace.isTrusted });
-
-export const toSafeArtboardErrorMessage = (error: unknown): string => {
+const toSafeArtboardErrorMessage = (error: unknown): string => {
 	if (error instanceof CursorDesignError) {
 		return error.message;
 	}
@@ -65,89 +43,22 @@ const joinWorkspace = (
 	segments: readonly string[],
 ): vscode.Uri => vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
 
-const readTextFile = async (uri: vscode.Uri): Promise<string> => {
-	const bytes = await vscode.workspace.fs.readFile(uri);
-	return textDecoder.decode(bytes);
-};
-
-const writeTextFile = async (uri: vscode.Uri, contents: string): Promise<void> => {
-	await vscode.workspace.fs.writeFile(uri, textEncoder.encode(contents));
-};
-
-const isExpectedMetaParseError = (error: unknown): boolean =>
-	error instanceof SyntaxError ||
-	error instanceof CorruptMetaError ||
-	error instanceof InvalidArtboardIdError;
-
-const readParsedMeta = async (
-	metaUri: vscode.Uri,
-	artboardId: string,
-): Promise<ArtboardMeta | undefined> => {
-	if (!(await fileExists(metaUri))) {
-		return undefined;
-	}
+// No manifest yet: create the default artboard, or make an existing artboard.html active.
+// Goes through the disk lib so the host gets the same symlink and ownership checks as MCP.
+const initializeDefaultArtboard = async (workspaceRoot: string): Promise<void> => {
 	try {
-		const parsedMeta = parseMeta(JSON.parse(await readTextFile(metaUri)) as unknown);
-		if (parsedMeta.id !== artboardId) {
-			return undefined;
-		}
-		return parsedMeta;
+		await createArtboard({
+			workspaceRoot,
+			artboardId: DEFAULT_ARTBOARD_ID,
+			html: DEFAULT_ARTBOARD_HTML,
+			writeEnsurePanelMarker: false,
+		});
 	} catch (error: unknown) {
-		if (isExpectedMetaParseError(error)) {
-			return undefined;
+		if (!(error instanceof ArtboardExistsError)) {
+			throw error;
 		}
-		throw error;
+		await setActiveArtboard({ workspaceRoot, artboardId: DEFAULT_ARTBOARD_ID });
 	}
-};
-
-const readManifest = async (manifestUri: vscode.Uri): Promise<ArtboardManifest> => {
-	let parsedJson: unknown;
-	try {
-		parsedJson = JSON.parse(await readTextFile(manifestUri)) as unknown;
-	} catch (error: unknown) {
-		throw new CorruptManifestError({ cause: error });
-	}
-	return parseManifest(parsedJson);
-};
-
-const initializeDefaultArtboard = async (
-	workspaceFolder: vscode.WorkspaceFolder,
-): Promise<void> => {
-	const artboardsUri = joinWorkspace(workspaceFolder, artboardsDirSegments);
-	const htmlUri = joinWorkspace(workspaceFolder, artboardHtmlPathSegments(DEFAULT_ARTBOARD_ID));
-	const metaUri = joinWorkspace(workspaceFolder, artboardMetaPathSegments(DEFAULT_ARTBOARD_ID));
-	const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
-
-	await vscode.workspace.fs.createDirectory(artboardsUri);
-
-	let html: string;
-	if (await fileExists(htmlUri)) {
-		html = await readTextFile(htmlUri);
-	} else {
-		html = DEFAULT_ARTBOARD_HTML;
-		await writeTextFile(htmlUri, html);
-	}
-
-	let storedMeta = await readParsedMeta(metaUri, DEFAULT_ARTBOARD_ID);
-	if (storedMeta === undefined) {
-		storedMeta = {
-			...effectiveArtboardMeta({
-				html,
-				meta: undefined,
-				artboardId: DEFAULT_ARTBOARD_ID,
-			}),
-			updatedAt: new Date().toISOString(),
-		};
-		await writeTextFile(metaUri, serializeMeta(storedMeta));
-	}
-
-	const manifest: ArtboardManifest = {
-		version: SCHEMA_VERSION,
-		activeArtboardId: DEFAULT_ARTBOARD_ID,
-		workspaceFolder: workspaceFolder.uri.fsPath,
-		updatedAt: new Date().toISOString(),
-	};
-	await writeTextFile(manifestUri, serializeManifest(manifest));
 };
 
 const logCanvasViewReadErrors = ({
@@ -178,33 +89,11 @@ const snapshotFromCanvasView = async ({
 		layoutErrorMessage: view.layoutErrorMessage,
 	});
 
-	// Badge = exported && stale, so a never-exported canvas keeps it off.
-	let handoffStale = false;
-	if (view.frames.length > 0) {
-		try {
-			const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
-			const lastExport = (await fileExists(manifestUri))
-				? (await readManifest(manifestUri)).lastExport
-				: undefined;
-			const compared = compareCanvasHandoff({
-				lastExport,
-				frames: view.frames.map((frame) => ({
-					artboardId: frame.id,
-					hash: frame.errorMessage === undefined ? hashHtml(frame.html) : undefined,
-				})),
-			});
-			handoffStale = compared.exported && compared.stale;
-		} catch (error: unknown) {
-			logDiskError({ scope: 'artboardDisk.handoffStale', error, outputChannel });
-			handoffStale = true;
-		}
-	}
-
 	return {
 		activeArtboardId: view.activeArtboardId,
 		generation: activeFrame?.generation ?? 0,
 		frames: view.frames,
-		handoffStale,
+		handoffStale: view.handoffStale,
 		errorMessage,
 	};
 };
@@ -230,7 +119,7 @@ const loadActiveSnapshot = async ({
 			if (!initializeWhenMissing) {
 				return emptyArtboardSnapshot();
 			}
-			await initializeDefaultArtboard(workspaceFolder);
+			await initializeDefaultArtboard(workspaceFolder.uri.fsPath);
 		}
 		return await snapshotFromCanvasView({ workspaceFolder, outputChannel });
 	} catch (error: unknown) {
@@ -262,7 +151,7 @@ export const placeFrameFromChrome = async ({
 		if (!vscode.workspace.isTrusted) {
 			return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 		}
-		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		const workspaceFolder = firstWorkspaceFolder();
 		if (!workspaceFolder) {
 			return emptyArtboardSnapshot(new NoWorkspaceError().message);
 		}

@@ -1,7 +1,7 @@
 // Frame ↔ chrome message contract. Pure constants and guards, no DOM types: the export
 // (src/disk/handoffCanvasHtml.ts) imports this under the root tsconfig, which has no DOM lib.
 
-import { MAX_FRAME_COORDINATE, MAX_TAG_NAME_CHARS } from '../../disk/layout';
+import { MAX_FRAME_COORDINATE } from '../../disk/layout';
 
 export const CANVAS_RUNTIME_ATTRIBUTE = 'data-cd-canvas-runtime';
 
@@ -26,9 +26,9 @@ export type FrameRect = { x: number; y: number; width: number; height: number };
 
 export type FrameMode = 'interact' | 'comment';
 
-export type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
+type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
 
-export type FrameWheelMessage = {
+type FrameWheelMessage = {
 	type: typeof FRAME_WHEEL_MESSAGE;
 	deltaX: number;
 	deltaY: number;
@@ -64,6 +64,9 @@ const isFiniteNumber = (value: unknown): value is number => Number.isFinite(valu
 
 const isCoordinate = (value: unknown): value is number =>
 	isFiniteNumber(value) && Math.abs(value) <= MAX_FRAME_COORDINATE;
+
+// Longest element tag name a frame may report in cd:pick.
+const MAX_TAG_NAME_CHARS = 64;
 
 const TAG_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 

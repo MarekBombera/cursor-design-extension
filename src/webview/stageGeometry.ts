@@ -30,7 +30,8 @@ export const MIN_STAGE_ZOOM = 0.05;
 export const MAX_STAGE_ZOOM = 10;
 const ZOOM_STEP_CAP = 0.2;
 const ZOOM_SENSITIVITY = 0.01;
-const FIT_PADDING = 48;
+// Also the exported canvas.html page padding (handoffCanvasHtml.ts).
+export const FIT_PADDING = 48;
 const KEEP_VISIBLE = 48;
 
 const clampNumber = ({ value, min, max }: { value: number; min: number; max: number }): number =>
@@ -337,7 +338,7 @@ export const fitStageView = ({
 };
 
 // Frame drag/resize gestures land on whole stage px (no grid, like Figma's pixel snap).
-export const GESTURE_THRESHOLD_PX = 3;
+const GESTURE_THRESHOLD_PX = 3;
 export const NUDGE_STEP = 8;
 export const NUDGE_STEP_LARGE = 64;
 

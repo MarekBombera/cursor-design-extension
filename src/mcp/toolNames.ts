@@ -13,10 +13,10 @@ export const LIST_ARTBOARDS_TOOL = 'list_artboards' as const;
 // Sets which artboard is active in the manifest; does not open the panel.
 export const SET_ACTIVE_ARTBOARD_TOOL = 'set_active_artboard' as const;
 
-// Writes an artboard to .cursor-design/handoff/<exportId>/ (index.html, IMPLEMENT.md, tokens.json) for implementation.
+// Exports every frame to .cursor-design/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) for implementation.
 export const EXPORT_ARTBOARD_TOOL = 'export_artboard' as const;
 
-// Reports whether the last export is stale versus the artboard's current HTML; read-only.
+// Reports whether the last export is stale (a frame's HTML changed, or a frame was added or removed); read-only.
 export const HANDOFF_STATUS_TOOL = 'handoff_status' as const;
 
 // Positions, sizes, labels, or groups one frame on the stage (writes .cursor-design/canvas.json only).

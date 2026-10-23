@@ -1,4 +1,3 @@
-import { nextGeneration } from './generation';
 import { hashHtml, normalizeHash } from './hash';
 import { DEFAULT_ARTBOARD_TITLE, DEFAULT_VIEWPORT } from './layout';
 import { type ArtboardMeta } from './parse';
@@ -19,7 +18,7 @@ export const effectiveArtboardMeta = ({
 		return meta;
 	}
 	if (meta !== undefined) {
-		return { ...meta, hash: htmlHash, generation: nextGeneration(meta.generation) };
+		return { ...meta, hash: htmlHash, generation: meta.generation + 1 };
 	}
 	return {
 		id: artboardId,

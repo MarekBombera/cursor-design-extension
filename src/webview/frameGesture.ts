@@ -3,12 +3,14 @@ import {
 	dragFrame,
 	NUDGE_STEP,
 	NUDGE_STEP_LARGE,
+	panStage,
 	passedGestureThreshold,
 	placementChanged,
 	resizeFrameWidth,
 	screenToStage,
 	type StagePoint,
 	type StageView,
+	zoomStageAt,
 } from './stageGeometry';
 
 // Frame move/resize gesture rules for the chrome. Pure: App owns the state and posts the commit.
@@ -245,3 +247,23 @@ export const revealOffset = ({
 // still in progress.
 export const failFrameGesture = (gesture: FrameGesture | undefined): FrameGesture | undefined =>
 	gesture?.phase === 'committing' ? undefined : gesture;
+
+// A wheel over the stage or forwarded from a frame (anchor already in viewport screen px).
+export type StageWheel = {
+	deltaX: number;
+	deltaY: number;
+	zoom: boolean;
+	screenX: number;
+	screenY: number;
+};
+
+// Pinch / ctrl+wheel zooms about the pointer; a plain wheel pans. Both wheel paths share this.
+export const wheelToView = ({ view, wheel }: { view: StageView; wheel: StageWheel }): StageView =>
+	wheel.zoom
+		? zoomStageAt({
+				view,
+				deltaY: wheel.deltaY,
+				screenX: wheel.screenX,
+				screenY: wheel.screenY,
+			})
+		: panStage({ view, deltaX: wheel.deltaX, deltaY: wheel.deltaY });

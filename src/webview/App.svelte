@@ -26,31 +26,30 @@
 		failFrameGesture,
 		settleFrameGesture,
 		stepFrameGesture,
+		type StageWheel,
+		wheelToView,
 	} from './frameGesture';
 	import {
+		applyFrameHeight,
+		demoteToTile,
 		type FrameRecord,
+		frameOutline,
 		liveIframeIds,
 		mergeCanvasFrames,
-		TILE_HEIGHT,
+		toChromeFrames,
+		withGestureOverride,
 	} from './canvasFrames';
-	import Stage, { type StageWheel } from './Stage.svelte';
+	import Stage from './Stage.svelte';
 	import {
-		type ChromeFrame,
 		clampStageView,
 		fitStageView,
-		frameRectToScreen,
 		layoutCanvasChrome,
-		nextFrameHeight,
 		panStage,
 		stageToScreen,
-		type StageRect,
 		type StageView,
-		zoomStageAt,
 		zoomStageTo,
 	} from './stageGeometry';
 	import Toolbar from './Toolbar.svelte';
-
-	const RENDER_ERROR_COPY = 'Could not render this frame.';
 
 	// First-seen order; never reordered (moving an iframe in the DOM reloads it).
 	let frames: FrameRecord[] = $state([]);
@@ -74,24 +73,8 @@
 	let viewportWidth = 0;
 	let viewportHeight = 0;
 
-	// What the stage draws: disk frames, with the gesture preview applied to one of them.
-	// Keyed order is unchanged, and left/top/width never reload an iframe.
-	const displayFrames = $derived(
-		frames.map((frame) =>
-			gesture?.override !== undefined && frame.id === gesture.id
-				? { ...frame, ...gesture.override }
-				: frame,
-		),
-	);
-
-	const layout = $derived(
-		layoutCanvasChrome({
-			frames: displayFrames.map(({ id, x, y, width, height, group }): ChromeFrame => {
-				const box = { id, x, y, width, height };
-				return group !== undefined && group.length > 0 ? { ...box, group } : box;
-			}),
-		}),
-	);
+	const displayFrames = $derived(withGestureOverride({ frames, gesture }));
+	const layout = $derived(layoutCanvasChrome({ frames: toChromeFrames(displayFrames) }));
 	const labels = $derived(
 		layout.labels.map((box) => ({
 			...box,
@@ -103,24 +86,13 @@
 			? undefined
 			: `translate(${committedView.x}px, ${committedView.y}px) scale(${committedView.zoom})`,
 	);
-	// Uses the drawn frame position (including a drag preview) and the committed view, the same
-	// inputs that place the frame wrapper, so an outline stays glued to its element.
-	const frameOutline = (frameId: string, rect: FrameRect | null): StageRect | undefined => {
-		if (rect === null || committedView === undefined) {
-			return undefined;
-		}
-		const frame = displayFrames.find((candidate) => candidate.id === frameId);
-		return frame === undefined
-			? undefined
-			: frameRectToScreen({ view: committedView, frame, rect });
-	};
+	// Outlines use the drawn frame position (including a drag preview) and the committed view,
+	// the same inputs that place the frame wrapper, so an outline stays glued to its element.
 	const hoverOutline = $derived(
-		picking.hover === undefined
-			? undefined
-			: frameOutline(picking.hover.frameId, picking.hover.rect),
+		frameOutline({ view: committedView, frames: displayFrames, target: picking.hover }),
 	);
 	const pickOutline = $derived(
-		picking.pick === undefined ? undefined : frameOutline(picking.pick.frameId, picking.pick.rect),
+		frameOutline({ view: committedView, frames: displayFrames, target: picking.pick }),
 	);
 	const zoomText = $derived(
 		`${Math.round((committedView === undefined ? 1 : committedView.zoom) * 100)}%`,
@@ -162,7 +134,7 @@
 		// Frame unmounts and revokes its blob URL.
 		frames = mergeCanvasFrames({ records: frames, frames: message.frames });
 		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
-		settleGestureOnCanvasUpdated();
+		gesture = settleFrameGesture({ gesture, diskPlacement });
 		errorMessage = undefined;
 		if (frames.length === 0) {
 			return;
@@ -230,6 +202,15 @@
 		}
 	};
 
+	const handleStageWheel = (wheel: StageWheel): void => {
+		commitStageView(wheelToView({ view: stageView, wheel }));
+	};
+
+	// Frame records are replaced, never mutated: the pure rules return new objects.
+	const updateFrame = (id: string, update: (record: FrameRecord) => FrameRecord): void => {
+		frames = frames.map((record) => (record.id === id ? update(record) : record));
+	};
+
 	const handleFrameMessage = (frameId: string, message: FrameMessage): void => {
 		const frame = frames.find((candidate) => candidate.id === frameId);
 		if (frame === undefined) {
@@ -240,46 +221,23 @@
 			return;
 		}
 		if (message.type === 'cd:frame-height') {
-			const next = nextFrameHeight({
-				current: frame.measuredHeight,
-				reported: message.height,
-				state: frame.guard,
-			});
-			frame.measuredHeight = next.height;
-			frame.guard = next.state;
-			if (frame.kind === 'iframe') {
-				frame.height = next.height;
-			}
+			updateFrame(frameId, (record) => applyFrameHeight({ record, reported: message.height }));
 			commitStageView(stageView);
 			return;
 		}
-		if (message.ctrlKey) {
-			const anchor = stageToScreen({
-				view: stageView,
-				stageX: frame.x + message.x,
-				stageY: frame.y + message.y,
-			});
-			commitStageView(
-				zoomStageAt({ view: stageView, deltaY: message.deltaY, screenX: anchor.x, screenY: anchor.y }),
-			);
-			return;
-		}
-		commitStageView(panStage({ view: stageView, deltaX: message.deltaX, deltaY: message.deltaY }));
-	};
-
-	const handleStageWheel = (wheel: StageWheel): void => {
-		if (wheel.zoom) {
-			commitStageView(
-				zoomStageAt({
-					view: stageView,
-					deltaY: wheel.deltaY,
-					screenX: wheel.screenX,
-					screenY: wheel.screenY,
-				}),
-			);
-			return;
-		}
-		commitStageView(panStage({ view: stageView, deltaX: wheel.deltaX, deltaY: wheel.deltaY }));
+		// The frame reports frame-local coordinates; the wheel anchor is the viewport point under it.
+		const anchor = stageToScreen({
+			view: stageView,
+			stageX: frame.x + message.x,
+			stageY: frame.y + message.y,
+		});
+		handleStageWheel({
+			deltaX: message.deltaX,
+			deltaY: message.deltaY,
+			zoom: message.ctrlKey,
+			screenX: anchor.x,
+			screenY: anchor.y,
+		});
 	};
 
 	const handleDragPan = (deltaX: number, deltaY: number): void => {
@@ -289,10 +247,6 @@
 	const diskPlacement = (id: string): FramePlacement | undefined => {
 		const frame = frames.find((candidate) => candidate.id === id);
 		return frame === undefined ? undefined : { x: frame.x, y: frame.y, width: frame.width };
-	};
-
-	const settleGestureOnCanvasUpdated = (): void => {
-		gesture = settleFrameGesture({ gesture, diskPlacement });
 	};
 
 	const handleFrameGesture = (event: StageFrameGesture): void => {
@@ -337,13 +291,7 @@
 	};
 
 	const handleRenderError = (id: string): void => {
-		const frame = frames.find((candidate) => candidate.id === id);
-		if (frame === undefined) {
-			return;
-		}
-		frame.kind = 'tile';
-		frame.tileText = RENDER_ERROR_COPY;
-		frame.height = TILE_HEIGHT;
+		updateFrame(id, demoteToTile);
 		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
 	};
 

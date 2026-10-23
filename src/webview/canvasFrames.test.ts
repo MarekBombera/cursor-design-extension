@@ -2,13 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import {
+	applyFrameHeight,
+	demoteToTile,
 	EMPTY_ARTBOARD_COPY,
 	type FrameRecord,
+	frameOutline,
 	liveIframeIds,
 	mergeCanvasFrames,
 	PROVISIONAL_FRAME_HEIGHT,
+	RENDER_ERROR_COPY,
 	TILE_HEIGHT,
+	toChromeFrames,
+	withGestureOverride,
 } from './canvasFrames';
+import type { FrameGesture } from './frameGesture';
 import type { PostedCanvasFrame } from './hostMessages';
 
 const posted = (id: string, overrides: Partial<PostedCanvasFrame> = {}): PostedCanvasFrame => ({
@@ -103,4 +110,80 @@ test('placement and group follow every post; a missing group clears it', () => {
 test('only iframe frames can hold a pick', () => {
 	const tile = only(mergeCanvasFrames({ records: [], frames: [posted('t', { html: '' })] }));
 	assert.deepEqual(liveIframeIds([measured('a'), tile]), new Set(['a']));
+});
+
+test('a height report on a tile is measured but never drawn; on an iframe it is drawn', () => {
+	const tile = { ...measured('a'), kind: 'tile' as const, height: TILE_HEIGHT };
+	const reported = applyFrameHeight({ record: tile, reported: 1100 });
+	assert.deepEqual([reported.measuredHeight, reported.height], [1100, TILE_HEIGHT]);
+	const iframe = applyFrameHeight({ record: { ...measured('a'), kind: 'iframe' }, reported: 900 });
+	assert.deepEqual([iframe.measuredHeight, iframe.height], [900, 900]);
+});
+
+test('a frozen guard ignores growth; the input record is never mutated', () => {
+	const record = Object.freeze({ ...measured('a'), kind: 'iframe' as const });
+	const next = applyFrameHeight({ record, reported: 5000 });
+	assert.equal(next.height, 1200);
+	assert.deepEqual(next.guard, record.guard);
+	assert.notEqual(next, record);
+});
+
+test('a render error demotes to a tile but keeps the measured height for recovery', () => {
+	const frame = Object.freeze({ ...measured('a'), kind: 'iframe' as const });
+	const tile = demoteToTile(frame);
+	assert.deepEqual(
+		[tile.kind, tile.tileText, tile.height, tile.measuredHeight],
+		['tile', RENDER_ERROR_COPY, TILE_HEIGHT, 1200],
+	);
+	assert.equal(frame.kind, 'iframe');
+});
+
+test('the gesture preview applies to its own frame only, and never mutates the record', () => {
+	const frames = Object.freeze([measured('a'), measured('b')]);
+	const gesture: FrameGesture = {
+		id: 'b',
+		kind: 'move',
+		source: 'pointer',
+		base: { x: 0, y: 0, width: 400 },
+		override: { x: 50, y: 60, width: 300 },
+		phase: 'active',
+	};
+	const [a, b] = withGestureOverride({ frames, gesture });
+	assert.deepEqual([a?.x, b?.x, b?.y, b?.width], [0, 50, 60, 300]);
+	assert.equal(a, frames[0]);
+	assert.equal(frames[1]?.x, 0);
+	assert.deepEqual(
+		withGestureOverride({ frames, gesture: { ...gesture, override: undefined } }),
+		frames,
+	);
+});
+
+test('chrome frames drop an empty group key instead of passing group: undefined', () => {
+	const [none, empty, grouped] = toChromeFrames([
+		{ ...measured('a'), group: undefined },
+		{ ...measured('b'), group: '' },
+		{ ...measured('c'), group: 'g' },
+	]);
+	assert.ok(none !== undefined && empty !== undefined && grouped !== undefined);
+	assert.ok(!('group' in none) && !('group' in empty));
+	assert.equal(grouped.group, 'g');
+});
+
+test('an outline needs a target with a rect, a committed view and a frame still on stage', () => {
+	const frames = [{ ...measured('a'), x: 100, y: 200 }];
+	const view = { x: 10, y: 20, zoom: 2 };
+	const rect = { x: 5, y: 6, width: 30, height: 40 };
+	assert.deepEqual(frameOutline({ view, frames, target: { frameId: 'a', rect } }), {
+		x: 220,
+		y: 432,
+		width: 60,
+		height: 80,
+	});
+	assert.equal(frameOutline({ view, frames, target: undefined }), undefined);
+	assert.equal(frameOutline({ view, frames, target: { frameId: 'a', rect: null } }), undefined);
+	assert.equal(frameOutline({ view, frames, target: { frameId: 'gone', rect } }), undefined);
+	assert.equal(
+		frameOutline({ view: undefined, frames, target: { frameId: 'a', rect } }),
+		undefined,
+	);
 });

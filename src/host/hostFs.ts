@@ -1,5 +1,12 @@
 import * as vscode from 'vscode';
 
+// ponytail: first folder only; multi-root and ambiguous_workspace are Phase 2
+export const firstWorkspaceFolder = (): vscode.WorkspaceFolder | undefined =>
+	vscode.workspace.workspaceFolders?.[0];
+
+export const NO_FOLDER_MESSAGE =
+	'Open a workspace folder first. Cursor Design does not store artboards without a folder.';
+
 export const isFileNotFound = (error: unknown): boolean =>
 	error instanceof vscode.FileSystemError &&
 	(error.code === 'FileNotFound' || error.code === 'EntryNotFound');

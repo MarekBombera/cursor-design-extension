@@ -7,7 +7,7 @@ import {
 } from './commands/commandIds';
 import { exportHandoff } from './commands/exportHandoff';
 import { revealDesignFolder } from './commands/revealDesignFolder';
-import { placeFrameFromChrome, snapshotForChrome } from './host/artboardDisk';
+import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
 import { logDiskError } from './host/hostFs';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
@@ -36,7 +36,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	setArtboardPanelOnFramePlace((value) => {
 		void placeFrameFromChrome({ value, outputChannel })
 			.then((snapshot) => {
-				postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
+				postArtboardSnapshotToPanel(snapshot);
 			})
 			.catch((error: unknown) => {
 				logDiskError({ scope: 'extension.framePlace', error, outputChannel });

@@ -42,15 +42,6 @@
 **Resolution:**
 2026-10-22 /audit (scope: current; 8c) user-reported F5 in `fixtures/dev-workspace` (B1-B13 plus retests, not re-run by this audit) reports no CSP errors in the webview console, with zoom tracking, drag/resize persistence and watcher updates working. That covers the module-load, CSP console and 0.2 parity parts of this lead. Still unproven: the deleted-`chrome.js` failure path. Stays `unverified` (never gates `/complete`); close it when that one path is exercised.
 
-### F-23 [P3] fixed - Crashed-breaker recovery in the workspace lock has no test
-
-**File:** src/disk/workspaceLock.ts:99
-**Found:** 2026-10-22 by /audit (scope: current; lens: tests)
-**Why it matters:** The new break protocol adds one recovery branch: a `.lock.break` older than `staleMs` (left by a breaker that crashed) is removed so the next attempt can break the stale lock. If that branch regressed, one crash would leave every writer on `WORKSPACE_BUSY` permanently (the sub-lock would never age out of the way). The stress test and the stale-lock tests only ever see a live breaker, so nothing fails if lines 99-102 are deleted. Rule 03: non-trivial logic leaves one runnable check.
-**Suggested fix:** Add one test next to the existing stale-lock ones: write a foreign `.lock` and a foreign `.lock.break`, both with `utimes` 60s ago, then assert `withWorkspaceLock` runs the operation (give it a `timeoutMs` of about 1000) and `lockDirEntries` is empty afterward. No product change.
-**Resolution:** 2026-10-22 /implement: added the suggested test to `src/disk/workspaceLock.test.ts`. A foreign `.lock` and a foreign `.lock.break`, both aged 60s with `utimes`: the operation runs and `.cursor-design/` ends empty. No product change.
-
-
 ### F-25 [P3] unverified - First pick may not be announced by the chip live region
 
 **File:** src/webview/Toolbar.svelte:40
@@ -67,18 +58,26 @@
 **Suggested fix:** Reproduce at F5 first (delete a frame while dragging its label). If it sticks, clear `captured` when its frame id leaves `frames`.
 **Resolution:**
 
-### F-27 [P3] open - String-match test on artboardDisk.ts proves nothing
-
-**File:** src/panel/canvasSnapshot.test.ts:146
-**Found:** 2026-10-23 by review (Sonnet 5.5 test-gap pass, 8d1 refactor)
-**Why it matters:** The test reads `src/host/artboardDisk.ts` as text and asserts it contains certain substrings. Changing what the code does still passes; only renaming the text fails it. That breaks rule 09 ("a test earns its place when deleting the guard makes it fail").
-**Suggested fix:** Delete it, or extract `handoffStaleFor({ lastExport, frames })` from `artboardDisk.ts:181-201` and test the fail-closed case directly.
-**Resolution:**
-
 ### F-28 [P3] open - Exported canvas.html now ships the inert Comment-picking runtime
 
 **File:** src/webview/frame/runtime.ts:120
 **Found:** 2026-10-23 by /audit independent (scope: current; lens: quality, performance)
 **Why it matters:** `runtime.ts` always calls `installCommentPicking(host)` and posts `cd:ready`. `handoffCanvasHtml.ts` embeds the same runtime via `?iife`, so every exported handoff frame now carries the pick listeners, hit-test and paint heuristics (the canvas snapshot grew by ~1.1k lines) although the export page never sends `cd:mode`, so the code stays inert. Harmless today, but it is dead weight in a handoff artifact the Agent reads.
 **Suggested fix:** Either accept it (smallest; one runtime), or move the `installCommentPicking` call into the panel-only stamp path so the export bundles only height/wheel. No current requirement is lost either way.
+**Resolution:**
+
+### F-38 [P3] open - Default-artboard init depends on createArtboard branches no test covers
+
+**File:** src/host/artboardDisk.ts:48
+**Found:** 2026-10-23 by /audit independent (scope: current; lens: tests)
+**Why it matters:** `initializeDefaultArtboard` now falls back to `setActiveArtboard` only when `createArtboard` throws exactly `ArtboardExistsError`, and the spec's first behavior change (a symlinked or non-file `artboard.html` is refused) rests on `createArtboard`'s `layoutEntryKind` check (src/disk/artboardFs.ts:218-224). No unit test calls `createArtboard` on an existing regular file, a symlink, or a directory: no test in `src/` references `ArtboardExistsError` / `ARTBOARD_EXISTS`, and the symlink test (artboardFs.test.ts:221) covers only read and update. If that branch changed (another error class for an existing file, or following the symlink), first panel open in a workspace that has `artboard.html` but no manifest would show an error banner, or write through a link, and nothing in `pnpm verify` would fail. The host glue itself is `vscode`-bound and F5-only (rule 09), so the disk contract is the place to pin it. F5 after the refactor has not run.
+**Suggested fix:** Add one temp-dir test in `src/disk/artboardFs.test.ts`: create `hero`, then `createArtboard` again rejects with `ArtboardExistsError` and leaves html and meta bytes unchanged. Then replace the html with a symlink to an outside file: `createArtboard` rejects with `DiskError` and the target is untouched. No product change.
+**Resolution:**
+
+### F-39 [P3] open - Fix spec lists two init behavior changes; a third is unlisted
+
+**File:** blueprint/context/current-feature.md:52
+**Found:** 2026-10-23 by /audit independent (scope: current; lens: quality)
+**Why it matters:** The spec (and F-30's Resolution) says "Everything else is unchanged" after two stricter init cases. Comparing with the base host code, there are two more. (1) No manifest, `artboard.html` missing, but a valid `artboard.meta.json` (same id) present: the old host kept that meta, so the recreated artboard read at stored generation + 1. `createArtboard` now overwrites it with generation 1, so the generation moves backward (same as MCP `set_artboard`). (2) No manifest, `artboard.html` present, corrupt-JSON meta: the old host rewrote the meta, but the new path leaves the corrupt file. It still reads as missing, so the panel output is the same. Neither is a defect (both match MCP), but this spec is the archived record of what the branch changed. A later generation-conflict report would point at the wrong commit.
+**Suggested fix:** Add one bullet to the spec's Behavior changes: "a leftover meta for a deleted `artboard.html` is replaced (generation restarts at 1), and a corrupt meta beside an existing `artboard.html` is left in place." Docs only.
 **Resolution:**

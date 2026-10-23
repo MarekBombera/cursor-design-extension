@@ -10,6 +10,7 @@ import {
 	type StageFrameGesture,
 	settleFrameGesture,
 	stepFrameGesture,
+	wheelToView,
 } from './frameGesture';
 import type { FramePlacement } from './hostMessages';
 
@@ -160,4 +161,19 @@ test('failFrameGesture drops only a committing gesture, never a drag in progress
 	assert.equal(failFrameGesture(active), active);
 	assert.equal(failFrameGesture({ ...active, phase: 'committing' }), undefined);
 	assert.equal(failFrameGesture(undefined), undefined);
+});
+
+test('a zoom wheel keeps the point under the pointer fixed; a plain wheel pans and ignores the anchor', () => {
+	const view = { x: 40, y: 30, zoom: 1 };
+	const zoomed = wheelToView({
+		view,
+		wheel: { deltaX: 99, deltaY: -100, zoom: true, screenX: 200, screenY: 150 },
+	});
+	assert.ok(zoomed.zoom > 1);
+	assert.ok(Math.abs((200 - zoomed.x) / zoomed.zoom - (200 - view.x) / view.zoom) < 1e-9);
+	assert.ok(Math.abs((150 - zoomed.y) / zoomed.zoom - (150 - view.y) / view.zoom) < 1e-9);
+	assert.deepEqual(
+		wheelToView({ view, wheel: { deltaX: 5, deltaY: 7, zoom: false, screenX: 200, screenY: 150 } }),
+		{ x: 35, y: 23, zoom: 1 },
+	);
 });

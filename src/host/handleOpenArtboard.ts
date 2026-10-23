@@ -4,13 +4,11 @@ import {
 	emptyArtboardSnapshot,
 	initAndLoadArtboard,
 	readActiveArtboardFromDisk,
-	snapshotForChrome,
+	UNTRUSTED_WORKSPACE_MESSAGE,
 } from './artboardDisk';
+import { firstWorkspaceFolder, NO_FOLDER_MESSAGE } from './hostFs';
 import { ensureArtboardWatcher } from './watchArtboardDisk';
 import { openArtboardPanel, postArtboardSnapshotToPanel } from '../panel/openArtboardPanel';
-
-const NO_FOLDER_TOAST =
-	'Open a workspace folder first. Cursor Design does not store artboards without a folder.';
 
 type HandleOpenArtboardArgs = {
 	context: vscode.ExtensionContext;
@@ -20,29 +18,28 @@ type HandleOpenArtboardArgs = {
 export const reloadVisibleArtboardFromDisk = async (
 	outputChannel: vscode.OutputChannel,
 ): Promise<void> => {
-	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	const workspaceFolder = firstWorkspaceFolder();
 	if (!workspaceFolder) {
-		postArtboardSnapshotToPanel(snapshotForChrome(emptyArtboardSnapshot()));
+		postArtboardSnapshotToPanel(
+			emptyArtboardSnapshot(vscode.workspace.isTrusted ? undefined : UNTRUSTED_WORKSPACE_MESSAGE),
+		);
 		return;
 	}
-	const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
-	postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
+	postArtboardSnapshotToPanel(await readActiveArtboardFromDisk({ workspaceFolder, outputChannel }));
 };
 
 export const handleOpenArtboard = async ({
 	context,
 	outputChannel,
 }: HandleOpenArtboardArgs): Promise<void> => {
-	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-	// ponytail: first folder only
+	const workspaceFolder = firstWorkspaceFolder();
 	if (!workspaceFolder) {
-		await vscode.window.showErrorMessage(NO_FOLDER_TOAST);
+		await vscode.window.showErrorMessage(NO_FOLDER_MESSAGE);
 		openArtboardPanel({ context });
 		return;
 	}
 
-	const snapshot = await initAndLoadArtboard({ workspaceFolder, outputChannel });
-	postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
+	postArtboardSnapshotToPanel(await initAndLoadArtboard({ workspaceFolder, outputChannel }));
 	openArtboardPanel({ context });
 	ensureArtboardWatcher({ context, outputChannel });
 };

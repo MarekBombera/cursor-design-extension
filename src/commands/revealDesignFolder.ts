@@ -1,15 +1,17 @@
 import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR } from '../disk/layout';
-import { isFileNotFound, logDiskError } from '../host/hostFs';
+import {
+	firstWorkspaceFolder,
+	isFileNotFound,
+	logDiskError,
+	NO_FOLDER_MESSAGE,
+} from '../host/hostFs';
 
 export const revealDesignFolder = async (outputChannel: vscode.OutputChannel): Promise<void> => {
-	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-	// ponytail: first folder only; ambiguous_workspace is Phase 2
+	const workspaceFolder = firstWorkspaceFolder();
 	if (!workspaceFolder) {
-		await vscode.window.showErrorMessage(
-			'Open a workspace folder first. Cursor Design does not store artboards without a folder.',
-		);
+		await vscode.window.showErrorMessage(NO_FOLDER_MESSAGE);
 		return;
 	}
 

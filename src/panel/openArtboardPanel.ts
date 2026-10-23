@@ -1,63 +1,23 @@
 import * as vscode from 'vscode';
 
-import { type CanvasSnapshot, postedFrameFromSnapshot } from '../host/canvasSnapshot';
+import type { CanvasSnapshot } from '../host/canvasSnapshot';
 import { isFramePlaceAttempt, parseChromeMessage } from '../host/chromeMessages';
-import type {
-	ArtboardErrorMessage,
-	CanvasUpdatedMessage,
-	PostedCanvasFrame,
-	UiStatusMessage,
-} from '../webview/hostMessages';
+import { createPanelOutbox } from '../host/panelOutbox';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
 
-type CanvasHostView = {
-	updated: {
-		activeArtboardId: string;
-		generation: number;
-		frames: PostedCanvasFrame[];
-	};
-	errorMessage?: string;
-};
-
 let currentPanel: vscode.WebviewPanel | undefined;
-let chromeReady = false;
-let pendingView: CanvasHostView | undefined;
-let pendingUiStatus: { mcpAvailable?: boolean; handoffStale: boolean } = { handoffStale: false };
 let onPanelBecameVisible: (() => void) | undefined;
 let onFramePlace: ((value: unknown) => void) | undefined;
 let chromeCspNonce = '';
 
-const flushPendingArtboardView = (): void => {
-	if (!currentPanel || !chromeReady || pendingView === undefined) {
-		return;
-	}
-	void currentPanel.webview.postMessage({
-		type: 'canvas:updated',
-		...pendingView.updated,
-		cspNonce: chromeCspNonce,
-	} satisfies CanvasUpdatedMessage);
-	if (pendingView.errorMessage !== undefined) {
-		const errorMessage: ArtboardErrorMessage = {
-			type: 'artboard:error',
-			message: pendingView.errorMessage,
-		};
-		void currentPanel.webview.postMessage(errorMessage);
-	}
-};
-
-const flushPendingUiStatus = (): void => {
-	if (!currentPanel || !chromeReady || pendingUiStatus.mcpAvailable === undefined) {
-		return;
-	}
-	const statusMessage: UiStatusMessage = {
-		type: 'ui:status',
-		mcpAvailable: pendingUiStatus.mcpAvailable,
-		handoffStale: pendingUiStatus.handoffStale,
-	};
-	void currentPanel.webview.postMessage(statusMessage);
-};
+const outbox = createPanelOutbox({
+	post: (message) => {
+		void currentPanel?.webview.postMessage(message);
+	},
+	readCspNonce: () => chromeCspNonce,
+});
 
 export const hasCurrentArtboardPanel = (): boolean => currentPanel !== undefined;
 
@@ -71,29 +31,14 @@ export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void):
 };
 
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
-	pendingView = {
-		updated: {
-			activeArtboardId: snapshot.activeArtboardId,
-			generation: snapshot.generation,
-			frames: snapshot.frames.map(postedFrameFromSnapshot),
-		},
-		errorMessage: snapshot.errorMessage,
-	};
-	postUiStatusToPanel({ handoffStale: snapshot.handoffStale });
-	flushPendingArtboardView();
+	outbox.postSnapshot(snapshot);
 };
 
 export const postUiStatusToPanel = (partial: {
 	mcpAvailable?: boolean;
 	handoffStale?: boolean;
 }): void => {
-	if (partial.mcpAvailable !== undefined) {
-		pendingUiStatus.mcpAvailable = partial.mcpAvailable;
-	}
-	if (partial.handoffStale !== undefined) {
-		pendingUiStatus.handoffStale = partial.handoffStale;
-	}
-	flushPendingUiStatus();
+	outbox.postUiStatus(partial);
 };
 
 export type OpenArtboardPanelArgs = {
@@ -132,9 +77,7 @@ export const openArtboardPanel = ({
 		if (parseChromeMessage(message)?.type !== 'artboard:ready') {
 			return;
 		}
-		chromeReady = true;
-		flushPendingArtboardView();
-		flushPendingUiStatus();
+		outbox.markReady();
 	});
 	let wasVisible = panel.visible;
 	panel.onDidChangeViewState(() => {
@@ -146,13 +89,8 @@ export const openArtboardPanel = ({
 		onPanelBecameVisible?.();
 	});
 	panel.onDidDispose(() => {
-		chromeReady = false;
 		currentPanel = undefined;
-		pendingView = undefined;
-		pendingUiStatus = {
-			mcpAvailable: pendingUiStatus.mcpAvailable,
-			handoffStale: false,
-		};
+		outbox.reset();
 	});
 	currentPanel = panel;
 	return panel;

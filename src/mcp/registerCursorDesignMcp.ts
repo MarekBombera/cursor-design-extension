@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { logDiskError } from '../host/hostFs';
 import {
 	CURSOR_DESIGN_MCP_SERVER_NAME,
 	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
@@ -13,18 +14,6 @@ type RegisterCursorDesignMcpArgs = {
 
 let mcpRegistration: vscode.Disposable | undefined;
 let mcpDisposeHooked = false;
-
-type LogMcpOutputArgs = {
-	outputChannel: vscode.OutputChannel;
-	label: string;
-	error: unknown;
-};
-
-const logMcpOutput = ({ outputChannel, label, error }: LogMcpOutputArgs): void => {
-	outputChannel.appendLine(
-		`${label}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-	);
-};
 
 const disposeMcpRegistration = (): void => {
 	if (mcpRegistration === undefined) {
@@ -68,7 +57,7 @@ export const registerCursorDesignMcp = ({
 		try {
 			mcpApi.unregisterServer(CURSOR_DESIGN_MCP_SERVER_NAME);
 		} catch (error: unknown) {
-			logMcpOutput({ outputChannel, label: 'unregisterCursorDesignMcp', error });
+			logDiskError({ scope: 'unregisterCursorDesignMcp', error, outputChannel });
 		}
 	};
 
@@ -90,7 +79,7 @@ export const registerCursorDesignMcp = ({
 			},
 		});
 	} catch (error: unknown) {
-		logMcpOutput({ outputChannel, label: 'registerCursorDesignMcp', error });
+		logDiskError({ scope: 'registerCursorDesignMcp', error, outputChannel });
 		void vscode.window.showErrorMessage(
 			'Could not register the Cursor Design MCP server. Check the Output panel: Cursor Design.',
 		);

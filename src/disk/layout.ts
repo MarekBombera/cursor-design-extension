@@ -2,7 +2,7 @@ export const CURSOR_DESIGN_DIR = '.cursor-design' as const;
 
 export const ARTBOARDS_DIR = 'artboards' as const;
 
-export const MANIFEST_FILE = 'manifest.json' as const;
+const MANIFEST_FILE = 'manifest.json' as const;
 
 export const SCHEMA_VERSION = 1 as const;
 
@@ -12,9 +12,9 @@ export const DEFAULT_ARTBOARD_TITLE = 'Artboard' as const;
 
 export const DEFAULT_VIEWPORT = '1280x800' as const;
 
-export const ENSURE_PANEL_FILE = '.ensure-panel' as const;
+const ENSURE_PANEL_FILE = '.ensure-panel' as const;
 
-export const HANDOFF_DIR = 'handoff' as const;
+const HANDOFF_DIR = 'handoff' as const;
 
 export const TOKENS_FILE = 'tokens.json' as const;
 
@@ -26,7 +26,7 @@ export const CANVAS_PREVIEW_FILE = 'canvas.html' as const;
 
 export const UNGROUPED_FOLDER = 'ungrouped' as const;
 
-export const CANVAS_FILE = 'canvas.json' as const;
+const CANVAS_FILE = 'canvas.json' as const;
 
 export const CANVAS_SCHEMA_VERSION = 1 as const;
 
@@ -40,9 +40,6 @@ export const FRAME_GAP = 24;
 
 // Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
 export const MAX_FRAME_COORDINATE = 100_000;
-
-// Longest element tag name a frame may report in cd:pick.
-export const MAX_TAG_NAME_CHARS = 64;
 
 // Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
 export const LOCK_FILE = '.lock' as const;
@@ -71,7 +68,7 @@ export const artboardsDirSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
 
 export const artboardHtmlFileName = (artboardId: string): string => `${artboardId}.html`;
 
-export const artboardMetaFileName = (artboardId: string): string => `${artboardId}.meta.json`;
+const artboardMetaFileName = (artboardId: string): string => `${artboardId}.meta.json`;
 
 export const artboardHtmlPathSegments = (artboardId: string): readonly [string, string, string] => [
 	...artboardsDirSegments,

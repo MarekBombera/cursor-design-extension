@@ -26,12 +26,12 @@ export type CanvasUpdatedMessage = {
 	frames: PostedCanvasFrame[];
 };
 
-export type ArtboardErrorMessage = {
+type ArtboardErrorMessage = {
 	type: 'artboard:error';
 	message: string;
 };
 
-export type UiStatusMessage = {
+type UiStatusMessage = {
 	type: 'ui:status';
 	mcpAvailable: boolean;
 	handoffStale: boolean;

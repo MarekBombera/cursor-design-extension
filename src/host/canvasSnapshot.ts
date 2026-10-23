@@ -26,25 +26,6 @@ export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => 
 	errorMessage,
 });
 
-type SnapshotForChromeArgs = {
-	snapshot: CanvasSnapshot;
-	isTrusted: boolean;
-};
-
-export const snapshotForChrome = ({
-	snapshot,
-	isTrusted,
-}: SnapshotForChromeArgs): CanvasSnapshot => {
-	if (isTrusted) {
-		return snapshot;
-	}
-	return {
-		...snapshot,
-		frames: [],
-		errorMessage: snapshot.errorMessage ?? UNTRUSTED_WORKSPACE_MESSAGE,
-	};
-};
-
 export const postedFrameFromSnapshot = (frame: CanvasViewFrame): PostedCanvasFrame => {
 	const htmlTooLarge = frame.html.length > MAX_POSTED_ARTBOARD_HTML_CHARS;
 	const posted: PostedCanvasFrame = {
@@ -68,21 +49,16 @@ export const postedFrameFromSnapshot = (frame: CanvasViewFrame): PostedCanvasFra
 };
 
 type CanvasSnapshotErrorMessageArgs = {
-	loadErrorMessage?: string;
 	activeArtboardId: string;
 	frames: ReadonlyArray<{ id: string }>;
 	layoutErrorMessage?: string;
 };
 
 export const canvasSnapshotErrorMessage = ({
-	loadErrorMessage,
 	activeArtboardId,
 	frames,
 	layoutErrorMessage,
 }: CanvasSnapshotErrorMessageArgs): string | undefined => {
-	if (loadErrorMessage !== undefined) {
-		return loadErrorMessage;
-	}
 	if (activeArtboardId !== '' && frames.every((frame) => frame.id !== activeArtboardId)) {
 		return new ArtboardNotFoundError(activeArtboardId).message;
 	}

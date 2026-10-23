@@ -4,19 +4,11 @@
 		"src/mcp/server.ts",
 		"src/**/*.test.ts",
 		"src/test/**/*.ts",
-		"vite.config.ts",
 		"vite.webview.config.ts",
 		"src/webview/main.ts",
 		".vscode-test.mjs"
 	],
-	"project": [
-		"src/**/*.ts",
-		"src/webview/**/*.{ts,svelte}",
-		"scripts/iifeStringPlugin.ts",
-		"vite.config.ts",
-		".vscode-test.mjs"
-	],
-	"ignore": ["src/types/vscode.cursor.d.ts"],
-	"ignoreDependencies": ["vscode", "@types/vscode", "@vscode/test-electron"],
-	"include": ["files", "dependencies", "unlisted", "binaries", "unresolved"]
+	"project": ["src/**/*.ts", "src/webview/**/*.{ts,svelte}", "scripts/iifeStringPlugin.ts"],
+	"ignoreDependencies": ["@vscode/test-electron"],
+	"include": ["files", "dependencies", "unlisted", "binaries", "unresolved", "exports", "types"]
 }

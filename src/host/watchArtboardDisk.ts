@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { isLockOrTempPath } from '../disk/workspaceLock';
-import { readActiveArtboardFromDisk, snapshotForChrome } from './artboardDisk';
-import { fileExists, isFileNotFound, logDiskError } from './hostFs';
+import { readActiveArtboardFromDisk } from './artboardDisk';
+import { fileExists, firstWorkspaceFolder, isFileNotFound, logDiskError } from './hostFs';
 import {
 	hasCurrentArtboardPanel,
 	openArtboardPanel,
@@ -60,7 +60,7 @@ const refreshWatchedArtboard = async ({
 	if (token !== watchGeneration) {
 		return;
 	}
-	postArtboardSnapshotToPanel(snapshotForChrome(snapshot));
+	postArtboardSnapshotToPanel(snapshot);
 };
 
 const deleteEnsurePanelMarker = async (
@@ -86,7 +86,7 @@ export const replaceArtboardWatcher = ({
 	if (!vscode.workspace.isTrusted) {
 		return;
 	}
-	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	const workspaceFolder = firstWorkspaceFolder();
 	if (!workspaceFolder) {
 		return;
 	}
@@ -96,7 +96,7 @@ export const replaceArtboardWatcher = ({
 
 	const runDebouncedWatch = async (): Promise<void> => {
 		const token = ++watchGeneration;
-		const currentFirstFolder = vscode.workspace.workspaceFolders?.[0];
+		const currentFirstFolder = firstWorkspaceFolder();
 		if (!currentFirstFolder || currentFirstFolder.uri.fsPath !== workspaceFolder.uri.fsPath) {
 			pendingMarkerEnsure = false;
 			return;

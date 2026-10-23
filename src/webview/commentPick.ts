@@ -16,7 +16,7 @@ export type CommentPickState = {
 	pick: { frameId: string; tagName: string; rect: FrameRect | null; isPage: boolean } | undefined;
 };
 
-export type FrameSend = { frameId: string; message: ChromeFrameMessage };
+type FrameSend = { frameId: string; message: ChromeFrameMessage };
 
 export type CommentPickStep = { state: CommentPickState; sends: FrameSend[] };
 
@@ -28,7 +28,7 @@ export const INITIAL_COMMENT_PICK: CommentPickState = {
 	pick: undefined,
 };
 
-export const frameModeMessage = (commentMode: boolean): ChromeFrameMessage => ({
+const frameModeMessage = (commentMode: boolean): ChromeFrameMessage => ({
 	type: 'cd:mode',
 	mode: commentMode ? 'comment' : 'interact',
 });

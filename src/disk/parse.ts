@@ -11,7 +11,7 @@ import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
 
 const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 
-const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+export const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
 	value !== null && typeof value === 'object' && !Array.isArray(value);
 
 const toPrettyJson = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;

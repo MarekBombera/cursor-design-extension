@@ -57,7 +57,7 @@ panel.onDidDispose(() => {
 ## URIs, FS, processes
 
 - `vscode.Uri.joinPath` + `webview.asWebviewUri`. Never string-concat paths or put `file://` in webview HTML.
-- Host: `vscode.workspace.fs` for workspace files (remote / WSL / Codespaces). MCP disk lib: `node:fs` is fine (separate process). Workspace-kind host may call disk `node:fs` helpers for `.cursor-design/` SoT (export/handoff) so MCP and the command cannot drift.
+- Host: `vscode.workspace.fs` for workspace files (remote / WSL / Codespaces). MCP disk lib: `node:fs` is fine (separate process). Workspace-kind host may call disk `node:fs` helpers for `.cursor-design/` SoT (panel read and init, drag commit, export/handoff) so MCP and the host cannot drift.
 - `import * as vscode` only in the extension host. Not in webview JS, not in the MCP process.
 
 ## Trust, remote, bundle

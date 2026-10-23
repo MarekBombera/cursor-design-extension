@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { test } from 'vite-plus/test';
 
 import { FRAME_READ_ERROR_MESSAGE, type CanvasViewFrame } from '../disk/artboardFs';
@@ -8,14 +6,12 @@ import { ArtboardNotFoundError, DiskError } from '../disk/errors';
 import {
 	ARTBOARD_HTML_TOO_LARGE_MESSAGE,
 	MAX_POSTED_ARTBOARD_HTML_CHARS,
-	UNTRUSTED_WORKSPACE_MESSAGE,
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
 	postedFrameFromSnapshot,
-	snapshotForChrome,
 	type CanvasSnapshot,
-} from '../host/canvasSnapshot';
+} from './canvasSnapshot';
 
 const viewFrame = (
 	overrides: Partial<CanvasViewFrame> & Pick<CanvasViewFrame, 'id'>,
@@ -45,21 +41,6 @@ const snapshotWithFrames = (frames: CanvasViewFrame[]): CanvasSnapshot => ({
 	handoffStale: false,
 });
 
-test('snapshotForChrome blanks frames when untrusted and keeps a load error', () => {
-	const snapshot = snapshotWithFrames([viewFrame({ id: 'hero', html: '<p>secret</p>' })]);
-	const untrusted = snapshotForChrome({ snapshot, isTrusted: false });
-	assert.deepEqual(untrusted.frames, []);
-	assert.equal(untrusted.errorMessage, UNTRUSTED_WORKSPACE_MESSAGE);
-	assert.equal(snapshotForChrome({ snapshot, isTrusted: true }), snapshot);
-
-	const withLoadError = snapshotForChrome({
-		snapshot: { ...snapshot, errorMessage: 'Could not load artboard.' },
-		isTrusted: false,
-	});
-	assert.deepEqual(withLoadError.frames, []);
-	assert.equal(withLoadError.errorMessage, 'Could not load artboard.');
-});
-
 test('postedFrameFromSnapshot caps each frame at 1.5M without a global banner', () => {
 	const tooLarge = viewFrame({
 		id: 'huge',
@@ -80,17 +61,8 @@ test('postedFrameFromSnapshot caps each frame at 1.5M without a global banner', 
 	assert.equal(emptyArtboardSnapshot().errorMessage, undefined);
 });
 
-test('canvasSnapshotErrorMessage prefers load error, then missing active, then layoutError', () => {
+test('canvasSnapshotErrorMessage prefers a missing active artboard over layoutError', () => {
 	const frames = [viewFrame({ id: 'hero' })];
-	assert.equal(
-		canvasSnapshotErrorMessage({
-			loadErrorMessage: UNTRUSTED_WORKSPACE_MESSAGE,
-			activeArtboardId: 'missing',
-			frames,
-			layoutErrorMessage: 'Canvas layout is invalid.',
-		}),
-		UNTRUSTED_WORKSPACE_MESSAGE,
-	);
 	assert.equal(
 		canvasSnapshotErrorMessage({
 			activeArtboardId: 'missing',
@@ -120,6 +92,7 @@ test('canvasViewReadLogs keeps DiskError for Output and uses the tile message', 
 	const diskError = new DiskError();
 	const logs = canvasViewReadLogs({
 		activeArtboardId: 'hero',
+		handoffStale: false,
 		frames: [
 			viewFrame({ id: 'broken', html: '', errorMessage: FRAME_READ_ERROR_MESSAGE }),
 			viewFrame({ id: 'hero', html: '<p>ok</p>' }),
@@ -141,12 +114,4 @@ test('canvasViewReadLogs keeps DiskError for Output and uses the tile message', 
 		],
 	);
 	assert.notEqual(diskError.message, FRAME_READ_ERROR_MESSAGE);
-});
-
-test('artboardDisk logs framed reads and isolates handoff-stale I/O', () => {
-	const diskSource = readFileSync(join(process.cwd(), 'src/host/artboardDisk.ts'), 'utf8');
-	assert.ok(diskSource.includes('canvasViewReadLogs(view)'));
-	assert.ok(diskSource.includes('logDiskError({ scope: readLog.scope, error: readLog.error'));
-	assert.ok(diskSource.includes("scope: 'artboardDisk.handoffStale'"));
-	assert.ok(diskSource.includes('handoffStale = true'));
 });

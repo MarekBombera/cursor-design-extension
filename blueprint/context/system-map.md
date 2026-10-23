@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 8d1 Picking channel (`feature/picking-channel`, checkpoint `60de57f`).
+**Last verified against code:** fix Audit quality cleanup (`fix/audit-quality-cleanup`, checkpoint `8f18796`).
 
 ## Chart checklist
 
@@ -88,15 +88,16 @@ sequenceDiagram
   H->>H: openArtboardPanel (preserveFocus), webview.html = chrome shell
   H->>D: delete .ensure-panel
   C->>H: artboard:ready (after the message listener exists)
-  H->>C: ui:status {mcpAvailable, handoffStale}
   H->>C: canvas:updated {activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, html}]}
   opt snapshot has an error
     H->>C: artboard:error {message}
   end
+  H->>C: ui:status {mcpAvailable, handoffStale}
 ```
 
 - Before `artboard:ready`, the host keeps only the latest snapshot and status, and flushes them on
-  ready.
+  ready (`createPanelOutbox`). A later `artboard:ready` (webview reload) re-sends both; `ui:status`
+  waits until `mcpAvailable` is known.
 - The panel can also open from the **Open Artboard** command.
 - When the panel becomes visible, `reloadVisibleArtboardFromDisk` posts a fresh snapshot.
 - In an untrusted workspace the host posts `frames: []` plus the untrusted error, and `ui:status`

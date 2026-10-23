@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const HASH_PREFIX = 'sha256:' as const;
+const HASH_PREFIX = 'sha256:' as const;
 
 const HASH_BODY_PATTERN = /^[a-fA-F0-9]{64}$/;
 
