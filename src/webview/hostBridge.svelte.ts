@@ -1,9 +1,14 @@
-import { type FrameMessage, parseFrameMessage } from './frame/frameMessages';
+import {
+	type ChromeFrameMessage,
+	type FrameMessage,
+	parseFrameMessage,
+} from './frame/frameMessages';
 import {
 	type FramePlaceMessage,
 	type HostMessage,
 	parseHostMessage,
 	parseSavedStageView,
+	routeMessage,
 } from './hostMessages';
 import type { StageView } from './stageGeometry';
 
@@ -39,23 +44,17 @@ export const postFramePlace = (message: FramePlaceMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
+// The only chrome → frame send. '*' because sandboxed frames have an opaque origin; the payload
+// is only a mode or a step command, nothing private.
+export const postToFrame = (iframe: HTMLIFrameElement, message: ChromeFrameMessage): void => {
+	iframe.contentWindow?.postMessage(message, '*');
+};
+
 type HostBridgeArgs = {
 	// Live frame iframes by frame id, matched against event.source at message time.
 	iframes: ReadonlyMap<string, HTMLIFrameElement>;
 	onHostMessage: (message: HostMessage) => void;
 	onFrameMessage: (frameId: string, message: FrameMessage) => void;
-};
-
-const frameIdForSource = (
-	iframes: ReadonlyMap<string, HTMLIFrameElement>,
-	source: MessageEventSource | null,
-): string | undefined => {
-	for (const [frameId, iframe] of iframes) {
-		if (iframe.contentWindow === source) {
-			return frameId;
-		}
-	}
-	return undefined;
 };
 
 // Call during component init: subscribes once, posts artboard:ready after the listener exists.
@@ -66,19 +65,17 @@ export const connectHostBridge = ({
 }: HostBridgeArgs): void => {
 	$effect(() => {
 		const handleMessage = (event: MessageEvent): void => {
-			const frameId = frameIdForSource(iframes, event.source);
-			if (frameId !== undefined) {
+			const route = routeMessage({ source: event.source, origin: event.origin, iframes });
+			if (route.kind === 'frame') {
 				// ponytail: rejects are not logged; wheel fires at 60+ Hz, so logging would spam.
 				// Late cd:frame-height / cd:frame-wheel from a previous document is accepted.
 				const message = parseFrameMessage(event.data);
 				if (message !== undefined) {
-					onFrameMessage(frameId, message);
+					onFrameMessage(route.frameId, message);
 				}
 				return;
 			}
-			// Sandboxed frames post with origin "null"; one that is not (or no longer) registered
-			// must never reach the host-message path.
-			if (event.origin === 'null') {
+			if (route.kind === 'drop') {
 				return;
 			}
 			const message = parseHostMessage(event.data);

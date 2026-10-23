@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Picking</title>
+		<!--
+    8d1 picking fixture (F5 matrix in blueprint/context/current-feature.md, Testing).
+    Blob CSP: <style> and <script> get the chrome nonce; style="" attributes, inline handlers,
+    images and media are blocked, so everything here is classes and inline SVG.
+    Copy: cp fixtures/picking.html fixtures/dev-workspace/.cursor-design/artboards/picking.html
+  -->
+		<style>
+			body {
+				margin: 0;
+				padding: 24px 24px 240px;
+				font-family: system-ui, sans-serif;
+				color: #111827;
+			}
+			h1 {
+				margin: 0 0 16px;
+				font-size: 24px;
+			}
+			h2 {
+				margin: 0 0 8px;
+				font-size: 16px;
+			}
+			.block {
+				margin-bottom: 24px;
+			}
+			.outer {
+				padding: 16px;
+				background: #f1f5f9;
+				border: 1px solid #cbd5e1;
+			}
+			.inner {
+				padding: 16px;
+				background: #e2e8f0;
+			}
+			.inner p {
+				margin: 0;
+			}
+			.cards {
+				display: flex;
+				gap: 12px;
+			}
+			.card {
+				flex: 1;
+				padding: 12px;
+				background: #ffffff;
+				border: 1px solid #94a3b8;
+				border-radius: 6px;
+			}
+			.card h3 {
+				margin: 0 0 4px;
+				font-size: 14px;
+			}
+			.card p {
+				margin: 0;
+				font-size: 12px;
+			}
+			.scroll-box {
+				height: 120px;
+				overflow: auto;
+				border: 1px solid #64748b;
+			}
+			.scroll-box li {
+				padding: 6px 8px;
+				border-bottom: 1px solid #e5e7eb;
+			}
+			.trap {
+				position: relative;
+			}
+			.covered {
+				padding: 16px;
+				background: #fef3c7;
+			}
+			.overlay {
+				position: absolute;
+				inset: 0;
+			}
+			.decorated {
+				position: relative;
+				padding: 16px;
+				background: #dcfce7;
+			}
+			.decor {
+				position: absolute;
+				inset: 0;
+				pointer-events: none;
+				background: rgba(22, 163, 74, 0.15);
+			}
+			.badge-host {
+				position: relative;
+				display: inline-block;
+				padding: 16px 24px;
+				background: #ede9fe;
+			}
+			.badge {
+				position: absolute;
+				top: -8px;
+				right: -8px;
+				padding: 2px 6px;
+				font-size: 11px;
+				color: #ffffff;
+				background: #7c3aed;
+				border-radius: 999px;
+			}
+			.icon-row {
+				display: flex;
+				gap: 8px;
+				align-items: center;
+			}
+			.icon-tiny {
+				width: 8px;
+				height: 8px;
+				fill: #dc2626;
+			}
+			.icon-paths {
+				width: 64px;
+				height: 64px;
+			}
+			.generated {
+				padding: 8px;
+				background: #e0f2fe;
+			}
+			.media video {
+				width: 240px;
+				height: 135px;
+				background: #0f172a;
+			}
+			.nested-wrap {
+				display: inline-block;
+				padding: 24px;
+				border: 1px dashed #64748b;
+			}
+			.nested-wrap iframe {
+				width: 240px;
+				height: 80px;
+				border: 1px solid #94a3b8;
+			}
+			.controls {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px;
+				align-items: center;
+			}
+			.status {
+				font-weight: 600;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Picking fixture</h1>
+
+		<section class="block outer" aria-label="Nested sections">
+			<h2>Nested sections</h2>
+			<section class="inner">
+				<p>Inner section text. ↑ steps to the inner section, then the outer one.</p>
+			</section>
+		</section>
+
+		<section class="block" aria-label="Identical cards">
+			<h2>Five identical cards</h2>
+			<div class="cards">
+				<article class="card">
+					<h3>Card</h3>
+					<p>Same content.</p>
+				</article>
+				<article class="card">
+					<h3>Card</h3>
+					<p>Same content.</p>
+				</article>
+				<article class="card">
+					<h3>Card</h3>
+					<p>Same content.</p>
+				</article>
+				<article class="card">
+					<h3>Card</h3>
+					<p>Same content.</p>
+				</article>
+				<article class="card">
+					<h3>Card</h3>
+					<p>Same content.</p>
+				</article>
+			</div>
+		</section>
+
+		<section class="block" aria-label="Scroll box">
+			<h2>Scroll box</h2>
+			<ul class="scroll-box">
+				<li>Item 1</li>
+				<li>Item 2</li>
+				<li>Item 3</li>
+				<li>Item 4</li>
+				<li>Item 5</li>
+				<li>Item 6</li>
+				<li>Item 7</li>
+				<li>Item 8</li>
+				<li>Item 9</li>
+				<li>Item 10</li>
+				<li>Item 11</li>
+				<li>Item 12</li>
+				<li>Item 13</li>
+				<li>Item 14</li>
+				<li>Item 15</li>
+			</ul>
+		</section>
+
+		<section class="block" aria-label="Hit-test traps">
+			<h2>Hit-test traps</h2>
+			<div class="block trap">
+				<div class="covered">
+					Covered sibling: a transparent full-width overlay sits on top of me.
+				</div>
+				<div class="overlay"></div>
+			</div>
+			<div class="block decorated">
+				Under a pointer-events: none decorative layer.
+				<div class="decor"></div>
+			</div>
+			<div class="badge-host">
+				Box with an absolute badge
+				<span class="badge">NEW</span>
+			</div>
+		</section>
+
+		<section class="block" aria-label="SVG and generated content">
+			<h2>SVG and generated content</h2>
+			<div class="icon-row">
+				<svg class="icon-tiny" viewBox="0 0 8 8" aria-hidden="true">
+					<circle cx="4" cy="4" r="4" />
+				</svg>
+				<span>8px icon</span>
+				<svg class="icon-paths" viewBox="0 0 64 64" aria-hidden="true">
+					<path d="M4 60 L32 4 L60 60 Z" fill="#2563eb" />
+					<path d="M20 44 L44 44" stroke="#ffffff" stroke-width="4" />
+				</svg>
+			</div>
+			<div class="block" id="generated-host"></div>
+		</section>
+
+		<section class="block media" aria-label="Media and nested frame">
+			<h2>Media and nested frame</h2>
+			<video controls></video>
+			<div class="nested-wrap">
+				<iframe title="Nested frame" srcdoc="<p>Nested iframe content</p>"></iframe>
+			</div>
+		</section>
+
+		<section class="block" aria-label="Interactive controls">
+			<h2>Interactive controls</h2>
+			<div class="controls">
+				<a href="#followed" id="link">A link</a>
+				<button type="button" id="change-button">Click to change me</button>
+				<form id="form">
+					<input type="text" name="name" placeholder="Type here" />
+					<button type="submit">Submit</button>
+				</form>
+				<select aria-label="Pick one">
+					<option>First</option>
+					<option>Second</option>
+					<option>Third</option>
+				</select>
+				<details>
+					<summary>Details</summary>
+					<p>Opened details content.</p>
+				</details>
+			</div>
+			<p class="status" id="status">Nothing fired yet.</p>
+		</section>
+
+		<!-- At least 200px of empty body below (body padding-bottom): only html/body under the cursor. -->
+
+		<script>
+			const status = document.getElementById('status');
+			const generated = document.createElement('p');
+			generated.className = 'generated';
+			generated.textContent = 'Appended by a script';
+			document.getElementById('generated-host').append(generated);
+
+			const changeButton = document.getElementById('change-button');
+			changeButton.addEventListener('click', () => {
+				changeButton.textContent = 'Changed by its handler';
+				status.textContent = 'Button handler fired.';
+			});
+			// The frame sandbox has no allow-forms, so the browser may block submission before this
+			// event; either way nothing may submit in Comment mode.
+			document.getElementById('form').addEventListener('submit', (event) => {
+				event.preventDefault();
+				status.textContent = 'Form submit fired.';
+			});
+			window.addEventListener('hashchange', () => {
+				status.textContent = `Link followed: ${location.hash}`;
+			});
+		</script>
+	</body>
+</html>

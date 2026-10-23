@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 8c Frame drag/resize (`c47f25a`).
+**Last verified against code:** 8d1 Picking channel (`feature/picking-channel`, checkpoint `60de57f`).
 
 ## Chart checklist
 
@@ -65,10 +65,12 @@ flowchart LR
   Chrome -->|artboard:ready, frame:place| Panel
   Panel -->|placeFrameFromChrome under the lock| Disk
   Chrome -->|blob URL: stamped HTML + runtime| Frames
-  Frames -->|cd:frame-height, cd:frame-wheel| Chrome
+  Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick| Chrome
+  Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child| Frames
 ```
 
-There is no chrome → frame message in shipped code. Chrome never touches disk or MCP. The MCP
+Chrome → frame messages (8d1) go only through `postToFrame`, to registered iframes; the frame
+runtime accepts them only from the parent it captured at load. Chrome never touches disk or MCP. The MCP
 process never touches the panel; it reaches the user only through disk and the watcher.
 
 ## Panel open and handshake
@@ -124,8 +126,43 @@ sequenceDiagram
   F->>C: cd:frame-wheel {deltaX, deltaY, ctrlKey, x, y} (when nothing inside can scroll)
 ```
 
-Chrome matches every frame message by `event.source` against its registered iframes, then runs it
-through `parseFrameMessage`. Anything else from an opaque origin is dropped.
+Chrome routes every window message with `routeMessage`: a registered iframe's window is a frame
+message (then `parseFrameMessage`), any other opaque-origin sender is dropped, the rest goes to
+`parseHostMessage`. Each `canvas:updated` is merged by `mergeCanvasFrames`: an identical re-post
+(tab switch) changes nothing; new html reloads that frame and restarts its height guard.
+
+## Comment-mode picking (8d1)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome (App + commentPick)
+  participant A as Frame A runtime
+  participant B as Frame B runtime
+  A->>C: cd:ready (load or reload)
+  C->>C: clear A's hover/pick
+  C->>A: cd:mode {current mode}
+  U->>C: Comment toggle
+  C->>A: cd:mode {comment}
+  C->>B: cd:mode {comment}
+  U->>A: pointer move
+  A->>C: cd:hover {rect|null} (once per animation frame, on change)
+  U->>A: click (picked, then blocked; frame takes focus)
+  A->>C: cd:pick {tagName, rect|null, isPage}
+  U->>A: ↑ / ↓ (focus in frame)
+  A->>C: cd:pick (parent / child)
+  U->>C: Parent / Child, or ↑/↓ with chrome focus
+  C->>A: cd:pick-parent / cd:pick-child
+  A->>C: cd:pick
+  U->>B: click in frame B
+  B->>C: cd:pick
+  C->>A: cd:mode {comment} (A forgets its path)
+```
+
+- Chrome ignores `cd:hover` and `cd:pick` outside Comment mode; a design's own script can post them.
+- Only iframe frames hold a pick: a frame that becomes a tile or leaves the stage drops it; an
+  empty stage leaves Comment mode.
+- Frame data reaches the UI only as chip text and outline geometry (never `{@html}`).
 
 ## Frame drag / resize (8c)
 
@@ -172,7 +209,11 @@ settles the gesture to disk (the Agent wins).
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
 | frame → chrome | `cd:frame-height` | `{height}` |
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |
-| chrome → frame | none | |
+| frame → chrome | `cd:ready` | none |
+| frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
+| frame → chrome | `cd:pick` | `{tagName, rect \| null, isPage}` |
+| chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment'}` |
+| chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 
 Rule 02 is the normative contract. If this table and rule 02 disagree, fix whichever no longer
 matches the code.

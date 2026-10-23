@@ -52,6 +52,25 @@ export const stageToScreen = ({
 	y: stageY * view.zoom + view.y,
 });
 
+// A frame-local rect (CSS px inside the frame at stage `frame`) to viewport-local screen px.
+export const frameRectToScreen = ({
+	view,
+	frame,
+	rect,
+}: {
+	view: StageView;
+	frame: StagePoint;
+	rect: StageRect;
+}): StageRect => {
+	const origin = stageToScreen({ view, stageX: frame.x + rect.x, stageY: frame.y + rect.y });
+	return {
+		x: origin.x,
+		y: origin.y,
+		width: rect.width * view.zoom,
+		height: rect.height * view.zoom,
+	};
+};
+
 export const screenToStage = ({
 	view,
 	screenX,

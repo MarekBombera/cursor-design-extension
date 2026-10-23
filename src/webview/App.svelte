@@ -1,10 +1,21 @@
 <script lang="ts">
 	import Banners from './Banners.svelte';
-	import type { FrameMessage } from './frame/frameMessages';
+	import {
+		applyPickMessage,
+		arrowPickStep,
+		type CommentPickState,
+		type CommentPickStep,
+		INITIAL_COMMENT_PICK,
+		keepLiveFrames,
+		type PickStepType,
+		toggleCommentMode,
+	} from './commentPick';
+	import type { ChromeFrameMessage, FrameMessage, FrameRect } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
 	import {
 		connectHostBridge,
 		postFramePlace,
+		postToFrame,
 		readSavedStageView,
 		saveStageView,
 	} from './hostBridge.svelte';
@@ -12,35 +23,34 @@
 	import {
 		type FrameGesture,
 		type StageFrameGesture,
+		failFrameGesture,
 		settleFrameGesture,
 		stepFrameGesture,
 	} from './frameGesture';
-	import Stage, { type StageFrame, type StageWheel } from './Stage.svelte';
+	import {
+		type FrameRecord,
+		liveIframeIds,
+		mergeCanvasFrames,
+		TILE_HEIGHT,
+	} from './canvasFrames';
+	import Stage, { type StageWheel } from './Stage.svelte';
 	import {
 		type ChromeFrame,
 		clampStageView,
 		fitStageView,
-		type FrameHeightGuard,
+		frameRectToScreen,
 		layoutCanvasChrome,
 		nextFrameHeight,
 		panStage,
+		stageToScreen,
+		type StageRect,
 		type StageView,
 		zoomStageAt,
 		zoomStageTo,
 	} from './stageGeometry';
 	import Toolbar from './Toolbar.svelte';
 
-	type FrameRecord = StageFrame & {
-		group: string | undefined;
-		// Measured iframe height; the wrapper uses TILE_HEIGHT while kind is 'tile'.
-		measuredHeight: number;
-		guard: FrameHeightGuard;
-	};
-
-	const PROVISIONAL_FRAME_HEIGHT = 800;
-	const TILE_HEIGHT = 160;
 	const RENDER_ERROR_COPY = 'Could not render this frame.';
-	const resetGuard = (): FrameHeightGuard => ({ lastGrowth: 0, frozen: false });
 
 	// First-seen order; never reordered (moving an iframe in the DOM reloads it).
 	let frames: FrameRecord[] = $state([]);
@@ -52,6 +62,8 @@
 	let handoffStale = $state(false);
 	let committedView: StageView | undefined = $state();
 	let gesture: FrameGesture | undefined = $state();
+	// Comment mode, hover and pick; the rules live in commentPick.ts.
+	let picking: CommentPickState = $state(INITIAL_COMMENT_PICK);
 
 	// Not reactive: the iframe registry is matched against event.source at message time, and
 	// the view / viewport size are read by handlers when they run.
@@ -91,6 +103,25 @@
 			? undefined
 			: `translate(${committedView.x}px, ${committedView.y}px) scale(${committedView.zoom})`,
 	);
+	// Uses the drawn frame position (including a drag preview) and the committed view, the same
+	// inputs that place the frame wrapper, so an outline stays glued to its element.
+	const frameOutline = (frameId: string, rect: FrameRect | null): StageRect | undefined => {
+		if (rect === null || committedView === undefined) {
+			return undefined;
+		}
+		const frame = displayFrames.find((candidate) => candidate.id === frameId);
+		return frame === undefined
+			? undefined
+			: frameRectToScreen({ view: committedView, frame, rect });
+	};
+	const hoverOutline = $derived(
+		picking.hover === undefined
+			? undefined
+			: frameOutline(picking.hover.frameId, picking.hover.rect),
+	);
+	const pickOutline = $derived(
+		picking.pick === undefined ? undefined : frameOutline(picking.pick.frameId, picking.pick.rect),
+	);
 	const zoomText = $derived(
 		`${Math.round((committedView === undefined ? 1 : committedView.zoom) * 100)}%`,
 	);
@@ -127,53 +158,10 @@
 		artboardId = message.activeArtboardId;
 		generation = message.activeArtboardId === '' ? '' : String(message.generation);
 		nonce = message.cspNonce;
-		const seenIds = new Set<string>();
-		for (const entry of message.frames) {
-			seenIds.add(entry.id);
-			let record = frames.find((frame) => frame.id === entry.id);
-			if (record === undefined) {
-				frames.push({
-					id: entry.id,
-					label: entry.label,
-					x: entry.x,
-					y: entry.y,
-					width: entry.width,
-					group: entry.group,
-					height: TILE_HEIGHT,
-					measuredHeight: PROVISIONAL_FRAME_HEIGHT,
-					guard: resetGuard(),
-					kind: 'tile',
-					tileText: '',
-					html: '',
-				});
-				record = frames[frames.length - 1];
-				if (record === undefined) {
-					continue;
-				}
-			}
-			record.label = entry.label;
-			record.x = entry.x;
-			record.y = entry.y;
-			record.width = entry.width;
-			record.group = entry.group;
-			if (entry.errorMessage !== undefined || entry.html.trim() === '') {
-				record.kind = 'tile';
-				record.tileText = entry.errorMessage ?? 'Empty artboard file.';
-				record.height = TILE_HEIGHT;
-			} else {
-				// A new document: reset the guard, keep height. Must match what Frame's blob effect
-				// reloads on (kind, html, nonce), or a reloaded frame keeps a frozen guard.
-				if (record.kind !== 'iframe' || entry.html !== record.html) {
-					record.guard = resetGuard();
-				}
-				record.kind = 'iframe';
-				record.height = record.measuredHeight;
-			}
-			record.html = entry.html;
-		}
 		// A deleted artboard file (or an entry that failed validation) leaves the stage; its
 		// Frame unmounts and revokes its blob URL.
-		frames = frames.filter((frame) => seenIds.has(frame.id));
+		frames = mergeCanvasFrames({ records: frames, frames: message.frames });
+		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
 		settleGestureOnCanvasUpdated();
 		errorMessage = undefined;
 		if (frames.length === 0) {
@@ -192,16 +180,63 @@
 			errorMessage = message.message;
 			// The host posts this after the answering canvas:updated of a failed frame:place,
 			// which is how a failure that leaves disk equal to base drops the preview.
-			gesture = undefined;
+			gesture = failFrameGesture(gesture);
 			return;
 		}
 		mcpUnavailable = !message.mcpAvailable;
 		handoffStale = message.handoffStale;
 	};
 
+	// Every chrome → frame send goes to a registered iframe (the `iframes` map).
+	const sendToFrame = (frameId: string, message: ChromeFrameMessage): void => {
+		const iframe = iframes.get(frameId);
+		if (iframe !== undefined) {
+			postToFrame(iframe, message);
+		}
+	};
+
+	const applyPickStep = (step: CommentPickStep): void => {
+		picking = step.state;
+		for (const send of step.sends) {
+			sendToFrame(send.frameId, send.message);
+		}
+	};
+
+	const handleToggleComment = (): void => {
+		applyPickStep(toggleCommentMode({ state: picking, frameIds: iframes.keys() }));
+	};
+
+	const stepPick = (type: PickStepType): void => {
+		if (picking.pick !== undefined) {
+			sendToFrame(picking.pick.frameId, { type });
+		}
+	};
+
+	const isTextEntry = (target: EventTarget | null): boolean =>
+		target instanceof HTMLElement &&
+		(target.isContentEditable || target.matches('input, textarea, select'));
+
+	const handleWindowKeydown = (event: KeyboardEvent): void => {
+		const step = arrowPickStep({
+			state: picking,
+			key: event.key,
+			hasModifier: event.ctrlKey || event.metaKey || event.altKey || event.shiftKey,
+			defaultPrevented: event.defaultPrevented,
+			inTextEntry: isTextEntry(event.target),
+		});
+		if (step !== undefined) {
+			event.preventDefault();
+			stepPick(step);
+		}
+	};
+
 	const handleFrameMessage = (frameId: string, message: FrameMessage): void => {
 		const frame = frames.find((candidate) => candidate.id === frameId);
 		if (frame === undefined) {
+			return;
+		}
+		if (message.type === 'cd:ready' || message.type === 'cd:hover' || message.type === 'cd:pick') {
+			applyPickStep(applyPickMessage({ state: picking, frameId, message }));
 			return;
 		}
 		if (message.type === 'cd:frame-height') {
@@ -219,13 +254,13 @@
 			return;
 		}
 		if (message.ctrlKey) {
+			const anchor = stageToScreen({
+				view: stageView,
+				stageX: frame.x + message.x,
+				stageY: frame.y + message.y,
+			});
 			commitStageView(
-				zoomStageAt({
-					view: stageView,
-					deltaY: message.deltaY,
-					screenX: stageView.x + (frame.x + message.x) * stageView.zoom,
-					screenY: stageView.y + (frame.y + message.y) * stageView.zoom,
-				}),
+				zoomStageAt({ view: stageView, deltaY: message.deltaY, screenX: anchor.x, screenY: anchor.y }),
 			);
 			return;
 		}
@@ -309,6 +344,7 @@
 		frame.kind = 'tile';
 		frame.tileText = RENDER_ERROR_COPY;
 		frame.height = TILE_HEIGHT;
+		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
 	};
 
 	connectHostBridge({
@@ -318,14 +354,21 @@
 	});
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 <Toolbar
 	{artboardId}
 	{generation}
 	{handoffStale}
 	{zoomText}
 	disabled={frames.length === 0}
+	commentMode={picking.commentMode}
+	pick={picking.pick}
 	onPreset={handlePreset}
 	onFit={handleFit}
+	onToggleComment={handleToggleComment}
+	onPickParent={() => stepPick('cd:pick-parent')}
+	onPickChild={() => stepPick('cd:pick-child')}
 />
 <Banners {errorMessage} {mcpUnavailable} />
 <p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
@@ -339,6 +382,8 @@
 	{transform}
 	zoom={committedView?.zoom ?? 1}
 	hidden={frames.length === 0}
+	{hoverOutline}
+	{pickOutline}
 	onWheel={handleStageWheel}
 	onDragPan={handleDragPan}
 	onViewportSize={handleViewportSize}

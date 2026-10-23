@@ -36,6 +36,7 @@ The feature that adds Svelte also adds `svelte-check` to `pnpm verify` (tsc does
 ## Container vs view
 
 - **One container** owns the host bridge: `acquireVsCodeApi()` once, the `message` listener, message validation (unknown `type` or malformed payload is ignored), and chrome state. Keep the bridge in one `*.svelte.ts` module; components never call `postMessage` or add `message` listeners themselves.
+- **Rules are a third layer.** Logic that decides (state transitions, message tables, gesture and geometry math) lives in a pure `*.ts` module beside the container, with a colocated test: `frameGesture.ts`, `commentPick.ts`, `stageGeometry.ts`. The container holds the `$state`, calls the rule, applies the result, and does the I/O (posting returned sends, `setState`). Components can't be unit-tested (09), so a rule left inside a `.svelte` file is a rule only F5 can catch. A container past ~300 lines, or with 2+ jobs, extracts its rules this way first.
 - **View components** are props in, callbacks out. Tiny visual state (open / hover / focus) is fine; domain state and host messages stay in the container.
 - No dummy wrappers: a component that only forwards props to another one is deleted, and the parent renders the child directly.
 - A chunky branch (toolbar, banner, empty state) becomes a sibling component in the same folder. A one-line `{#if}` stays inline.

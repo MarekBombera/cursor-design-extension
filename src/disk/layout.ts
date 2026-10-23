@@ -41,6 +41,9 @@ export const FRAME_GAP = 24;
 // Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
 export const MAX_FRAME_COORDINATE = 100_000;
 
+// Longest element tag name a frame may report in cd:pick.
+export const MAX_TAG_NAME_CHARS = 64;
+
 // Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
 export const LOCK_FILE = '.lock' as const;
 

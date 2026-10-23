@@ -1,89 +1,126 @@
-# Frame drag/resize - Overview for review
+# Picking channel - Overview for review
 
-Source of truth: `blueprint/history/features/08c-frame-drag-resize.md`. This file is the steering summary, not the build spec.
+> **Generated file.** Human-facing steering summary of the active work item:
+> same content as `current-feature.md`, trimmed. Written at `/feature` when the
+> spec is created, and kept current if the spec is revised. `/complete` may
+> polish this into the archive-ready one-pager; it is not the first write.
+> Open in Markdown preview to render the diagrams.
+
+Source of truth: `blueprint/history/features/08d1-picking-channel.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Drag a frame by its label, or resize its width with the right-edge handle. Positions round to whole stage pixels (no grid) and persist in `canvas.json` on release. If the Agent moves the same frame during or after the drag, the Agent wins.
+A Comment toggle in the toolbar. When it is on, clicks inside a frame never reach the design.
+They pick the element under the cursor instead, and the chrome draws a crisp outline around it.
+↑/↓ (or Alt+click) step to the parent or child. No comments are saved yet. This feature makes
+picking precise and gives chrome its first way to talk to a frame.
 
-## Flow
+## What you will see
 
-1. Grab the label to move, or the right-edge handle to change width.
-2. Chrome shows a local preview while you drag.
-3. Release writes once through `frame:place` → locked `placeFrame` with a `base` check.
-4. Host answers with a fresh snapshot. A failed write also posts `artboard:error`, so the preview never sticks.
+- A **Comment** button in the toolbar (pressed state). It is disabled when there are no frames,
+  including in untrusted workspaces.
+- In Comment mode, a dashed outline follows the cursor over the design, and a click turns it into
+  a solid pick outline.
+- A chip shows the picked tag (`button`, `section`, ...) or "Whole frame", with **Parent** and
+  **Child** buttons. ↑/↓ do the same, both right after a click (focus in the frame; the runtime
+  handles them) and when the chrome has focus.
+- Links, buttons, forms, selects, details, and video controls do nothing in Comment mode. They
+  work again when you toggle off.
+- Outlines stay glued to the element through pan, zoom, frame drag (still enabled in 8d1), and
+  inner scroll. A pick scrolled out of view loses its outline but keeps its chip.
 
-## System map
+## Scope at a glance
 
-```mermaid
-flowchart LR
-  U[User] --> C[Svelte chrome]
-  C -->|frame:place + base| H[Extension host]
-  H -->|withWorkspaceLock| D[".cursor-design/canvas.json"]
-  A[Agent place_frame] --> D
-  D -->|watcher ignores .lock| H
-  H -->|canvas:updated / artboard:error| C
-```
+| In | Out (later) |
+|---|---|
+| Chrome ↔ frame channel (`cd:mode`, `cd:pick-parent`, `cd:pick-child`; `cd:ready`, `cd:hover`, `cd:pick`) | Selectors, text, styles, pick point (8d2) |
+| Click blocking in the frame runtime | `C` key, Escape, hint, popover, drag inertness (8f1) |
+| `elementsFromPoint` + overlay rules, SVG → `<svg>`, page pick | Pins and `cd:anchors` (8f2) |
+| Parent/child stepping, Alt+click | `comments.json`, MCP tools (8e) |
+| Screen-space outlines in chrome | Picking inside a nested design `<iframe>` (known ceiling) |
+| Picking fixture `fixtures/picking.html` | Host, MCP, disk changes |
 
-## Key loop
+## Data flow
 
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant C as Chrome
-  participant H as Host
-  participant D as canvas.json
-  U->>C: drag label / handle
-  C->>C: local whole-px preview
-  U->>C: release
-  C->>H: frame:place {id, x, y, width, base}
-  H->>D: lock, compare base, write
-  H->>C: canvas:updated
-  Note over C: Agent write mid-drag clears the gesture
+  participant C as Chrome (Svelte)
+  participant A as Frame A runtime
+  participant B as Frame B runtime
+  A->>C: cd:ready (load or reload)
+  C->>C: clear A's hover/pick
+  C->>A: cd:mode {interact}
+  U->>C: click Comment toggle
+  C->>C: clear hover + pick
+  C->>A: cd:mode {comment}
+  C->>B: cd:mode {comment}
+  U->>A: move pointer
+  A->>C: cd:hover {rect|null} (≤1 per animation frame, only on change)
+  U->>A: click (picked, then blocked)
+  A->>C: cd:pick {tagName, rect|null, isPage}
+  C->>C: outline + chip
+  U->>A: ↑ / ↓ (focus in frame)
+  A->>C: cd:pick (parent / child)
+  U->>C: Parent / Child button, or ↑/↓ with chrome focus
+  C->>A: cd:pick-parent / cd:pick-child
+  A->>C: cd:pick
+  U->>B: click in frame B
+  B->>C: cd:pick
+  C->>A: cd:mode {comment} (A drops its pick)
+  C->>C: pick = B
 ```
 
-## What you will see
+Trust: the frame accepts commands only from the parent it captured at load. Chrome accepts frame
+messages only from a registered iframe and only after the guards in `parseFrameMessage` pass. It
+drops `cd:hover` and `cd:pick` outside Comment mode. Frame data is rendered as text or geometry
+only. A null pick rect hides the outline but keeps the chip.
 
-- Labels are move buttons. A thin handle sits on each frame’s right edge.
-- Drag follows the cursor in whole pixels. Escape snaps back. A click under 3px writes nothing.
-- Keyboard: Tab to a label, arrows nudge 8px (Shift 64). Tab to the handle, Left/Right resize. Release the last arrow to commit.
-- Agent-wins, lock-busy, and corrupt-canvas failures show a banner and restore the disk position.
+## Locked decisions
 
-## Data flow
+- **Hit testing is in-house:** native `elementsFromPoint` plus one pure `pickTarget`. A transparent
+  element is skipped only when something that is not its ancestor sits underneath.
+- **Outlines are drawn in chrome**, never inside the design DOM. The runtime still never writes to
+  the design.
+- **Every `cd:mode` resets the frame's pick** (path, hover, pending frame callback), which is how
+  picking in another frame clears the old one. A reset frame posts nothing until its next click.
+- **Click blocking and picking share one listener**, so picking can never be swallowed by the
+  block.
+- **"Paints nothing" is a pure, tested predicate** (`paintsFromStyle`, `isTransparentColor`):
+  unknown color formats count as painted, which keeps the element.
+- **Messages ship with their producers.** `cd:anchors` and `cd:key`, and the selector and style
+  guards, wait for 8f2, 8f1, and 8d2. The toolbar toggle comes forward from 8f1 so 8d1 can be judged
+  in F5.
+- The exported `canvas.html` behaves exactly as before.
 
-Chrome sends one `frame:place` on release. Host parses it, refuses untrusted workspaces, then `placeFrame` under `.cursor-design/.lock`. `base` must still match disk or the write is skipped (`FRAME_MOVED`). `canvas:updated` frames now carry `generation`.
+## Try it (F5)
 
-## Architecture decisions
+```bash
+cp fixtures/picking.html fixtures/dev-workspace/.cursor-design/artboards/picking.html
+```
 
-- In-house gestures, no Moveable.
-- Lock is a `wx` file plus a `.lock.break` sub-lock for stale (30s) breakers. Only the small `canvas.json` read-modify-write sits inside the lock.
-- Gesture rules live in pure `frameGesture.ts` so they have unit tests.
-- Chrome-written coords are whole px within ±100000; width 120–3840. MCP `place_frame` is unchanged and never sends `base`.
+Run Extension, toggle Comment, and check at 10%, 100%, and 400% (ctrl+wheel or pinch past the
+presets):
+- hover matches the click target;
+- the transparent overlay is skipped;
+- card 3 picks card 3;
+- SVG paths pick the `<svg>`;
+- the scroll box re-outlines on scroll;
+- nothing in the design fires;
+- Alt+click and ↑/↓ step;
+- the empty bottom area picks "Whole frame";
+- picking in another frame clears the first and stays cleared.
 
-## Decisions locked
-
-- No 8px snap grid (F5 2026-10-22).
-- Agent wins mid-drag. Failed writes that leave disk equal to `base` clear via `artboard:error`.
-- Per-frame `generation` on the wire; no wire `hash`.
-- Comment-mode inertness is 8f1’s job.
-
-## Out of scope
-
-Comment mode, picking, height editing, multi-select, guides, undo, locking writers other than `canvas.json`, MCP schema changes.
-
-## Glossary
-
-| Term | Why it exists |
-|---|---|
-| `base` | The frame’s x/y/width at gesture start. If disk moved, the chrome write is skipped. |
-| Workspace lock | Cross-process `.lock` so Agent and chrome cannot interleave a `canvas.json` write. |
-| Agent wins | A mid-drag `place_frame` (or disk edit) cancels the gesture and shows the disk position. |
-| `generation` | Artboard meta generation copied onto each posted frame for later features. |
-
-## Your actions
-
-F5 in `fixtures/dev-workspace` to drag, resize, press Escape, and try the Agent-wins snippet in the archive.
+Inside the nested `<iframe>`, nothing is hovered, picked, or blocked. That is a known limit. The
+full checklist is in the spec's Testing section.
 
 ## Done means
 
-Frame drag/resize works with no Moveable. Positions persist after reload. Agent `place_frame` during or after a drag is reflected correctly.
+Shipped: Comment toggle, precise picking with hover and pick outlines, Parent/Child stepping
+(↑/↓ work right after a click, even with the Cursor chat open), and the first chrome → frame
+channel. `pnpm verify` green with 272 tests; Chrome harness matrix and F5 passed; fresh
+independent review passed. The picking rules (`commentPick`, `canvasFrames`, `routeMessage`,
+`pickTarget`, `pickPath`) are pure modules with edge-case tests.
+
+Open follow-ups (ledger): F-25 screen-reader announce, F-26 pointer capture on frame delete,
+F-27 string-match test, F-28 inert picking code in the export.

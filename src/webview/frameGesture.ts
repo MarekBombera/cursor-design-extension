@@ -1,6 +1,8 @@
 import type { FramePlaceMessage, FramePlacement } from './hostMessages';
 import {
 	dragFrame,
+	NUDGE_STEP,
+	NUDGE_STEP_LARGE,
 	passedGestureThreshold,
 	placementChanged,
 	resizeFrameWidth,
@@ -186,3 +188,60 @@ export const settleFrameGesture = ({
 		? undefined
 		: gesture;
 };
+
+// Arrow key on a focused label (move) or right-edge handle (resize) -> stage-px step. Anything
+// else returns undefined, so the key is not swallowed: Tab, letters, and ⌘/Ctrl/Alt chords
+// keep their normal meaning.
+export const arrowNudge = ({
+	key,
+	shiftKey,
+	hasModifier,
+	kind,
+}: {
+	key: string;
+	shiftKey: boolean;
+	hasModifier: boolean;
+	kind: FrameGestureKind;
+}): { stepX: number; stepY: number } | undefined => {
+	if (hasModifier) {
+		return undefined;
+	}
+	const size = shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+	if (key === 'ArrowLeft' || key === 'ArrowRight') {
+		return { stepX: key === 'ArrowLeft' ? -size : size, stepY: 0 };
+	}
+	// A width handle has no vertical meaning.
+	if (kind === 'resize' || (key !== 'ArrowUp' && key !== 'ArrowDown')) {
+		return undefined;
+	}
+	return { stepX: 0, stepY: key === 'ArrowUp' ? -size : size };
+};
+
+export const REVEAL_MARGIN = 24;
+
+// Screen-px pan along one axis that brings a keyboard-focused label or handle into view with a
+// margin. Something larger than the view aligns its start.
+// ponytail: a resize handle taller than the view (a tall frame) also aligns its start, so
+// tabbing to it jumps to the frame top. Upgrade: return 0 when it already spans the view.
+export const revealOffset = ({
+	start,
+	end,
+	viewStart,
+	viewEnd,
+}: {
+	start: number;
+	end: number;
+	viewStart: number;
+	viewEnd: number;
+}): number => {
+	if (start < viewStart + REVEAL_MARGIN || end - start > viewEnd - viewStart - 2 * REVEAL_MARGIN) {
+		return start - (viewStart + REVEAL_MARGIN);
+	}
+	return Math.max(0, end - (viewEnd - REVEAL_MARGIN));
+};
+
+// artboard:error answers a failed frame:place, so it ends a committing gesture. The host also
+// re-posts a standing error on every flush (watcher, tab switch); that must not drop a drag
+// still in progress.
+export const failFrameGesture = (gesture: FrameGesture | undefined): FrameGesture | undefined =>
+	gesture?.phase === 'committing' ? undefined : gesture;

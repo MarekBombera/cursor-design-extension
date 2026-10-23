@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import {
+	arrowNudge,
+	failFrameGesture,
 	type FrameGesture,
+	REVEAL_MARGIN,
+	revealOffset,
 	type StageFrameGesture,
 	settleFrameGesture,
 	stepFrameGesture,
@@ -126,4 +130,34 @@ test('settle: active drops on a disk move, committing waits for the host answer'
 		}),
 		undefined,
 	);
+});
+
+test('arrowNudge: resize ignores up/down, chords and other keys pass through', () => {
+	const key = (value: string, extra: Partial<Parameters<typeof arrowNudge>[0]> = {}) =>
+		arrowNudge({ key: value, shiftKey: false, hasModifier: false, kind: 'move', ...extra });
+	assert.deepEqual(key('ArrowUp', { shiftKey: true }), { stepX: 0, stepY: -64 });
+	assert.deepEqual(key('ArrowLeft', { kind: 'resize' }), { stepX: -8, stepY: 0 });
+	// Each of these would otherwise preventDefault and trap the key.
+	assert.equal(key('ArrowUp', { kind: 'resize' }), undefined);
+	assert.equal(key('ArrowDown', { kind: 'resize' }), undefined);
+	assert.equal(key('ArrowLeft', { hasModifier: true }), undefined);
+	assert.equal(key('Tab'), undefined);
+});
+
+test('revealOffset: pans only as far as needed; too-large targets align their start', () => {
+	const view = { viewStart: 0, viewEnd: 1000 };
+	assert.equal(revealOffset({ ...view, start: 100, end: 200 }), 0);
+	// Inside the margin but visible: still pans by the shortfall.
+	assert.equal(revealOffset({ ...view, start: 10, end: 60 }), 10 - REVEAL_MARGIN);
+	assert.equal(revealOffset({ ...view, start: -300, end: -200 }), -300 - REVEAL_MARGIN);
+	assert.equal(revealOffset({ ...view, start: 950, end: 1100 }), 1100 - (1000 - REVEAL_MARGIN));
+	assert.equal(revealOffset({ ...view, start: 400, end: 1400 }), 400 - REVEAL_MARGIN);
+});
+
+test('failFrameGesture drops only a committing gesture, never a drag in progress', () => {
+	const active = step(undefined, pointer('start', 0)).gesture;
+	assert.ok(active !== undefined);
+	assert.equal(failFrameGesture(active), active);
+	assert.equal(failFrameGesture({ ...active, phase: 'committing' }), undefined);
+	assert.equal(failFrameGesture(undefined), undefined);
 });

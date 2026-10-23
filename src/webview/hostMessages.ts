@@ -164,3 +164,27 @@ export const parseSavedStageView = (value: unknown): StageView | undefined => {
 	}
 	return { x: value.x, y: value.y, zoom: value.zoom };
 };
+
+export type MessageRoute = { kind: 'frame'; frameId: string } | { kind: 'host' } | { kind: 'drop' };
+
+// Who sent a window message. A registered frame's window wins, whatever the payload claims. An
+// opaque-origin sender that is not (or no longer) registered never reaches the host parser.
+// `source` null never matches: a detached iframe's contentWindow is null too.
+export const routeMessage = ({
+	source,
+	origin,
+	iframes,
+}: {
+	source: unknown;
+	origin: string;
+	iframes: ReadonlyMap<string, { contentWindow: unknown }>;
+}): MessageRoute => {
+	if (source !== null) {
+		for (const [frameId, iframe] of iframes) {
+			if (iframe.contentWindow === source) {
+				return { kind: 'frame', frameId };
+			}
+		}
+	}
+	return origin === 'null' ? { kind: 'drop' } : { kind: 'host' };
+};

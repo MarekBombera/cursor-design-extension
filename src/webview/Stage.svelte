@@ -1,16 +1,4 @@
 <script lang="ts" module>
-	export type StageFrame = {
-		id: string;
-		label: string;
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-		kind: 'tile' | 'iframe';
-		tileText: string;
-		html: string;
-	};
-
 	export type StageWheel = {
 		deltaX: number;
 		deltaY: number;
@@ -25,12 +13,18 @@
 
 	import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 	import Frame from './Frame.svelte';
-	import type { FrameGestureKind, StageFrameGesture } from './frameGesture';
+	import Overlay from './Overlay.svelte';
+	import type { StageFrame } from './canvasFrames';
+	import {
+		arrowNudge,
+		type FrameGestureKind,
+		revealOffset,
+		type StageFrameGesture,
+	} from './frameGesture';
 	import {
 		type FrameLabelBox,
 		type GroupHeadingBox,
-		NUDGE_STEP,
-		NUDGE_STEP_LARGE,
+		type StageRect,
 	} from './stageGeometry';
 
 	type Props = {
@@ -43,6 +37,8 @@
 		transform: string | undefined;
 		zoom: number;
 		hidden: boolean;
+		hoverOutline: StageRect | undefined;
+		pickOutline: StageRect | undefined;
 		onWheel: (wheel: StageWheel) => void;
 		onDragPan: (deltaX: number, deltaY: number) => void;
 		onViewportSize: (width: number, height: number) => void;
@@ -61,6 +57,8 @@
 		transform,
 		zoom,
 		hidden,
+		hoverOutline,
+		pickOutline,
 		onWheel,
 		onDragPan,
 		onViewportSize,
@@ -160,24 +158,6 @@
 
 	// Focus may land on a label or handle that is off screen (Tab, or a nudge). Pan the stage,
 	// not the viewport, until it is visible; a label wider than the viewport aligns its start.
-	const REVEAL_MARGIN = 24;
-	const revealOffset = ({
-		start,
-		end,
-		viewStart,
-		viewEnd,
-	}: {
-		start: number;
-		end: number;
-		viewStart: number;
-		viewEnd: number;
-	}): number => {
-		if (start < viewStart + REVEAL_MARGIN || end - start > viewEnd - viewStart - 2 * REVEAL_MARGIN) {
-			return start - (viewStart + REVEAL_MARGIN);
-		}
-		return Math.max(0, end - (viewEnd - REVEAL_MARGIN));
-	};
-
 	const revealFocused = (event: FocusEvent & { currentTarget: Element }): void => {
 		// Keyboard focus only: a pointerdown also focuses the label or handle, and panning then
 		// would jump the camera under a starting drag.
@@ -206,36 +186,18 @@
 		}
 	};
 
-	const arrowStep = (
-		event: KeyboardEvent,
-		kind: FrameGestureKind,
-	): { stepX: number; stepY: number } | undefined => {
-		const size = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
-		if (event.key === 'ArrowLeft') {
-			return { stepX: -size, stepY: 0 };
-		}
-		if (event.key === 'ArrowRight') {
-			return { stepX: size, stepY: 0 };
-		}
-		if (kind === 'resize') {
-			return undefined;
-		}
-		if (event.key === 'ArrowUp') {
-			return { stepX: 0, stepY: -size };
-		}
-		if (event.key === 'ArrowDown') {
-			return { stepX: 0, stepY: size };
-		}
-		return undefined;
-	};
-
 	const handleFrameKeydown = (event: KeyboardEvent, target: GestureTarget): void => {
 		if (event.key === 'Escape') {
 			heldArrows.clear();
 			onFrameGesture({ ...target, source: 'keyboard', phase: 'cancel' });
 			return;
 		}
-		const step = arrowStep(event, target.kind);
+		const step = arrowNudge({
+			key: event.key,
+			shiftKey: event.shiftKey,
+			hasModifier: event.ctrlKey || event.metaKey || event.altKey,
+			kind: target.kind,
+		});
 		if (step === undefined) {
 			return;
 		}
@@ -447,6 +409,7 @@
 			</div>
 		{/each}
 	</div>
+	<Overlay hover={hoverOutline} pick={pickOutline} />
 </div>
 
 <style>

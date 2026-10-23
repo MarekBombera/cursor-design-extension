@@ -1,4 +1,5 @@
-import { FRAME_HEIGHT_MESSAGE, FRAME_WHEEL_MESSAGE } from './frameMessages';
+import { installCommentPicking } from './commentPicking';
+import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE, FRAME_WHEEL_MESSAGE } from './frameMessages';
 
 // Runs inside the artboard iframe, injected first in head. Consumers import it as a string
 // through `?iife` (scripts/iifeStringPlugin.ts). `parent` is a replaceable global, so it is
@@ -115,3 +116,8 @@ window.addEventListener(
 	},
 	{ passive: false, capture: true },
 );
+
+installCommentPicking(host);
+
+// Last, after every listener exists: chrome answers with the current cd:mode.
+host.postMessage({ type: FRAME_READY_MESSAGE }, '*');

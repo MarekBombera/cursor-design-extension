@@ -23,6 +23,281 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
+	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
+	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
+	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
+	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
+	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseChromeFrameMessage = (data) =&gt; {
+		const record = asRecord(data);
+		if (record === void 0) return;
+		switch (record.type) {
+			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+				type: FRAME_MODE_MESSAGE,
+				mode: record.mode
+			} : void 0;
+			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
+			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			default: return;
+		}
+	};
+	//#endregion
+	//#region src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
+	//#endregion
+	//#region src/webview/frame/commentPicking.ts
+	var installCommentPicking = (host) =&gt; {
+		let mode = &quot;interact&quot;;
+		let path = [];
+		let hover;
+		let lastPointer;
+		let pendingHover;
+		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+		const resolve = (element) =&gt; {
+			let current = element;
+			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
+			return current;
+		};
+		const contains = (ancestor, element) =&gt; ancestor.contains(element);
+		const hasOwnText = (element) =&gt; Array.from(element.childNodes).some((child) =&gt; child.nodeType === Node.TEXT_NODE &amp;&amp; (child.textContent ?? &quot;&quot;).trim() !== &quot;&quot;);
+		const paints = (element) =&gt; {
+			const box = element.getBoundingClientRect();
+			return paintsFromStyle({
+				localName: element.localName,
+				width: box.width,
+				height: box.height,
+				hasOwnText: hasOwnText(element),
+				style: window.getComputedStyle(element)
+			});
+		};
+		const parentOf = (element) =&gt; element.parentElement === null ? null : resolve(element.parentElement);
+		const stepUp = (current) =&gt; stepToParent({
+			path: current,
+			parentOf,
+			isRoot
+		});
+		const pathAt = (point) =&gt; {
+			const start = [pickTarget({
+				stack: document.elementsFromPoint(point.x, point.y),
+				resolve,
+				isRoot,
+				paints,
+				contains
+			}) ?? document.body ?? document.documentElement];
+			return point.altKey ? stepUp(start) : start;
+		};
+		const toFrameRect = (box) =&gt; ({
+			x: box.x,
+			y: box.y,
+			width: box.width,
+			height: box.height
+		});
+		const visibleRect = (element) =&gt; {
+			if (!element.isConnected) return null;
+			const viewport = {
+				x: 0,
+				y: 0,
+				width: window.innerWidth,
+				height: window.innerHeight
+			};
+			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+			const clips = [];
+			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+				const style = window.getComputedStyle(ancestor);
+				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+			}
+			clips.push(viewport);
+			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+		};
+		const postPick = () =&gt; {
+			const current = path.at(-1);
+			if (current === void 0) return;
+			const isPage = isRoot(current);
+			host.postMessage({
+				type: FRAME_PICK_MESSAGE,
+				tagName: isPage ? &quot;body&quot; : current.localName,
+				rect: visibleRect(current),
+				isPage
+			}, &quot;*&quot;);
+		};
+		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+		const postHover = (element) =&gt; {
+			const rect = element === void 0 ? null : visibleRect(element);
+			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
+			hover = {
+				element,
+				rect
+			};
+			host.postMessage({
+				type: FRAME_HOVER_MESSAGE,
+				rect
+			}, &quot;*&quot;);
+		};
+		const cancelPendingHover = () =&gt; {
+			if (pendingHover !== void 0) {
+				cancelAnimationFrame(pendingHover);
+				pendingHover = void 0;
+			}
+		};
+		const setMode = (next) =&gt; {
+			mode = next;
+			path = [];
+			hover = void 0;
+			lastPointer = void 0;
+			cancelPendingHover();
+		};
+		const stepPick = (toParent) =&gt; {
+			if (path.length === 0) return;
+			path = toParent ? stepUp(path) : stepToChild(path);
+			postPick();
+		};
+		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
+			&quot;Enter&quot;,
+			&quot; &quot;,
+			&quot;ArrowUp&quot;,
+			&quot;ArrowDown&quot;
+		]);
+		const blockInComment = (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent) {
+				if (!BLOCKED_KEYS.has(event.key)) return;
+				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
+			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
+				if (event.detail &gt; 0) {
+					path = pathAt({
+						x: event.clientX,
+						y: event.clientY,
+						altKey: event.altKey
+					});
+					postPick();
+					window.focus();
+				}
+			}
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		};
+		for (const type of [
+			&quot;pointerdown&quot;,
+			&quot;pointerup&quot;,
+			&quot;mousedown&quot;,
+			&quot;mouseup&quot;,
+			&quot;click&quot;,
+			&quot;dblclick&quot;,
+			&quot;auxclick&quot;,
+			&quot;contextmenu&quot;,
+			&quot;submit&quot;,
+			&quot;keydown&quot;
+		]) window.addEventListener(type, blockInComment, { capture: true });
+		const updateHover = () =&gt; {
+			pendingHover = void 0;
+			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			postHover(pathAt(lastPointer).at(-1));
+		};
+		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			lastPointer = {
+				x: event.clientX,
+				y: event.clientY,
+				altKey: event.altKey
+			};
+			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
+		}, { capture: true });
+		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			lastPointer = void 0;
+			cancelPendingHover();
+			postHover(void 0);
+		}, { capture: true });
+		const repostRects = () =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (hover?.element !== void 0) postHover(hover.element);
+			if (path.length &gt; 0) postPick();
+		};
+		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
+		window.addEventListener(&quot;resize&quot;, repostRects);
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message === void 0) return;
+			if (message.type === &quot;cd:mode&quot;) {
+				setMode(message.mode);
+				return;
+			}
+			stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
@@ -99,6 +374,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	installCommentPicking(host);
+	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
@@ -107,6 +384,281 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
+	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
+	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
+	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
+	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
+	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseChromeFrameMessage = (data) =&gt; {
+		const record = asRecord(data);
+		if (record === void 0) return;
+		switch (record.type) {
+			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+				type: FRAME_MODE_MESSAGE,
+				mode: record.mode
+			} : void 0;
+			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
+			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			default: return;
+		}
+	};
+	//#endregion
+	//#region src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
+	//#endregion
+	//#region src/webview/frame/commentPicking.ts
+	var installCommentPicking = (host) =&gt; {
+		let mode = &quot;interact&quot;;
+		let path = [];
+		let hover;
+		let lastPointer;
+		let pendingHover;
+		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+		const resolve = (element) =&gt; {
+			let current = element;
+			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
+			return current;
+		};
+		const contains = (ancestor, element) =&gt; ancestor.contains(element);
+		const hasOwnText = (element) =&gt; Array.from(element.childNodes).some((child) =&gt; child.nodeType === Node.TEXT_NODE &amp;&amp; (child.textContent ?? &quot;&quot;).trim() !== &quot;&quot;);
+		const paints = (element) =&gt; {
+			const box = element.getBoundingClientRect();
+			return paintsFromStyle({
+				localName: element.localName,
+				width: box.width,
+				height: box.height,
+				hasOwnText: hasOwnText(element),
+				style: window.getComputedStyle(element)
+			});
+		};
+		const parentOf = (element) =&gt; element.parentElement === null ? null : resolve(element.parentElement);
+		const stepUp = (current) =&gt; stepToParent({
+			path: current,
+			parentOf,
+			isRoot
+		});
+		const pathAt = (point) =&gt; {
+			const start = [pickTarget({
+				stack: document.elementsFromPoint(point.x, point.y),
+				resolve,
+				isRoot,
+				paints,
+				contains
+			}) ?? document.body ?? document.documentElement];
+			return point.altKey ? stepUp(start) : start;
+		};
+		const toFrameRect = (box) =&gt; ({
+			x: box.x,
+			y: box.y,
+			width: box.width,
+			height: box.height
+		});
+		const visibleRect = (element) =&gt; {
+			if (!element.isConnected) return null;
+			const viewport = {
+				x: 0,
+				y: 0,
+				width: window.innerWidth,
+				height: window.innerHeight
+			};
+			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+			const clips = [];
+			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+				const style = window.getComputedStyle(ancestor);
+				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+			}
+			clips.push(viewport);
+			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+		};
+		const postPick = () =&gt; {
+			const current = path.at(-1);
+			if (current === void 0) return;
+			const isPage = isRoot(current);
+			host.postMessage({
+				type: FRAME_PICK_MESSAGE,
+				tagName: isPage ? &quot;body&quot; : current.localName,
+				rect: visibleRect(current),
+				isPage
+			}, &quot;*&quot;);
+		};
+		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+		const postHover = (element) =&gt; {
+			const rect = element === void 0 ? null : visibleRect(element);
+			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
+			hover = {
+				element,
+				rect
+			};
+			host.postMessage({
+				type: FRAME_HOVER_MESSAGE,
+				rect
+			}, &quot;*&quot;);
+		};
+		const cancelPendingHover = () =&gt; {
+			if (pendingHover !== void 0) {
+				cancelAnimationFrame(pendingHover);
+				pendingHover = void 0;
+			}
+		};
+		const setMode = (next) =&gt; {
+			mode = next;
+			path = [];
+			hover = void 0;
+			lastPointer = void 0;
+			cancelPendingHover();
+		};
+		const stepPick = (toParent) =&gt; {
+			if (path.length === 0) return;
+			path = toParent ? stepUp(path) : stepToChild(path);
+			postPick();
+		};
+		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
+			&quot;Enter&quot;,
+			&quot; &quot;,
+			&quot;ArrowUp&quot;,
+			&quot;ArrowDown&quot;
+		]);
+		const blockInComment = (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent) {
+				if (!BLOCKED_KEYS.has(event.key)) return;
+				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
+			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
+				if (event.detail &gt; 0) {
+					path = pathAt({
+						x: event.clientX,
+						y: event.clientY,
+						altKey: event.altKey
+					});
+					postPick();
+					window.focus();
+				}
+			}
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		};
+		for (const type of [
+			&quot;pointerdown&quot;,
+			&quot;pointerup&quot;,
+			&quot;mousedown&quot;,
+			&quot;mouseup&quot;,
+			&quot;click&quot;,
+			&quot;dblclick&quot;,
+			&quot;auxclick&quot;,
+			&quot;contextmenu&quot;,
+			&quot;submit&quot;,
+			&quot;keydown&quot;
+		]) window.addEventListener(type, blockInComment, { capture: true });
+		const updateHover = () =&gt; {
+			pendingHover = void 0;
+			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			postHover(pathAt(lastPointer).at(-1));
+		};
+		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			lastPointer = {
+				x: event.clientX,
+				y: event.clientY,
+				altKey: event.altKey
+			};
+			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
+		}, { capture: true });
+		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			lastPointer = void 0;
+			cancelPendingHover();
+			postHover(void 0);
+		}, { capture: true });
+		const repostRects = () =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (hover?.element !== void 0) postHover(hover.element);
+			if (path.length &gt; 0) postPick();
+		};
+		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
+		window.addEventListener(&quot;resize&quot;, repostRects);
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message === void 0) return;
+			if (message.type === &quot;cd:mode&quot;) {
+				setMode(message.mode);
+				return;
+			}
+			stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
@@ -183,6 +735,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	installCommentPicking(host);
+	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
@@ -191,6 +745,281 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
+	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
+	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
+	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
+	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
+	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseChromeFrameMessage = (data) =&gt; {
+		const record = asRecord(data);
+		if (record === void 0) return;
+		switch (record.type) {
+			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+				type: FRAME_MODE_MESSAGE,
+				mode: record.mode
+			} : void 0;
+			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
+			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			default: return;
+		}
+	};
+	//#endregion
+	//#region src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
+	//#endregion
+	//#region src/webview/frame/commentPicking.ts
+	var installCommentPicking = (host) =&gt; {
+		let mode = &quot;interact&quot;;
+		let path = [];
+		let hover;
+		let lastPointer;
+		let pendingHover;
+		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+		const resolve = (element) =&gt; {
+			let current = element;
+			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
+			return current;
+		};
+		const contains = (ancestor, element) =&gt; ancestor.contains(element);
+		const hasOwnText = (element) =&gt; Array.from(element.childNodes).some((child) =&gt; child.nodeType === Node.TEXT_NODE &amp;&amp; (child.textContent ?? &quot;&quot;).trim() !== &quot;&quot;);
+		const paints = (element) =&gt; {
+			const box = element.getBoundingClientRect();
+			return paintsFromStyle({
+				localName: element.localName,
+				width: box.width,
+				height: box.height,
+				hasOwnText: hasOwnText(element),
+				style: window.getComputedStyle(element)
+			});
+		};
+		const parentOf = (element) =&gt; element.parentElement === null ? null : resolve(element.parentElement);
+		const stepUp = (current) =&gt; stepToParent({
+			path: current,
+			parentOf,
+			isRoot
+		});
+		const pathAt = (point) =&gt; {
+			const start = [pickTarget({
+				stack: document.elementsFromPoint(point.x, point.y),
+				resolve,
+				isRoot,
+				paints,
+				contains
+			}) ?? document.body ?? document.documentElement];
+			return point.altKey ? stepUp(start) : start;
+		};
+		const toFrameRect = (box) =&gt; ({
+			x: box.x,
+			y: box.y,
+			width: box.width,
+			height: box.height
+		});
+		const visibleRect = (element) =&gt; {
+			if (!element.isConnected) return null;
+			const viewport = {
+				x: 0,
+				y: 0,
+				width: window.innerWidth,
+				height: window.innerHeight
+			};
+			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+			const clips = [];
+			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+				const style = window.getComputedStyle(ancestor);
+				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+			}
+			clips.push(viewport);
+			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+		};
+		const postPick = () =&gt; {
+			const current = path.at(-1);
+			if (current === void 0) return;
+			const isPage = isRoot(current);
+			host.postMessage({
+				type: FRAME_PICK_MESSAGE,
+				tagName: isPage ? &quot;body&quot; : current.localName,
+				rect: visibleRect(current),
+				isPage
+			}, &quot;*&quot;);
+		};
+		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+		const postHover = (element) =&gt; {
+			const rect = element === void 0 ? null : visibleRect(element);
+			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
+			hover = {
+				element,
+				rect
+			};
+			host.postMessage({
+				type: FRAME_HOVER_MESSAGE,
+				rect
+			}, &quot;*&quot;);
+		};
+		const cancelPendingHover = () =&gt; {
+			if (pendingHover !== void 0) {
+				cancelAnimationFrame(pendingHover);
+				pendingHover = void 0;
+			}
+		};
+		const setMode = (next) =&gt; {
+			mode = next;
+			path = [];
+			hover = void 0;
+			lastPointer = void 0;
+			cancelPendingHover();
+		};
+		const stepPick = (toParent) =&gt; {
+			if (path.length === 0) return;
+			path = toParent ? stepUp(path) : stepToChild(path);
+			postPick();
+		};
+		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
+			&quot;Enter&quot;,
+			&quot; &quot;,
+			&quot;ArrowUp&quot;,
+			&quot;ArrowDown&quot;
+		]);
+		const blockInComment = (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent) {
+				if (!BLOCKED_KEYS.has(event.key)) return;
+				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
+			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
+				if (event.detail &gt; 0) {
+					path = pathAt({
+						x: event.clientX,
+						y: event.clientY,
+						altKey: event.altKey
+					});
+					postPick();
+					window.focus();
+				}
+			}
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		};
+		for (const type of [
+			&quot;pointerdown&quot;,
+			&quot;pointerup&quot;,
+			&quot;mousedown&quot;,
+			&quot;mouseup&quot;,
+			&quot;click&quot;,
+			&quot;dblclick&quot;,
+			&quot;auxclick&quot;,
+			&quot;contextmenu&quot;,
+			&quot;submit&quot;,
+			&quot;keydown&quot;
+		]) window.addEventListener(type, blockInComment, { capture: true });
+		const updateHover = () =&gt; {
+			pendingHover = void 0;
+			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			postHover(pathAt(lastPointer).at(-1));
+		};
+		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			lastPointer = {
+				x: event.clientX,
+				y: event.clientY,
+				altKey: event.altKey
+			};
+			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
+		}, { capture: true });
+		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			lastPointer = void 0;
+			cancelPendingHover();
+			postHover(void 0);
+		}, { capture: true });
+		const repostRects = () =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (hover?.element !== void 0) postHover(hover.element);
+			if (path.length &gt; 0) postPick();
+		};
+		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
+		window.addEventListener(&quot;resize&quot;, repostRects);
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message === void 0) return;
+			if (message.type === &quot;cd:mode&quot;) {
+				setMode(message.mode);
+				return;
+			}
+			stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
@@ -267,6 +1096,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	installCommentPicking(host);
+	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
@@ -275,6 +1106,281 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
+	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
+	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
+	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
+	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
+	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseChromeFrameMessage = (data) =&gt; {
+		const record = asRecord(data);
+		if (record === void 0) return;
+		switch (record.type) {
+			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+				type: FRAME_MODE_MESSAGE,
+				mode: record.mode
+			} : void 0;
+			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
+			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			default: return;
+		}
+	};
+	//#endregion
+	//#region src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
+	//#endregion
+	//#region src/webview/frame/commentPicking.ts
+	var installCommentPicking = (host) =&gt; {
+		let mode = &quot;interact&quot;;
+		let path = [];
+		let hover;
+		let lastPointer;
+		let pendingHover;
+		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+		const resolve = (element) =&gt; {
+			let current = element;
+			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
+			return current;
+		};
+		const contains = (ancestor, element) =&gt; ancestor.contains(element);
+		const hasOwnText = (element) =&gt; Array.from(element.childNodes).some((child) =&gt; child.nodeType === Node.TEXT_NODE &amp;&amp; (child.textContent ?? &quot;&quot;).trim() !== &quot;&quot;);
+		const paints = (element) =&gt; {
+			const box = element.getBoundingClientRect();
+			return paintsFromStyle({
+				localName: element.localName,
+				width: box.width,
+				height: box.height,
+				hasOwnText: hasOwnText(element),
+				style: window.getComputedStyle(element)
+			});
+		};
+		const parentOf = (element) =&gt; element.parentElement === null ? null : resolve(element.parentElement);
+		const stepUp = (current) =&gt; stepToParent({
+			path: current,
+			parentOf,
+			isRoot
+		});
+		const pathAt = (point) =&gt; {
+			const start = [pickTarget({
+				stack: document.elementsFromPoint(point.x, point.y),
+				resolve,
+				isRoot,
+				paints,
+				contains
+			}) ?? document.body ?? document.documentElement];
+			return point.altKey ? stepUp(start) : start;
+		};
+		const toFrameRect = (box) =&gt; ({
+			x: box.x,
+			y: box.y,
+			width: box.width,
+			height: box.height
+		});
+		const visibleRect = (element) =&gt; {
+			if (!element.isConnected) return null;
+			const viewport = {
+				x: 0,
+				y: 0,
+				width: window.innerWidth,
+				height: window.innerHeight
+			};
+			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+			const clips = [];
+			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+				const style = window.getComputedStyle(ancestor);
+				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+			}
+			clips.push(viewport);
+			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+		};
+		const postPick = () =&gt; {
+			const current = path.at(-1);
+			if (current === void 0) return;
+			const isPage = isRoot(current);
+			host.postMessage({
+				type: FRAME_PICK_MESSAGE,
+				tagName: isPage ? &quot;body&quot; : current.localName,
+				rect: visibleRect(current),
+				isPage
+			}, &quot;*&quot;);
+		};
+		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+		const postHover = (element) =&gt; {
+			const rect = element === void 0 ? null : visibleRect(element);
+			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
+			hover = {
+				element,
+				rect
+			};
+			host.postMessage({
+				type: FRAME_HOVER_MESSAGE,
+				rect
+			}, &quot;*&quot;);
+		};
+		const cancelPendingHover = () =&gt; {
+			if (pendingHover !== void 0) {
+				cancelAnimationFrame(pendingHover);
+				pendingHover = void 0;
+			}
+		};
+		const setMode = (next) =&gt; {
+			mode = next;
+			path = [];
+			hover = void 0;
+			lastPointer = void 0;
+			cancelPendingHover();
+		};
+		const stepPick = (toParent) =&gt; {
+			if (path.length === 0) return;
+			path = toParent ? stepUp(path) : stepToChild(path);
+			postPick();
+		};
+		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
+			&quot;Enter&quot;,
+			&quot; &quot;,
+			&quot;ArrowUp&quot;,
+			&quot;ArrowDown&quot;
+		]);
+		const blockInComment = (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent) {
+				if (!BLOCKED_KEYS.has(event.key)) return;
+				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
+			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
+				if (event.detail &gt; 0) {
+					path = pathAt({
+						x: event.clientX,
+						y: event.clientY,
+						altKey: event.altKey
+					});
+					postPick();
+					window.focus();
+				}
+			}
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		};
+		for (const type of [
+			&quot;pointerdown&quot;,
+			&quot;pointerup&quot;,
+			&quot;mousedown&quot;,
+			&quot;mouseup&quot;,
+			&quot;click&quot;,
+			&quot;dblclick&quot;,
+			&quot;auxclick&quot;,
+			&quot;contextmenu&quot;,
+			&quot;submit&quot;,
+			&quot;keydown&quot;
+		]) window.addEventListener(type, blockInComment, { capture: true });
+		const updateHover = () =&gt; {
+			pendingHover = void 0;
+			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			postHover(pathAt(lastPointer).at(-1));
+		};
+		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			lastPointer = {
+				x: event.clientX,
+				y: event.clientY,
+				altKey: event.altKey
+			};
+			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
+		}, { capture: true });
+		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
+			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			lastPointer = void 0;
+			cancelPendingHover();
+			postHover(void 0);
+		}, { capture: true });
+		const repostRects = () =&gt; {
+			if (mode !== &quot;comment&quot;) return;
+			if (hover?.element !== void 0) postHover(hover.element);
+			if (path.length &gt; 0) postPick();
+		};
+		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
+		window.addEventListener(&quot;resize&quot;, repostRects);
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message === void 0) return;
+			if (message.type === &quot;cd:mode&quot;) {
+				setMode(message.mode);
+				return;
+			}
+			stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
@@ -351,6 +1457,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	installCommentPicking(host);
+	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
@@ -378,6 +1486,19 @@ var stageGeometry = (function(exports) {
 		x: stageX * view.zoom + view.x,
 		y: stageY * view.zoom + view.y
 	});
+	var frameRectToScreen = ({ view, frame, rect }) => {
+		const origin = stageToScreen({
+			view,
+			stageX: frame.x + rect.x,
+			stageY: frame.y + rect.y
+		});
+		return {
+			x: origin.x,
+			y: origin.y,
+			width: rect.width * view.zoom,
+			height: rect.height * view.zoom
+		};
+	};
 	var screenToStage = ({ view, screenX, screenY }) => ({
 		x: (screenX - view.x) / view.zoom,
 		y: (screenY - view.y) / view.zoom
@@ -595,6 +1716,7 @@ var stageGeometry = (function(exports) {
 	exports.dragFrame = dragFrame;
 	exports.fitStageView = fitStageView;
 	exports.frameBounds = frameBounds;
+	exports.frameRectToScreen = frameRectToScreen;
 	exports.layoutCanvasChrome = layoutCanvasChrome;
 	exports.nextFrameHeight = nextFrameHeight;
 	exports.panStage = panStage;

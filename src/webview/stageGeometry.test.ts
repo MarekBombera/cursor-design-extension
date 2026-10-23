@@ -742,3 +742,17 @@ test('property: resizeFrameWidth lands on a whole px within 120..3840', () => {
 		),
 	);
 });
+
+test('frameRectToScreen maps a frame-local rect through a panned view at any zoom', () => {
+	const frame = { x: 100, y: 50 };
+	const rect = { x: 10, y: 20, width: 30, height: 40 };
+	for (const zoom of [0.1, 1, 4]) {
+		const view = { x: -15, y: 25, zoom };
+		assertClose(geometry.frameRectToScreen({ view, frame, rect }), {
+			x: (100 + 10) * zoom - 15,
+			y: (50 + 20) * zoom + 25,
+			width: 30 * zoom,
+			height: 40 * zoom,
+		});
+	}
+});

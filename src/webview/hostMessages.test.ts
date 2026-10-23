@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import { parseHostMessage, parseSavedStageView } from './hostMessages';
+import { parseHostMessage, parseSavedStageView, routeMessage } from './hostMessages';
 
 const validFrame = {
 	id: 'a',
@@ -127,4 +127,23 @@ test('saved stage view needs finite x, y and a positive finite zoom', () => {
 	]) {
 		assert.equal(parseSavedStageView(value), undefined, JSON.stringify(value));
 	}
+});
+
+test('routeMessage: the registered window decides, never the payload or a null source', () => {
+	const frameWindow = {};
+	const iframes = new Map([
+		['a', { contentWindow: frameWindow }],
+		['detached', { contentWindow: null }],
+	]);
+	assert.deepEqual(routeMessage({ source: frameWindow, origin: 'null', iframes }), {
+		kind: 'frame',
+		frameId: 'a',
+	});
+	// An unregistered (or removed) sandboxed frame never reaches the host parser.
+	assert.deepEqual(routeMessage({ source: {}, origin: 'null', iframes }), { kind: 'drop' });
+	// A null source must not match the detached iframe's null contentWindow.
+	assert.deepEqual(routeMessage({ source: null, origin: 'null', iframes }), { kind: 'drop' });
+	assert.deepEqual(routeMessage({ source: null, origin: 'vscode-webview://x', iframes }), {
+		kind: 'host',
+	});
 });
