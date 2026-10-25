@@ -12,6 +12,8 @@ import {
 	FRAME_WHEEL_MESSAGE,
 	PICK_CHILD_MESSAGE,
 	PICK_PARENT_MESSAGE,
+	hasControlChars,
+	isSafeStyleValue,
 	parseChromeFrameMessage,
 	parseFrameMessage,
 } from './frameMessages';
@@ -49,8 +51,42 @@ test('non-objects and other types are rejected', () => {
 	}
 });
 
+test('hasControlChars covers C0, DEL, C1 and the Unicode line separators', () => {
+	for (const value of ['\u0000', 'a\nb', '\u007f', '\u0085', '\u009f', '\u2028', '\u2029']) {
+		assert.equal(hasControlChars(value), true, JSON.stringify(value));
+	}
+	for (const value of [' ', 'é']) {
+		assert.equal(hasControlChars(value), false, value);
+	}
+});
+
+test('isSafeStyleValue allows computed-style text, not markup, breaks or oversize', () => {
+	for (const value of [
+		'rgb(0, 0, 0)',
+		'"Inter", system-ui, -apple-system, sans-serif',
+		'color(srgb 1 0 0 / 0.5)',
+		'"ヒラギノ角ゴ ProN W3", "Noto Sans CJK JP", sans-serif',
+		'calc(100% + 10px)',
+	]) {
+		assert.equal(isSafeStyleValue(value), true, value);
+	}
+	for (const value of [';', '{', '<', ':', '\t', '\n', '\u2028', '', ' ', '   ', 'a'.repeat(201)]) {
+		assert.equal(isSafeStyleValue(value), false, JSON.stringify(value));
+	}
+});
+
 const rect = { x: 1, y: -2, width: 30, height: 40 };
-const pick = { type: FRAME_PICK_MESSAGE, tagName: 'my-card2', rect, isPage: false };
+const pick = {
+	type: FRAME_PICK_MESSAGE,
+	selector: '.card:nth-of-type(3)',
+	tagName: 'my-card2',
+	text: 'Card',
+	rect,
+	point: { x: 5, y: 6 },
+	styles: { color: 'rgb(0, 0, 0)', 'font-family': '"Inter", sans-serif' },
+	isPage: false,
+};
+const pagePick = { ...pick, selector: 'body', tagName: 'body', text: '', rect: null, isPage: true };
 
 test('cd:ready, cd:hover and cd:pick rebuild without extra fields', () => {
 	assert.deepEqual(parseFrameMessage({ type: FRAME_READY_MESSAGE, extra: 1 }), {
@@ -64,12 +100,68 @@ test('cd:ready, cd:hover and cd:pick rebuild without extra fields', () => {
 		type: FRAME_HOVER_MESSAGE,
 		rect: null,
 	});
-	assert.deepEqual(parseFrameMessage({ ...pick, extra: 1 }), pick);
-	assert.deepEqual(parseFrameMessage({ ...pick, rect: null, isPage: true }), {
-		...pick,
-		rect: null,
-		isPage: true,
-	});
+	assert.deepEqual(
+		parseFrameMessage({ ...pick, point: { ...pick.point, extra: 1 }, extra: 1 }),
+		pick,
+	);
+	assert.deepEqual(parseFrameMessage(pagePick), pagePick);
+});
+
+test('cd:pick accepts a null selector, empty text and styles, and fields at their caps', () => {
+	for (const valid of [
+		{ selector: null },
+		{ text: '' },
+		{ styles: {} },
+		{ selector: 'a'.repeat(1000) },
+		{ text: 'a'.repeat(200) },
+	]) {
+		assert.deepEqual(
+			parseFrameMessage({ ...pick, ...valid }),
+			{ ...pick, ...valid },
+			JSON.stringify(valid),
+		);
+	}
+});
+
+test('cd:pick rejects bad selectors, text, styles, points and page labels', () => {
+	for (const broken of [
+		{ selector: 'a'.repeat(1001) },
+		{ selector: '' },
+		{ selector: '.a\n.b' },
+		{ selector: '.a\r' },
+		{ selector: '.a\u0000' },
+		{ selector: '.a\u007f' },
+		{ selector: '.a\u2028' },
+		{ selector: undefined },
+		{ selector: 42 },
+		{ text: 7 },
+		{ text: 'a\u0085b' },
+		{ text: 'a'.repeat(201) },
+		{ text: 'a\nb' },
+		{ styles: { 'z-index': '1' } },
+		{ styles: { color: 'red; background: url(x)' } },
+		{ styles: { color: 0 } },
+		{ styles: { color: ' ' } },
+		{ styles: JSON.parse('{"__proto__": "red"}') as unknown },
+		{ styles: { constructor: 'red' } },
+		{ styles: ['red'] },
+		{ styles: null },
+		{ point: { x: Number.NaN, y: 0 } },
+		{ point: { x: 0, y: Number.POSITIVE_INFINITY } },
+		{ point: { x: -1, y: 0 } },
+		{ point: { x: 0, y: 100_001 } },
+		{ point: undefined },
+	]) {
+		assert.equal(parseFrameMessage({ ...pick, ...broken }), undefined, JSON.stringify(broken));
+	}
+	for (const broken of [{ selector: '.card' }, { selector: null }, { tagName: 'div' }]) {
+		assert.equal(parseFrameMessage({ ...pagePick, ...broken }), undefined, JSON.stringify(broken));
+	}
+	// The 8d1 shape.
+	assert.equal(
+		parseFrameMessage({ type: FRAME_PICK_MESSAGE, tagName: 'div', rect, isPage: false }),
+		undefined,
+	);
 });
 
 test('cd:pick rejects bad tags, rects and isPage', () => {
@@ -136,6 +228,6 @@ test('parseChromeFrameMessage accepts only the mode and step commands', () => {
 
 test('rule 02 message line names exactly these frame messages', () => {
 	const ruleSource = readFileSync(join(process.cwd(), '.claude/rules/02-mcp-webview.md'), 'utf8');
-	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure); canvas:updated (frames carry \`generation\`)|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { tagName, rect|null, isPage } (frame-local CSS px; chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} outside Comment mode). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}.\n`;
+	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure); canvas:updated (frames carry \`generation\`)|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { selector|null, tagName, text, rect|null, point, styles, isPage } (\`rect\` is frame-local CSS px; \`point\` is CSS px relative to the current target's border box; chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} outside Comment mode). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}.\n`;
 	assert.ok(ruleSource.includes(ruleLine));
 });

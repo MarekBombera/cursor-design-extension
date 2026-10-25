@@ -5,7 +5,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>Picking</title>
 		<!--
-    8d1 picking fixture (F5 matrix in blueprint/context/current-feature.md, Testing).
+    8d1/8d2 picking fixture (F5 matrix in blueprint/context/current-feature.md, Testing).
+    selector.test.ts parses this file (scripts do not run there), so keep the selector traps.
     Blob CSP: <style> and <script> get the chrome nonce; style="" attributes, inline handlers,
     images and media are blocked, so everything here is classes and inline SVG.
     Copy: cp fixtures/picking.html fixtures/dev-workspace/.cursor-design/artboards/picking.html
@@ -148,6 +149,25 @@
 			.status {
 				font-weight: 600;
 			}
+			.traps {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px;
+				align-items: center;
+			}
+			.ellipsis-chip-check-with-deliberately-verbose-descriptive-class-name {
+				padding: 4px 8px;
+				background: #fce7f3;
+			}
+			cd-shadow-host {
+				display: inline-block;
+				padding: 8px;
+				border: 1px dashed #64748b;
+			}
+			cd-shadow-host::part(label) {
+				margin: 0;
+				color: #9333ea;
+			}
 		</style>
 	</head>
 	<body>
@@ -270,6 +290,34 @@
 			<p class="status" id="status">Nothing fired yet.</p>
 		</section>
 
+		<section class="block" aria-label="Selector traps">
+			<h2>Selector traps</h2>
+			<div class="traps">
+				<p id="dup">Duplicate id one</p>
+				<p id="dup">Duplicate id two</p>
+				<span id="1st">Id starts with a digit</span>
+				<span id="a:b">Id with a colon</span>
+				<span id="price.total">Id with a dot</span>
+				<span class="css-1x2y3z svelte-abcdef">Generated class names only</span>
+				<span class="card-title">Word-like class</span>
+				<span id="row-123456">Hash-like id</span>
+				<span class="ellipsis-chip-check-with-deliberately-verbose-descriptive-class-name"
+					>Long class name</span
+				>
+				<cd-shadow-host></cd-shadow-host>
+				<template>
+					<article class="card">
+						<h3>Template card</h3>
+					</article>
+				</template>
+			</div>
+			<ul id="mutated-list">
+				<li>Item A</li>
+				<li>Item B</li>
+				<li>Item C</li>
+			</ul>
+		</section>
+
 		<!-- At least 200px of empty body below (body padding-bottom): only html/body under the cursor. -->
 
 		<script>
@@ -293,6 +341,18 @@
 			window.addEventListener('hashchange', () => {
 				status.textContent = `Link followed: ${location.hash}`;
 			});
+
+			// Styled through ::part: a <style> made here would have no nonce under the blob CSP.
+			const shadowText = document.createElement('p');
+			shadowText.setAttribute('part', 'label');
+			shadowText.textContent = 'Inside an open shadow root';
+			document.querySelector('cd-shadow-host').attachShadow({ mode: 'open' }).append(shadowText);
+
+			// The live list differs from the static HTML (8e cross-checks selectors against disk).
+			const inserted = document.createElement('li');
+			inserted.textContent = 'Inserted by script';
+			const mutatedList = document.getElementById('mutated-list');
+			mutatedList.insertBefore(inserted, mutatedList.children[1]);
 		</script>
 	</body>
 </html>

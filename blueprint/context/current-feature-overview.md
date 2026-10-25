@@ -1,43 +1,64 @@
-# Audit quality cleanup - Overview for review
+# Selectors (8d2) - Overview for review
 
-> **Generated file.** Human-facing steering summary of the active work item:
-> same content as `current-feature.md`, trimmed. Written at `/feature` when the
-> spec is created, and kept current if the spec is revised. `/complete` may
-> polish this into the archive-ready one-pager; it is not the first write.
-> Open in Markdown preview to render the diagrams.
-
-Source of truth: `blueprint/history/fixes/audit-quality-cleanup.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/08d2-selectors.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-A structure-only cleanup from the 2026-10-23 full quality audit. There is no new feature. The
-host now writes through the disk library (so its writes get the symlink and ownership checks),
-the 1278-line `artboardFs.ts` is split by job, and the panel message queue and the remaining App
-decisions are pure modules with edge-case tests. The largest source file is now 473 lines.
+Every Comment-mode pick now carries what a comment will store. That's a CSS selector unique in the frame's own document (built inside the frame by `@medv/finder`), the tag, a short text excerpt, 13 allowlisted computed styles and the click point. All of it is guarded, because a design's own script can fake a pick. F5 also turned up two stage bugs that were already on `main`, and both are fixed: frames reloading in a loop (flicker, zoom cut off) and trackpad pans stopping when they left a frame.
 
-## What changed
+## Key loop
 
-| Batch | Commit | Result |
-|---|---|---|
-| Disk consolidation | `eeb00cd` | Host goes through the disk lib; `artboardFs` split into `layoutFs`, `canvasView`, `exportFs` |
-| Cleanup | `91bb025` | Twin helpers, `generation.ts` and dead exports removed; `knip` reports exports and types |
-| Extractions | `a1700a9` | Tested `createPanelOutbox`; export reuses the stage layout |
-| Webview rules | `28e56e1` | Wheel, frame-height, tile and outline rules leave App (354 → 302 script lines) |
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome
+  participant F as Frame runtime
+  U->>C: Comment toggle
+  C->>F: cd:mode {comment}
+  U->>F: click (blocked, then picked)
+  F->>F: describe once per element per pick (finder, text, styles)
+  F->>C: cd:pick {selector|null, tagName, text, rect|null, point, styles, isPage}
+  C->>C: parseFrameMessage: caps, no control chars, style allowlist
+  C->>C: chip shows the selector, live region says "article element selected"
+  U->>F: ↑ / ↓ or scroll
+  F->>C: cd:pick (cached description, fresh rect and point)
+```
 
 ## What you will see
 
-Nothing new in the UI. Default-artboard setup is stricter: a symlinked `artboard.html` is
-refused, and a `meta.json` with the wrong id is no longer overwritten (MCP already behaved this
-way).
+- In Comment mode the chip shows the picked element's selector, cut off with an ellipsis and shown in full on hover. Clicking card 3 of 5 identical cards gives a selector that matches only that card.
+- Generated class names (`css-1x2y3z`, `svelte-abcdef`) never show up in selectors.
+- Utility-class-heavy pages still get a selector: if finder overflows, the runtime builds an `:nth-of-type` path itself.
+- Frames no longer flicker. Pinch and pan over frames run to the end of the gesture.
 
-## Decisions locked
+## Architecture decisions
 
-- Deciding logic lives in pure modules with edge-case tests (rule 08), host included.
-- `artboardFs.ts` re-exports the old names, so no import paths changed.
-- Stage's pointer-capture code waits on the F-26 F5 repro.
+- **Finder searches the whole document**, not `body`, so selectors are unique in the same way in the frame, in tests and later on disk (8e).
+- **`selector` can be null** when no unique selector fits in 1000 characters. The pick still arrives.
+- **`point` is relative to the picked element**, so pins (8f2) can follow the element.
+- **Style values:** letters and digits in any script, plus `_ #%.,()'"/+-`. Anything else is dropped, never cleaned up.
+- **Frame reload fix (F-51):** `Frame.svelte` reads `id` and `html` through `$derived` copies, so a new frame record no longer reloads the iframe.
+- **Trackpad pan fix (F-52):** the chrome stays pinned over a page with hidden scroll room. Scroll that Chromium hands up after a gesture leaves a frame becomes a pan (`scrollSinkStep`), but only within 1 s of a frame wheel and only for steps of 2500 px or less.
+
+## Out of scope
+
+- Storing comments, the disk match and MCP tools (8e); the popover and the `C` key (8f1); pins (8f2).
+- Playwright browser tests, which are next (8d3).
+
+## Glossary
+
+| Term | Why it exists |
+|---|---|
+| finder | Library that builds the shortest CSS selector unique in a document |
+| `cd:pick` | Message a frame sends the chrome when the user picks an element |
+| Scroll sink | Hidden page scrolling that catches the end of a trackpad gesture after it leaves a frame |
+| OOPIF | An iframe running in its own browser process. Chromium locks a gesture to the one where it started |
+
+## Your actions
+
+- Decide F-28: should the exported `canvas.html` carry the inert picking runtime, now about 12 KB more per frame?
+- F-46's cheap fix is queued as a small `/fix` after this merge.
 
 ## Done means
 
-`pnpm verify` green with 286 tests (272 before), `knip` clean, F5 passed, and a fresh independent
-review passed and closed 11 findings. Open follow-ups: F-38 (createArtboard init test), F-39 (spec
-note), plus the older F-09, F-14, F-15, F-16, F-25, F-26, F-28.
+`pnpm verify` passes (306 tests). The independent review passed on `269a2d7`. In Cursor F5, zoom and pan work over frames with no flicker. Selector picks were checked with real clicks in Chrome.

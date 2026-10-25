@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Audit quality cleanup (`fix/audit-quality-cleanup`, checkpoint `8f18796`).
+**Last verified against code:** feature 8d2 Selectors (`feature/selectors`, checkpoint `269a2d7`).
 
 ## Chart checklist
 
@@ -132,6 +132,13 @@ message (then `parseFrameMessage`), any other opaque-origin sender is dropped, t
 `parseHostMessage`. Each `canvas:updated` is merged by `mergeCanvasFrames`: an identical re-post
 (tab switch) changes nothing; new html reloads that frame and restarts its height guard.
 
+Stage pan and zoom have three inputs, all through `wheelToView` / `panStage`: a wheel on the stage
+(Stage's non-passive listener), `cd:frame-wheel` from a frame, and the root scroll sink. Chromium
+latches a trackpad gesture to the out-of-process frame it started over and, once the frame slides
+out from under the pointer, hands the rest to the chrome as native root scroll. The chrome is
+`position: fixed` over a body with hidden scroll room, so App turns each root scroll into a pan and
+scrolls back (`scrollSinkStep`), but only within a second of a frame wheel or an earlier sink pan.
+
 ## Comment-mode picking (8d1)
 
 ```mermaid
@@ -149,7 +156,7 @@ sequenceDiagram
   U->>A: pointer move
   A->>C: cd:hover {rect|null} (once per animation frame, on change)
   U->>A: click (picked, then blocked; frame takes focus)
-  A->>C: cd:pick {tagName, rect|null, isPage}
+  A->>C: cd:pick {selector|null, tagName, text, rect|null, point, styles, isPage}
   U->>A: ↑ / ↓ (focus in frame)
   A->>C: cd:pick (parent / child)
   U->>C: Parent / Child, or ↑/↓ with chrome focus
@@ -212,7 +219,7 @@ settles the gesture to disk (the Agent wins).
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |
 | frame → chrome | `cd:ready` | none |
 | frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
-| frame → chrome | `cd:pick` | `{tagName, rect \| null, isPage}` |
+| frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, styles, isPage}` (selector from finder inside the frame; `point` relative to the target's box) |
 | chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 

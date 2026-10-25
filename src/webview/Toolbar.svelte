@@ -6,7 +6,7 @@
 		zoomText: string;
 		disabled: boolean;
 		commentMode: boolean;
-		pick: { tagName: string; isPage: boolean } | undefined;
+		pick: { selector: string | null; tagName: string; isPage: boolean; sequence: number } | undefined;
 		onPreset: (zoom: number) => void;
 		onFit: () => void;
 		onToggleComment: () => void;
@@ -29,10 +29,25 @@
 		onPickChild,
 	}: Props = $props();
 
-	// The live region stays mounted, so a new pick is announced, not just inserted.
+	// Frame data, rendered as text only.
 	const pickText = $derived(
-		!commentMode || pick === undefined ? '' : pick.isPage ? 'Whole frame' : pick.tagName,
+		!commentMode || pick === undefined
+			? ''
+			: pick.isPage
+				? 'Whole frame'
+				: (pick.selector ?? `${pick.tagName} (no unique selector)`),
 	);
+
+	// The live region stays mounted, so a new pick is announced, not just inserted. It reads the
+	// tag, not a selector of up to 1000 characters. Equal text is not re-announced, so every other
+	// pick ends in a no-break space: two div picks in a row still both speak.
+	const pickAnnouncement = $derived.by(() => {
+		if (pickText === '' || pick === undefined) {
+			return '';
+		}
+		const text = pick.isPage ? 'Whole frame selected' : `${pick.tagName} element selected`;
+		return pick.sequence % 2 === 0 ? `${text}\u00a0` : text;
+	});
 
 	const presets = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
@@ -59,7 +74,8 @@
 		{disabled}
 		onclick={onToggleComment}>Comment</button
 	>
-	<span class="chip" aria-live="polite" hidden={pickText === ''}>{pickText}</span>
+	<span class="chip" title={pickText} hidden={pickText === ''}>{pickText}</span>
+	<span class="visually-hidden" aria-live="polite">{pickAnnouncement}</span>
 	{#if pickText !== ''}
 		<button
 			class="action"
@@ -128,7 +144,12 @@
 	.action[aria-disabled='true'] {
 		opacity: 0.5;
 	}
+	/* A long selector ellipsizes; the full text is the title. */
 	.chip {
+		max-width: 16rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 		padding: 0 0.375rem;
 		font-family: var(--vscode-editor-font-family);
 		color: var(--vscode-badge-foreground);
@@ -136,6 +157,14 @@
 	}
 	.chip[hidden] {
 		display: none;
+	}
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.preset:focus-visible,
 	.action:focus-visible {

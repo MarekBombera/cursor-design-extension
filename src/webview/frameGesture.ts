@@ -267,3 +267,50 @@ export const wheelToView = ({ view, wheel }: { view: StageView; wheel: StageWhee
 				screenY: wheel.screenY,
 			})
 		: panStage({ view, deltaX: wheel.deltaX, deltaY: wheel.deltaY });
+
+// Scroll sink. Chromium latches a trackpad gesture to the out-of-process frame it started over;
+// once the pan moves that frame out from under the pointer, the frame gets no more wheel events
+// and Chromium hands the rest to the chrome as native scroll of the document root. App pins the
+// chrome with position: fixed and gives the body this much extra width and height, so scrolling
+// the root moves nothing on screen; each root scroll becomes a pan, then scrolls back.
+export const SCROLL_SINK_ROOM = 10_000;
+export const SCROLL_SINK_CENTER = SCROLL_SINK_ROOM / 2;
+
+// ponytail: a root scroll pans only this soon after a forwarded frame wheel or an earlier sink pan
+// (trackpads, momentum included, send one every frame). Later root scrolls (keys bubbling out of
+// a focused frame, a wheel over the toolbar) are dropped, as before the sink. Ceiling: holding the
+// fingers still for longer mid-gesture, after leaving the frame, ends that pan.
+const SCROLL_SINK_GESTURE_MS = 1000;
+
+// A gesture delivers small per-frame offsets. A jump this large is End/Home, a reset scroll
+// position (a hidden webview shown again) or a lost rest point: re-centre, never pan.
+const SCROLL_SINK_MAX_STEP = SCROLL_SINK_ROOM / 4;
+
+// Measured from where the last scroll back landed, never from the previous event: that scroll back
+// reads as zero (no feedback loop), and sub-pixel snapping cannot drift the stage.
+export const scrollSinkStep = ({
+	scrollX,
+	scrollY,
+	restX,
+	restY,
+	now,
+	lastGestureAt,
+}: {
+	scrollX: number;
+	scrollY: number;
+	restX: number;
+	restY: number;
+	now: number;
+	lastGestureAt: number;
+}): { recentre: boolean; pan: { deltaX: number; deltaY: number } | undefined } => {
+	const deltaX = scrollX - restX;
+	const deltaY = scrollY - restY;
+	if (deltaX === 0 && deltaY === 0) {
+		return { recentre: false, pan: undefined };
+	}
+	const inGesture =
+		now - lastGestureAt <= SCROLL_SINK_GESTURE_MS &&
+		Math.abs(deltaX) <= SCROLL_SINK_MAX_STEP &&
+		Math.abs(deltaY) <= SCROLL_SINK_MAX_STEP;
+	return { recentre: true, pan: inGesture ? { deltaX, deltaY } : undefined };
+};

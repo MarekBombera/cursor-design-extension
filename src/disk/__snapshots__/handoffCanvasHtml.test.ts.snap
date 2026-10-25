@@ -20,6 +20,24 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-heading" style="left:48px;top:1048px;width:400px;height:32px">Mobile</div>
 <div class="cd-label" style="left:48px;top:80px;width:400px;height:24px">a</div>
 <iframe data-cd-frame="a" sandbox="allow-scripts" scrolling="no" title="a" style="left:48px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/a/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
+	//#region src/disk/layout.ts
+	var MAX_FRAME_COORDINATE = 1e5;
+	var COMMENT_STYLE_KEYS = [
+		&quot;font-family&quot;,
+		&quot;font-size&quot;,
+		&quot;font-weight&quot;,
+		&quot;line-height&quot;,
+		&quot;color&quot;,
+		&quot;background-color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;border-radius&quot;,
+		&quot;display&quot;,
+		&quot;width&quot;,
+		&quot;height&quot;,
+		&quot;gap&quot;
+	];
+	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
@@ -29,6 +47,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
+	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
+	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
+	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
@@ -52,6 +74,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
 	//#endregion
 	//#region src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
@@ -80,6 +105,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			height: bottom - top
 		};
 	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
 	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
 	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
 	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
@@ -117,10 +154,329 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	//#endregion
+	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	var acceptedAttrNames = /* @__PURE__ */ new Set([
+		&quot;role&quot;,
+		&quot;name&quot;,
+		&quot;aria-label&quot;,
+		&quot;rel&quot;,
+		&quot;href&quot;
+	]);
+	/** Check if attribute name and value are word-like. */
+	function attr(name, value) {
+		let nameIsOk = acceptedAttrNames.has(name);
+		nameIsOk ||= name.startsWith(&quot;data-&quot;) &amp;&amp; wordLike(name);
+		let valueIsOk = wordLike(value) &amp;&amp; value.length &lt; 100;
+		valueIsOk ||= value.startsWith(&quot;#&quot;) &amp;&amp; wordLike(value.slice(1));
+		return nameIsOk &amp;&amp; valueIsOk;
+	}
+	/** Check if id name is word-like. */
+	function idName(name) {
+		return wordLike(name);
+	}
+	/** Check if class name is word-like. */
+	function className(name) {
+		return wordLike(name);
+	}
+	/** Check if tag name is word-like. */
+	function tagName(name) {
+		return true;
+	}
+	/** Finds unique CSS selectors for the given element. */
+	function finder(input, options) {
+		if (input.nodeType !== Node.ELEMENT_NODE) throw new Error(\`Can&#39;t generate CSS selector for non-element node type.\`);
+		if (input.tagName.toLowerCase() === &quot;html&quot;) return &quot;html&quot;;
+		const defaults = {
+			root: document.body,
+			idName,
+			className,
+			tagName,
+			attr,
+			timeoutMs: 1e3,
+			seedMinLength: 3,
+			optimizedMinLength: 2,
+			maxNumberOfPathChecks: Infinity
+		};
+		const startTime = /* @__PURE__ */ new Date();
+		const config = {
+			...defaults,
+			...options
+		};
+		const rootDocument = findRootDocument(config.root, defaults);
+		let foundPath;
+		let count = 0;
+		for (const candidate of search(input, config, rootDocument)) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs || count &gt;= config.maxNumberOfPathChecks) {
+				const fPath = fallback(input, rootDocument);
+				if (!fPath) throw new Error(\`Timeout: Can&#39;t find a unique selector after \${config.timeoutMs}ms\`);
+				return selector(fPath);
+			}
+			count++;
+			if (unique(candidate, rootDocument)) {
+				foundPath = candidate;
+				break;
+			}
+		}
+		if (!foundPath) throw new Error(\`Selector was not found.\`);
+		const optimized = [...optimize(foundPath, input, config, rootDocument, startTime)];
+		optimized.sort(byPenalty);
+		if (optimized.length &gt; 0) return selector(optimized[0]);
+		return selector(foundPath);
+	}
+	function* search(input, config, rootDocument) {
+		const stack = [];
+		let paths = [];
+		let current = input;
+		let i = 0;
+		while (current &amp;&amp; current !== rootDocument) {
+			const level = tie(current, config);
+			for (const node of level) node.level = i;
+			stack.push(level);
+			current = current.parentElement;
+			i++;
+			paths.push(...combinations(stack));
+			if (i &gt;= config.seedMinLength) {
+				paths.sort(byPenalty);
+				for (const candidate of paths) yield candidate;
+				paths = [];
+			}
+		}
+		paths.sort(byPenalty);
+		for (const candidate of paths) yield candidate;
+	}
+	function wordLike(name) {
+		if (/^[a-z\\-]{3,}$/i.test(name)) {
+			const words = name.split(/-|[A-Z]/);
+			for (const word of words) {
+				if (word.length &lt;= 2) return false;
+				if (/[^aeiou]{4,}/i.test(word)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	function tie(element, config) {
+		const level = [];
+		const elementId = element.getAttribute(&quot;id&quot;);
+		if (elementId &amp;&amp; config.idName(elementId)) level.push({
+			name: &quot;#&quot; + CSS.escape(elementId),
+			penalty: 0
+		});
+		for (let i = 0; i &lt; element.classList.length; i++) {
+			const name = element.classList[i];
+			if (config.className(name)) level.push({
+				name: &quot;.&quot; + CSS.escape(name),
+				penalty: 1
+			});
+		}
+		for (let i = 0; i &lt; element.attributes.length; i++) {
+			const attr = element.attributes[i];
+			if (config.attr(attr.name, attr.value)) level.push({
+				name: \`[\${CSS.escape(attr.name)}=&quot;\${CSS.escape(attr.value)}&quot;]\`,
+				penalty: 2
+			});
+		}
+		const tagName = element.tagName.toLowerCase();
+		if (config.tagName(tagName)) {
+			level.push({
+				name: tagName,
+				penalty: 5
+			});
+			const index = indexOf(element, tagName);
+			if (index !== void 0) level.push({
+				name: nthOfType(tagName, index),
+				penalty: 10
+			});
+		}
+		const nth = indexOf(element);
+		if (nth !== void 0) level.push({
+			name: nthChild(tagName, nth),
+			penalty: 50
+		});
+		return level;
+	}
+	function selector(path) {
+		let node = path[0];
+		let query = node.name;
+		for (let i = 1; i &lt; path.length; i++) {
+			const level = path[i].level || 0;
+			if (node.level === level - 1) query = \`\${path[i].name} &gt; \${query}\`;
+			else query = \`\${path[i].name} \${query}\`;
+			node = path[i];
+		}
+		return query;
+	}
+	function penalty(path) {
+		return path.map((node) =&gt; node.penalty).reduce((acc, i) =&gt; acc + i, 0);
+	}
+	function byPenalty(a, b) {
+		return penalty(a) - penalty(b);
+	}
+	function indexOf(input, tagName) {
+		const parent = input.parentNode;
+		if (!parent) return;
+		let child = parent.firstChild;
+		if (!child) return;
+		let i = 0;
+		while (child) {
+			if (child.nodeType === Node.ELEMENT_NODE &amp;&amp; (tagName === void 0 || child.tagName.toLowerCase() === tagName)) i++;
+			if (child === input) break;
+			child = child.nextSibling;
+		}
+		return i;
+	}
+	function fallback(input, rootDocument) {
+		let i = 0;
+		let current = input;
+		const path = [];
+		while (current &amp;&amp; current !== rootDocument) {
+			const tagName = current.tagName.toLowerCase();
+			const index = indexOf(current, tagName);
+			if (index === void 0) return;
+			path.push({
+				name: nthOfType(tagName, index),
+				penalty: NaN,
+				level: i
+			});
+			current = current.parentElement;
+			i++;
+		}
+		if (unique(path, rootDocument)) return path;
+	}
+	function nthChild(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-child(\${index})\`;
+	}
+	function nthOfType(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-of-type(\${index})\`;
+	}
+	function* combinations(stack, path = []) {
+		if (stack.length &gt; 0) for (let node of stack[0]) yield* combinations(stack.slice(1, stack.length), path.concat(node));
+		else yield path;
+	}
+	function findRootDocument(rootNode, defaults) {
+		if (rootNode.nodeType === Node.DOCUMENT_NODE) return rootNode;
+		if (rootNode === defaults.root) return rootNode.ownerDocument;
+		return rootNode;
+	}
+	function unique(path, rootDocument) {
+		const css = selector(path);
+		switch (rootDocument.querySelectorAll(css).length) {
+			case 0: throw new Error(\`Can&#39;t select any node with this selector: \${css}\`);
+			case 1: return true;
+			default: return false;
+		}
+	}
+	function* optimize(path, input, config, rootDocument, startTime) {
+		if (path.length &gt; 2 &amp;&amp; path.length &gt; config.optimizedMinLength) for (let i = 1; i &lt; path.length - 1; i++) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs) return;
+			const newPath = [...path];
+			newPath.splice(i, 1);
+			if (unique(newPath, rootDocument) &amp;&amp; rootDocument.querySelector(selector(newPath)) === input) {
+				yield newPath;
+				yield* optimize(newPath, input, config, rootDocument, startTime);
+			}
+		}
+	}
+	//#endregion
+	//#region src/webview/frame/selector.ts
+	var FINDER_TIMEOUT_MS = 200;
+	var GENERATED_PREFIXES = [
+		&quot;css-&quot;,
+		&quot;svelte-&quot;,
+		&quot;sc-&quot;,
+		&quot;jsx-&quot;,
+		&quot;emotion-&quot;,
+		&quot;astro-&quot;
+	];
+	var isGeneratedName = (name) =&gt; {
+		const lower = name.toLowerCase();
+		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
+	};
+	var runFinder = (element, timeoutMs) =&gt; finder(element, {
+		root: element.ownerDocument,
+		idName: (name) =&gt; idName(name) &amp;&amp; !isGeneratedName(name),
+		className: (name) =&gt; className(name) &amp;&amp; !isGeneratedName(name),
+		timeoutMs
+	});
+	var nthOfTypePath = (element) =&gt; {
+		const steps = [];
+		for (let current = element; current !== null; current = current.parentElement) {
+			const tag = current.localName;
+			if (tag === &quot;html&quot;) {
+				steps.push(&quot;html&quot;);
+				break;
+			}
+			let index = 1;
+			for (let sibling = current.previousElementSibling; sibling !== null;) {
+				if (sibling.localName === tag) index += 1;
+				sibling = sibling.previousElementSibling;
+			}
+			steps.push(\`\${tag}:nth-of-type(\${index})\`);
+		}
+		return steps.reverse().join(&quot; &gt; &quot;);
+	};
+	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
+		if (!element.isConnected) return null;
+		let selector;
+		try {
+			selector = runFinder(element, timeoutMs);
+		} catch (error) {
+			if (!(error instanceof RangeError)) return null;
+			selector = nthOfTypePath(element);
+		}
+		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
+	};
+	var textExcerpt = (raw) =&gt; {
+		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
+		const last = text.charCodeAt(text.length - 1);
+		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
+	};
+	var readStyles = (read) =&gt; {
+		const styles = {};
+		for (const key of COMMENT_STYLE_KEYS) {
+			const raw = read(key);
+			if (hasControlChars(raw)) continue;
+			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
+			if (isSafeStyleValue(value)) styles[key] = value;
+		}
+		return styles;
+	};
+	var describeElement = (element, isPage) =&gt; {
+		if (isPage) {
+			const body = element.ownerDocument.body ?? element;
+			return {
+				selector: &quot;body&quot;,
+				tagName: &quot;body&quot;,
+				text: &quot;&quot;,
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+			};
+		}
+		if (!element.isConnected) return {
+			selector: null,
+			tagName: element.localName,
+			text: &quot;&quot;,
+			styles: {}
+		};
+		const style = window.getComputedStyle(element);
+		return {
+			selector: buildSelector(element),
+			tagName: element.localName,
+			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
+			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+		};
+	};
+	//#endregion
 	//#region src/webview/frame/commentPicking.ts
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
+		let anchorOffset = {
+			x: 0,
+			y: 0
+		};
+		let descriptions = /* @__PURE__ */ new Map();
 		let hover;
 		let lastPointer;
 		let pendingHover;
@@ -181,15 +537,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			clips.push(viewport);
 			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
-		const postPick = () =&gt; {
+		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current === void 0) return;
-			const isPage = isRoot(current);
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+		};
+		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
+			anchorBox: anchor.getBoundingClientRect(),
+			offset: anchorOffset,
+			targetBox: (isRoot(target) ? document.documentElement : target).getBoundingClientRect()
+		}) : {
+			x: 0,
+			y: 0
+		};
+		const postPick = () =&gt; {
+			const anchor = path[0];
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const described = current === void 0 ? void 0 : descriptions.get(current);
+			if (anchor === void 0 || current === void 0 || described === void 0) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
-				tagName: isPage ? &quot;body&quot; : current.localName,
+				...described,
 				rect: visibleRect(current),
-				isPage
+				point: pickPoint(anchor, current),
+				isPage: isRoot(current)
 			}, &quot;*&quot;);
 		};
 		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
@@ -214,6 +585,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const setMode = (next) =&gt; {
 			mode = next;
 			path = [];
+			anchorOffset = {
+				x: 0,
+				y: 0
+			};
+			descriptions = /* @__PURE__ */ new Map();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
@@ -221,6 +597,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
+			describeCurrent();
 			postPick();
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
@@ -231,8 +608,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		]);
 		const blockInComment = (event) =&gt; {
 			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
 			if (event instanceof KeyboardEvent) {
-				if (!BLOCKED_KEYS.has(event.key)) return;
 				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
 			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
 				if (event.detail &gt; 0) {
@@ -241,12 +620,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						y: event.clientY,
 						altKey: event.altKey
 					});
+					descriptions = /* @__PURE__ */ new Map();
+					const clicked = path[0];
+					if (clicked !== void 0) {
+						const box = clicked.getBoundingClientRect();
+						anchorOffset = {
+							x: event.clientX - box.x,
+							y: event.clientY - box.y
+						};
+					}
+					describeCurrent();
 					postPick();
 					window.focus();
 				}
 			}
-			event.preventDefault();
-			event.stopImmediatePropagation();
 		};
 		for (const type of [
 			&quot;pointerdown&quot;,
@@ -381,6 +768,24 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:548px;top:80px;width:400px;height:24px">b</div>
 <iframe data-cd-frame="b" sandbox="allow-scripts" scrolling="no" title="b" style="left:548px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/b/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
+	//#region src/disk/layout.ts
+	var MAX_FRAME_COORDINATE = 1e5;
+	var COMMENT_STYLE_KEYS = [
+		&quot;font-family&quot;,
+		&quot;font-size&quot;,
+		&quot;font-weight&quot;,
+		&quot;line-height&quot;,
+		&quot;color&quot;,
+		&quot;background-color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;border-radius&quot;,
+		&quot;display&quot;,
+		&quot;width&quot;,
+		&quot;height&quot;,
+		&quot;gap&quot;
+	];
+	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
@@ -390,6 +795,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
+	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
+	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
+	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
@@ -413,6 +822,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
 	//#endregion
 	//#region src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
@@ -441,6 +853,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			height: bottom - top
 		};
 	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
 	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
 	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
 	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
@@ -478,10 +902,329 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	//#endregion
+	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	var acceptedAttrNames = /* @__PURE__ */ new Set([
+		&quot;role&quot;,
+		&quot;name&quot;,
+		&quot;aria-label&quot;,
+		&quot;rel&quot;,
+		&quot;href&quot;
+	]);
+	/** Check if attribute name and value are word-like. */
+	function attr(name, value) {
+		let nameIsOk = acceptedAttrNames.has(name);
+		nameIsOk ||= name.startsWith(&quot;data-&quot;) &amp;&amp; wordLike(name);
+		let valueIsOk = wordLike(value) &amp;&amp; value.length &lt; 100;
+		valueIsOk ||= value.startsWith(&quot;#&quot;) &amp;&amp; wordLike(value.slice(1));
+		return nameIsOk &amp;&amp; valueIsOk;
+	}
+	/** Check if id name is word-like. */
+	function idName(name) {
+		return wordLike(name);
+	}
+	/** Check if class name is word-like. */
+	function className(name) {
+		return wordLike(name);
+	}
+	/** Check if tag name is word-like. */
+	function tagName(name) {
+		return true;
+	}
+	/** Finds unique CSS selectors for the given element. */
+	function finder(input, options) {
+		if (input.nodeType !== Node.ELEMENT_NODE) throw new Error(\`Can&#39;t generate CSS selector for non-element node type.\`);
+		if (input.tagName.toLowerCase() === &quot;html&quot;) return &quot;html&quot;;
+		const defaults = {
+			root: document.body,
+			idName,
+			className,
+			tagName,
+			attr,
+			timeoutMs: 1e3,
+			seedMinLength: 3,
+			optimizedMinLength: 2,
+			maxNumberOfPathChecks: Infinity
+		};
+		const startTime = /* @__PURE__ */ new Date();
+		const config = {
+			...defaults,
+			...options
+		};
+		const rootDocument = findRootDocument(config.root, defaults);
+		let foundPath;
+		let count = 0;
+		for (const candidate of search(input, config, rootDocument)) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs || count &gt;= config.maxNumberOfPathChecks) {
+				const fPath = fallback(input, rootDocument);
+				if (!fPath) throw new Error(\`Timeout: Can&#39;t find a unique selector after \${config.timeoutMs}ms\`);
+				return selector(fPath);
+			}
+			count++;
+			if (unique(candidate, rootDocument)) {
+				foundPath = candidate;
+				break;
+			}
+		}
+		if (!foundPath) throw new Error(\`Selector was not found.\`);
+		const optimized = [...optimize(foundPath, input, config, rootDocument, startTime)];
+		optimized.sort(byPenalty);
+		if (optimized.length &gt; 0) return selector(optimized[0]);
+		return selector(foundPath);
+	}
+	function* search(input, config, rootDocument) {
+		const stack = [];
+		let paths = [];
+		let current = input;
+		let i = 0;
+		while (current &amp;&amp; current !== rootDocument) {
+			const level = tie(current, config);
+			for (const node of level) node.level = i;
+			stack.push(level);
+			current = current.parentElement;
+			i++;
+			paths.push(...combinations(stack));
+			if (i &gt;= config.seedMinLength) {
+				paths.sort(byPenalty);
+				for (const candidate of paths) yield candidate;
+				paths = [];
+			}
+		}
+		paths.sort(byPenalty);
+		for (const candidate of paths) yield candidate;
+	}
+	function wordLike(name) {
+		if (/^[a-z\\-]{3,}$/i.test(name)) {
+			const words = name.split(/-|[A-Z]/);
+			for (const word of words) {
+				if (word.length &lt;= 2) return false;
+				if (/[^aeiou]{4,}/i.test(word)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	function tie(element, config) {
+		const level = [];
+		const elementId = element.getAttribute(&quot;id&quot;);
+		if (elementId &amp;&amp; config.idName(elementId)) level.push({
+			name: &quot;#&quot; + CSS.escape(elementId),
+			penalty: 0
+		});
+		for (let i = 0; i &lt; element.classList.length; i++) {
+			const name = element.classList[i];
+			if (config.className(name)) level.push({
+				name: &quot;.&quot; + CSS.escape(name),
+				penalty: 1
+			});
+		}
+		for (let i = 0; i &lt; element.attributes.length; i++) {
+			const attr = element.attributes[i];
+			if (config.attr(attr.name, attr.value)) level.push({
+				name: \`[\${CSS.escape(attr.name)}=&quot;\${CSS.escape(attr.value)}&quot;]\`,
+				penalty: 2
+			});
+		}
+		const tagName = element.tagName.toLowerCase();
+		if (config.tagName(tagName)) {
+			level.push({
+				name: tagName,
+				penalty: 5
+			});
+			const index = indexOf(element, tagName);
+			if (index !== void 0) level.push({
+				name: nthOfType(tagName, index),
+				penalty: 10
+			});
+		}
+		const nth = indexOf(element);
+		if (nth !== void 0) level.push({
+			name: nthChild(tagName, nth),
+			penalty: 50
+		});
+		return level;
+	}
+	function selector(path) {
+		let node = path[0];
+		let query = node.name;
+		for (let i = 1; i &lt; path.length; i++) {
+			const level = path[i].level || 0;
+			if (node.level === level - 1) query = \`\${path[i].name} &gt; \${query}\`;
+			else query = \`\${path[i].name} \${query}\`;
+			node = path[i];
+		}
+		return query;
+	}
+	function penalty(path) {
+		return path.map((node) =&gt; node.penalty).reduce((acc, i) =&gt; acc + i, 0);
+	}
+	function byPenalty(a, b) {
+		return penalty(a) - penalty(b);
+	}
+	function indexOf(input, tagName) {
+		const parent = input.parentNode;
+		if (!parent) return;
+		let child = parent.firstChild;
+		if (!child) return;
+		let i = 0;
+		while (child) {
+			if (child.nodeType === Node.ELEMENT_NODE &amp;&amp; (tagName === void 0 || child.tagName.toLowerCase() === tagName)) i++;
+			if (child === input) break;
+			child = child.nextSibling;
+		}
+		return i;
+	}
+	function fallback(input, rootDocument) {
+		let i = 0;
+		let current = input;
+		const path = [];
+		while (current &amp;&amp; current !== rootDocument) {
+			const tagName = current.tagName.toLowerCase();
+			const index = indexOf(current, tagName);
+			if (index === void 0) return;
+			path.push({
+				name: nthOfType(tagName, index),
+				penalty: NaN,
+				level: i
+			});
+			current = current.parentElement;
+			i++;
+		}
+		if (unique(path, rootDocument)) return path;
+	}
+	function nthChild(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-child(\${index})\`;
+	}
+	function nthOfType(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-of-type(\${index})\`;
+	}
+	function* combinations(stack, path = []) {
+		if (stack.length &gt; 0) for (let node of stack[0]) yield* combinations(stack.slice(1, stack.length), path.concat(node));
+		else yield path;
+	}
+	function findRootDocument(rootNode, defaults) {
+		if (rootNode.nodeType === Node.DOCUMENT_NODE) return rootNode;
+		if (rootNode === defaults.root) return rootNode.ownerDocument;
+		return rootNode;
+	}
+	function unique(path, rootDocument) {
+		const css = selector(path);
+		switch (rootDocument.querySelectorAll(css).length) {
+			case 0: throw new Error(\`Can&#39;t select any node with this selector: \${css}\`);
+			case 1: return true;
+			default: return false;
+		}
+	}
+	function* optimize(path, input, config, rootDocument, startTime) {
+		if (path.length &gt; 2 &amp;&amp; path.length &gt; config.optimizedMinLength) for (let i = 1; i &lt; path.length - 1; i++) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs) return;
+			const newPath = [...path];
+			newPath.splice(i, 1);
+			if (unique(newPath, rootDocument) &amp;&amp; rootDocument.querySelector(selector(newPath)) === input) {
+				yield newPath;
+				yield* optimize(newPath, input, config, rootDocument, startTime);
+			}
+		}
+	}
+	//#endregion
+	//#region src/webview/frame/selector.ts
+	var FINDER_TIMEOUT_MS = 200;
+	var GENERATED_PREFIXES = [
+		&quot;css-&quot;,
+		&quot;svelte-&quot;,
+		&quot;sc-&quot;,
+		&quot;jsx-&quot;,
+		&quot;emotion-&quot;,
+		&quot;astro-&quot;
+	];
+	var isGeneratedName = (name) =&gt; {
+		const lower = name.toLowerCase();
+		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
+	};
+	var runFinder = (element, timeoutMs) =&gt; finder(element, {
+		root: element.ownerDocument,
+		idName: (name) =&gt; idName(name) &amp;&amp; !isGeneratedName(name),
+		className: (name) =&gt; className(name) &amp;&amp; !isGeneratedName(name),
+		timeoutMs
+	});
+	var nthOfTypePath = (element) =&gt; {
+		const steps = [];
+		for (let current = element; current !== null; current = current.parentElement) {
+			const tag = current.localName;
+			if (tag === &quot;html&quot;) {
+				steps.push(&quot;html&quot;);
+				break;
+			}
+			let index = 1;
+			for (let sibling = current.previousElementSibling; sibling !== null;) {
+				if (sibling.localName === tag) index += 1;
+				sibling = sibling.previousElementSibling;
+			}
+			steps.push(\`\${tag}:nth-of-type(\${index})\`);
+		}
+		return steps.reverse().join(&quot; &gt; &quot;);
+	};
+	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
+		if (!element.isConnected) return null;
+		let selector;
+		try {
+			selector = runFinder(element, timeoutMs);
+		} catch (error) {
+			if (!(error instanceof RangeError)) return null;
+			selector = nthOfTypePath(element);
+		}
+		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
+	};
+	var textExcerpt = (raw) =&gt; {
+		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
+		const last = text.charCodeAt(text.length - 1);
+		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
+	};
+	var readStyles = (read) =&gt; {
+		const styles = {};
+		for (const key of COMMENT_STYLE_KEYS) {
+			const raw = read(key);
+			if (hasControlChars(raw)) continue;
+			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
+			if (isSafeStyleValue(value)) styles[key] = value;
+		}
+		return styles;
+	};
+	var describeElement = (element, isPage) =&gt; {
+		if (isPage) {
+			const body = element.ownerDocument.body ?? element;
+			return {
+				selector: &quot;body&quot;,
+				tagName: &quot;body&quot;,
+				text: &quot;&quot;,
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+			};
+		}
+		if (!element.isConnected) return {
+			selector: null,
+			tagName: element.localName,
+			text: &quot;&quot;,
+			styles: {}
+		};
+		const style = window.getComputedStyle(element);
+		return {
+			selector: buildSelector(element),
+			tagName: element.localName,
+			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
+			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+		};
+	};
+	//#endregion
 	//#region src/webview/frame/commentPicking.ts
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
+		let anchorOffset = {
+			x: 0,
+			y: 0
+		};
+		let descriptions = /* @__PURE__ */ new Map();
 		let hover;
 		let lastPointer;
 		let pendingHover;
@@ -542,15 +1285,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			clips.push(viewport);
 			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
-		const postPick = () =&gt; {
+		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current === void 0) return;
-			const isPage = isRoot(current);
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+		};
+		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
+			anchorBox: anchor.getBoundingClientRect(),
+			offset: anchorOffset,
+			targetBox: (isRoot(target) ? document.documentElement : target).getBoundingClientRect()
+		}) : {
+			x: 0,
+			y: 0
+		};
+		const postPick = () =&gt; {
+			const anchor = path[0];
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const described = current === void 0 ? void 0 : descriptions.get(current);
+			if (anchor === void 0 || current === void 0 || described === void 0) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
-				tagName: isPage ? &quot;body&quot; : current.localName,
+				...described,
 				rect: visibleRect(current),
-				isPage
+				point: pickPoint(anchor, current),
+				isPage: isRoot(current)
 			}, &quot;*&quot;);
 		};
 		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
@@ -575,6 +1333,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const setMode = (next) =&gt; {
 			mode = next;
 			path = [];
+			anchorOffset = {
+				x: 0,
+				y: 0
+			};
+			descriptions = /* @__PURE__ */ new Map();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
@@ -582,6 +1345,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
+			describeCurrent();
 			postPick();
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
@@ -592,8 +1356,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		]);
 		const blockInComment = (event) =&gt; {
 			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
 			if (event instanceof KeyboardEvent) {
-				if (!BLOCKED_KEYS.has(event.key)) return;
 				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
 			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
 				if (event.detail &gt; 0) {
@@ -602,12 +1368,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						y: event.clientY,
 						altKey: event.altKey
 					});
+					descriptions = /* @__PURE__ */ new Map();
+					const clicked = path[0];
+					if (clicked !== void 0) {
+						const box = clicked.getBoundingClientRect();
+						anchorOffset = {
+							x: event.clientX - box.x,
+							y: event.clientY - box.y
+						};
+					}
+					describeCurrent();
 					postPick();
 					window.focus();
 				}
 			}
-			event.preventDefault();
-			event.stopImmediatePropagation();
 		};
 		for (const type of [
 			&quot;pointerdown&quot;,
@@ -742,6 +1516,24 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:1080px;width:400px;height:24px">c</div>
 <iframe data-cd-frame="c" sandbox="allow-scripts" scrolling="no" title="c" style="left:48px;top:1104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;mobile/c/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
+	//#region src/disk/layout.ts
+	var MAX_FRAME_COORDINATE = 1e5;
+	var COMMENT_STYLE_KEYS = [
+		&quot;font-family&quot;,
+		&quot;font-size&quot;,
+		&quot;font-weight&quot;,
+		&quot;line-height&quot;,
+		&quot;color&quot;,
+		&quot;background-color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;border-radius&quot;,
+		&quot;display&quot;,
+		&quot;width&quot;,
+		&quot;height&quot;,
+		&quot;gap&quot;
+	];
+	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
@@ -751,6 +1543,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
+	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
+	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
+	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
@@ -774,6 +1570,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
 	//#endregion
 	//#region src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
@@ -802,6 +1601,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			height: bottom - top
 		};
 	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
 	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
 	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
 	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
@@ -839,10 +1650,329 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	//#endregion
+	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	var acceptedAttrNames = /* @__PURE__ */ new Set([
+		&quot;role&quot;,
+		&quot;name&quot;,
+		&quot;aria-label&quot;,
+		&quot;rel&quot;,
+		&quot;href&quot;
+	]);
+	/** Check if attribute name and value are word-like. */
+	function attr(name, value) {
+		let nameIsOk = acceptedAttrNames.has(name);
+		nameIsOk ||= name.startsWith(&quot;data-&quot;) &amp;&amp; wordLike(name);
+		let valueIsOk = wordLike(value) &amp;&amp; value.length &lt; 100;
+		valueIsOk ||= value.startsWith(&quot;#&quot;) &amp;&amp; wordLike(value.slice(1));
+		return nameIsOk &amp;&amp; valueIsOk;
+	}
+	/** Check if id name is word-like. */
+	function idName(name) {
+		return wordLike(name);
+	}
+	/** Check if class name is word-like. */
+	function className(name) {
+		return wordLike(name);
+	}
+	/** Check if tag name is word-like. */
+	function tagName(name) {
+		return true;
+	}
+	/** Finds unique CSS selectors for the given element. */
+	function finder(input, options) {
+		if (input.nodeType !== Node.ELEMENT_NODE) throw new Error(\`Can&#39;t generate CSS selector for non-element node type.\`);
+		if (input.tagName.toLowerCase() === &quot;html&quot;) return &quot;html&quot;;
+		const defaults = {
+			root: document.body,
+			idName,
+			className,
+			tagName,
+			attr,
+			timeoutMs: 1e3,
+			seedMinLength: 3,
+			optimizedMinLength: 2,
+			maxNumberOfPathChecks: Infinity
+		};
+		const startTime = /* @__PURE__ */ new Date();
+		const config = {
+			...defaults,
+			...options
+		};
+		const rootDocument = findRootDocument(config.root, defaults);
+		let foundPath;
+		let count = 0;
+		for (const candidate of search(input, config, rootDocument)) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs || count &gt;= config.maxNumberOfPathChecks) {
+				const fPath = fallback(input, rootDocument);
+				if (!fPath) throw new Error(\`Timeout: Can&#39;t find a unique selector after \${config.timeoutMs}ms\`);
+				return selector(fPath);
+			}
+			count++;
+			if (unique(candidate, rootDocument)) {
+				foundPath = candidate;
+				break;
+			}
+		}
+		if (!foundPath) throw new Error(\`Selector was not found.\`);
+		const optimized = [...optimize(foundPath, input, config, rootDocument, startTime)];
+		optimized.sort(byPenalty);
+		if (optimized.length &gt; 0) return selector(optimized[0]);
+		return selector(foundPath);
+	}
+	function* search(input, config, rootDocument) {
+		const stack = [];
+		let paths = [];
+		let current = input;
+		let i = 0;
+		while (current &amp;&amp; current !== rootDocument) {
+			const level = tie(current, config);
+			for (const node of level) node.level = i;
+			stack.push(level);
+			current = current.parentElement;
+			i++;
+			paths.push(...combinations(stack));
+			if (i &gt;= config.seedMinLength) {
+				paths.sort(byPenalty);
+				for (const candidate of paths) yield candidate;
+				paths = [];
+			}
+		}
+		paths.sort(byPenalty);
+		for (const candidate of paths) yield candidate;
+	}
+	function wordLike(name) {
+		if (/^[a-z\\-]{3,}$/i.test(name)) {
+			const words = name.split(/-|[A-Z]/);
+			for (const word of words) {
+				if (word.length &lt;= 2) return false;
+				if (/[^aeiou]{4,}/i.test(word)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	function tie(element, config) {
+		const level = [];
+		const elementId = element.getAttribute(&quot;id&quot;);
+		if (elementId &amp;&amp; config.idName(elementId)) level.push({
+			name: &quot;#&quot; + CSS.escape(elementId),
+			penalty: 0
+		});
+		for (let i = 0; i &lt; element.classList.length; i++) {
+			const name = element.classList[i];
+			if (config.className(name)) level.push({
+				name: &quot;.&quot; + CSS.escape(name),
+				penalty: 1
+			});
+		}
+		for (let i = 0; i &lt; element.attributes.length; i++) {
+			const attr = element.attributes[i];
+			if (config.attr(attr.name, attr.value)) level.push({
+				name: \`[\${CSS.escape(attr.name)}=&quot;\${CSS.escape(attr.value)}&quot;]\`,
+				penalty: 2
+			});
+		}
+		const tagName = element.tagName.toLowerCase();
+		if (config.tagName(tagName)) {
+			level.push({
+				name: tagName,
+				penalty: 5
+			});
+			const index = indexOf(element, tagName);
+			if (index !== void 0) level.push({
+				name: nthOfType(tagName, index),
+				penalty: 10
+			});
+		}
+		const nth = indexOf(element);
+		if (nth !== void 0) level.push({
+			name: nthChild(tagName, nth),
+			penalty: 50
+		});
+		return level;
+	}
+	function selector(path) {
+		let node = path[0];
+		let query = node.name;
+		for (let i = 1; i &lt; path.length; i++) {
+			const level = path[i].level || 0;
+			if (node.level === level - 1) query = \`\${path[i].name} &gt; \${query}\`;
+			else query = \`\${path[i].name} \${query}\`;
+			node = path[i];
+		}
+		return query;
+	}
+	function penalty(path) {
+		return path.map((node) =&gt; node.penalty).reduce((acc, i) =&gt; acc + i, 0);
+	}
+	function byPenalty(a, b) {
+		return penalty(a) - penalty(b);
+	}
+	function indexOf(input, tagName) {
+		const parent = input.parentNode;
+		if (!parent) return;
+		let child = parent.firstChild;
+		if (!child) return;
+		let i = 0;
+		while (child) {
+			if (child.nodeType === Node.ELEMENT_NODE &amp;&amp; (tagName === void 0 || child.tagName.toLowerCase() === tagName)) i++;
+			if (child === input) break;
+			child = child.nextSibling;
+		}
+		return i;
+	}
+	function fallback(input, rootDocument) {
+		let i = 0;
+		let current = input;
+		const path = [];
+		while (current &amp;&amp; current !== rootDocument) {
+			const tagName = current.tagName.toLowerCase();
+			const index = indexOf(current, tagName);
+			if (index === void 0) return;
+			path.push({
+				name: nthOfType(tagName, index),
+				penalty: NaN,
+				level: i
+			});
+			current = current.parentElement;
+			i++;
+		}
+		if (unique(path, rootDocument)) return path;
+	}
+	function nthChild(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-child(\${index})\`;
+	}
+	function nthOfType(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-of-type(\${index})\`;
+	}
+	function* combinations(stack, path = []) {
+		if (stack.length &gt; 0) for (let node of stack[0]) yield* combinations(stack.slice(1, stack.length), path.concat(node));
+		else yield path;
+	}
+	function findRootDocument(rootNode, defaults) {
+		if (rootNode.nodeType === Node.DOCUMENT_NODE) return rootNode;
+		if (rootNode === defaults.root) return rootNode.ownerDocument;
+		return rootNode;
+	}
+	function unique(path, rootDocument) {
+		const css = selector(path);
+		switch (rootDocument.querySelectorAll(css).length) {
+			case 0: throw new Error(\`Can&#39;t select any node with this selector: \${css}\`);
+			case 1: return true;
+			default: return false;
+		}
+	}
+	function* optimize(path, input, config, rootDocument, startTime) {
+		if (path.length &gt; 2 &amp;&amp; path.length &gt; config.optimizedMinLength) for (let i = 1; i &lt; path.length - 1; i++) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs) return;
+			const newPath = [...path];
+			newPath.splice(i, 1);
+			if (unique(newPath, rootDocument) &amp;&amp; rootDocument.querySelector(selector(newPath)) === input) {
+				yield newPath;
+				yield* optimize(newPath, input, config, rootDocument, startTime);
+			}
+		}
+	}
+	//#endregion
+	//#region src/webview/frame/selector.ts
+	var FINDER_TIMEOUT_MS = 200;
+	var GENERATED_PREFIXES = [
+		&quot;css-&quot;,
+		&quot;svelte-&quot;,
+		&quot;sc-&quot;,
+		&quot;jsx-&quot;,
+		&quot;emotion-&quot;,
+		&quot;astro-&quot;
+	];
+	var isGeneratedName = (name) =&gt; {
+		const lower = name.toLowerCase();
+		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
+	};
+	var runFinder = (element, timeoutMs) =&gt; finder(element, {
+		root: element.ownerDocument,
+		idName: (name) =&gt; idName(name) &amp;&amp; !isGeneratedName(name),
+		className: (name) =&gt; className(name) &amp;&amp; !isGeneratedName(name),
+		timeoutMs
+	});
+	var nthOfTypePath = (element) =&gt; {
+		const steps = [];
+		for (let current = element; current !== null; current = current.parentElement) {
+			const tag = current.localName;
+			if (tag === &quot;html&quot;) {
+				steps.push(&quot;html&quot;);
+				break;
+			}
+			let index = 1;
+			for (let sibling = current.previousElementSibling; sibling !== null;) {
+				if (sibling.localName === tag) index += 1;
+				sibling = sibling.previousElementSibling;
+			}
+			steps.push(\`\${tag}:nth-of-type(\${index})\`);
+		}
+		return steps.reverse().join(&quot; &gt; &quot;);
+	};
+	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
+		if (!element.isConnected) return null;
+		let selector;
+		try {
+			selector = runFinder(element, timeoutMs);
+		} catch (error) {
+			if (!(error instanceof RangeError)) return null;
+			selector = nthOfTypePath(element);
+		}
+		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
+	};
+	var textExcerpt = (raw) =&gt; {
+		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
+		const last = text.charCodeAt(text.length - 1);
+		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
+	};
+	var readStyles = (read) =&gt; {
+		const styles = {};
+		for (const key of COMMENT_STYLE_KEYS) {
+			const raw = read(key);
+			if (hasControlChars(raw)) continue;
+			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
+			if (isSafeStyleValue(value)) styles[key] = value;
+		}
+		return styles;
+	};
+	var describeElement = (element, isPage) =&gt; {
+		if (isPage) {
+			const body = element.ownerDocument.body ?? element;
+			return {
+				selector: &quot;body&quot;,
+				tagName: &quot;body&quot;,
+				text: &quot;&quot;,
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+			};
+		}
+		if (!element.isConnected) return {
+			selector: null,
+			tagName: element.localName,
+			text: &quot;&quot;,
+			styles: {}
+		};
+		const style = window.getComputedStyle(element);
+		return {
+			selector: buildSelector(element),
+			tagName: element.localName,
+			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
+			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+		};
+	};
+	//#endregion
 	//#region src/webview/frame/commentPicking.ts
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
+		let anchorOffset = {
+			x: 0,
+			y: 0
+		};
+		let descriptions = /* @__PURE__ */ new Map();
 		let hover;
 		let lastPointer;
 		let pendingHover;
@@ -903,15 +2033,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			clips.push(viewport);
 			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
-		const postPick = () =&gt; {
+		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current === void 0) return;
-			const isPage = isRoot(current);
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+		};
+		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
+			anchorBox: anchor.getBoundingClientRect(),
+			offset: anchorOffset,
+			targetBox: (isRoot(target) ? document.documentElement : target).getBoundingClientRect()
+		}) : {
+			x: 0,
+			y: 0
+		};
+		const postPick = () =&gt; {
+			const anchor = path[0];
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const described = current === void 0 ? void 0 : descriptions.get(current);
+			if (anchor === void 0 || current === void 0 || described === void 0) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
-				tagName: isPage ? &quot;body&quot; : current.localName,
+				...described,
 				rect: visibleRect(current),
-				isPage
+				point: pickPoint(anchor, current),
+				isPage: isRoot(current)
 			}, &quot;*&quot;);
 		};
 		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
@@ -936,6 +2081,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const setMode = (next) =&gt; {
 			mode = next;
 			path = [];
+			anchorOffset = {
+				x: 0,
+				y: 0
+			};
+			descriptions = /* @__PURE__ */ new Map();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
@@ -943,6 +2093,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
+			describeCurrent();
 			postPick();
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
@@ -953,8 +2104,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		]);
 		const blockInComment = (event) =&gt; {
 			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
 			if (event instanceof KeyboardEvent) {
-				if (!BLOCKED_KEYS.has(event.key)) return;
 				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
 			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
 				if (event.detail &gt; 0) {
@@ -963,12 +2116,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						y: event.clientY,
 						altKey: event.altKey
 					});
+					descriptions = /* @__PURE__ */ new Map();
+					const clicked = path[0];
+					if (clicked !== void 0) {
+						const box = clicked.getBoundingClientRect();
+						anchorOffset = {
+							x: event.clientX - box.x,
+							y: event.clientY - box.y
+						};
+					}
+					describeCurrent();
 					postPick();
 					window.focus();
 				}
 			}
-			event.preventDefault();
-			event.stopImmediatePropagation();
 		};
 		for (const type of [
 			&quot;pointerdown&quot;,
@@ -1103,6 +2264,24 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:2080px;width:400px;height:24px">d</div>
 <iframe data-cd-frame="d" sandbox="allow-scripts" scrolling="no" title="d" style="left:48px;top:2104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;ungrouped/d/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
+	//#region src/disk/layout.ts
+	var MAX_FRAME_COORDINATE = 1e5;
+	var COMMENT_STYLE_KEYS = [
+		&quot;font-family&quot;,
+		&quot;font-size&quot;,
+		&quot;font-weight&quot;,
+		&quot;line-height&quot;,
+		&quot;color&quot;,
+		&quot;background-color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;border-radius&quot;,
+		&quot;display&quot;,
+		&quot;width&quot;,
+		&quot;height&quot;,
+		&quot;gap&quot;
+	];
+	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
@@ -1112,6 +2291,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
+	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
+	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
+	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
@@ -1135,6 +2318,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	//#endregion
+	//#region src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
 	//#endregion
 	//#region src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
@@ -1163,6 +2349,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			height: bottom - top
 		};
 	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
 	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
 	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
 	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
@@ -1200,10 +2398,329 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	//#endregion
+	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	var acceptedAttrNames = /* @__PURE__ */ new Set([
+		&quot;role&quot;,
+		&quot;name&quot;,
+		&quot;aria-label&quot;,
+		&quot;rel&quot;,
+		&quot;href&quot;
+	]);
+	/** Check if attribute name and value are word-like. */
+	function attr(name, value) {
+		let nameIsOk = acceptedAttrNames.has(name);
+		nameIsOk ||= name.startsWith(&quot;data-&quot;) &amp;&amp; wordLike(name);
+		let valueIsOk = wordLike(value) &amp;&amp; value.length &lt; 100;
+		valueIsOk ||= value.startsWith(&quot;#&quot;) &amp;&amp; wordLike(value.slice(1));
+		return nameIsOk &amp;&amp; valueIsOk;
+	}
+	/** Check if id name is word-like. */
+	function idName(name) {
+		return wordLike(name);
+	}
+	/** Check if class name is word-like. */
+	function className(name) {
+		return wordLike(name);
+	}
+	/** Check if tag name is word-like. */
+	function tagName(name) {
+		return true;
+	}
+	/** Finds unique CSS selectors for the given element. */
+	function finder(input, options) {
+		if (input.nodeType !== Node.ELEMENT_NODE) throw new Error(\`Can&#39;t generate CSS selector for non-element node type.\`);
+		if (input.tagName.toLowerCase() === &quot;html&quot;) return &quot;html&quot;;
+		const defaults = {
+			root: document.body,
+			idName,
+			className,
+			tagName,
+			attr,
+			timeoutMs: 1e3,
+			seedMinLength: 3,
+			optimizedMinLength: 2,
+			maxNumberOfPathChecks: Infinity
+		};
+		const startTime = /* @__PURE__ */ new Date();
+		const config = {
+			...defaults,
+			...options
+		};
+		const rootDocument = findRootDocument(config.root, defaults);
+		let foundPath;
+		let count = 0;
+		for (const candidate of search(input, config, rootDocument)) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs || count &gt;= config.maxNumberOfPathChecks) {
+				const fPath = fallback(input, rootDocument);
+				if (!fPath) throw new Error(\`Timeout: Can&#39;t find a unique selector after \${config.timeoutMs}ms\`);
+				return selector(fPath);
+			}
+			count++;
+			if (unique(candidate, rootDocument)) {
+				foundPath = candidate;
+				break;
+			}
+		}
+		if (!foundPath) throw new Error(\`Selector was not found.\`);
+		const optimized = [...optimize(foundPath, input, config, rootDocument, startTime)];
+		optimized.sort(byPenalty);
+		if (optimized.length &gt; 0) return selector(optimized[0]);
+		return selector(foundPath);
+	}
+	function* search(input, config, rootDocument) {
+		const stack = [];
+		let paths = [];
+		let current = input;
+		let i = 0;
+		while (current &amp;&amp; current !== rootDocument) {
+			const level = tie(current, config);
+			for (const node of level) node.level = i;
+			stack.push(level);
+			current = current.parentElement;
+			i++;
+			paths.push(...combinations(stack));
+			if (i &gt;= config.seedMinLength) {
+				paths.sort(byPenalty);
+				for (const candidate of paths) yield candidate;
+				paths = [];
+			}
+		}
+		paths.sort(byPenalty);
+		for (const candidate of paths) yield candidate;
+	}
+	function wordLike(name) {
+		if (/^[a-z\\-]{3,}$/i.test(name)) {
+			const words = name.split(/-|[A-Z]/);
+			for (const word of words) {
+				if (word.length &lt;= 2) return false;
+				if (/[^aeiou]{4,}/i.test(word)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	function tie(element, config) {
+		const level = [];
+		const elementId = element.getAttribute(&quot;id&quot;);
+		if (elementId &amp;&amp; config.idName(elementId)) level.push({
+			name: &quot;#&quot; + CSS.escape(elementId),
+			penalty: 0
+		});
+		for (let i = 0; i &lt; element.classList.length; i++) {
+			const name = element.classList[i];
+			if (config.className(name)) level.push({
+				name: &quot;.&quot; + CSS.escape(name),
+				penalty: 1
+			});
+		}
+		for (let i = 0; i &lt; element.attributes.length; i++) {
+			const attr = element.attributes[i];
+			if (config.attr(attr.name, attr.value)) level.push({
+				name: \`[\${CSS.escape(attr.name)}=&quot;\${CSS.escape(attr.value)}&quot;]\`,
+				penalty: 2
+			});
+		}
+		const tagName = element.tagName.toLowerCase();
+		if (config.tagName(tagName)) {
+			level.push({
+				name: tagName,
+				penalty: 5
+			});
+			const index = indexOf(element, tagName);
+			if (index !== void 0) level.push({
+				name: nthOfType(tagName, index),
+				penalty: 10
+			});
+		}
+		const nth = indexOf(element);
+		if (nth !== void 0) level.push({
+			name: nthChild(tagName, nth),
+			penalty: 50
+		});
+		return level;
+	}
+	function selector(path) {
+		let node = path[0];
+		let query = node.name;
+		for (let i = 1; i &lt; path.length; i++) {
+			const level = path[i].level || 0;
+			if (node.level === level - 1) query = \`\${path[i].name} &gt; \${query}\`;
+			else query = \`\${path[i].name} \${query}\`;
+			node = path[i];
+		}
+		return query;
+	}
+	function penalty(path) {
+		return path.map((node) =&gt; node.penalty).reduce((acc, i) =&gt; acc + i, 0);
+	}
+	function byPenalty(a, b) {
+		return penalty(a) - penalty(b);
+	}
+	function indexOf(input, tagName) {
+		const parent = input.parentNode;
+		if (!parent) return;
+		let child = parent.firstChild;
+		if (!child) return;
+		let i = 0;
+		while (child) {
+			if (child.nodeType === Node.ELEMENT_NODE &amp;&amp; (tagName === void 0 || child.tagName.toLowerCase() === tagName)) i++;
+			if (child === input) break;
+			child = child.nextSibling;
+		}
+		return i;
+	}
+	function fallback(input, rootDocument) {
+		let i = 0;
+		let current = input;
+		const path = [];
+		while (current &amp;&amp; current !== rootDocument) {
+			const tagName = current.tagName.toLowerCase();
+			const index = indexOf(current, tagName);
+			if (index === void 0) return;
+			path.push({
+				name: nthOfType(tagName, index),
+				penalty: NaN,
+				level: i
+			});
+			current = current.parentElement;
+			i++;
+		}
+		if (unique(path, rootDocument)) return path;
+	}
+	function nthChild(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-child(\${index})\`;
+	}
+	function nthOfType(tagName, index) {
+		if (tagName === &quot;html&quot;) return &quot;html&quot;;
+		return \`\${tagName}:nth-of-type(\${index})\`;
+	}
+	function* combinations(stack, path = []) {
+		if (stack.length &gt; 0) for (let node of stack[0]) yield* combinations(stack.slice(1, stack.length), path.concat(node));
+		else yield path;
+	}
+	function findRootDocument(rootNode, defaults) {
+		if (rootNode.nodeType === Node.DOCUMENT_NODE) return rootNode;
+		if (rootNode === defaults.root) return rootNode.ownerDocument;
+		return rootNode;
+	}
+	function unique(path, rootDocument) {
+		const css = selector(path);
+		switch (rootDocument.querySelectorAll(css).length) {
+			case 0: throw new Error(\`Can&#39;t select any node with this selector: \${css}\`);
+			case 1: return true;
+			default: return false;
+		}
+	}
+	function* optimize(path, input, config, rootDocument, startTime) {
+		if (path.length &gt; 2 &amp;&amp; path.length &gt; config.optimizedMinLength) for (let i = 1; i &lt; path.length - 1; i++) {
+			if ((/* @__PURE__ */ new Date()).getTime() - startTime.getTime() &gt; config.timeoutMs) return;
+			const newPath = [...path];
+			newPath.splice(i, 1);
+			if (unique(newPath, rootDocument) &amp;&amp; rootDocument.querySelector(selector(newPath)) === input) {
+				yield newPath;
+				yield* optimize(newPath, input, config, rootDocument, startTime);
+			}
+		}
+	}
+	//#endregion
+	//#region src/webview/frame/selector.ts
+	var FINDER_TIMEOUT_MS = 200;
+	var GENERATED_PREFIXES = [
+		&quot;css-&quot;,
+		&quot;svelte-&quot;,
+		&quot;sc-&quot;,
+		&quot;jsx-&quot;,
+		&quot;emotion-&quot;,
+		&quot;astro-&quot;
+	];
+	var isGeneratedName = (name) =&gt; {
+		const lower = name.toLowerCase();
+		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
+	};
+	var runFinder = (element, timeoutMs) =&gt; finder(element, {
+		root: element.ownerDocument,
+		idName: (name) =&gt; idName(name) &amp;&amp; !isGeneratedName(name),
+		className: (name) =&gt; className(name) &amp;&amp; !isGeneratedName(name),
+		timeoutMs
+	});
+	var nthOfTypePath = (element) =&gt; {
+		const steps = [];
+		for (let current = element; current !== null; current = current.parentElement) {
+			const tag = current.localName;
+			if (tag === &quot;html&quot;) {
+				steps.push(&quot;html&quot;);
+				break;
+			}
+			let index = 1;
+			for (let sibling = current.previousElementSibling; sibling !== null;) {
+				if (sibling.localName === tag) index += 1;
+				sibling = sibling.previousElementSibling;
+			}
+			steps.push(\`\${tag}:nth-of-type(\${index})\`);
+		}
+		return steps.reverse().join(&quot; &gt; &quot;);
+	};
+	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
+		if (!element.isConnected) return null;
+		let selector;
+		try {
+			selector = runFinder(element, timeoutMs);
+		} catch (error) {
+			if (!(error instanceof RangeError)) return null;
+			selector = nthOfTypePath(element);
+		}
+		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
+	};
+	var textExcerpt = (raw) =&gt; {
+		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
+		const last = text.charCodeAt(text.length - 1);
+		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
+	};
+	var readStyles = (read) =&gt; {
+		const styles = {};
+		for (const key of COMMENT_STYLE_KEYS) {
+			const raw = read(key);
+			if (hasControlChars(raw)) continue;
+			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
+			if (isSafeStyleValue(value)) styles[key] = value;
+		}
+		return styles;
+	};
+	var describeElement = (element, isPage) =&gt; {
+		if (isPage) {
+			const body = element.ownerDocument.body ?? element;
+			return {
+				selector: &quot;body&quot;,
+				tagName: &quot;body&quot;,
+				text: &quot;&quot;,
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+			};
+		}
+		if (!element.isConnected) return {
+			selector: null,
+			tagName: element.localName,
+			text: &quot;&quot;,
+			styles: {}
+		};
+		const style = window.getComputedStyle(element);
+		return {
+			selector: buildSelector(element),
+			tagName: element.localName,
+			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
+			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+		};
+	};
+	//#endregion
 	//#region src/webview/frame/commentPicking.ts
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
+		let anchorOffset = {
+			x: 0,
+			y: 0
+		};
+		let descriptions = /* @__PURE__ */ new Map();
 		let hover;
 		let lastPointer;
 		let pendingHover;
@@ -1264,15 +2781,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			clips.push(viewport);
 			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
-		const postPick = () =&gt; {
+		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current === void 0) return;
-			const isPage = isRoot(current);
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+		};
+		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
+			anchorBox: anchor.getBoundingClientRect(),
+			offset: anchorOffset,
+			targetBox: (isRoot(target) ? document.documentElement : target).getBoundingClientRect()
+		}) : {
+			x: 0,
+			y: 0
+		};
+		const postPick = () =&gt; {
+			const anchor = path[0];
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const described = current === void 0 ? void 0 : descriptions.get(current);
+			if (anchor === void 0 || current === void 0 || described === void 0) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
-				tagName: isPage ? &quot;body&quot; : current.localName,
+				...described,
 				rect: visibleRect(current),
-				isPage
+				point: pickPoint(anchor, current),
+				isPage: isRoot(current)
 			}, &quot;*&quot;);
 		};
 		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
@@ -1297,6 +2829,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const setMode = (next) =&gt; {
 			mode = next;
 			path = [];
+			anchorOffset = {
+				x: 0,
+				y: 0
+			};
+			descriptions = /* @__PURE__ */ new Map();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
@@ -1304,6 +2841,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
+			describeCurrent();
 			postPick();
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
@@ -1314,8 +2852,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		]);
 		const blockInComment = (event) =&gt; {
 			if (mode !== &quot;comment&quot;) return;
+			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
 			if (event instanceof KeyboardEvent) {
-				if (!BLOCKED_KEYS.has(event.key)) return;
 				if (!event.ctrlKey &amp;&amp; !event.metaKey &amp;&amp; !event.altKey &amp;&amp; !event.shiftKey &amp;&amp; (event.key === &quot;ArrowUp&quot; || event.key === &quot;ArrowDown&quot;)) stepPick(event.key === &quot;ArrowUp&quot;);
 			} else if (event.type === &quot;click&quot; &amp;&amp; event instanceof MouseEvent &amp;&amp; event.button === 0) {
 				if (event.detail &gt; 0) {
@@ -1324,12 +2864,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						y: event.clientY,
 						altKey: event.altKey
 					});
+					descriptions = /* @__PURE__ */ new Map();
+					const clicked = path[0];
+					if (clicked !== void 0) {
+						const box = clicked.getBoundingClientRect();
+						anchorOffset = {
+							x: event.clientX - box.x,
+							y: event.clientY - box.y
+						};
+					}
+					describeCurrent();
 					postPick();
 					window.focus();
 				}
 			}
-			event.preventDefault();
-			event.stopImmediatePropagation();
 		};
 		for (const type of [
 			&quot;pointerdown&quot;,
@@ -1713,6 +3261,7 @@ var stageGeometry = (function(exports) {
 	exports.MIN_STAGE_ZOOM = MIN_STAGE_ZOOM;
 	exports.NUDGE_STEP = NUDGE_STEP;
 	exports.NUDGE_STEP_LARGE = NUDGE_STEP_LARGE;
+	exports.clampNumber = clampNumber;
 	exports.clampStageView = clampStageView;
 	exports.dragFrame = dragFrame;
 	exports.fitStageView = fitStageView;

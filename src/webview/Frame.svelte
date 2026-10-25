@@ -37,19 +37,26 @@
 		onRenderError,
 	}: Props = $props();
 
+	// Stage passes props from its {#each} item, a new record object on every height report, drag
+	// preview and canvas:updated. A direct prop read below would subscribe to that whole record,
+	// and every re-run sets a new blob URL: the document reloads, its runtime reports its height
+	// again, and the frame reload-loops. These deriveds only notify when the value changes.
+	const frameId = $derived(id);
+	const frameHtml = $derived(html);
+
 	// Registers before src is set, so the first cd:frame-height is never dropped. The nested
 	// effect reads only html and nonce (kind is the {#if} around it): label, position, width
 	// or active changes never reload the document.
 	const attachIframe: Attachment<HTMLIFrameElement> = (iframe) => {
-		onIframe(id, iframe);
+		onIframe(frameId, iframe);
 		$effect(() => {
 			let blobUrl: string;
 			try {
-				const document = stampArtboardHtml({ html, nonce, runtimeSource });
+				const document = stampArtboardHtml({ html: frameHtml, nonce, runtimeSource });
 				blobUrl = URL.createObjectURL(new Blob([document], { type: 'text/html' }));
 			} catch {
 				// ponytail: stamp/blob throw is per-frame tile copy only; no chrome log
-				onRenderError(id);
+				onRenderError(frameId);
 				return;
 			}
 			iframe.src = blobUrl;
@@ -58,7 +65,7 @@
 			};
 		});
 		return () => {
-			onIframe(id, undefined);
+			onIframe(frameId, undefined);
 		};
 	};
 </script>

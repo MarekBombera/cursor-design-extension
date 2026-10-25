@@ -1,7 +1,13 @@
 // Frame ↔ chrome message contract. Pure constants and guards, no DOM types: the export
 // (src/disk/handoffCanvasHtml.ts) imports this under the root tsconfig, which has no DOM lib.
 
-import { MAX_FRAME_COORDINATE } from '../../disk/layout';
+import {
+	COMMENT_STYLE_KEYS,
+	MAX_FRAME_COORDINATE,
+	MAX_PICK_TEXT_CHARS,
+	MAX_SELECTOR_CHARS,
+	MAX_STYLE_VALUE_CHARS,
+} from '../../disk/layout';
 
 export const CANVAS_RUNTIME_ATTRIBUTE = 'data-cd-canvas-runtime';
 
@@ -26,6 +32,8 @@ export type FrameRect = { x: number; y: number; width: number; height: number };
 
 export type FrameMode = 'interact' | 'comment';
 
+export type CommentStyles = Partial<Record<(typeof COMMENT_STYLE_KEYS)[number], string>>;
+
 type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
 
 type FrameWheelMessage = {
@@ -43,8 +51,14 @@ export type FrameHoverMessage = { type: typeof FRAME_HOVER_MESSAGE; rect: FrameR
 
 export type FramePickMessage = {
 	type: typeof FRAME_PICK_MESSAGE;
+	// null: no unique selector within the cap, or a disconnected target.
+	selector: string | null;
 	tagName: string;
+	text: string;
 	rect: FrameRect | null;
+	// CSS px relative to the current target's unclipped border box.
+	point: { x: number; y: number };
+	styles: CommentStyles;
 	isPage: boolean;
 };
 
@@ -72,6 +86,19 @@ const TAG_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 const isTagName = (value: unknown): value is string =>
 	typeof value === 'string' && value.length <= MAX_TAG_NAME_CHARS && TAG_NAME_PATTERN.test(value);
+
+// Control characters (C0, DEL, C1, so newline, carriage return and tab) and the Unicode line and
+// paragraph separators: anything that could break a line in an Agent prompt.
+const CONTROL_CHARS = /[\p{Cc}\u2028\u2029]/u;
+
+export const hasControlChars = (value: string): boolean => CONTROL_CHARS.test(value);
+
+// Letters and digits in any script (CJK font names), plus a short punctuation list. A plain
+// space, not \s, so no newline or tab passes; at least one non-space character.
+const STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\p{L}\p{N}_ #%.,()'"/+-]+$/u;
+
+export const isSafeStyleValue = (value: string): boolean =>
+	value.length <= MAX_STYLE_VALUE_CHARS && STYLE_VALUE_PATTERN.test(value);
 
 const asRecord = (data: unknown): Record<string, unknown> | undefined =>
 	data === null || typeof data !== 'object' ? undefined : (data as Record<string, unknown>);
@@ -113,13 +140,69 @@ const parseFrameWheel = (record: Record<string, unknown>): FrameWheelMessage | u
 	return { type: FRAME_WHEEL_MESSAGE, deltaX, deltaY, ctrlKey, x, y };
 };
 
+// `null` is a valid "no selector"; undefined means the guard failed.
+const parseSelector = (value: unknown): string | null | undefined => {
+	if (value === null) {
+		return null;
+	}
+	return typeof value === 'string' &&
+		value.length > 0 &&
+		value.length <= MAX_SELECTOR_CHARS &&
+		!hasControlChars(value)
+		? value
+		: undefined;
+};
+
+const isPickText = (value: unknown): value is string =>
+	typeof value === 'string' && value.length <= MAX_PICK_TEXT_CHARS && !hasControlChars(value);
+
+const isPointCoordinate = (value: unknown): value is number =>
+	isFiniteNumber(value) && value >= 0 && value <= MAX_FRAME_COORDINATE;
+
+const parsePoint = (value: unknown): { x: number; y: number } | undefined => {
+	const record = asRecord(value);
+	if (record === undefined || !isPointCoordinate(record.x) || !isPointCoordinate(record.y)) {
+		return undefined;
+	}
+	return { x: record.x, y: record.y };
+};
+
+const isStyleKey = (key: string): key is (typeof COMMENT_STYLE_KEYS)[number] =>
+	(COMMENT_STYLE_KEYS as readonly string[]).includes(key);
+
+// One bad key or value rejects the whole map; the runtime never produces one.
+const parseStyles = (value: unknown): CommentStyles | undefined => {
+	const record = asRecord(value);
+	if (record === undefined || Array.isArray(value)) {
+		return undefined;
+	}
+	const styles: CommentStyles = {};
+	for (const [key, style] of Object.entries(record)) {
+		if (!isStyleKey(key) || typeof style !== 'string' || !isSafeStyleValue(style)) {
+			return undefined;
+		}
+		styles[key] = style;
+	}
+	return styles;
+};
+
 const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {
-	const { tagName, isPage } = record;
+	const { tagName, text, isPage } = record;
 	const rect = parseNullableRect(record.rect);
+	const selector = parseSelector(record.selector);
+	const point = parsePoint(record.point);
+	const styles = parseStyles(record.styles);
 	if (!isTagName(tagName) || rect === undefined || typeof isPage !== 'boolean') {
 		return undefined;
 	}
-	return { type: FRAME_PICK_MESSAGE, tagName, rect, isPage };
+	if (selector === undefined || !isPickText(text) || point === undefined || styles === undefined) {
+		return undefined;
+	}
+	// A page pick is labelled body (8e locates it by point inside the documentElement box).
+	if (isPage && (selector !== 'body' || tagName !== 'body')) {
+		return undefined;
+	}
+	return { type: FRAME_PICK_MESSAGE, selector, tagName, text, rect, point, styles, isPage };
 };
 
 // Frame → chrome posts are untrusted (rule 02). The bridge has already matched event.source

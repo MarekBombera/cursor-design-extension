@@ -34,8 +34,15 @@ const ZOOM_SENSITIVITY = 0.01;
 export const FIT_PADDING = 48;
 const KEEP_VISIBLE = 48;
 
-const clampNumber = ({ value, min, max }: { value: number; min: number; max: number }): number =>
-	Math.min(max, Math.max(min, value));
+export const clampNumber = ({
+	value,
+	min,
+	max,
+}: {
+	value: number;
+	min: number;
+	max: number;
+}): number => Math.min(max, Math.max(min, value));
 
 const clampStageZoom = ({ zoom }: { zoom: number }): number =>
 	clampNumber({ value: zoom, min: MIN_STAGE_ZOOM, max: MAX_STAGE_ZOOM });

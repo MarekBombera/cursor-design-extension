@@ -1,6 +1,8 @@
 // Pure hit-test rules for Comment-mode picking. Generic over the element type, so the runtime
 // passes DOM predicates and tests pass plain objects. No DOM types: the runtime bundles this.
 
+import { MAX_FRAME_COORDINATE } from '../../disk/layout';
+import { clampNumber } from '../stageGeometry';
 import type { FrameRect } from './frameMessages';
 
 type PickTargetArgs<T> = {
@@ -54,6 +56,30 @@ export const clipRect = (rect: FrameRect, clips: readonly FrameRect[]): FrameRec
 	}
 	return { x: left, y: top, width: right - left, height: bottom - top };
 };
+
+// The click point relative to the current target's unclipped border box, clamped into it (and
+// into the coordinate cap, so a pick never fails its own guard). The anchor is the clicked
+// element; the offset is the click inside its box at click time.
+export const pointInTarget = ({
+	anchorBox,
+	offset,
+	targetBox,
+}: {
+	anchorBox: FrameRect;
+	offset: { x: number; y: number };
+	targetBox: FrameRect;
+}): { x: number; y: number } => ({
+	x: clampNumber({
+		value: anchorBox.x + offset.x - targetBox.x,
+		min: 0,
+		max: Math.min(targetBox.width, MAX_FRAME_COORDINATE),
+	}),
+	y: clampNumber({
+		value: anchorBox.y + offset.y - targetBox.y,
+		min: 0,
+		max: Math.min(targetBox.height, MAX_FRAME_COORDINATE),
+	}),
+});
 
 const ZERO_ALPHA = String.raw`(?:0+(?:\.0*)?|\.0+)%?\s*\)$`;
 const LEGACY_ZERO_ALPHA = new RegExp(String.raw`^(?:rgba|hsla)\(.*,\s*${ZERO_ALPHA}`, 'i');

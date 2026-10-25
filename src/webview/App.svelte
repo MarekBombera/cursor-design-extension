@@ -24,6 +24,9 @@
 		type FrameGesture,
 		type StageFrameGesture,
 		failFrameGesture,
+		SCROLL_SINK_CENTER,
+		SCROLL_SINK_ROOM,
+		scrollSinkStep,
 		settleFrameGesture,
 		stepFrameGesture,
 		type StageWheel,
@@ -189,6 +192,9 @@
 		(target.isContentEditable || target.matches('input, textarea, select'));
 
 	const handleWindowKeydown = (event: KeyboardEvent): void => {
+		// A key with chrome focus ends any frame gesture, so the root scroll it causes (PageDown,
+		// Space, arrows) never pans through the scroll sink.
+		lastSinkGestureAt = Number.NEGATIVE_INFINITY;
 		const step = arrowPickStep({
 			state: picking,
 			key: event.key,
@@ -225,6 +231,8 @@
 			commitStageView(stageView);
 			return;
 		}
+		// The gesture may leave this frame and continue as root scroll (handleSinkScroll).
+		lastSinkGestureAt = performance.now();
 		// The frame reports frame-local coordinates; the wheel anchor is the viewport point under it.
 		const anchor = stageToScreen({
 			view: stageView,
@@ -242,6 +250,37 @@
 
 	const handleDragPan = (deltaX: number, deltaY: number): void => {
 		commitStageView(panStage({ view: stageView, deltaX, deltaY }));
+	};
+
+	// Scroll sink (frameGesture.ts): where the last scroll back landed, and when the last frame
+	// wheel or sink pan happened.
+	let sinkRestX = 0;
+	let sinkRestY = 0;
+	let lastSinkGestureAt = Number.NEGATIVE_INFINITY;
+
+	const recentreScrollSink = (): void => {
+		window.scrollTo(SCROLL_SINK_CENTER, SCROLL_SINK_CENTER);
+		sinkRestX = window.scrollX;
+		sinkRestY = window.scrollY;
+	};
+
+	const handleSinkScroll = (): void => {
+		const now = performance.now();
+		const step = scrollSinkStep({
+			scrollX: window.scrollX,
+			scrollY: window.scrollY,
+			restX: sinkRestX,
+			restY: sinkRestY,
+			now,
+			lastGestureAt: lastSinkGestureAt,
+		});
+		if (step.recentre) {
+			recentreScrollSink();
+		}
+		if (step.pan !== undefined) {
+			lastSinkGestureAt = now;
+			handleDragPan(step.pan.deltaX, step.pan.deltaY);
+		}
 	};
 
 	const diskPlacement = (id: string): FramePlacement | undefined => {
@@ -295,6 +334,11 @@
 		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
 	};
 
+	// The body's hidden scroll room comes from the one constant (CSSOM, allowed by the nonce CSP).
+	document.body.style.width = `calc(100% + ${SCROLL_SINK_ROOM}px)`;
+	document.body.style.height = `calc(100% + ${SCROLL_SINK_ROOM}px)`;
+	recentreScrollSink();
+
 	connectHostBridge({
 		iframes,
 		onHostMessage: handleHostMessage,
@@ -302,7 +346,11 @@
 	});
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} />
+<svelte:window
+	onkeydown={handleWindowKeydown}
+	onscroll={handleSinkScroll}
+	onresize={recentreScrollSink}
+/>
 
 <Toolbar
 	{artboardId}
@@ -350,8 +398,15 @@
 		font-family: var(--vscode-font-family);
 		font-size: var(--vscode-font-size);
 	}
+	/* The root is the stage's scroll sink (frameGesture.ts): App sizes the body with
+	   SCROLL_SINK_ROOM of hidden scroll room, while the fixed chrome never moves when it scrolls. */
+	:global(html) {
+		scrollbar-width: none;
+		overscroll-behavior: none;
+	}
 	:global(#svelte-root) {
-		height: 100%;
+		position: fixed;
+		inset: 0;
 		display: flex;
 		flex-direction: column;
 	}

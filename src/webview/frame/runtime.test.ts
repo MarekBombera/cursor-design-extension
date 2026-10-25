@@ -37,9 +37,18 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 	assert.ok(runtimeSource.includes('y: event.clientY'));
 	assert.ok(runtimeSource.includes('passive: false'));
 	assert.ok(runtimeSource.includes('capture: true'));
+	// Finder reads element.classList; only its mutators are forbidden.
 	for (const forbidden of [
 		'.style',
-		'classList',
+		'classList.add',
+		'classList.remove',
+		'classList.toggle',
+		'classList.replace',
+		'classList.value',
+		'className =',
+		'removeAttribute',
+		'.dataset',
+		'innerHTML',
 		'setAttribute',
 		'data-dc-',
 		'sc-host',
@@ -47,6 +56,8 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 	]) {
 		assert.ok(!runtimeSource.includes(forbidden), forbidden);
 	}
+	// Finder is bundled into the runtime string (a dropped import fails here).
+	assert.ok(runtimeSource.includes("Can't generate CSS selector"));
 });
 
 test('comment mode trusts only the captured parent, blocks input and picks by hit test', () => {
@@ -80,7 +91,8 @@ test('comment mode trusts only the captured parent, blocks input and picks by hi
 		'requestAnimationFrame',
 		'cancelAnimationFrame',
 		'ownerSVGElement',
-		'getComputedStyle',
+		// The paint check reads styles itself; selector.ts reading them must not satisfy this.
+		'paintsFromStyle({',
 	]) {
 		assert.ok(runtimeSource.includes(required), required);
 	}

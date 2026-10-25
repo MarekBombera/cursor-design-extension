@@ -8,7 +8,8 @@ import {
 	parseChromeFrameMessage,
 } from './frameMessages';
 import { stepToChild, stepToParent } from './pickPath';
-import { clipRect, paintsFromStyle, pickTarget } from './pickTarget';
+import { clipRect, paintsFromStyle, pickTarget, pointInTarget } from './pickTarget';
+import { describeElement, type PickDescription } from './selector';
 
 // Comment mode (8d1). Chrome sends cd:mode / cd:pick-parent / cd:pick-child; the runtime blocks
 // the design's own input and reports what a click picks. It never writes to the design DOM.
@@ -17,6 +18,11 @@ export const installCommentPicking = (host: Window): void => {
 	let mode: FrameMode = 'interact';
 	// Index 0 is the clicked element, the last entry the current pick; empty means no pick.
 	let path: readonly Element[] = [];
+	// The click inside path[0]'s unclipped box, so the pick point follows the element.
+	let anchorOffset = { x: 0, y: 0 };
+	// describeElement per element of the current path, cleared on each click and cd:mode. Finder
+	// can take its full timeout, so ↑/↓ over the same path never runs it twice.
+	let descriptions = new Map<Element, PickDescription>();
 	// Last posted hover; undefined means none posted since the last reset.
 	let hover: { element: Element | undefined; rect: FrameRect | null } | undefined;
 	let lastPointer: { x: number; y: number; altKey: boolean } | undefined;
@@ -103,18 +109,43 @@ export const installCommentPicking = (host: Window): void => {
 		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 	};
 
-	const postPick = (): void => {
+	// A throw leaves no entry, so postPick sends nothing rather than another element's data.
+	const describeCurrent = (): void => {
 		const current = path.at(-1);
-		if (current === undefined) {
+		if (current !== undefined && !descriptions.has(current)) {
+			descriptions.set(current, describeElement(current, isRoot(current)));
+		}
+	};
+
+	// A page pick is relative to the documentElement box, the same box as its rect.
+	const pickPoint = (anchor: Element, target: Element): { x: number; y: number } =>
+		anchor.isConnected && target.isConnected
+			? pointInTarget({
+					anchorBox: anchor.getBoundingClientRect(),
+					offset: anchorOffset,
+					targetBox: (isRoot(target) ? document.documentElement : target).getBoundingClientRect(),
+				})
+			: { x: 0, y: 0 };
+
+	// Every post recomputes rect and point; the descriptions are kept, so scrolls skip finder.
+	const postPick = (): void => {
+		const anchor = path[0];
+		const current = path.at(-1);
+		// A target the design removed since it was described has no selector, text or styles now.
+		if (current !== undefined && !current.isConnected && descriptions.has(current)) {
+			descriptions.set(current, describeElement(current, isRoot(current)));
+		}
+		const described = current === undefined ? undefined : descriptions.get(current);
+		if (anchor === undefined || current === undefined || described === undefined) {
 			return;
 		}
-		const isPage = isRoot(current);
 		host.postMessage(
 			{
 				type: FRAME_PICK_MESSAGE,
-				tagName: isPage ? 'body' : current.localName,
+				...described,
 				rect: visibleRect(current),
-				isPage,
+				point: pickPoint(anchor, current),
+				isPage: isRoot(current),
 			},
 			'*',
 		);
@@ -149,6 +180,8 @@ export const installCommentPicking = (host: Window): void => {
 	const setMode = (next: FrameMode): void => {
 		mode = next;
 		path = [];
+		anchorOffset = { x: 0, y: 0 };
+		descriptions = new Map();
 		hover = undefined;
 		lastPointer = undefined;
 		cancelPendingHover();
@@ -160,20 +193,24 @@ export const installCommentPicking = (host: Window): void => {
 			return;
 		}
 		path = toParent ? stepUp(path) : stepToChild(path);
+		describeCurrent();
 		postPick();
 	};
 
 	const BLOCKED_KEYS = new Set(['Enter', ' ', 'ArrowUp', 'ArrowDown']);
 
 	// One capture listener for every blocked event, so picking can never race a second listener.
+	// It blocks before picking, so a throw while describing still leaves the event blocked.
 	const blockInComment = (event: Event): void => {
 		if (mode !== 'comment') {
 			return;
 		}
+		if (event instanceof KeyboardEvent && !BLOCKED_KEYS.has(event.key)) {
+			return;
+		}
+		event.preventDefault();
+		event.stopImmediatePropagation();
 		if (event instanceof KeyboardEvent) {
-			if (!BLOCKED_KEYS.has(event.key)) {
-				return;
-			}
 			const plain = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
 			if (plain && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
 				stepPick(event.key === 'ArrowUp');
@@ -182,14 +219,19 @@ export const installCommentPicking = (host: Window): void => {
 			// detail 0 is a keyboard or scripted click, which has no real pointer position.
 			if (event.detail > 0) {
 				path = pathAt({ x: event.clientX, y: event.clientY, altKey: event.altKey });
+				descriptions = new Map();
+				const clicked = path[0];
+				if (clicked !== undefined) {
+					const box = clicked.getBoundingClientRect();
+					anchorOffset = { x: event.clientX - box.x, y: event.clientY - box.y };
+				}
+				describeCurrent();
 				postPick();
 				// The blocked mousedown never moves focus, so ↑/↓ would stay in whatever had it
 				// (Cursor chat). Focus this frame's window; the design DOM is untouched.
 				window.focus();
 			}
 		}
-		event.preventDefault();
-		event.stopImmediatePropagation();
 	};
 
 	for (const type of [

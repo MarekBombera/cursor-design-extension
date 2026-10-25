@@ -13,7 +13,9 @@ export type CommentPickState = {
 	commentMode: boolean;
 	// Frame-local rects as the frame reported them.
 	hover: { frameId: string; rect: FrameRect } | undefined;
-	pick: { frameId: string; tagName: string; rect: FrameRect | null; isPage: boolean } | undefined;
+	// Frame data, untrusted: chrome shows it only as text.
+	// sequence counts picks since the last reset (1, 2, ...).
+	pick: ({ frameId: string; sequence: number } & Omit<FramePickMessage, 'type'>) | undefined;
 };
 
 type FrameSend = { frameId: string; message: ChromeFrameMessage };
@@ -103,13 +105,10 @@ export const applyPickMessage = ({
 		previous !== undefined && previous.frameId !== frameId
 			? [{ frameId: previous.frameId, message: frameModeMessage(true) }]
 			: [];
-	const pick = {
-		frameId,
-		tagName: message.tagName,
-		rect: message.rect,
-		isPage: message.isPage,
-	};
-	return { state: { ...state, pick }, sends };
+	const { type: _type, ...fields } = message;
+	// Counts picks so the Toolbar's live region text changes even when two picks read the same.
+	const sequence = (previous?.sequence ?? 0) + 1;
+	return { state: { ...state, pick: { frameId, sequence, ...fields } }, sends };
 };
 
 // ↑/↓ while focus is in chrome. Label nudges call preventDefault first, and modified arrows or

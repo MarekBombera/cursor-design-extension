@@ -41,6 +41,29 @@ export const FRAME_GAP = 24;
 // Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
 export const MAX_FRAME_COORDINATE = 100_000;
 
+// Frame → chrome pick fields (8d2); 8e reuses them for comments.json. Chars are UTF-16 code units.
+export const MAX_SELECTOR_CHARS = 1000;
+
+export const MAX_PICK_TEXT_CHARS = 200;
+
+export const MAX_STYLE_VALUE_CHARS = 200;
+
+export const COMMENT_STYLE_KEYS = [
+	'font-family',
+	'font-size',
+	'font-weight',
+	'line-height',
+	'color',
+	'background-color',
+	'padding',
+	'margin',
+	'border-radius',
+	'display',
+	'width',
+	'height',
+	'gap',
+] as const;
+
 // Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
 export const LOCK_FILE = '.lock' as const;
 

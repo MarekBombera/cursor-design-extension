@@ -11,11 +11,19 @@ import {
 } from './commentPick';
 
 const rect = { x: 1, y: 2, width: 3, height: 4 };
+const pickFields = {
+	selector: '.card:nth-of-type(3)',
+	tagName: 'div',
+	text: 'Card',
+	rect,
+	point: { x: 5, y: 6 },
+	styles: { color: 'rgb(0, 0, 0)' },
+	isPage: false,
+};
 const pickIn = (frameId: string): CommentPickState['pick'] => ({
 	frameId,
-	tagName: 'div',
-	rect,
-	isPage: false,
+	sequence: 1,
+	...pickFields,
 });
 const commenting = (overrides: Partial<CommentPickState> = {}): CommentPickState => ({
 	commentMode: true,
@@ -44,7 +52,7 @@ test('a reload clears only that frame and re-sends the current mode', () => {
 test('hover and pick posted outside Comment mode are ignored (a design script can post them)', () => {
 	for (const message of [
 		{ type: 'cd:hover', rect },
-		{ type: 'cd:pick', tagName: 'a', rect, isPage: false },
+		{ type: 'cd:pick', ...pickFields },
 	] as const) {
 		const step = applyPickMessage({ state: INITIAL_COMMENT_PICK, frameId: 'a', message });
 		assert.equal(step.state, INITIAL_COMMENT_PICK);
@@ -70,11 +78,18 @@ test('a null hover from another frame does not clear the current hover', () => {
 
 test('picking in another frame resets the old frame; re-picking the same frame sends nothing', () => {
 	const state = commenting({ pick: pickIn('a') });
-	const message = { type: 'cd:pick', tagName: 'p', rect: null, isPage: false } as const;
+	const fields = { ...pickFields, selector: null, tagName: 'p', rect: null };
+	const message = { type: 'cd:pick', ...fields } as const;
 	const other = applyPickMessage({ state, frameId: 'b', message });
 	assert.deepEqual(other.sends, [{ frameId: 'a', message: { type: 'cd:mode', mode: 'comment' } }]);
-	// A null rect keeps the chip: the pick is stored, only the outline is gone.
-	assert.deepEqual(other.state.pick, { frameId: 'b', tagName: 'p', rect: null, isPage: false });
+	// A null rect keeps the chip: the pick is stored, only the outline is gone. A null selector
+	// is stored as is.
+	assert.deepEqual(other.state.pick, { frameId: 'b', sequence: 2, ...fields });
+	// The sequence counts picks, so the chrome can re-announce two equal picks in a row.
+	assert.equal(
+		applyPickMessage({ state: other.state, frameId: 'b', message }).state.pick?.sequence,
+		3,
+	);
 	assert.deepEqual(applyPickMessage({ state, frameId: 'a', message }).sends, []);
 });
 

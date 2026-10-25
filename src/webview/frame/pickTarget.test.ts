@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import { clipRect, isTransparentColor, paintsFromStyle, pickTarget } from './pickTarget';
+import {
+	clipRect,
+	isTransparentColor,
+	paintsFromStyle,
+	pickTarget,
+	pointInTarget,
+} from './pickTarget';
 
 type Node = { name: string; parent?: Node; paints: boolean };
 
@@ -150,4 +156,31 @@ test('isTransparentColor matches only zero alpha', () => {
 	]) {
 		assert.equal(isTransparentColor(color), false, color);
 	}
+});
+
+test('pointInTarget keeps the click inside the current target box', () => {
+	const offset = { x: 5, y: 6 };
+	const box = rect(100, 200, 50, 40);
+	assert.deepEqual(pointInTarget({ anchorBox: box, offset, targetBox: box }), offset);
+	// Parent box starts 10px left and 20px above the clicked child.
+	assert.deepEqual(pointInTarget({ anchorBox: box, offset, targetBox: rect(90, 180, 200, 200) }), {
+		x: 15,
+		y: 26,
+	});
+	assert.deepEqual(pointInTarget({ anchorBox: box, offset: { x: -30, y: 500 }, targetBox: box }), {
+		x: 0,
+		y: 40,
+	});
+	assert.deepEqual(
+		pointInTarget({
+			anchorBox: rect(0, 0, 10, 10),
+			offset: { x: 200_000, y: 300_000 },
+			targetBox: rect(0, 0, 250_000, 400_000),
+		}),
+		{ x: 100_000, y: 100_000 },
+	);
+	assert.deepEqual(pointInTarget({ anchorBox: box, offset, targetBox: rect(120, 210, 0, 0) }), {
+		x: 0,
+		y: 0,
+	});
 });

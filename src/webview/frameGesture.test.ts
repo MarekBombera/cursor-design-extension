@@ -10,6 +10,7 @@ import {
 	type StageFrameGesture,
 	settleFrameGesture,
 	stepFrameGesture,
+	scrollSinkStep,
 	wheelToView,
 } from './frameGesture';
 import type { FramePlacement } from './hostMessages';
@@ -176,4 +177,30 @@ test('a zoom wheel keeps the point under the pointer fixed; a plain wheel pans a
 		wheelToView({ view, wheel: { deltaX: 5, deltaY: 7, zoom: false, screenX: 200, screenY: 150 } }),
 		{ x: 35, y: 23, zoom: 1 },
 	);
+});
+
+test('the scroll sink pans by the offset from where it was re-centred, only during a frame gesture', () => {
+	const rest = { restX: 5000, restY: 4999.5, lastGestureAt: 1000 };
+	// The rest of a gesture that left its frame: pan by exactly what Chromium scrolled.
+	assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5040, scrollY: 4989.5, now: 1016 }), {
+		recentre: true,
+		pan: { deltaX: 40, deltaY: -10 },
+	});
+	// The scroll back lands on the rest position (sub-pixel included): no pan, no feedback loop.
+	assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5000, scrollY: 4999.5, now: 1032 }), {
+		recentre: false,
+		pan: undefined,
+	});
+	// End/Home or a reset scroll position inside the gesture window: re-centre, no 5000px pan.
+	for (const scrollY of [9999.5, 0]) {
+		assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5000, scrollY, now: 1016 }), {
+			recentre: true,
+			pan: undefined,
+		});
+	}
+	// A root scroll long after any frame wheel (keys bubbling out of a frame): re-centre, no pan.
+	assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5000, scrollY: 5040, now: 9000 }), {
+		recentre: true,
+		pan: undefined,
+	});
 });
