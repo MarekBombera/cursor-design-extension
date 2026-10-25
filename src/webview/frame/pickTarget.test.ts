@@ -4,6 +4,7 @@ import { test } from 'vite-plus/test';
 import {
 	clipRect,
 	isTransparentColor,
+	isUnchangedPick,
 	paintsFromStyle,
 	pickTarget,
 	pointInTarget,
@@ -183,4 +184,28 @@ test('pointInTarget keeps the click inside the current target box', () => {
 		x: 0,
 		y: 0,
 	});
+});
+
+test('isUnchangedPick is true only for the same element, description, rect and point', () => {
+	const element = { name: 'card' };
+	const described = { selector: '.card' };
+	const last = { element, described, rect: rect(10, 20, 30, 40), point: { x: 5, y: 6 } };
+	const unchanged = (next: Partial<typeof last>): boolean =>
+		isUnchangedPick({ last, next: { ...last, ...next } });
+	assert.equal(unchanged({}), true);
+	assert.equal(unchanged({ rect: rect(10, 20, 30, 40), point: { x: 5, y: 6 } }), true);
+	assert.equal(unchanged({ described: { selector: '.card' } }), false);
+	assert.equal(unchanged({ rect: rect(11, 20, 30, 40) }), false);
+	// sameRect is the only check that sees a scroll moving anchor and target together.
+	assert.equal(unchanged({ rect: rect(10, 21, 30, 40) }), false);
+	assert.equal(unchanged({ rect: rect(10, 20, 31, 40) }), false);
+	assert.equal(unchanged({ rect: rect(10, 20, 30, 41) }), false);
+	assert.equal(unchanged({ point: { x: 4, y: 6 } }), false);
+	assert.equal(unchanged({ point: { x: 5, y: 7 } }), false);
+	assert.equal(unchanged({ element: { name: 'card' } }), false);
+	assert.equal(
+		isUnchangedPick({ last: { ...last, rect: null }, next: { ...last, rect: null } }),
+		true,
+	);
+	assert.equal(isUnchangedPick({ last: { ...last, rect: null }, next: last }), false);
 });

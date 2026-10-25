@@ -86,6 +86,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
 		}
 	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
 	var clipRect = (rect, clips) =&gt; {
 		let left = rect.x;
 		let top = rect.y;
@@ -477,9 +479,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			y: 0
 		};
 		let descriptions = /* @__PURE__ */ new Map();
+		let removed = /* @__PURE__ */ new WeakSet();
 		let hover;
 		let lastPointer;
 		let pendingHover;
+		let lastPosted;
+		let pendingRepost;
 		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
@@ -549,21 +554,35 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = () =&gt; {
+		const postPick = ({ force }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
+				descriptions.set(current, describeElement(current, isRoot(current)));
+				removed.add(current);
+			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
 			if (anchor === void 0 || current === void 0 || described === void 0) return;
+			const next = {
+				element: current,
+				described,
+				rect: visibleRect(current),
+				point: pickPoint(anchor, current)
+			};
+			if (!force &amp;&amp; lastPosted !== void 0 &amp;&amp; isUnchangedPick({
+				last: lastPosted,
+				next
+			})) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
-				rect: visibleRect(current),
-				point: pickPoint(anchor, current),
+				rect: next.rect,
+				point: next.point,
 				isPage: isRoot(current)
 			}, &quot;*&quot;);
+			lastPosted = next;
 		};
-		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
 		const postHover = (element) =&gt; {
 			const rect = element === void 0 ? null : visibleRect(element);
 			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
@@ -590,15 +609,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				y: 0
 			};
 			descriptions = /* @__PURE__ */ new Map();
+			removed = /* @__PURE__ */ new WeakSet();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
+			if (pendingRepost !== void 0) {
+				cancelAnimationFrame(pendingRepost);
+				pendingRepost = void 0;
+			}
 		};
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick();
+			postPick({ force: true });
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -621,6 +645,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						altKey: event.altKey
 					});
 					descriptions = /* @__PURE__ */ new Map();
+					removed = /* @__PURE__ */ new WeakSet();
 					const clicked = path[0];
 					if (clicked !== void 0) {
 						const box = clicked.getBoundingClientRect();
@@ -630,7 +655,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick();
+					postPick({ force: true });
 					window.focus();
 				}
 			}
@@ -667,10 +692,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
-		const repostRects = () =&gt; {
+		const repostFrame = () =&gt; {
+			pendingRepost = void 0;
 			if (mode !== &quot;comment&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick();
+			if (path.length &gt; 0) postPick({ force: false });
+		};
+		const repostRects = () =&gt; {
+			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -834,6 +863,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
 		}
 	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
 	var clipRect = (rect, clips) =&gt; {
 		let left = rect.x;
 		let top = rect.y;
@@ -1225,9 +1256,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			y: 0
 		};
 		let descriptions = /* @__PURE__ */ new Map();
+		let removed = /* @__PURE__ */ new WeakSet();
 		let hover;
 		let lastPointer;
 		let pendingHover;
+		let lastPosted;
+		let pendingRepost;
 		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
@@ -1297,21 +1331,35 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = () =&gt; {
+		const postPick = ({ force }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
+				descriptions.set(current, describeElement(current, isRoot(current)));
+				removed.add(current);
+			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
 			if (anchor === void 0 || current === void 0 || described === void 0) return;
+			const next = {
+				element: current,
+				described,
+				rect: visibleRect(current),
+				point: pickPoint(anchor, current)
+			};
+			if (!force &amp;&amp; lastPosted !== void 0 &amp;&amp; isUnchangedPick({
+				last: lastPosted,
+				next
+			})) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
-				rect: visibleRect(current),
-				point: pickPoint(anchor, current),
+				rect: next.rect,
+				point: next.point,
 				isPage: isRoot(current)
 			}, &quot;*&quot;);
+			lastPosted = next;
 		};
-		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
 		const postHover = (element) =&gt; {
 			const rect = element === void 0 ? null : visibleRect(element);
 			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
@@ -1338,15 +1386,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				y: 0
 			};
 			descriptions = /* @__PURE__ */ new Map();
+			removed = /* @__PURE__ */ new WeakSet();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
+			if (pendingRepost !== void 0) {
+				cancelAnimationFrame(pendingRepost);
+				pendingRepost = void 0;
+			}
 		};
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick();
+			postPick({ force: true });
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -1369,6 +1422,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						altKey: event.altKey
 					});
 					descriptions = /* @__PURE__ */ new Map();
+					removed = /* @__PURE__ */ new WeakSet();
 					const clicked = path[0];
 					if (clicked !== void 0) {
 						const box = clicked.getBoundingClientRect();
@@ -1378,7 +1432,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick();
+					postPick({ force: true });
 					window.focus();
 				}
 			}
@@ -1415,10 +1469,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
-		const repostRects = () =&gt; {
+		const repostFrame = () =&gt; {
+			pendingRepost = void 0;
 			if (mode !== &quot;comment&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick();
+			if (path.length &gt; 0) postPick({ force: false });
+		};
+		const repostRects = () =&gt; {
+			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -1582,6 +1640,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
 		}
 	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
 	var clipRect = (rect, clips) =&gt; {
 		let left = rect.x;
 		let top = rect.y;
@@ -1973,9 +2033,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			y: 0
 		};
 		let descriptions = /* @__PURE__ */ new Map();
+		let removed = /* @__PURE__ */ new WeakSet();
 		let hover;
 		let lastPointer;
 		let pendingHover;
+		let lastPosted;
+		let pendingRepost;
 		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
@@ -2045,21 +2108,35 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = () =&gt; {
+		const postPick = ({ force }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
+				descriptions.set(current, describeElement(current, isRoot(current)));
+				removed.add(current);
+			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
 			if (anchor === void 0 || current === void 0 || described === void 0) return;
+			const next = {
+				element: current,
+				described,
+				rect: visibleRect(current),
+				point: pickPoint(anchor, current)
+			};
+			if (!force &amp;&amp; lastPosted !== void 0 &amp;&amp; isUnchangedPick({
+				last: lastPosted,
+				next
+			})) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
-				rect: visibleRect(current),
-				point: pickPoint(anchor, current),
+				rect: next.rect,
+				point: next.point,
 				isPage: isRoot(current)
 			}, &quot;*&quot;);
+			lastPosted = next;
 		};
-		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
 		const postHover = (element) =&gt; {
 			const rect = element === void 0 ? null : visibleRect(element);
 			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
@@ -2086,15 +2163,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				y: 0
 			};
 			descriptions = /* @__PURE__ */ new Map();
+			removed = /* @__PURE__ */ new WeakSet();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
+			if (pendingRepost !== void 0) {
+				cancelAnimationFrame(pendingRepost);
+				pendingRepost = void 0;
+			}
 		};
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick();
+			postPick({ force: true });
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -2117,6 +2199,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						altKey: event.altKey
 					});
 					descriptions = /* @__PURE__ */ new Map();
+					removed = /* @__PURE__ */ new WeakSet();
 					const clicked = path[0];
 					if (clicked !== void 0) {
 						const box = clicked.getBoundingClientRect();
@@ -2126,7 +2209,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick();
+					postPick({ force: true });
 					window.focus();
 				}
 			}
@@ -2163,10 +2246,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
-		const repostRects = () =&gt; {
+		const repostFrame = () =&gt; {
+			pendingRepost = void 0;
 			if (mode !== &quot;comment&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick();
+			if (path.length &gt; 0) postPick({ force: false });
+		};
+		const repostRects = () =&gt; {
+			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -2330,6 +2417,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
 		}
 	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
 	var clipRect = (rect, clips) =&gt; {
 		let left = rect.x;
 		let top = rect.y;
@@ -2721,9 +2810,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			y: 0
 		};
 		let descriptions = /* @__PURE__ */ new Map();
+		let removed = /* @__PURE__ */ new WeakSet();
 		let hover;
 		let lastPointer;
 		let pendingHover;
+		let lastPosted;
+		let pendingRepost;
 		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
@@ -2793,21 +2885,35 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = () =&gt; {
+		const postPick = ({ force }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !current.isConnected &amp;&amp; descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
+				descriptions.set(current, describeElement(current, isRoot(current)));
+				removed.add(current);
+			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
 			if (anchor === void 0 || current === void 0 || described === void 0) return;
+			const next = {
+				element: current,
+				described,
+				rect: visibleRect(current),
+				point: pickPoint(anchor, current)
+			};
+			if (!force &amp;&amp; lastPosted !== void 0 &amp;&amp; isUnchangedPick({
+				last: lastPosted,
+				next
+			})) return;
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
-				rect: visibleRect(current),
-				point: pickPoint(anchor, current),
+				rect: next.rect,
+				point: next.point,
 				isPage: isRoot(current)
 			}, &quot;*&quot;);
+			lastPosted = next;
 		};
-		const sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
 		const postHover = (element) =&gt; {
 			const rect = element === void 0 ? null : visibleRect(element);
 			if (hover !== void 0 &amp;&amp; hover.element === element &amp;&amp; sameRect(hover.rect, rect)) return;
@@ -2834,15 +2940,20 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				y: 0
 			};
 			descriptions = /* @__PURE__ */ new Map();
+			removed = /* @__PURE__ */ new WeakSet();
 			hover = void 0;
 			lastPointer = void 0;
 			cancelPendingHover();
+			if (pendingRepost !== void 0) {
+				cancelAnimationFrame(pendingRepost);
+				pendingRepost = void 0;
+			}
 		};
 		const stepPick = (toParent) =&gt; {
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick();
+			postPick({ force: true });
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -2865,6 +2976,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						altKey: event.altKey
 					});
 					descriptions = /* @__PURE__ */ new Map();
+					removed = /* @__PURE__ */ new WeakSet();
 					const clicked = path[0];
 					if (clicked !== void 0) {
 						const box = clicked.getBoundingClientRect();
@@ -2874,7 +2986,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick();
+					postPick({ force: true });
 					window.focus();
 				}
 			}
@@ -2911,10 +3023,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
-		const repostRects = () =&gt; {
+		const repostFrame = () =&gt; {
+			pendingRepost = void 0;
 			if (mode !== &quot;comment&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick();
+			if (path.length &gt; 0) postPick({ force: false });
+		};
+		const repostRects = () =&gt; {
+			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);

@@ -39,6 +39,36 @@ export const pickTarget = <T>({
 	return undefined;
 };
 
+export const sameRect = (left: FrameRect | null, right: FrameRect | null): boolean =>
+	left === null || right === null
+		? left === right
+		: left.x === right.x &&
+			left.y === right.y &&
+			left.width === right.width &&
+			left.height === right.height;
+
+type PostedPick<T> = {
+	element: T;
+	// Compared by identity: a new description object means the pick was described again.
+	described: object;
+	rect: FrameRect | null;
+	point: { x: number; y: number };
+};
+
+// True when a re-post would send chrome the same pick it already has.
+export const isUnchangedPick = <T>({
+	last,
+	next,
+}: {
+	last: PostedPick<T>;
+	next: PostedPick<T>;
+}): boolean =>
+	last.element === next.element &&
+	last.described === next.described &&
+	sameRect(last.rect, next.rect) &&
+	last.point.x === next.point.x &&
+	last.point.y === next.point.y;
+
 // Intersects rect with each clip in turn; zero area is null.
 export const clipRect = (rect: FrameRect, clips: readonly FrameRect[]): FrameRect | null => {
 	let left = rect.x;

@@ -90,6 +90,8 @@ test('comment mode trusts only the captured parent, blocks input and picks by hi
 		'elementsFromPoint',
 		'requestAnimationFrame',
 		'cancelAnimationFrame',
+		// Scroll/resize re-posts are batched per frame and cancelled by cd:mode.
+		'cancelAnimationFrame(pendingRepost',
 		'ownerSVGElement',
 		// The paint check reads styles itself; selector.ts reading them must not satisfy this.
 		'paintsFromStyle({',

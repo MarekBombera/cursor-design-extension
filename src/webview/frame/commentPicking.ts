@@ -8,7 +8,14 @@ import {
 	parseChromeFrameMessage,
 } from './frameMessages';
 import { stepToChild, stepToParent } from './pickPath';
-import { clipRect, paintsFromStyle, pickTarget, pointInTarget } from './pickTarget';
+import {
+	clipRect,
+	isUnchangedPick,
+	paintsFromStyle,
+	pickTarget,
+	pointInTarget,
+	sameRect,
+} from './pickTarget';
 import { describeElement, type PickDescription } from './selector';
 
 // Comment mode (8d1). Chrome sends cd:mode / cd:pick-parent / cd:pick-child; the runtime blocks
@@ -23,10 +30,22 @@ export const installCommentPicking = (host: Window): void => {
 	// describeElement per element of the current path, cleared on each click and cd:mode. Finder
 	// can take its full timeout, so ↑/↓ over the same path never runs it twice.
 	let descriptions = new Map<Element, PickDescription>();
+	// Path elements already described again after the design removed them (once each).
+	let removed = new WeakSet<Element>();
 	// Last posted hover; undefined means none posted since the last reset.
 	let hover: { element: Element | undefined; rect: FrameRect | null } | undefined;
 	let lastPointer: { x: number; y: number; altKey: boolean } | undefined;
 	let pendingHover: number | undefined;
+	// The last cd:pick sent; a scroll or resize re-post that would repeat it is skipped.
+	let lastPosted:
+		| {
+				element: Element;
+				described: PickDescription;
+				rect: FrameRect | null;
+				point: { x: number; y: number };
+		  }
+		| undefined;
+	let pendingRepost: number | undefined;
 
 	const isRoot = (element: Element): boolean =>
 		element.localName === 'html' || element.localName === 'body';
@@ -128,36 +147,48 @@ export const installCommentPicking = (host: Window): void => {
 			: { x: 0, y: 0 };
 
 	// Every post recomputes rect and point; the descriptions are kept, so scrolls skip finder.
-	const postPick = (): void => {
+	// A click or step forces the post; a re-post is skipped when chrome already has this pick.
+	const postPick = ({ force }: { force: boolean }): void => {
 		const anchor = path[0];
 		const current = path.at(-1);
+		const cached = current === undefined ? undefined : descriptions.get(current);
 		// A target the design removed since it was described has no selector, text or styles now.
-		if (current !== undefined && !current.isConnected && descriptions.has(current)) {
+		// Described once (a page pick or a target finder never resolved included): later re-posts
+		// carry the same description object and compare equal.
+		if (
+			current !== undefined &&
+			cached !== undefined &&
+			!current.isConnected &&
+			!removed.has(current)
+		) {
 			descriptions.set(current, describeElement(current, isRoot(current)));
+			removed.add(current);
 		}
 		const described = current === undefined ? undefined : descriptions.get(current);
 		if (anchor === undefined || current === undefined || described === undefined) {
+			return;
+		}
+		const next = {
+			element: current,
+			described,
+			rect: visibleRect(current),
+			point: pickPoint(anchor, current),
+		};
+		if (!force && lastPosted !== undefined && isUnchangedPick({ last: lastPosted, next })) {
 			return;
 		}
 		host.postMessage(
 			{
 				type: FRAME_PICK_MESSAGE,
 				...described,
-				rect: visibleRect(current),
-				point: pickPoint(anchor, current),
+				rect: next.rect,
+				point: next.point,
 				isPage: isRoot(current),
 			},
 			'*',
 		);
+		lastPosted = next;
 	};
-
-	const sameRect = (left: FrameRect | null, right: FrameRect | null): boolean =>
-		left === null || right === null
-			? left === right
-			: left.x === right.x &&
-				left.y === right.y &&
-				left.width === right.width &&
-				left.height === right.height;
 
 	// Posts only when the hovered element or its rect changed.
 	const postHover = (element: Element | undefined): void => {
@@ -182,9 +213,14 @@ export const installCommentPicking = (host: Window): void => {
 		path = [];
 		anchorOffset = { x: 0, y: 0 };
 		descriptions = new Map();
+		removed = new WeakSet();
 		hover = undefined;
 		lastPointer = undefined;
 		cancelPendingHover();
+		if (pendingRepost !== undefined) {
+			cancelAnimationFrame(pendingRepost);
+			pendingRepost = undefined;
+		}
 	};
 
 	// A step always posts, even when the path did not change.
@@ -194,7 +230,7 @@ export const installCommentPicking = (host: Window): void => {
 		}
 		path = toParent ? stepUp(path) : stepToChild(path);
 		describeCurrent();
-		postPick();
+		postPick({ force: true });
 	};
 
 	const BLOCKED_KEYS = new Set(['Enter', ' ', 'ArrowUp', 'ArrowDown']);
@@ -220,13 +256,14 @@ export const installCommentPicking = (host: Window): void => {
 			if (event.detail > 0) {
 				path = pathAt({ x: event.clientX, y: event.clientY, altKey: event.altKey });
 				descriptions = new Map();
+				removed = new WeakSet();
 				const clicked = path[0];
 				if (clicked !== undefined) {
 					const box = clicked.getBoundingClientRect();
 					anchorOffset = { x: event.clientX - box.x, y: event.clientY - box.y };
 				}
 				describeCurrent();
-				postPick();
+				postPick({ force: true });
 				// The blocked mousedown never moves focus, so ↑/↓ would stay in whatever had it
 				// (Cursor chat). Focus this frame's window; the design DOM is untouched.
 				window.focus();
@@ -286,7 +323,9 @@ export const installCommentPicking = (host: Window): void => {
 		{ capture: true },
 	);
 
-	const repostRects = (): void => {
+	// A scroll or resize fires before that frame's rAF callbacks, so batching adds no lag.
+	const repostFrame = (): void => {
+		pendingRepost = undefined;
 		if (mode !== 'comment') {
 			return;
 		}
@@ -294,7 +333,14 @@ export const installCommentPicking = (host: Window): void => {
 			postHover(hover.element);
 		}
 		if (path.length > 0) {
-			postPick();
+			postPick({ force: false });
+		}
+	};
+
+	// At most one re-post per animation frame, however many boxes scroll in it.
+	const repostRects = (): void => {
+		if (mode === 'comment' && pendingRepost === undefined) {
+			pendingRepost = requestAnimationFrame(repostFrame);
 		}
 	};
 	window.addEventListener('scroll', repostRects, { capture: true });

@@ -82,14 +82,6 @@
 **Suggested fix:** Add one bullet to the spec's Behavior changes: "a leftover meta for a deleted `artboard.html` is replaced (generation restarts at 1), and a corrupt meta beside an existing `artboard.html` is left in place." Docs only.
 **Resolution:**
 
-### F-46 [P3] open - Every scroll and resize re-post carries the full pick payload
-
-**File:** src/webview/frame/commentPicking.ts:127
-**Found:** 2026-10-24 by /audit (scope: current; lens: performance)
-**Why it matters:** `postPick` spreads `described` (selector up to 1000 chars, text up to 200, up to 13 style strings of 200) into every post, and `repostRects` runs it on each `scroll` event (capture, so any nested scroller too). Chrome structured-clones it, runs `parseFramePick` on all of it (a regex per style value plus control-character scans) and replaces the `$state` pick object per event. Before 8d2 the scroll post was one rect. It is cheap in the common case (hundreds of bytes) but bounded only by the caps (about 4 KB) at scroll rate. The spec asks for this ("Every post recomputes rect and point", kept data included), so it is design, not a slip.
-**Suggested fix:** None required now. If scroll jank shows up in F5, post a smaller `cd:pick-rect { rect, point }` on scroll and keep the full `cd:pick` for click and step; that changes the spec and rule 02, so the user decides.
-**Resolution:** 2026-10-24 /implement (audit repair): not changed. The spec requires every post to carry the full pick, so chrome never merges partial state. The payload is capped (about 4 KB worst case) and posts once per scroll event. Needs a user decision: accept, or a later throttle.
-
 ### F-56 [P3] fixed - The per-pick description cache never refreshes, so selector, text and styles can go stale
 
 **File:** src/webview/frame/commentPicking.ts:113
@@ -98,6 +90,7 @@
 **Suggested fix:** Drop the cache on `resize` (`descriptions = new Map()` then `describeCurrent()` in the resize handler before `postPick`), and in `postPick` re-describe when `!current.isConnected` (gives `selector: null`). Needs the user's yes because the spec says resize re-posts never run finder.
 **Resolution:** 2026-10-25 /implement (audit repair): partly: `postPick` describes a target again when the design removed it (`!isConnected`), so scroll and resize re-posts send `selector: null` with the null rect instead of a stale selector. Not changed: clearing the cache on `resize` would run finder (up to 200 ms) on every resize step of a frame drag-resize; style staleness after a resize stays until 8f1 makes resize inert in Comment mode. ↑ then ↓ reusing the first visit's data is the intended F-41 cache.
 2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests) re-read `commentPicking.ts` `postPick`: the disconnected-target re-describe is present and cheap (no finder for a disconnected element). The resize-staleness part is not repaired and has no recorded user acceptance; stays `fixed` (P3, does not block) until the user accepts that part or 8f1 makes resize inert.
+2026-10-25 /audit (scope: current; lens: quality, security, performance, tests): the removed-target re-describe now runs only while the cached selector is non-null (fix/fewer-pick-re-posts-on-scroll). That keys on the wrong signal for a page pick whose `body` is replaced and for an element that never had a selector; see F-60. The resize-staleness part is unchanged; stays `fixed`.
 
 ### F-57 [P3] fixed - Sink room duplicated in CSS, and clampNumber's export widens the canvas.html stageGeometry global
 
@@ -115,3 +108,19 @@
 **Why it matters:** The spec says it wins over other sources, and `/complete` archives it as the record of what shipped. Three statements no longer match the code: (1) `buildSelector` step 3 (lines 240-243) and Notes for the AI (line 495) say a `RangeError` retries finder once with `timeoutMs: -1`; the code (`src/webview/frame/selector.ts:69`) builds its own `nthOfTypePath` and never calls finder again (F-55 repair). (2) Step 2 (line 124) defines the Toolbar `pick` prop as `{ selector, tagName, isPage }` and says Toolbar reads only those; the code adds `sequence` (`src/webview/Toolbar.svelte:9`, F-54 repair). (3) Step 2 (lines 144-145) says the snapshot diff may contain only runtime text; it also carries the `stageGeometry.clampNumber` global (F-57). The repairs are reasonable; the spec text is what drifted. 8e and the archive will read the old contract.
 **Suggested fix:** Update the three spec passages to the shipped behavior (nth-of-type path built directly on RangeError; `sequence` in the pick prop for the live-region re-announce; snapshot also carries the exported `clampNumber`). Spec-only change; it needs a new review request since the spec hash changes. No requirement lost.
 **Resolution:**
+
+### F-59 [P3] fixed - sameRect is only pinned on x, so a dropped y, width or height comparison passes every test
+
+**File:** src/webview/frame/pickTarget.test.ts:189
+**Found:** 2026-10-25 by /audit (scope: current; lens: tests)
+**Why it matters:** `sameRect` (`pickTarget.ts:42`) now decides whether a scroll re-post is skipped, and it is the only thing that sees a vertical scroll: `point` is relative to the target box, so it stays equal when the anchor and target scroll together. The new test moves only `x` (`rect(11, 20, 30, 40)`), and nothing else imports `sameRect`. In a scratch copy, removing the `y`, the `width` or the `height` comparison left all 12 `pickTarget.test.ts` tests green. With `y` dropped, a vertical page or box scroll would be skipped as "unchanged" and the outline would stay behind the moved element; only the snapshot (which mirrors the source text) would notice a source change, and it is regenerated on purpose.
+**Suggested fix:** In the existing `isUnchangedPick` test, add three lines that change only `y`, only `width` and only `height` of the rect and expect `false`. No product change.
+**Resolution:** 2026-10-25 /implement (audit repair): `isUnchangedPick`'s test now also changes only the rect's `y`, `width` and `height`, each expecting `false`. Dropping `left.y === right.y` from `sameRect` fails it (mutation-checked, file restored byte for byte).
+
+### F-60 [P3] fixed - The "describe a removed target once" guard keys on selector !== null, which two cases defeat
+
+**File:** src/webview/frame/commentPicking.ts:155
+**Found:** 2026-10-25 by /audit (scope: current; lens: performance, quality)
+**Why it matters:** The guard assumes that after the re-describe the cached selector is `null`. (1) A page pick: `describeElement(element, true)` returns `selector: 'body'` before it checks `isConnected` (`selector.ts:116-125`). If the design replaces `document.body`, the picked old `body` is disconnected, the guard fires on every re-post, and each call builds a new object, so `isUnchangedPick` never matches and the full pick posts once per frame of scroll or resize with `rect: null`, the F-46 symptom the spec says a page pick cannot reach. (2) An element that never had a selector (finder threw, or the selector passed 1000 chars) skips the re-describe after removal, so chrome gets its old `text` and `styles` beside `selector: null` and `rect: null`, the stale pairing F-56 meant to remove. Both need an uncommon design (a script swapping the body, or a very deep or odd node removed after a pick), and the cost is one small post per frame, so it is P3.
+**Suggested fix:** Key the guard on a flag, not the selector: keep `const removed = new WeakSet<Element>()` next to `descriptions`, reset it wherever `descriptions = new Map()` is, and re-describe only when `!current.isConnected && !removed.has(current)`, adding `current` after the `descriptions.set`. No requirement is lost. Alternatively accept it for now: page-body replacement is not something the picking fixture exercises.
+**Resolution:** 2026-10-25 /implement (audit repair): the removed-target guard uses a per-pick `removed` `WeakSet` (reset with `descriptions` on click and `cd:mode`) instead of `selector !== null`: any disconnected path element, a replaced `body` page pick or a target finder never resolved included, is described again exactly once, so later re-posts carry the same description object and compare equal, and stale text/styles never pair with `selector: null`.

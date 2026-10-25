@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8d2 Selectors (`feature/selectors`, checkpoint `269a2d7`).
+**Last verified against code:** fix Fewer pick re-posts on scroll (`fix/fewer-pick-re-posts-on-scroll`, F-46; no flow change: unchanged `cd:pick` re-posts are skipped and batched per frame).
 
 ## Chart checklist
 
