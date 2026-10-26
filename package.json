@@ -36,6 +36,7 @@
 		"vsix": "pnpm dlx @vscode/vsce@3.9.2 package --no-dependencies",
 		"compile-electron-tests": "tsc -p tsconfig.test.json",
 		"test": "vscode-test",
+		"test:browser": "vp build -c vite.webview.config.ts && playwright test -c tests/browser",
 		"coverage": "vp test --coverage",
 		"knip": "knip"
 	},
@@ -46,6 +47,7 @@
 	"devDependencies": {
 		"@medv/finder": "4.0.2",
 		"@modelcontextprotocol/client": "^2.2.0",
+		"@playwright/test": "^1.64.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/mocha": "^10.0.10",
 		"@types/node": "24.x",

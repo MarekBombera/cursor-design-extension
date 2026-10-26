@@ -147,5 +147,6 @@ Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Exten
 
 The unit Test command is `vp test` (Vite+ / Vitest; `src/**/*.test.ts` excluding `src/test/**`). It is not `pnpm test` (`vscode-test`, Electron). Build Electron with `pnpm compile-electron-tests` (writes `out/test/**/*.test.js`), then `pnpm test`; that suite needs a display and is not Verify.
 
-Browser testing is opt-in: `/tests browser` adds a harness and records its exact
-command here as `Browser tests`.
+Browser tests: `pnpm test:browser` (builds the chrome bundle, then runs Playwright
+Chromium over `tests/browser/`; the first run needs `pnpm exec playwright install chromium`;
+local only, not Verify or CI).

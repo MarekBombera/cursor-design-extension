@@ -50,13 +50,13 @@
 **Suggested fix:** Check with VoiceOver in F5 first. If the first pick is silent, keep the region in the tree with empty text (drop `hidden`, and hide the empty chip visually with `.chip:empty { padding: 0 }` rather than `display: none`).
 **Resolution:**
 
-### F-26 [P3] unverified - Pointer capture may stay stuck when a frame is removed mid-drag
+### F-26 [P2] open - Pointer capture may stay stuck when a frame is removed mid-drag
 
 **File:** src/webview/Stage.svelte
 **Found:** 2026-10-23 by review (Sonnet 5.5 test-gap pass, 8d1 refactor)
 **Why it matters:** If the frame whose label holds pointer capture is removed (the Agent deletes the artboard mid-drag), `lostpointercapture` may go to the document instead of the removed element. Then `endFrameGesture` never runs and `captured` stays set. Every later drag returns early until Escape.
 **Suggested fix:** Reproduce at F5 first (delete a frame while dragging its label). If it sticks, clear `captured` when its frame id leaves `frames`.
-**Resolution:**
+**Resolution:** 2026-10-26 /audit (scope: current, 8d3 browser tests): reproduced in the Playwright harness (scratch probe, not committed). Frames A and B, label drag on A, then `canvas:updated` without A, then release: afterwards `.viewport` still has `frame-gesture-move` and a full label drag on B posts no `frame:place`. Confirmed, so the status is `open`. Raised to P2: every later drag is dead until Escape. It is a product bug that predates 8d3, so it goes to `/fix` (spec: never edit `src/` here). Test to add with the fix, in `stage.spec.ts`: the probe above, asserting one `frame:place` for B with `base` equal to B's placement.
 
 ### F-28 [P3] open - Exported canvas.html now ships the inert Comment-picking runtime
 

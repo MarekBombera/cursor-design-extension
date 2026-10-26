@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Fewer pick re-posts on scroll (`fix/fewer-pick-re-posts-on-scroll`, F-46; no flow change: unchanged `cd:pick` re-posts are skipped and batched per frame).
+**Last verified against code:** 8d3 Browser tests (`feature/browser-tests`; no flow change: a test-only Playwright harness in `tests/browser/` drives the built chrome with a stubbed host, product code unchanged).
 
 ## Chart checklist
 

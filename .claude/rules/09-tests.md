@@ -1,8 +1,9 @@
 ---
-description: Vitest unit tests - colocated, cover the extracted job, temp dirs for disk, no Electron in the unit gate
-globs: **/*.test.ts
+description: Tests - Vitest unit tests (colocated, cover the extracted job, temp dirs for disk, no Electron in the unit gate) and Playwright browser tests (one harness, behavior not pixels)
+globs: **/*.test.ts,tests/browser/**
 paths:
   - "**/*.test.ts"
+  - tests/browser/**
 alwaysApply: false
 ---
 
@@ -15,5 +16,6 @@ alwaysApply: false
 - Disk tests write to a fresh `mkdtemp(join(tmpdir(), ...))` workspace and remove it after. Never touch `fixtures/dev-workspace` or a real `.cursor-design/`.
 - MCP behavior goes through the real tool handlers or the client contract test (`artboardTools.contract.test.ts`, InMemoryTransport), not hand-built JSON-RPC.
 - Properties (`fast-check`) for geometry and parsing invariants. Snapshots only for generated artifacts (handoff markdown, canvas HTML); update them on purpose, never blindly.
-- Do not test Svelte chrome or the artboard iframe as brittle unit tests. Prove those with F5.
+- Do not test Svelte chrome or the artboard iframe as unit tests. Chrome and iframe behavior is proven by the browser tests (`pnpm test:browser`, Playwright Chromium over the built bundle; harness in `tests/browser/harness.ts`, reuse it). F5 only for Cursor-only checks: CSP, MCP registration, Extension Host, webview hide/show, Cursor focus.
+- Browser tests assert behavior through roles, `data-cd-*` hooks, captured messages and boxes, never pixels or timing sleeps beyond the one stability quiet window.
 - Local factories stay in the test file. Lint relaxes `id-length` and return types in tests only.

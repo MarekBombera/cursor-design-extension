@@ -141,7 +141,7 @@ export default defineConfig({
 				},
 			},
 			{
-				files: ['**/*.test.ts'],
+				files: ['**/*.test.ts', 'tests/browser/**'],
 				rules: { 'id-length': 'off', 'typescript/explicit-module-boundary-types': 'off' },
 			},
 			{ files: ['scripts/**'], rules: { 'no-console': 'off' } },
@@ -152,6 +152,7 @@ export default defineConfig({
 			'coverage',
 			'node_modules',
 			'.vscode-test',
+			'test-results',
 			'src/test',
 			// Vendored Blueprint scripts follow upstream style.
 			'.cursor',
@@ -171,6 +172,7 @@ export default defineConfig({
 			'**/coverage/**',
 			'**/node_modules/**',
 			'**/.vscode-test/**',
+			'**/test-results/**',
 			'**/.agents/**',
 			'**/.cursor/**',
 			'**/.claude/**',

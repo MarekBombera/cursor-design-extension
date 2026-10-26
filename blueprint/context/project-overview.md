@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash d1d8f29176183f87a6304eb32a32e6359abf933db48799124fc09f72fd1e5109 -->
+<!-- blueprint:source-hash 55a3f42c24382eb4fd1707f01b32b55d99ebefd43c4f31a9e99b69ab52068415 -->
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 (in progress) adds Svelte chrome, frame drag/resize, element picking and comments for the Agent.
 
@@ -46,7 +46,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 8. **0.3 Comments for Agent** (in progress) - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with a copy-prompt handoff; disk and export HTML stay pristine. Scope changed 2026-10-21 to comments only, no editing. Brief: https://app.notion.com/p/3fd500344e088171925dd51bc542c00c. Plan, decisions D1-D4, error tables and edge-case tests (read before each `/feature`): `blueprint/reference/0.3-comments-plan.md`.
    - 8a. **Svelte toolchain** (shipped) - Svelte 5 + vite-plugin-svelte bundle in `dist/webview/` under the existing CSP; frame runtime as an IIFE string; `svelte-check` and the webview build in Verify and CI.
    - 8b. **Svelte port** (shipped) - Svelte components behind one host bridge; stage geometry and frame runtime are real TS modules; F5 parity checklist passed.
-   - 8c. **Frame drag/resize** - drag by label, resize width by right handle, 8px snap, width 120-3840; one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins.
+   - 8c. **Frame drag/resize** - drag by label, resize width by right handle, whole-px snap (8px arrow nudge), width 120-3840; one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins.
    - 8d1. **Picking channel** - chrome-to-frame channel; Comment-mode click blocking in the frame runtime; `elementsFromPoint` + overlay rules; hover outline drawn in chrome; Alt+click or ↑ parent, ↓ child; untrusted-message guards.
    - 8d2. **Selectors** - `@medv/finder` selectors with generated-name filters; tag, text, styles, sanitizers; happy-dom round-trip tests.
    - 8d3. **Browser tests** - Playwright on Chromium drives the built chrome bundle with a stubbed VS Code host and the real frame runtime (frame stability, wheel/zoom/pan, drag/resize, picking, selectors); local `Browser tests` command, out of Verify and CI for now; F5 only for Cursor-only checks.

@@ -1,9 +1,10 @@
 ---
 description: Names, single source of truth, wire values, TypeScript, object args. Lint enforces the mechanical parts.
-globs: src/**,scripts/**,vite.config.ts
+globs: src/**,scripts/**,tests/browser/**,vite.config.ts
 paths:
   - src/**
   - scripts/**
+  - tests/browser/**
   - vite.config.ts
 alwaysApply: false
 ---

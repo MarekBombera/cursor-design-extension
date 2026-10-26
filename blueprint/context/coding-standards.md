@@ -15,7 +15,7 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 - **TypeScript:** package `typescript` is `~6.0.3` for `svelte-check`; lint / type-aware check still run on TS 7 via tsgolint
 - **Validation:** `zod` v4 (same range as the MCP SDK) via `import * as z from 'zod/mini'` for disk JSON files in `src/disk/parse.ts` (the namespace import keeps tree-shaking; `import { z }` or classic `zod` bundles every locale). MCP tool inputs stay passthrough `fromJsonSchema` + authored errors; chrome stays dependency-free.
 - **Lint / format / type check:** Vite+ `vp check` (Oxlint + Oxfmt + tsgolint type check); config in `vite.config.ts`, which also enforces the mechanical code conventions. Unused files/deps: `pnpm knip` (separate from `vp check`)
-- **Verify UI:** **F5** Extension Development Host (`fixtures/dev-workspace`). There is no `npm run dev` / `localhost:3000` app server
+- **Verify UI:** chrome and iframe behavior with `pnpm test:browser` (Playwright Chromium over the built bundle, `tests/browser/`); **F5** Extension Development Host (`fixtures/dev-workspace`) for Cursor-only checks. There is no `npm run dev` / `localhost:3000` app server
 - **MCP register:** `vscode.cursor.mcp.registerServer` (stdio) only
 
 ## Chrome vs artboard
@@ -30,17 +30,17 @@ The Blueprint test gate is on via `vp test` (declared as `Test` in `AGENTS.md` C
 Do not run `/tests` to add or replace the runner; Vitest via `vp test` is it. Test-writing details: `.claude/rules/09-tests.md`.
 
 - **What to test:** pure logic where a wrong answer is possible (parsers, disk schema, generation/hash, conflict handling). Assert inputs/outputs and edge cases (empty, missing, malformed).
-- **What not to test:** Svelte chrome and the artboard iframe as brittle unit tests. Verify those with F5 and compile.
+- **What not to test:** Svelte chrome and the artboard iframe as unit tests. The browser tests prove those (`.claude/rules/09-tests.md`); F5 covers Cursor-only checks.
 - When a runner is configured: a step that adds in-scope logic ships a passing test in the same diff. Empty suite should fail, not pass.
 - Test files live next to source (`feature.test.ts`). `*.test.ts` covers the extracted util, not the VS Code `activate` wrapper.
 - Stack binding: TypeScript extension. If/when a test command is declared, mock disk/MCP boundaries, not a web-app ORM or React tree.
 
 ## Browser Verification
 
-There is no web app on `localhost:3000`. UI proof is **F5** in Cursor (Extension Development Host + webview).
+There is no web app on `localhost:3000`. Chrome and iframe behavior is proven by `Browser tests` (`AGENTS.md`): `pnpm test:browser` drives the built chrome bundle in `tests/browser/harness.ts` with a stubbed VS Code host and real sandboxed blob frames.
 
-- `/tests browser` remains the explicit opt-in for a harness. Do not add Playwright mid-feature to pretend this is a Next app.
-- When `Browser tests` is declared in `AGENTS.md`, use it for stable behavioral done-whens only. It does not replace F5 for webview CSP, MCP registration, or Extension Host behavior.
+- Browser tests assert behavior through roles, `data-cd-*` hooks, captured messages and boxes, never pixels or timing sleeps beyond the one stability quiet window. Reuse the one harness.
+- **F5** in Cursor stays for Cursor-only checks: webview CSP, MCP registration, Extension Host, webview hide/show, Cursor focus.
 - Browser tests are not part of default Verify/CI unless chosen separately.
 
 ## Code Quality

@@ -3,6 +3,7 @@ dist
 coverage/
 node_modules
 .vscode-test/
+test-results/
 *.vsix
 
 # Runtime artboard state (user workspaces)

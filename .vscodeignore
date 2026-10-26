@@ -4,6 +4,8 @@ out/**
 coverage/**
 node_modules/**
 src/**
+tests/**
+test-results/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md

@@ -6,9 +6,16 @@
 		"src/test/**/*.ts",
 		"vite.webview.config.ts",
 		"src/webview/main.ts",
-		".vscode-test.mjs"
+		".vscode-test.mjs",
+		"tests/browser/playwright.config.ts",
+		"tests/browser/*.spec.ts"
 	],
-	"project": ["src/**/*.ts", "src/webview/**/*.{ts,svelte}", "scripts/iifeStringPlugin.ts"],
+	"project": [
+		"src/**/*.ts",
+		"src/webview/**/*.{ts,svelte}",
+		"scripts/iifeStringPlugin.ts",
+		"tests/browser/*.ts"
+	],
 	"ignoreDependencies": ["@vscode/test-electron"],
 	"include": ["files", "dependencies", "unlisted", "binaries", "unresolved", "exports", "types"]
 }

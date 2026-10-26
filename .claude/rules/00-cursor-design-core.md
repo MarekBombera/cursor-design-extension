@@ -19,7 +19,7 @@ You are building **cursor-design**: a Cursor/VS Code extension (WebviewPanel + l
 
 ## Build protocol
 
-- Spec, then types, then gates, then code. Prove UI with **F5** (Extension Development Host, `fixtures/dev-workspace`).
+- Spec, then types, then gates, then code. Prove chrome and iframe behavior with `pnpm test:browser`; **F5** (Extension Development Host, `fixtures/dev-workspace`) for Cursor-only checks (CSP, MCP registration, Extension Host, webview hide/show, Cursor focus).
 - The Notion spec (links in `AGENTS.md`) wins over conflicting chat. Do not invent features outside it; ask Bombic.
 - After work: `pnpm verify`. Do not skip it.
 
