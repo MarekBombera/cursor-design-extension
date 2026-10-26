@@ -1,3 +1,4 @@
+import { MAX_FRAME_HEIGHT } from '../../disk/layout';
 import { installCommentPicking } from './commentPicking';
 import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE, FRAME_WHEEL_MESSAGE } from './frameMessages';
 
@@ -5,7 +6,6 @@ import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE, FRAME_WHEEL_MESSAGE } from '
 // through `?iife` (scripts/iifeStringPlugin.ts). `parent` is a replaceable global, so it is
 // captured before any artboard script runs.
 const host = window.parent;
-const maxHeight = 20000;
 let lastSentHeight: number | undefined;
 let heightTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -18,7 +18,7 @@ const measureHeight = (): number => {
 const postHeight = (): void => {
 	heightTimer = undefined;
 	const measured = measureHeight();
-	const height = measured > maxHeight ? maxHeight : measured;
+	const height = measured > MAX_FRAME_HEIGHT ? MAX_FRAME_HEIGHT : measured;
 	if (height === lastSentHeight) {
 		return;
 	}

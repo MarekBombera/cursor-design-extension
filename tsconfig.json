@@ -1,6 +1,8 @@
 {
 	"compilerOptions": {
-		"module": "Node16",
+		// Bundler resolution: vp pack emits CJS; parse5/css-select are ESM-only.
+		"module": "ESNext",
+		"moduleResolution": "bundler",
 		"target": "ES2022",
 		"lib": ["ES2022"],
 		"types": ["node"],

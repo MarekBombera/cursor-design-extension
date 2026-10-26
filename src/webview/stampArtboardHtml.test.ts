@@ -4,7 +4,7 @@ import { test } from 'vite-plus/test';
 
 import { CANVAS_RUNTIME_ATTRIBUTE } from './frame/frameMessages';
 import runtimeSource from './frame/runtime.ts?iife';
-import { stampArtboardHtml } from './stampArtboardHtml';
+import { FRAME_CSP, stampArtboardHtml } from './stampArtboardHtml';
 
 const runtimeSelector = `script[${CANVAS_RUNTIME_ATTRIBUTE}]`;
 
@@ -13,11 +13,14 @@ const parse = (html: string): Document => new DOMParser().parseFromString(html, 
 const stamp = (html: string): Document =>
 	parse(stampArtboardHtml({ html, nonce: 'N', runtimeSource: 'window.runtime = 1;' }));
 
-test('meta http-equiv is stripped and every script and style carries the nonce', () => {
+test('the artboard meta http-equiv is replaced by FRAME_CSP and every script and style carries the nonce', () => {
 	const stamped = stamp(
 		'<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"><style>p{}</style></head><body><script>1</script><script nonce="old">2</script></body></html>',
 	);
-	assert.equal(stamped.querySelectorAll('meta[http-equiv]').length, 0);
+	const policies = stamped.querySelectorAll('meta[http-equiv]');
+	assert.equal(policies.length, 1);
+	assert.equal(policies[0]?.getAttribute('http-equiv'), 'Content-Security-Policy');
+	assert.equal(policies[0]?.getAttribute('content'), FRAME_CSP);
 	const tagged = [...stamped.querySelectorAll('script, style')];
 	assert.equal(tagged.length, 4);
 	for (const element of tagged) {
@@ -25,16 +28,35 @@ test('meta http-equiv is stripped and every script and style carries the nonce',
 	}
 });
 
-test('runtime goes directly after meta charset, else first in head', () => {
+const policySelector = 'meta[http-equiv="Content-Security-Policy"]';
+
+test('head starts with charset (when present), FRAME_CSP, then the runtime', () => {
 	const withCharset = stamp('<head><title>t</title><meta charset="utf-8"><style>x</style></head>');
-	const charset = withCharset.head.querySelector('meta[charset]');
-	assert.ok(charset?.nextElementSibling?.matches(runtimeSelector));
+	const first = withCharset.head.firstElementChild;
+	assert.ok(first?.matches('meta[charset]'));
+	assert.ok(first?.nextElementSibling?.matches(policySelector));
+	assert.ok(first?.nextElementSibling?.nextElementSibling?.matches(runtimeSelector));
 
 	const withoutCharset = stamp('<head><title>t</title></head><p>x</p>');
-	assert.ok(withoutCharset.head.firstElementChild?.matches(runtimeSelector));
+	assert.ok(withoutCharset.head.firstElementChild?.matches(policySelector));
+	assert.ok(withoutCharset.head.firstElementChild?.nextElementSibling?.matches(runtimeSelector));
 
 	const fragment = stamp('<p>only body</p>');
-	assert.ok(fragment.head.firstElementChild?.matches(runtimeSelector));
+	assert.ok(fragment.head.firstElementChild?.matches(policySelector));
+	assert.ok(fragment.head.firstElementChild?.nextElementSibling?.matches(runtimeSelector));
+});
+
+// A script parsed before the policy would run unrestricted and could inject a nonce'd remote script.
+test('FRAME_CSP precedes every artboard script, even one placed before meta charset', () => {
+	const stamped = stamp('<head><script>early()</script><meta charset="utf-8"></head><body></body>');
+	const policy = stamped.querySelector(policySelector);
+	assert.ok(policy);
+	for (const script of stamped.querySelectorAll('script')) {
+		assert.ok(
+			policy.compareDocumentPosition(script) & Node.DOCUMENT_POSITION_FOLLOWING,
+			script.outerHTML,
+		);
+	}
 });
 
 test('a pre-existing runtime script is replaced, not duplicated', () => {

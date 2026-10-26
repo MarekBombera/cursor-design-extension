@@ -20,3 +20,5 @@ fixtures/dev-workspace/sample-app/pnpm-lock.yaml
 
 # Local pnpm store
 .pnpm-store/
+
+notes.md

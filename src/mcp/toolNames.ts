@@ -21,3 +21,12 @@ export const HANDOFF_STATUS_TOOL = 'handoff_status' as const;
 
 // Positions, sizes, labels, or groups one frame on the stage (writes .cursor-design/canvas.json only).
 export const PLACE_FRAME_TOOL = 'place_frame' as const;
+
+// Lists comments from .cursor-design/comments.json with stale / targetMissing flags; read-only.
+export const LIST_COMMENTS_TOOL = 'list_comments' as const;
+
+// Reads one comment with stale / targetMissing checked against the artboard on disk; read-only.
+export const GET_COMMENT_TOOL = 'get_comment' as const;
+
+// Resolves a comment with the Agent's one-line note, stored as an agent reply.
+export const RESOLVE_COMMENT_TOOL = 'resolve_comment' as const;

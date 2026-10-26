@@ -22,7 +22,13 @@ const shared = {
 } as const;
 
 // Regexes so subpath imports (`zod/mini`, `@modelcontextprotocol/server/stdio`) are bundled too.
-const alwaysBundle = [/^@modelcontextprotocol\/server(\/|$)/, /^zod(\/|$)/];
+const alwaysBundle = [
+	/^@modelcontextprotocol\/server(\/|$)/,
+	/^zod(\/|$)/,
+	/^parse5(\/|$)/,
+	/^parse5-htmlparser2-tree-adapter(\/|$)/,
+	/^css-select(\/|$)/,
+];
 
 // Libraries the rules say not to add (.claude/rules/00-cursor-design-core.md, 02, 06).
 const bannedLibraries = [

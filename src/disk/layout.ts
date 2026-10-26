@@ -36,6 +36,9 @@ export const MIN_FRAME_WIDTH = 120;
 
 export const MAX_FRAME_WIDTH = 3840;
 
+// Cap on a frame's content-driven height (frame runtime report and chrome guard).
+export const MAX_FRAME_HEIGHT = 20000;
+
 export const FRAME_GAP = 24;
 
 // Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
@@ -64,6 +67,18 @@ export const COMMENT_STYLE_KEYS = [
 	'gap',
 ] as const;
 
+const COMMENTS_FILE = 'comments.json' as const;
+
+export const COMMENTS_SCHEMA_VERSION = 1 as const;
+
+// Body, every reply body, the resolve note (after trim).
+export const MAX_COMMENT_BODY_CHARS = 2000;
+
+export const MAX_COMMENTS = 500;
+
+// User replies stop at MAX - 1; the last slot is the resolve note's.
+export const MAX_COMMENT_REPLIES = 100;
+
 // Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
 export const LOCK_FILE = '.lock' as const;
 
@@ -86,6 +101,8 @@ export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 export const manifestPathSegments = [CURSOR_DESIGN_DIR, MANIFEST_FILE] as const;
 
 export const canvasPathSegments = [CURSOR_DESIGN_DIR, CANVAS_FILE] as const;
+
+export const commentsPathSegments = [CURSOR_DESIGN_DIR, COMMENTS_FILE] as const;
 
 export const artboardsDirSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
 

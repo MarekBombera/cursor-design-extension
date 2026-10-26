@@ -37,6 +37,7 @@ import {
 	artboardMetaPathSegments,
 	artboardsDirSegments,
 	canvasPathSegments,
+	commentsPathSegments,
 	handoffDirSegments,
 	handoffRootSegments,
 	manifestPathSegments,
@@ -855,4 +856,59 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 			}),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);
+});
+
+const readHandoffBytes = async (leafDir: string): Promise<Record<string, string>> => {
+	const files = await listTree(leafDir);
+	const bytes: Record<string, string> = {};
+	for (const file of files) {
+		bytes[file] = await readFile(join(leafDir, file), 'utf8');
+	}
+	return bytes;
+};
+
+test('comments.json does not change export files or bytes', async () => {
+	const marker = 'UNIQUE_COMMENT_MARKER_not_in_design';
+	const withoutComments = await makeTempRoot();
+	const withComments = await makeTempRoot();
+	await createFourFrameCanvas(withoutComments);
+	await createFourFrameCanvas(withComments);
+	await writeFile(
+		join(withComments, ...commentsPathSegments),
+		`${JSON.stringify({
+			version: 1,
+			comments: [
+				{
+					id: 'c1',
+					frameId: 'a',
+					artboard: 'a',
+					version: 1,
+					selector: 'body',
+					tagName: 'body',
+					text: '',
+					rect: null,
+					pin: { x: 0, y: 0 },
+					styles: {},
+					body: marker,
+					isPage: true,
+					status: 'open',
+					createdAt: '2026-10-26T10:00:00.000Z',
+					replies: [],
+				},
+			],
+		})}\n`,
+		'utf8',
+	);
+	const exportedWithout = await exportArtboard({ workspaceRoot: withoutComments, now: FIXED_NOW });
+	const exportedWith = await exportArtboard({ workspaceRoot: withComments, now: FIXED_NOW });
+	const withoutDir = join(withoutComments, ...handoffDirSegments(exportedWithout.exportId));
+	const withDir = join(withComments, ...handoffDirSegments(exportedWith.exportId));
+	assert.deepEqual(await listTree(withDir), await listTree(withoutDir));
+	const withoutBytes = await readHandoffBytes(withoutDir);
+	const withBytes = await readHandoffBytes(withDir);
+	assert.deepEqual(withBytes, withoutBytes);
+	for (const contents of Object.values(withBytes)) {
+		assert.equal(contents.includes(marker), false);
+		assert.equal(contents.toLowerCase().includes('comments'), false);
+	}
 });

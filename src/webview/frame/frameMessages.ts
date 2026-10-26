@@ -84,7 +84,7 @@ const MAX_TAG_NAME_CHARS = 64;
 
 const TAG_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-const isTagName = (value: unknown): value is string =>
+export const isTagName = (value: unknown): value is string =>
 	typeof value === 'string' && value.length <= MAX_TAG_NAME_CHARS && TAG_NAME_PATTERN.test(value);
 
 // Control characters (C0, DEL, C1, so newline, carriage return and tab) and the Unicode line and

@@ -3,7 +3,12 @@
 // View { x, y, zoom } maps stage px to screen px: screen = stage * zoom + (x, y), which is
 // CSS translate(x, y) scale(zoom) with transform-origin 0 0.
 
-import { MAX_FRAME_COORDINATE, MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
+import {
+	MAX_FRAME_COORDINATE,
+	MAX_FRAME_HEIGHT,
+	MAX_FRAME_WIDTH,
+	MIN_FRAME_WIDTH,
+} from '../disk/layout';
 import type { FramePlacement } from './hostMessages';
 
 export type StageView = { x: number; y: number; zoom: number };
@@ -228,7 +233,6 @@ export const layoutCanvasChrome = ({
 };
 
 const MIN_FRAME_HEIGHT = 1;
-const MAX_FRAME_HEIGHT = 20000;
 
 export const nextFrameHeight = ({
 	current,

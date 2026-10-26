@@ -1,8 +1,10 @@
 import {
 	CANVAS_SCHEMA_VERSION,
+	COMMENTS_SCHEMA_VERSION,
 	SCHEMA_VERSION,
 	artboardMetaPathSegments,
 	canvasPathSegments,
+	commentsPathSegments,
 	manifestPathSegments,
 } from './layout';
 
@@ -227,6 +229,67 @@ export class FrameMovedError extends CursorDesignError {
 	) {
 		super('This frame moved while you were dragging it. Showing its current position.', options);
 		this.name = 'FrameMovedError';
+	}
+}
+
+export class CorruptCommentsError extends CursorDesignError {
+	readonly code = 'CORRUPT_COMMENTS' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super(
+			`Comments file is invalid. Fix or restore ${commentsPathSegments.join('/')} (version ${COMMENTS_SCHEMA_VERSION}), or delete it to drop every comment.`,
+			options,
+		);
+		this.name = 'CorruptCommentsError';
+	}
+}
+
+export class UnsupportedCommentsVersionError extends CursorDesignError {
+	readonly code = 'UNSUPPORTED_COMMENTS_VERSION' as const;
+
+	constructor(
+		readonly version: number,
+		options?: { cause?: unknown },
+	) {
+		super(
+			`Comments file version ${version} is unsupported (expected ${COMMENTS_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${commentsPathSegments.join('/')}.`,
+			options,
+		);
+		this.name = 'UnsupportedCommentsVersionError';
+	}
+}
+
+export class CommentNotFoundError extends CursorDesignError {
+	readonly code = 'COMMENT_NOT_FOUND' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super('Comment not found. Call list_comments to see current comment ids.', options);
+		this.name = 'CommentNotFoundError';
+	}
+}
+
+export class CommentResolvedError extends CursorDesignError {
+	readonly code = 'COMMENT_RESOLVED' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super(
+			"Comment is already resolved. Call list_comments({ status: 'open' }) for open work.",
+			options,
+		);
+		this.name = 'CommentResolvedError';
+	}
+}
+
+// The panel's comment pick no longer matches the artboard's generation on disk.
+export class PickOutdatedError extends CursorDesignError {
+	readonly code = 'PICK_OUTDATED' as const;
+
+	constructor(
+		readonly frameId: string,
+		options?: { cause?: unknown },
+	) {
+		super('This artboard changed since the element was picked. Pick it again.', options);
+		this.name = 'PickOutdatedError';
 	}
 }
 

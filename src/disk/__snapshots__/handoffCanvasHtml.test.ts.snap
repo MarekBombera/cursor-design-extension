@@ -21,6 +21,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-label" style="left:48px;top:80px;width:400px;height:24px">a</div>
 <iframe data-cd-frame="a" sandbox="allow-scripts" scrolling="no" title="a" style="left:48px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/a/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
 	//#region src/disk/layout.ts
+	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -717,7 +718,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
-	var maxHeight = 2e4;
 	var lastSentHeight;
 	var heightTimer;
 	var measureHeight = () =&gt; {
@@ -728,7 +728,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var postHeight = () =&gt; {
 		heightTimer = void 0;
 		const measured = measureHeight();
-		const height = measured &gt; maxHeight ? maxHeight : measured;
+		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
 		host.postMessage({
@@ -798,6 +798,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-label" style="left:548px;top:80px;width:400px;height:24px">b</div>
 <iframe data-cd-frame="b" sandbox="allow-scripts" scrolling="no" title="b" style="left:548px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/b/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
 	//#region src/disk/layout.ts
+	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -1494,7 +1495,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
-	var maxHeight = 2e4;
 	var lastSentHeight;
 	var heightTimer;
 	var measureHeight = () =&gt; {
@@ -1505,7 +1505,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var postHeight = () =&gt; {
 		heightTimer = void 0;
 		const measured = measureHeight();
-		const height = measured &gt; maxHeight ? maxHeight : measured;
+		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
 		host.postMessage({
@@ -1575,6 +1575,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-label" style="left:48px;top:1080px;width:400px;height:24px">c</div>
 <iframe data-cd-frame="c" sandbox="allow-scripts" scrolling="no" title="c" style="left:48px;top:1104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;mobile/c/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
 	//#region src/disk/layout.ts
+	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -2271,7 +2272,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
-	var maxHeight = 2e4;
 	var lastSentHeight;
 	var heightTimer;
 	var measureHeight = () =&gt; {
@@ -2282,7 +2282,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var postHeight = () =&gt; {
 		heightTimer = void 0;
 		const measured = measureHeight();
-		const height = measured &gt; maxHeight ? maxHeight : measured;
+		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
 		host.postMessage({
@@ -2352,6 +2352,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-label" style="left:48px;top:2080px;width:400px;height:24px">d</div>
 <iframe data-cd-frame="d" sandbox="allow-scripts" scrolling="no" title="d" style="left:48px;top:2104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;ungrouped/d/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
 	//#region src/disk/layout.ts
+	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -3048,7 +3049,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	//#endregion
 	//#region src/webview/frame/runtime.ts
 	var host = window.parent;
-	var maxHeight = 2e4;
 	var lastSentHeight;
 	var heightTimer;
 	var measureHeight = () =&gt; {
@@ -3059,7 +3059,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var postHeight = () =&gt; {
 		heightTimer = void 0;
 		const measured = measureHeight();
-		const height = measured &gt; maxHeight ? maxHeight : measured;
+		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
 		host.postMessage({
@@ -3132,6 +3132,7 @@ var stageGeometry = (function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 	//#region src/disk/layout.ts
 	var MAX_FRAME_WIDTH = 3840;
+	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	//#endregion
 	//#region src/webview/stageGeometry.ts
@@ -3266,7 +3267,6 @@ var stageGeometry = (function(exports) {
 		};
 	};
 	var MIN_FRAME_HEIGHT = 1;
-	var MAX_FRAME_HEIGHT = 2e4;
 	var nextFrameHeight = ({ current, reported, state }) => {
 		if (!Number.isFinite(reported)) return {
 			height: current,

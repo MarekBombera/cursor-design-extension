@@ -1,4 +1,4 @@
-import { type CallToolResult, fromJsonSchema, type McpServer } from '@modelcontextprotocol/server';
+import { type McpServer } from '@modelcontextprotocol/server';
 
 import {
 	createArtboard,
@@ -10,17 +10,16 @@ import {
 	setActiveArtboard,
 	updateArtboard,
 } from '../disk/artboardFs';
-import {
-	ConflictError,
-	CursorDesignError,
-	DiskError,
-	InvalidArgsError,
-	InvalidRootError,
-} from '../disk/errors';
+import { InvalidArgsError } from '../disk/errors';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
-import { enqueueDiskOp } from './mcpQueue';
-import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
+import {
+	READ_ONLY_ANNOTATIONS,
+	ROOT_PATH_DESCRIPTION,
+	runQueued,
+	toMcpToolError,
+	toolInputSchema,
+} from './mcpToolResult';
 import {
 	EXPORT_ARTBOARD_TOOL,
 	HANDOFF_STATUS_TOOL,
@@ -48,42 +47,31 @@ type ToolArgs = {
 	group?: unknown;
 };
 
-type McpErrorBody = {
-	code: string;
-	artboardId?: string;
-	expectedGeneration?: number;
-	actualGeneration?: number;
-	expectedHash?: string;
-	actualHash?: string;
-	roots?: readonly string[];
-	message: string;
-};
+// Shown to the Agent on set_artboard / update_artboard. Mirrors skills/cursor-design/SKILL.md
+// § Writing artboard HTML; both change with the frame CSPs (artboardChromeHtml.ts, FRAME_CSP).
+const ARTBOARD_HTML_RULES =
+	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes, inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
 
-// Schemas stay permissive on purpose: wrong-typed args must reach the handler so the
-// agent gets authored INVALID_ARGS JSON, not an SDK "Input validation error".
-const ROOT_PATH_DESCRIPTION =
-	'Optional string. Workspace folder fsPath. Pass when more than one folder is open; error roots lists valid values.';
+const toolSchema = (properties: Record<string, { description: string }>) =>
+	toolInputSchema<ToolArgs>(properties);
 
-const toolInputSchema = (properties: Record<string, { description: string }>) =>
-	fromJsonSchema<ToolArgs>({
-		type: 'object',
-		properties,
-		additionalProperties: true,
-	});
-
-const setArtboardInputSchema = toolInputSchema({
+const setArtboardInputSchema = toolSchema({
 	artboardId: {
 		description: 'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
 	},
-	html: { description: 'Required string. Full HTML document. Empty string allowed.' },
+	html: {
+		description: `Required string. Full standalone HTML document. Empty string allowed. ${ARTBOARD_HTML_RULES}`,
+	},
 	title: { description: 'Optional string title.' },
 	viewport: { description: 'Optional string viewport label, e.g. 1280x800.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const updateArtboardInputSchema = toolInputSchema({
+const updateArtboardInputSchema = toolSchema({
 	artboardId: { description: 'Required string. Existing artboard id.' },
-	html: { description: 'Required string. Replacement HTML document.' },
+	html: {
+		description: `Required string. Replacement HTML document (the whole document). ${ARTBOARD_HTML_RULES}`,
+	},
 	baseGeneration: {
 		description: 'Integer generation from read_artboard. Required unless baseHash is sent.',
 	},
@@ -97,35 +85,38 @@ const updateArtboardInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const readArtboardInputSchema = toolInputSchema({
+const readArtboardInputSchema = toolSchema({
 	artboardId: {
 		description: 'Optional string artboard id. Defaults to the active artboard when omitted.',
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const listArtboardsInputSchema = toolInputSchema({
+const listArtboardsInputSchema = toolSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const setActiveArtboardInputSchema = toolInputSchema({
+const setActiveArtboardInputSchema = toolSchema({
 	artboardId: { description: 'Required string. Existing artboard id to make active.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const exportArtboardInputSchema = toolInputSchema({
+const exportArtboardInputSchema = toolSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE =
 	'export_artboard exports every frame. Omit artboardId and retry.';
 
-const handoffStatusInputSchema = toolInputSchema({
+const handoffStatusInputSchema = toolSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const placeFrameInputSchema = toolInputSchema({
-	id: { description: 'Required string. Existing artboard id to place on the stage.' },
+const placeFrameInputSchema = toolSchema({
+	id: {
+		description:
+			'Required string. Existing artboard id to place on the stage (named id here, artboardId in the other tools).',
+	},
 	x: {
 		description: 'Optional finite number. Stage x in px. Keeps the current value when omitted.',
 	},
@@ -152,86 +143,6 @@ export const artboardToolInputSchemas = {
 	[EXPORT_ARTBOARD_TOOL]: exportArtboardInputSchema,
 	[HANDOFF_STATUS_TOOL]: handoffStatusInputSchema,
 	[PLACE_FRAME_TOOL]: placeFrameInputSchema,
-};
-
-const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const;
-
-const jsonResult = (body: unknown, isError = false): CallToolResult => ({
-	content: [{ type: 'text', text: JSON.stringify(body) }],
-	isError,
-});
-
-const optionalRootPath = (value: unknown): string | undefined => {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== 'string') {
-		throw new InvalidArgsError('rootPath must be a string. Fix args and retry.');
-	}
-	return value;
-};
-
-const logMcpError = (error: unknown): void => {
-	process.stderr.write(
-		`cursor-design MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-	);
-};
-
-const toMcpToolError = (error: unknown): CallToolResult => {
-	if (error instanceof CursorDesignError) {
-		if (error instanceof DiskError) {
-			logMcpError(error);
-			if (error.cause !== undefined) {
-				logMcpError(error.cause);
-			}
-		}
-		const body: McpErrorBody = {
-			code: error.code,
-			message: error.message,
-		};
-		if (
-			'artboardId' in error &&
-			typeof error.artboardId === 'string' &&
-			error.artboardId.length > 0
-		) {
-			body.artboardId = error.artboardId;
-		}
-		if (error instanceof ConflictError) {
-			Object.assign(body, error.compared);
-		}
-		if (error instanceof InvalidRootError) {
-			body.roots = error.roots;
-		}
-		return jsonResult(body, true);
-	}
-	logMcpError(error);
-	return jsonResult(
-		{
-			code: 'DISK_ERROR',
-			message:
-				'Could not read or write artboard files. Check Output/stderr; fix folder permissions.',
-		},
-		true,
-	);
-};
-
-const runQueued = async (
-	rootPath: unknown,
-	operation: (workspaceRoot: string) => Promise<unknown>,
-): Promise<CallToolResult> => {
-	try {
-		const result = await enqueueDiskOp(async () => {
-			const roots = parseWorkspaceRootsEnv(process.env);
-			const workspaceRoot = resolveWorkspaceRoot({
-				roots,
-				rootPath: optionalRootPath(rootPath),
-			});
-			return operation(workspaceRoot);
-		});
-		return jsonResult(result);
-	} catch (error: unknown) {
-		return toMcpToolError(error);
-	}
 };
 
 const firstFolderRoot = (): string => process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] ?? '';

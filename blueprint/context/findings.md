@@ -93,14 +93,6 @@
 **Resolution:** 2026-10-25 /implement (audit repair): `SCROLL_SINK_ROOM` is exported and `App.svelte` sizes the body from it via CSSOM (`calc(100% + ${SCROLL_SINK_ROOM}px)`, allowed by the nonce CSP); the CSS literal is gone. The `stageGeometry.clampNumber` global in the exported `canvas.html` is accepted (one inert line, no behaviour); the spec note about runtime-only snapshot text is superseded by this resolution.
 2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests): part (1) confirmed repaired (App.svelte sizes the body from the exported constant). Part (2) is described as "accepted" by /implement, which is not a user decision; stays `fixed` (P3, does not block) until the user accepts it or it is moved.
 
-### F-58 [P3] open - Active spec still describes the pre-repair buildSelector retry and Toolbar pick shape
-
-**File:** blueprint/context/current-feature.md:240
-**Found:** 2026-10-25 by independent /audit (fresh subagent; scope: current; lens: quality)
-**Why it matters:** The spec says it wins over other sources, and `/complete` archives it as the record of what shipped. Three statements no longer match the code: (1) `buildSelector` step 3 (lines 240-243) and Notes for the AI (line 495) say a `RangeError` retries finder once with `timeoutMs: -1`; the code (`src/webview/frame/selector.ts:69`) builds its own `nthOfTypePath` and never calls finder again (F-55 repair). (2) Step 2 (line 124) defines the Toolbar `pick` prop as `{ selector, tagName, isPage }` and says Toolbar reads only those; the code adds `sequence` (`src/webview/Toolbar.svelte:9`, F-54 repair). (3) Step 2 (lines 144-145) says the snapshot diff may contain only runtime text; it also carries the `stageGeometry.clampNumber` global (F-57). The repairs are reasonable; the spec text is what drifted. 8e and the archive will read the old contract.
-**Suggested fix:** Update the three spec passages to the shipped behavior (nth-of-type path built directly on RangeError; `sequence` in the pick prop for the live-region re-announce; snapshot also carries the exported `clampNumber`). Spec-only change; it needs a new review request since the spec hash changes. No requirement lost.
-**Resolution:**
-
 ### F-59 [P3] fixed - sameRect is only pinned on x, so a dropped y, width or height comparison passes every test
 
 **File:** src/webview/frame/pickTarget.test.ts:189
@@ -116,3 +108,19 @@
 **Why it matters:** The guard assumes that after the re-describe the cached selector is `null`. (1) A page pick: `describeElement(element, true)` returns `selector: 'body'` before it checks `isConnected` (`selector.ts:116-125`). If the design replaces `document.body`, the picked old `body` is disconnected, the guard fires on every re-post, and each call builds a new object, so `isUnchangedPick` never matches and the full pick posts once per frame of scroll or resize with `rect: null`, the F-46 symptom the spec says a page pick cannot reach. (2) An element that never had a selector (finder threw, or the selector passed 1000 chars) skips the re-describe after removal, so chrome gets its old `text` and `styles` beside `selector: null` and `rect: null`, the stale pairing F-56 meant to remove. Both need an uncommon design (a script swapping the body, or a very deep or odd node removed after a pick), and the cost is one small post per frame, so it is P3.
 **Suggested fix:** Key the guard on a flag, not the selector: keep `const removed = new WeakSet<Element>()` next to `descriptions`, reset it wherever `descriptions = new Map()` is, and re-describe only when `!current.isConnected && !removed.has(current)`, adding `current` after the `descriptions.set`. No requirement is lost. Alternatively accept it for now: page-body replacement is not something the picking fixture exercises.
 **Resolution:** 2026-10-25 /implement (audit repair): the removed-target guard uses a per-pick `removed` `WeakSet` (reset with `descriptions` on click and `cd:mode`) instead of `selector !== null`: any disconnected path element, a replaced `body` page pick or a target finder never resolved included, is described again exactly once, so later re-posts carry the same description object and compare equal, and stale text/styles never pair with `selector: null`.
+
+### F-75 [P3] open - getComment reads comments.json twice, and commentsTextIfExists forwards to readUtf8IfExists
+
+**File:** src/disk/comments.ts:371 and :773
+**Found:** 2026-10-26 by independent /audit (scope: current; lens: quality, performance)
+**Why it matters:** `getComment` calls `commentsTextIfExists` (reads and discards the whole file) and then `readCommentsFile` (reads it again). `readCommentsFile` already returns an empty file when `comments.json` is missing, and `findComment` then throws `CommentNotFoundError`, so the pre-check changes no outcome in `getComment`, which takes no lock and creates nothing. The pre-check is needed in the writers only, to avoid creating `.lock` on a workspace with no comments file. `commentsTextIfExists` is itself a one-line forwarder (`readUtf8IfExists(workspaceLayoutFile(root, commentsPathSegments))`) that `readCommentsFile` repeats inline. Up to 500 comments of 2000 chars means a megabyte read twice per `get_comment`.
+**Suggested fix:** Delete the pre-check in `getComment` and drop `commentsTextIfExists` in favour of calling `readUtf8IfExists(workspaceLayoutFile(...))` in the four writers (or keep one tiny helper used by `readCommentsFile` too). No behaviour is lost: a missing file still gives `COMMENT_NOT_FOUND`.
+**Resolution:** open
+
+### F-76 [P3] open - Twin stderr logger in the disk lib and a pass-through toolSchema wrapper
+
+**File:** src/disk/comments.ts:449 and src/mcp/artboardTools.ts:55
+**Found:** 2026-10-26 by independent /audit (scope: current; lens: quality)
+**Why it matters:** Rule 05 names `logMcpError` (`mcpToolResult.ts`) as the MCP stderr logger and `logDiskError` as the host one. `logTargetReadError` in `comments.ts` is a third stderr writer with its own wording inside the disk lib, which the rule says has no I/O policy of its own and which the host will also call from 8f1 (where stderr is not the Output channel). Separately `toolSchema` in `artboardTools.ts` only fixes the generic of `toolInputSchema<ToolArgs>`; it is the forwarder rule 05 says to leave out, and it forced eight renames in the diff.
+**Suggested fix:** Export `logMcpError` from `mcpToolResult.ts` or, for the disk lib, let `loadArtboardDocument` return `'unreadable'` without logging and have the MCP/host caller log (8f1 decides). Delete `toolSchema` and call `toolInputSchema<ToolArgs>(...)` directly. No behaviour is lost.
+**Resolution:** open

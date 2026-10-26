@@ -1,6 +1,8 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
+		"module": "Node16",
+		"moduleResolution": "node16",
 		"types": ["node", "mocha"],
 		"rootDir": "src",
 		"outDir": "out",

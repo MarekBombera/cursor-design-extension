@@ -13,6 +13,8 @@
 
 **After work:** run `pnpm verify`. Do not skip it.
 
+**Agent skill:** changing MCP tools or their args, error codes, artboard runtime limits, or the frame CSP updates `skills/cursor-design/SKILL.md` (shipped to users' `~/.cursor/skills/`) in the same change. `src/mcp/agentSkill.test.ts` guards names, codes and limits; the prose is on you.
+
 Claude Code, Codex, and every other AI tool must not add AI attribution to
 commits or pull requests, including AI `Co-Authored-By` trailers or generated-by
 signatures. Preserve genuine human attribution. See

@@ -1,10 +1,10 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 55a3f42c24382eb4fd1707f01b32b55d99ebefd43c4f31a9e99b69ab52068415 -->
+<!-- blueprint:source-hash 7d9667a18211a3c1c6c8a52f92ee1e812c333173635f34969d080dd9318282df -->
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 (in progress) adds Svelte chrome, frame drag/resize, element picking and comments for the Agent.
 
-Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` / `cursor-design-agent-loop`. Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` (repo) and the shipped Agent skill `cursor-design` (`skills/cursor-design/SKILL.md`). Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 ## Problem
 
@@ -50,7 +50,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 8d1. **Picking channel** - chrome-to-frame channel; Comment-mode click blocking in the frame runtime; `elementsFromPoint` + overlay rules; hover outline drawn in chrome; Alt+click or ↑ parent, ↓ child; untrusted-message guards.
    - 8d2. **Selectors** - `@medv/finder` selectors with generated-name filters; tag, text, styles, sanitizers; happy-dom round-trip tests.
    - 8d3. **Browser tests** - Playwright on Chromium drives the built chrome bundle with a stubbed VS Code host and the real frame runtime (frame stability, wheel/zoom/pan, drag/resize, picking, selectors); local `Browser tests` command, out of Verify and CI for now; F5 only for Cursor-only checks.
-   - 8e. **Comments disk + MCP** - `comments.json` CRUD under the lock with a status machine; creation cross-check (tag, text, generation); `list_comments`, `get_comment` (stale when the target element's hash changed, targetMissing; parse5 + css-select, bundled), `resolve_comment`; comment errors never blank the canvas.
+   - 8e. **Comments disk + MCP** - `comments.json` CRUD under the lock with a status machine; creation cross-check (tag, text, generation); `list_comments`, `get_comment` (stale when the target element's hash changed, targetMissing; parse5 + css-select, bundled), `resolve_comment`; comment errors never blank the canvas; shipped Agent skill `cursor-design` synced to `~/.cursor/skills/` on activate, with a drift-guard test; frames get a second inline-only CSP so no remote script or resource loads.
    - 8f1. **Comment mode + popover** - `C` toggles mode; popover adds comments (D3 keys); panel replay of comment messages.
    - 8f2. **Pins** - pins follow elements (resize, scroll, load, font, animation); open/sent/resolved/stale/missing/unchecked; page comments.
    - 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump.

@@ -23,6 +23,7 @@ import {
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 	canvasPathSegments,
+	commentsPathSegments,
 } from './layout';
 import { serializeMeta } from './parse';
 
@@ -342,6 +343,21 @@ test('handoffStale fails closed on an unreadable frame even when its bytes match
 	} finally {
 		await chmod(blankPath, 0o644);
 	}
+});
+
+test('a corrupt comments.json does not change readCanvasView or listArtboards', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+	const view = await readCanvasView({ workspaceRoot });
+	const listed = await listArtboards({ workspaceRoot });
+	await writeFile(join(workspaceRoot, ...commentsPathSegments), '{', 'utf8');
+	assert.deepEqual(await readCanvasView({ workspaceRoot }), view);
+	assert.deepEqual(await listArtboards({ workspaceRoot }), listed);
 });
 
 test('handoffStale stays off once every exported frame is deleted', async () => {

@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 
 import { registerArtboardTools } from './artboardTools';
+import { registerCommentTools } from './commentTools';
 import { CURSOR_DESIGN_MCP_SERVER_NAME } from './mcpIdentity';
 
 const startCursorDesignMcpServer = async (): Promise<void> => {
@@ -10,6 +11,7 @@ const startCursorDesignMcpServer = async (): Promise<void> => {
 		version: process.env.CURSOR_DESIGN_VERSION ?? '0.0.0',
 	});
 	registerArtboardTools(server);
+	registerCommentTools(server);
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 };

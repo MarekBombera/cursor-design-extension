@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Drag stuck after its frame is removed (`fix/drag-stuck-after-its-frame-is-removed`, F-26; no flow change: Stage clears its pointer capture when the captured label or handle element is removed).
+**Last verified against code:** feature 8e Comments disk + MCP (`feature/comments-disk-mcp`): comment MCP tools over `comments.json`, Agent skill sync on activate, per-frame `FRAME_CSP`.
 
 ## Chart checklist
 
@@ -42,21 +42,24 @@ A chart that only looks plausible is wrong.
 flowchart LR
   Agent["Cursor Agent"]
   subgraph MCP["MCP process (dist/mcp.js, stdio)"]
-    Tools["tools: set_artboard, update_artboard, read_artboard,<br/>list_artboards, set_active_artboard, place_frame,<br/>export_artboard, handoff_status<br/>serialized by enqueueDiskOp"]
+    Tools["tools: set_artboard, update_artboard, read_artboard,<br/>list_artboards, set_active_artboard, place_frame,<br/>export_artboard, handoff_status,<br/>list_comments, get_comment, resolve_comment<br/>serialized by enqueueDiskOp"]
   end
   subgraph Host["Extension host (dist/extension.js)"]
     Watcher["watcher .cursor-design/**<br/>200ms debounce, skips .lock / *.tmp"]
     Panel["openArtboardPanel<br/>postMessage, parseChromeMessage"]
     Cmds["commands: Open Artboard,<br/>Export Handoff, Reveal Folder"]
+    Skill["syncAgentSkill on activate (Cursor only)"]
   end
   subgraph Webview["Webview (chrome CSP, nonce)"]
     Chrome["Svelte chrome<br/>hostBridge.svelte.ts"]
-    Frames["one sandboxed blob iframe per artboard<br/>+ frame runtime (frame/runtime.ts)"]
+    Frames["one sandboxed blob iframe per artboard<br/>head: charset, FRAME_CSP, runtime (frame/runtime.ts)"]
   end
-  Disk[(".cursor-design/<br/>manifest.json, canvas.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
+  Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
+  Home[("~/.cursor/skills/cursor-design/SKILL.md")]
 
   Agent -->|MCP tool calls| Tools
-  Tools -->|disk lib, withWorkspaceLock for canvas.json| Disk
+  Tools -->|disk lib, withWorkspaceLock for canvas.json and comments.json| Disk
+  Skill -->|copy shipped skills/cursor-design/SKILL.md when bytes differ; never through a symlink| Home
   Disk -->|fs events| Watcher
   Watcher --> Panel
   Cmds --> Panel
@@ -69,9 +72,38 @@ flowchart LR
   Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child| Frames
 ```
 
-Chrome → frame messages (8d1) go only through `postToFrame`, to registered iframes; the frame
+Each blob frame's head starts with the artboard's `<meta charset>`, then `FRAME_CSP` (inline
+script and style only, no sources), then the runtime: a nonce'd `<script src>`, even one injected
+at runtime or by a script placed before `<meta charset>`, never loads. Chrome → frame messages (8d1) go only through `postToFrame`, to registered iframes; the frame
 runtime accepts them only from the parent it captured at load. Chrome never touches disk or MCP. The MCP
 process never touches the panel; it reaches the user only through disk and the watcher.
+
+## Comments for the Agent (8e)
+
+```mermaid
+sequenceDiagram
+  participant A as Agent
+  participant M as MCP
+  participant D as Disk
+  participant H as Host
+  A->>M: list_comments {status?} / get_comment {id}
+  M->>D: read comments.json; artboards/<frameId>.html (parse5, once per frame per call)
+  M-->>A: comment + stale, targetMissing, hint? (list: replyCount instead of replies)
+  A->>M: update_artboard (existing)
+  A->>M: resolve_comment {id, note}
+  M->>D: withWorkspaceLock: re-read comments.json, resolved + agent reply, write
+  alt resolved / unknown / thread full / corrupt / lock busy
+    M-->>A: isError COMMENT_RESOLVED / COMMENT_NOT_FOUND / INVALID_ARGS / CORRUPT_COMMENTS / WORKSPACE_BUSY
+  end
+  D-->>H: watcher (comments.json changed)
+  H->>H: identical canvas:updated, no frame reload
+```
+
+- `stale` and `targetMissing` come from disk only (`commentTarget.ts`): the stored selector runs
+  through css-select only when it has buildSelector's shape (at most 2 descendant steps) and the
+  page is at most 64 deep, 20,000 elements and 5,000 siblings wide; otherwise flags are `null`.
+- The panel does not read `comments.json` yet (8f1), and nothing else on the canvas or export path
+  does, so a broken comments file never blanks the stage.
 
 ## Panel open and handshake
 

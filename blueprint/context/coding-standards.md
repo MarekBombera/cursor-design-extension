@@ -1,6 +1,6 @@
 # Coding Standards
 
-> **Code rules live in `.claude/rules/`** (`.cursor/rules/*.mdc` link to them). Claude Code and Cursor load them automatically: `00-cursor-design-core` and `03-ponytail` always, the rest when you touch matching files (`02` MCP/webview, `04` conventions, `05` module ownership and owner catalog, `06` errors, `07` VS Code host, `08` Svelte chrome, `09` tests). Lint in `vite.config.ts` enforces the mechanical conventions. Skills: `cursor-design-build`, `cursor-design-agent-loop`.
+> **Code rules live in `.claude/rules/`** (`.cursor/rules/*.mdc` link to them). Claude Code and Cursor load them automatically: `00-cursor-design-core` and `03-ponytail` always, the rest when you touch matching files (`02` MCP/webview, `04` conventions, `05` module ownership and owner catalog, `06` errors, `07` VS Code host, `08` Svelte chrome, `09` tests). Lint in `vite.config.ts` enforces the mechanical conventions. Skills: `cursor-design-build` (repo); the shipped Agent skill `cursor-design` lives in `skills/cursor-design/SKILL.md` and is synced to `~/.cursor/skills/` on activate.
 >
 > This file holds the stack, testing, and writing standards Blueprint skills read, so `/implement` does not load React/Next defaults. Do not duplicate the rules here.
 

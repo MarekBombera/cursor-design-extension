@@ -7,6 +7,7 @@ import {
 } from './commands/commandIds';
 import { exportHandoff } from './commands/exportHandoff';
 import { revealDesignFolder } from './commands/revealDesignFolder';
+import { syncAgentSkill } from './host/agentSkill';
 import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
 import { logDiskError } from './host/hostFs';
@@ -26,6 +27,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	const syncHostRuntime = (rearmMarker: boolean): void => {
 		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
 		postUiStatusToPanel({ mcpAvailable });
+		if (mcpAvailable) {
+			// Cursor only (the skill documents the MCP tools). Never rejects: failures are logged inside.
+			void syncAgentSkill({ extensionUri: context.extensionUri, outputChannel });
+		}
 		replaceArtboardWatcher({ context, outputChannel, rearmMarker });
 	};
 
