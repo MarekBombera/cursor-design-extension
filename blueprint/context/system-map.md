@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 8d3 Browser tests (`feature/browser-tests`; no flow change: a test-only Playwright harness in `tests/browser/` drives the built chrome with a stubbed host, product code unchanged).
+**Last verified against code:** fix Drag stuck after its frame is removed (`fix/drag-stuck-after-its-frame-is-removed`, F-26; no flow change: Stage clears its pointer capture when the captured label or handle element is removed).
 
 ## Chart checklist
 

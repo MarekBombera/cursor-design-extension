@@ -539,14 +539,12 @@ test('Escape mid-nudge reverts and the release posts nothing', async ({ page }) 
 	expect(await framePlaces(page)).toHaveLength(0);
 });
 
-// F-26 (open, P2, goes to /fix): removing the dragged frame leaves Stage's `captured` set, so
-// every later drag is dead until Escape. Enable this with the fix.
-test.fixme('a frame removed mid-drag does not block the next drag', async ({ page }) => {
-	await openDraggableStage(page);
-	await startLabelDrag(page);
-	await postToChrome(page, canvasUpdated([frameB()]));
+// The removed label or handle never sees its own lostpointercapture, so without the teardown in
+// Stage every later drag stayed dead until Escape (F-26).
+const expectNextDragOnB = async (page: Page): Promise<void> => {
 	await expect(page.locator('[data-cd-frame-id="a"]')).toHaveCount(0);
 	await page.mouse.up();
+	await expect(page.locator('.viewport')).not.toHaveClass(/frame-gesture-/);
 	await startLabelDrag(page, 'b');
 	await page.mouse.up();
 	await expect.poll(() => framePlaces(page)).toHaveLength(1);
@@ -556,4 +554,21 @@ test.fixme('a frame removed mid-drag does not block the next drag', async ({ pag
 		y: 21,
 		base: { x: 1000, y: 0, width: 400 },
 	});
+};
+
+test('a frame removed mid-drag does not block the next drag', async ({ page }) => {
+	await openDraggableStage(page);
+	await startLabelDrag(page);
+	await postToChrome(page, canvasUpdated([frameB()]));
+	await expectNextDragOnB(page);
+});
+
+test('a frame removed mid-resize does not block the next drag', async ({ page }) => {
+	const stage = await openDraggableStage(page);
+	const handle = centerOf(await boxOf(page.locator('[data-cd-frame-resize="a"]')));
+	await page.mouse.move(handle.x, stage.y + 300);
+	await page.mouse.down();
+	await page.mouse.move(handle.x + 40, stage.y + 300, { steps: 5 });
+	await postToChrome(page, canvasUpdated([frameB()]));
+	await expectNextDragOnB(page);
 });

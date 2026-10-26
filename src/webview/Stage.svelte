@@ -147,6 +147,15 @@
 		};
 	});
 
+	// A label or handle removed mid-gesture (the Agent deleted its frame) never runs its own
+	// lostpointercapture handler, so its teardown drops the capture: otherwise every later drag
+	// returns early until Escape. App already dropped its gesture (settleFrameGesture).
+	const releaseOnRemove: Attachment<Element> = (element) => () => {
+		if (captured?.element === element) {
+			captured = undefined;
+		}
+	};
+
 	// Focus may land on a label or handle that is off screen (Tab, or a nudge). Pan the stage,
 	// not the viewport, until it is visible; a label wider than the viewport aligns its start.
 	const revealFocused = (event: FocusEvent & { currentTarget: Element }): void => {
@@ -348,6 +357,7 @@
 				aria-valuemin={MIN_FRAME_WIDTH}
 				aria-valuemax={MAX_FRAME_WIDTH}
 				data-cd-frame-resize={frame.id}
+				{@attach releaseOnRemove}
 				style:left="{frame.x + frame.width - HANDLE_SCREEN_WIDTH / zoom / 2}px"
 				style:top="{frame.y}px"
 				style:width="{HANDLE_SCREEN_WIDTH / zoom}px"
@@ -369,6 +379,7 @@
 				type="button"
 				class="label"
 				data-cd-frame-label={label.id}
+				{@attach releaseOnRemove}
 				aria-label="Move frame {label.text}"
 				style:left="{label.x}px"
 				style:top="{label.y}px"
