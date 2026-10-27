@@ -187,3 +187,12 @@ test('an outline needs a target with a rect, a committed view and a frame still 
 		undefined,
 	);
 });
+
+test('each post carries the frame generation onto its record', () => {
+	const [first] = mergeCanvasFrames({ records: [], frames: [posted('a', { generation: 1 })] });
+	assert.equal(first?.generation, 1);
+	const next = only(
+		mergeCanvasFrames({ records: [measured('a')], frames: [posted('a', { generation: 4 })] }),
+	);
+	assert.equal(next.generation, 4);
+});

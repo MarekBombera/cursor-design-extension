@@ -147,3 +147,49 @@ test('routeMessage: the registered window decides, never the payload or a null s
 		kind: 'host',
 	});
 });
+
+const validComment = {
+	id: 'c1',
+	frameId: 'a',
+	selector: 'h1',
+	tagName: 'h1',
+	text: 'Hello',
+	rect: { x: 0, y: 0, width: 10, height: 10 },
+	pin: { x: 0.5, y: 0.25 },
+	body: 'Bolder',
+	isPage: false,
+	status: 'open',
+	createdAt: '2026-10-26T10:00:00.000Z',
+	replies: [{ id: 'r1', author: 'agent', body: 'Done', createdAt: '2026-10-26T11:00:00.000Z' }],
+};
+
+test('comments:updated drops a malformed comment and keeps the valid one', () => {
+	assert.deepEqual(
+		parseHostMessage({
+			type: 'comments:updated',
+			comments: [{ ...validComment, selector: 'h1\nh2' }, validComment],
+		}),
+		{ type: 'comments:updated', comments: [validComment] },
+	);
+});
+
+test('comments:updated with a non-array list or a non-string error is rejected', () => {
+	assert.equal(parseHostMessage({ type: 'comments:updated', comments: {} }), undefined);
+	assert.equal(parseHostMessage({ type: 'comments:updated', comments: [], error: 7 }), undefined);
+	// An empty error is kept; Banners hides it.
+	assert.deepEqual(parseHostMessage({ type: 'comments:updated', comments: [], error: '' }), {
+		type: 'comments:updated',
+		comments: [],
+		error: '',
+	});
+});
+
+test('comment:added needs a string requestId; ui:error a string message and optional requestId', () => {
+	assert.equal(parseHostMessage({ type: 'comment:added' }), undefined);
+	assert.equal(parseHostMessage({ type: 'comment:added', requestId: 7 }), undefined);
+	assert.equal(parseHostMessage({ type: 'ui:error', message: 'x', requestId: 7 }), undefined);
+	assert.deepEqual(parseHostMessage({ type: 'ui:error', message: 'Copy failed.' }), {
+		type: 'ui:error',
+		message: 'Copy failed.',
+	});
+});

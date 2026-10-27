@@ -21,6 +21,8 @@ export type StageFrame = {
 	y: number;
 	width: number;
 	height: number;
+	// The artboard generation the host last posted for this frame (comment:create's pick check).
+	generation: number;
 	kind: 'tile' | 'iframe';
 	tileText: string;
 	html: string;
@@ -47,6 +49,7 @@ const newRecord = (entry: PostedCanvasFrame): FrameRecord => ({
 	y: entry.y,
 	width: entry.width,
 	group: entry.group,
+	generation: entry.generation,
 	height: TILE_HEIGHT,
 	measuredHeight: PROVISIONAL_FRAME_HEIGHT,
 	guard: resetGuard(),
@@ -63,6 +66,7 @@ const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord
 		y: entry.y,
 		width: entry.width,
 		group: entry.group,
+		generation: entry.generation,
 		html: entry.html,
 	};
 	if (entry.errorMessage !== undefined || entry.html.trim() === '') {

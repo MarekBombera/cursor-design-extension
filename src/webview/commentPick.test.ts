@@ -3,10 +3,12 @@ import { test } from 'vite-plus/test';
 
 import {
 	applyPickMessage,
-	arrowPickStep,
+	clearPick,
 	type CommentPickState,
 	INITIAL_COMMENT_PICK,
 	keepLiveFrames,
+	modeKeyAction,
+	type ModeKeyInput,
 	toggleCommentMode,
 } from './commentPick';
 
@@ -17,8 +19,10 @@ const pickFields = {
 	text: 'Card',
 	rect,
 	point: { x: 5, y: 6 },
+	box: { width: 3, height: 4 },
 	styles: { color: 'rgb(0, 0, 0)' },
 	isPage: false,
+	repost: false,
 };
 const pickIn = (frameId: string): CommentPickState['pick'] => ({
 	frameId,
@@ -93,6 +97,30 @@ test('picking in another frame resets the old frame; re-picking the same frame s
 	assert.deepEqual(applyPickMessage({ state, frameId: 'a', message }).sends, []);
 });
 
+test('a re-post moves only a pick chrome still holds for that frame (F-80)', () => {
+	const message = {
+		type: 'cd:pick',
+		...pickFields,
+		repost: true,
+		rect: { ...rect, y: 9 },
+	} as const;
+	// No pick (the draft closed and clearPick dropped it): the in-flight re-post changes nothing.
+	const cleared = commenting();
+	const afterClose = applyPickMessage({ state: cleared, frameId: 'a', message });
+	assert.equal(afterClose.state, cleared);
+	assert.deepEqual(afterClose.sends, []);
+	// Another frame holds the pick: a re-post never moves it.
+	const elsewhere = commenting({ pick: pickIn('b') });
+	assert.equal(applyPickMessage({ state: elsewhere, frameId: 'a', message }).state, elsewhere);
+	// The same frame: the rect follows.
+	const same = applyPickMessage({
+		state: commenting({ pick: pickIn('a') }),
+		frameId: 'a',
+		message,
+	});
+	assert.deepEqual(same.state.pick?.rect, { ...rect, y: 9 });
+});
+
 test('toggling forgets hover and pick and tells every frame the new mode', () => {
 	const step = toggleCommentMode({
 		state: commenting({ hover: { frameId: 'a', rect }, pick: pickIn('a') }),
@@ -115,19 +143,60 @@ test('frames leaving the stage take their hover and pick; an empty stage leaves 
 	assert.deepEqual(keepLiveFrames({ state, liveFrameIds: new Set() }), INITIAL_COMMENT_PICK);
 });
 
-test('arrows step only when nothing else owns the key', () => {
-	const ready = commenting({ pick: pickIn('a') });
-	const base = { state: ready, hasModifier: false, defaultPrevented: false, inTextEntry: false };
-	assert.equal(arrowPickStep({ ...base, key: 'ArrowUp' }), 'cd:pick-parent');
-	assert.equal(arrowPickStep({ ...base, key: 'ArrowDown' }), 'cd:pick-child');
+const keyInput = (overrides: Partial<ModeKeyInput> = {}): ModeKeyInput => ({
+	key: 'c',
+	ctrlKey: false,
+	metaKey: false,
+	altKey: false,
+	repeat: false,
+	defaultPrevented: false,
+	inTextEntry: false,
+	commentMode: false,
+	hasFrames: true,
+	popoverOpen: false,
+	forwarded: false,
+	...overrides,
+});
+
+test('c toggles only when nothing else owns the key and a frame is live', () => {
+	assert.equal(modeKeyAction(keyInput()), 'toggle');
+	assert.equal(modeKeyAction(keyInput({ key: 'C', forwarded: true })), 'toggle');
 	for (const blocked of [
-		{ key: 'ArrowUp', defaultPrevented: true }, // a focused frame label nudged instead
-		{ key: 'ArrowUp', hasModifier: true },
-		{ key: 'ArrowUp', inTextEntry: true }, // the zoom select
-		{ key: 'ArrowUp', state: commenting() }, // no pick yet
-		{ key: 'ArrowUp', state: { ...ready, commentMode: false } },
-		{ key: 'ArrowLeft' },
+		{ ctrlKey: true }, // Ctrl+C copies
+		{ metaKey: true }, // Cmd+C copies
+		{ altKey: true },
+		{ inTextEntry: true }, // the zoom select, the popover textarea
+		{ repeat: true },
+		{ defaultPrevented: true },
+		{ hasFrames: false },
 	]) {
-		assert.equal(arrowPickStep({ ...base, ...blocked }), undefined, JSON.stringify(blocked));
+		assert.equal(modeKeyAction(keyInput(blocked)), undefined, JSON.stringify(blocked));
 	}
+});
+
+test('Escape leaves Comment mode, and only in Comment mode', () => {
+	assert.equal(modeKeyAction(keyInput({ key: 'Escape', commentMode: true })), 'exit');
+	assert.equal(modeKeyAction(keyInput({ key: 'Escape', commentMode: false })), undefined);
+	assert.equal(modeKeyAction(keyInput({ key: 'Enter', commentMode: true })), undefined);
+});
+
+test('with the popover open only a chrome Escape cancels; c and a forwarded Escape do nothing', () => {
+	const open = { commentMode: true, popoverOpen: true };
+	assert.equal(modeKeyAction(keyInput({ ...open, key: 'Escape' })), 'cancel');
+	assert.equal(modeKeyAction(keyInput({ ...open, key: 'Escape', forwarded: true })), undefined);
+	assert.equal(modeKeyAction(keyInput({ ...open, key: 'c' })), undefined);
+	assert.equal(modeKeyAction(keyInput({ ...open, key: 'c', forwarded: true })), undefined);
+	// The popover already handled (and prevented) its own Escape.
+	assert.equal(
+		modeKeyAction(keyInput({ ...open, key: 'Escape', defaultPrevented: true })),
+		undefined,
+	);
+});
+
+test('clearPick drops the pick and resets only the picked frame', () => {
+	const step = clearPick(commenting({ hover: { frameId: 'b', rect }, pick: pickIn('a') }));
+	assert.equal(step.state.pick, undefined);
+	assert.deepEqual(step.state.hover, { frameId: 'b', rect });
+	assert.deepEqual(step.sends, [{ frameId: 'a', message: { type: 'cd:mode', mode: 'comment' } }]);
+	assert.deepEqual(clearPick(commenting()).sends, []);
 });

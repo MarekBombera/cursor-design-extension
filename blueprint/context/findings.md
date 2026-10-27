@@ -124,3 +124,19 @@
 **Why it matters:** Rule 05 names `logMcpError` (`mcpToolResult.ts`) as the MCP stderr logger and `logDiskError` as the host one. `logTargetReadError` in `comments.ts` is a third stderr writer with its own wording inside the disk lib, which the rule says has no I/O policy of its own and which the host will also call from 8f1 (where stderr is not the Output channel). Separately `toolSchema` in `artboardTools.ts` only fixes the generic of `toolInputSchema<ToolArgs>`; it is the forwarder rule 05 says to leave out, and it forced eight renames in the diff.
 **Suggested fix:** Export `logMcpError` from `mcpToolResult.ts` or, for the disk lib, let `loadArtboardDocument` return `'unreadable'` without logging and have the MCP/host caller log (8f1 decides). Delete `toolSchema` and call `toolInputSchema<ToolArgs>(...)` directly. No behaviour is lost.
 **Resolution:** open
+
+### F-83 [P3] open - Host comment:create guards for tagName, text, generation, rect size and styles have no test that fails when they go
+
+**File:** src/host/chromeMessages.test.ts:96 (guards at src/host/chromeMessages.ts:30-40)
+**Found:** 2026-10-27 by independent /audit (scope: current; lens: tests, security)
+**Why it matters:** `commentCreateSchema` is the host's only parse of untrusted chrome input before `addComment`. The rejects test covers requestId, selector length and newline, a NaN rect x, a negative point, a missing box and a string isPage. Nothing exercises `tagName` (`isTagName`), `text` (cap and control characters), a negative or fractional `generation`, a negative rect width or height, a point or box above `MAX_FRAME_COORDINATE`, a non-string `styles` value or a non-string `frameId`/`body`. Removing any of those checks keeps every test green (rule 09: a test earns its place when deleting its guard fails it). `addComment` re-validates most of them, so this is a missing check, not an open hole.
+**Suggested fix:** Add the missing broken variants to the existing array in the rejects test (one line each). No product change.
+**Resolution:** open
+
+### F-84 [P3] open - createCommentFromChrome's untrusted-workspace refusal, answer ordering and one-answer rule have no automated check
+
+**File:** src/host/panelComments.ts:59
+**Found:** 2026-10-27 by independent /audit (scope: current; lens: tests, security)
+**Why it matters:** The function decides, in order: no usable requestId (log only), untrusted workspace (refuse, never write), no folder, malformed message, then `addComment`. The write refusal for an untrusted workspace is a trust boundary (rule 07), and the spec accepted the missing F5 run for it ("no repeatable test observes the host refusal"). Nothing in `vp test` fails if the `isTrusted` check, its position before the parse, or the single-answer behaviour is removed. The file is glue by design, but the ordering is logic, and a `vi.mock('vscode')` unit test of two or three cases is possible without a display.
+**Suggested fix:** Optional: a colocated `panelComments.test.ts` with a mocked `vscode` (untrusted gives one `ui:error` and no `addComment` call; a bad requestId posts nothing; a malformed message gives one `ui:error`). Or keep it as an F5 item. Needs the user's decision because the spec chose glue-without-test.
+**Resolution:** open

@@ -6,6 +6,7 @@ import { test } from 'vite-plus/test';
 import {
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_HOVER_MESSAGE,
+	FRAME_KEY_MESSAGE,
 	FRAME_MODE_MESSAGE,
 	FRAME_PICK_MESSAGE,
 	FRAME_READY_MESSAGE,
@@ -83,8 +84,10 @@ const pick = {
 	text: 'Card',
 	rect,
 	point: { x: 5, y: 6 },
+	box: { width: 30, height: 80 },
 	styles: { color: 'rgb(0, 0, 0)', 'font-family': '"Inter", sans-serif' },
 	isPage: false,
+	repost: false,
 };
 const pagePick = { ...pick, selector: 'body', tagName: 'body', text: '', rect: null, isPage: true };
 
@@ -164,6 +167,34 @@ test('cd:pick rejects bad selectors, text, styles, points and page labels', () =
 	);
 });
 
+test('cd:pick needs repost and a finite, non-negative box', () => {
+	assert.deepEqual(parseFrameMessage({ ...pick, repost: true }), { ...pick, repost: true });
+	const { repost: _repost, ...withoutRepost } = pick;
+	const { box: _box, ...withoutBox } = pick;
+	for (const broken of [
+		withoutRepost,
+		withoutBox,
+		{ ...pick, repost: 'false' },
+		{ ...pick, box: { width: -1, height: 10 } },
+		{ ...pick, box: { width: 10, height: Number.NaN } },
+		{ ...pick, box: { width: 10 } },
+	]) {
+		assert.equal(parseFrameMessage(broken), undefined, JSON.stringify(broken));
+	}
+});
+
+test('cd:key accepts exactly c and Escape', () => {
+	for (const key of ['c', 'Escape'] as const) {
+		assert.deepEqual(parseFrameMessage({ type: FRAME_KEY_MESSAGE, key, extra: 1 }), {
+			type: FRAME_KEY_MESSAGE,
+			key,
+		});
+	}
+	for (const key of ['C', 'Enter', 7, undefined]) {
+		assert.equal(parseFrameMessage({ type: FRAME_KEY_MESSAGE, key }), undefined, String(key));
+	}
+});
+
 test('cd:pick rejects bad tags, rects and isPage', () => {
 	for (const broken of [
 		{ tagName: 'a'.repeat(65) },
@@ -228,6 +259,6 @@ test('parseChromeFrameMessage accepts only the mode and step commands', () => {
 
 test('rule 02 message line names exactly these frame messages', () => {
 	const ruleSource = readFileSync(join(process.cwd(), '.claude/rules/02-mcp-webview.md'), 'utf8');
-	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure); canvas:updated (frames carry \`generation\`)|artboard:error, ui:status (host → chrome). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { selector|null, tagName, text, rect|null, point, styles, isPage } (\`rect\` is frame-local CSS px; \`point\` is CSS px relative to the current target's border box; chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} outside Comment mode). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}.\n`;
+	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure), comment:create { requestId, frameId, generation, selector, tagName, text, rect|null, point, box, styles, isPage, body } (chrome → host, untrusted: \`parseChromeMessage\`, then \`addComment\`; refused in untrusted workspaces; every attempt with a valid requestId answered once, never replayed: comment:added { requestId } or ui:error { message, requestId? }); canvas:updated (frames carry \`generation\`)|artboard:error, ui:status, comments:updated { comments, error? } (host → chrome; comments:updated is held until artboard:ready and re-sent on reload like canvas:updated, and its \`error\` is the comments banner, never a blank stage). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { selector|null, tagName, text, rect|null, point, box, styles, isPage, repost } (\`rect\` is frame-local CSS px; \`point\` is CSS px relative to the current target's border box and \`box\` is that box's unclipped size; \`repost\` is true for a scroll or resize re-post, false for a click or step; chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} outside Comment mode), ${FRAME_KEY_MESSAGE} { key: c|Escape } (C or Escape with frame focus, not from editable targets or with Ctrl/Meta/Alt; the chrome's mode-key rule decides). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}.\n`;
 	assert.ok(ruleSource.includes(ruleLine));
 });

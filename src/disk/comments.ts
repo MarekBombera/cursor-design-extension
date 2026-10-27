@@ -761,6 +761,16 @@ export const listComments = async ({
 	return { comments: await withCommentViews(workspaceRoot, comments) };
 };
 
+// The panel's read: every stored comment, resolved included, without flags (8f2 adds them).
+export const readComments = async ({
+	workspaceRoot,
+}: {
+	workspaceRoot: string;
+}): Promise<Comment[]> => {
+	await assertLayoutDirsOwned(workspaceRoot);
+	return (await readCommentsFile(workspaceRoot)).comments;
+};
+
 export const getComment = async ({
 	workspaceRoot,
 	id,

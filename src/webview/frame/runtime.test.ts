@@ -5,6 +5,7 @@ import runtimeSource from './runtime.ts?iife';
 import {
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_HOVER_MESSAGE,
+	FRAME_KEY_MESSAGE,
 	FRAME_PICK_MESSAGE,
 	FRAME_READY_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
@@ -22,11 +23,16 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 	assert.ok(!runtimeSource.includes('</'));
 	assert.ok(runtimeSource.includes(JSON.stringify(FRAME_HEIGHT_MESSAGE)));
 	assert.ok(runtimeSource.includes(JSON.stringify(FRAME_WHEEL_MESSAGE)));
-	for (const type of [FRAME_READY_MESSAGE, FRAME_HOVER_MESSAGE, FRAME_PICK_MESSAGE]) {
+	for (const type of [
+		FRAME_READY_MESSAGE,
+		FRAME_HOVER_MESSAGE,
+		FRAME_PICK_MESSAGE,
+		FRAME_KEY_MESSAGE,
+	]) {
 		assert.ok(runtimeSource.includes(JSON.stringify(type)), type);
 	}
-	// height, wheel, hover, pick, ready
-	assert.equal(runtimeSource.split('host.postMessage').length - 1, 5);
+	// height, wheel, key, hover, pick, ready
+	assert.equal(runtimeSource.split('host.postMessage').length - 1, 6);
 	assert.ok(runtimeSource.includes('parentElement'));
 	assert.ok(runtimeSource.includes('overflowY'));
 	assert.ok(runtimeSource.includes('overflowX'));

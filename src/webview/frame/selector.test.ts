@@ -251,7 +251,9 @@ test('a described pick passes the cd:pick guard (the runtime never fails its own
 			...describeElement(element, isPage),
 			rect: null,
 			point: { x: 0, y: 0 },
+			box: { width: 0, height: 0 },
 			isPage,
+			repost: false,
 		};
 		assert.deepEqual(parseFrameMessage(message), message);
 	}

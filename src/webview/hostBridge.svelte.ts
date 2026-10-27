@@ -4,6 +4,7 @@ import {
 	parseFrameMessage,
 } from './frame/frameMessages';
 import {
+	type CommentCreateMessage,
 	type FramePlaceMessage,
 	type HostMessage,
 	parseHostMessage,
@@ -41,6 +42,11 @@ export const saveStageView = (stageView: StageView): void => {
 // Snapshot: callers pass gesture fields that are $state proxies, and postMessage's structured
 // clone throws DataCloneError on a Proxy.
 export const postFramePlace = (message: FramePlaceMessage): void => {
+	vscodeApi.postMessage($state.snapshot(message));
+};
+
+// Snapshot for the same reason: the draft target is $state.
+export const postCommentCreate = (message: CommentCreateMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 

@@ -21,6 +21,7 @@ import {
 	listComments,
 	markCommentsSent,
 	parseCommentsFile,
+	readComments,
 	readCommentsFile,
 	replyToComment,
 	resolveComment,
@@ -34,6 +35,7 @@ import {
 	CommentNotFoundError,
 	CommentResolvedError,
 	CorruptCommentsError,
+	DiskError,
 	InvalidArgsError,
 	PickOutdatedError,
 	UnsupportedCommentsVersionError,
@@ -706,4 +708,23 @@ test('a no-file workspace has no lock file after a missing-comment read', async 
 	const workspaceRoot = await makeTempRoot();
 	await assert.rejects(getComment({ workspaceRoot, id: 'c1' }), CommentNotFoundError);
 	assert.deepEqual(await readdir(workspaceRoot), []);
+});
+
+test('readComments returns every comment, resolved included, and [] without a file', async () => {
+	const workspaceRoot = await makeTempRoot();
+	assert.deepEqual(await readComments({ workspaceRoot }), []);
+	await writeComments(workspaceRoot, commentsFileOf([validComment({ status: 'resolved' })]));
+	assert.deepEqual(
+		(await readComments({ workspaceRoot })).map((comment) => comment.status),
+		['resolved'],
+	);
+});
+
+test('readComments refuses a symlinked .cursor-design like listComments', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const elsewhere = await makeTempRoot();
+	await writeComments(elsewhere, commentsFileOf([validComment()]));
+	await symlink(join(elsewhere, CURSOR_DESIGN_DIR), join(workspaceRoot, CURSOR_DESIGN_DIR));
+	await assert.rejects(readComments({ workspaceRoot }), DiskError);
+	await assert.rejects(listComments({ workspaceRoot }), DiskError);
 });

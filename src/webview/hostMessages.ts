@@ -1,3 +1,10 @@
+import {
+	type CommentStyles,
+	type FrameRect,
+	hasControlChars,
+	isTagName,
+	parseFrameRect,
+} from './frame/frameMessages';
 import type { StageView } from './stageGeometry';
 
 // Host ↔ chrome message contract, defined once. The host `import type`s these; the chrome
@@ -37,7 +44,49 @@ type UiStatusMessage = {
 	handoffStale: boolean;
 };
 
-export type HostMessage = CanvasUpdatedMessage | ArtboardErrorMessage | UiStatusMessage;
+type PostedReply = {
+	id: string;
+	author: 'user' | 'agent';
+	body: string;
+	createdAt: string;
+};
+
+// What the chrome gets of a stored comment (toPostedComment): never the artboard label, version,
+// styles or fingerprint. 8f2 adds the stale / targetMissing flags.
+export type PostedComment = {
+	id: string;
+	frameId: string;
+	selector: string;
+	tagName: string;
+	text: string;
+	rect: FrameRect | null;
+	pin: { x: number; y: number };
+	body: string;
+	isPage: boolean;
+	status: 'open' | 'sent' | 'resolved';
+	createdAt: string;
+	replies: PostedReply[];
+};
+
+// `error` is safe copy for the comments banner; the list is then empty and the canvas unaffected.
+export type CommentsUpdatedMessage = {
+	type: 'comments:updated';
+	comments: PostedComment[];
+	error?: string;
+};
+
+// The answers to one comment:create, matched by its requestId.
+export type CommentAddedMessage = { type: 'comment:added'; requestId: string };
+
+export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: string };
+
+export type HostMessage =
+	| CanvasUpdatedMessage
+	| ArtboardErrorMessage
+	| UiStatusMessage
+	| CommentsUpdatedMessage
+	| CommentAddedMessage
+	| UiErrorMessage;
 
 export type FramePlacement = { x: number; y: number; width: number };
 
@@ -51,7 +100,25 @@ export type FramePlaceMessage = {
 	base: FramePlacement;
 };
 
-export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage;
+// A user pick plus the typed body. `box` is the target's unclipped border-box size, so the host
+// can turn `point` into the stored pin fraction even when `rect` is clipped.
+export type CommentCreateMessage = {
+	type: 'comment:create';
+	requestId: string;
+	frameId: string;
+	generation: number;
+	selector: string;
+	tagName: string;
+	text: string;
+	rect: FrameRect | null;
+	point: { x: number; y: number };
+	box: { width: number; height: number };
+	styles: CommentStyles;
+	isPage: boolean;
+	body: string;
+};
+
+export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage | CommentCreateMessage;
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
@@ -123,6 +190,94 @@ const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage
 	};
 };
 
+const parseReply = (entry: unknown): PostedReply | undefined => {
+	if (
+		!isRecord(entry) ||
+		typeof entry.id !== 'string' ||
+		(entry.author !== 'user' && entry.author !== 'agent') ||
+		typeof entry.body !== 'string' ||
+		typeof entry.createdAt !== 'string'
+	) {
+		return undefined;
+	}
+	return { id: entry.id, author: entry.author, body: entry.body, createdAt: entry.createdAt };
+};
+
+const isCommentStatus = (value: unknown): value is PostedComment['status'] =>
+	value === 'open' || value === 'sent' || value === 'resolved';
+
+// Field by field, with the cd:pick guards: comments.json is workspace data, and a design script
+// can write it through the Agent.
+const parsePostedComment = (entry: unknown): PostedComment | undefined => {
+	if (
+		!isRecord(entry) ||
+		typeof entry.id !== 'string' ||
+		typeof entry.frameId !== 'string' ||
+		typeof entry.selector !== 'string' ||
+		hasControlChars(entry.selector) ||
+		!isTagName(entry.tagName) ||
+		typeof entry.text !== 'string' ||
+		hasControlChars(entry.text) ||
+		!isRecord(entry.pin) ||
+		!isFiniteNumber(entry.pin.x) ||
+		!isFiniteNumber(entry.pin.y) ||
+		typeof entry.body !== 'string' ||
+		typeof entry.isPage !== 'boolean' ||
+		!isCommentStatus(entry.status) ||
+		typeof entry.createdAt !== 'string' ||
+		!Array.isArray(entry.replies)
+	) {
+		return undefined;
+	}
+	const rect = entry.rect === null ? null : parseFrameRect(entry.rect);
+	const replies = (entry.replies as unknown[]).map(parseReply);
+	if (rect === undefined || replies.includes(undefined)) {
+		return undefined;
+	}
+	return {
+		id: entry.id,
+		frameId: entry.frameId,
+		selector: entry.selector,
+		tagName: entry.tagName,
+		text: entry.text,
+		rect,
+		pin: { x: entry.pin.x, y: entry.pin.y },
+		body: entry.body,
+		isPage: entry.isPage,
+		status: entry.status,
+		createdAt: entry.createdAt,
+		replies: replies.filter((reply) => reply !== undefined),
+	};
+};
+
+// A malformed comment is dropped, like a malformed frame; a malformed list or error drops all.
+const parseCommentsUpdated = (
+	data: Record<string, unknown>,
+): CommentsUpdatedMessage | undefined => {
+	if (!Array.isArray(data.comments) || !isOptionalString(data.error)) {
+		return undefined;
+	}
+	const comments: PostedComment[] = [];
+	for (const entry of data.comments as unknown[]) {
+		const comment = parsePostedComment(entry);
+		if (comment !== undefined) {
+			comments.push(comment);
+		}
+	}
+	return data.error === undefined
+		? { type: 'comments:updated', comments }
+		: { type: 'comments:updated', comments, error: data.error };
+};
+
+const parseUiError = (data: Record<string, unknown>): UiErrorMessage | undefined => {
+	if (typeof data.message !== 'string' || !isOptionalString(data.requestId)) {
+		return undefined;
+	}
+	return data.requestId === undefined
+		? { type: 'ui:error', message: data.message }
+		: { type: 'ui:error', message: data.message, requestId: data.requestId };
+};
+
 // Unknown `type` or a malformed payload returns undefined; never throws.
 export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 	if (!isRecord(data)) {
@@ -146,6 +301,17 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 			mcpAvailable: data.mcpAvailable,
 			handoffStale: data.handoffStale === true,
 		};
+	}
+	if (data.type === 'comments:updated') {
+		return parseCommentsUpdated(data);
+	}
+	if (data.type === 'comment:added') {
+		return typeof data.requestId === 'string'
+			? { type: 'comment:added', requestId: data.requestId }
+			: undefined;
+	}
+	if (data.type === 'ui:error') {
+		return parseUiError(data);
 	}
 	return undefined;
 };

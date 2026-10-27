@@ -1,25 +1,43 @@
 <script lang="ts">
 	import Banners from './Banners.svelte';
+	import CommentPopover from './CommentPopover.svelte';
 	import {
 		applyPickMessage,
-		arrowPickStep,
+		clearPick,
 		type CommentPickState,
 		type CommentPickStep,
 		INITIAL_COMMENT_PICK,
 		keepLiveFrames,
+		type ModeKeyAction,
+		modeKeyAction,
+		type ModeKeyInput,
 		type PickStepType,
 		toggleCommentMode,
 	} from './commentPick';
-	import type { ChromeFrameMessage, FrameMessage, FrameRect } from './frame/frameMessages';
+	import {
+		answerDraft,
+		type CommentDraft,
+		draftFromPick,
+		keepLiveDraft,
+		popoverAnchor,
+		submitDraft,
+	} from './commentPopover';
+	import type { ChromeFrameMessage, FrameMessage, FramePickMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
 	import {
 		connectHostBridge,
+		postCommentCreate,
 		postFramePlace,
 		postToFrame,
 		readSavedStageView,
 		saveStageView,
 	} from './hostBridge.svelte';
-	import type { CanvasUpdatedMessage, FramePlacement, HostMessage } from './hostMessages';
+	import type {
+		CanvasUpdatedMessage,
+		FramePlacement,
+		HostMessage,
+		PostedComment,
+	} from './hostMessages';
 	import {
 		type FrameGesture,
 		type StageFrameGesture,
@@ -66,15 +84,22 @@
 	let gesture: FrameGesture | undefined = $state();
 	// Comment mode, hover and pick; the rules live in commentPick.ts.
 	let picking: CommentPickState = $state(INITIAL_COMMENT_PICK);
+	// comments.json as the host last read it (8f2 draws pins from it); its own banner on failure.
+	let comments: PostedComment[] = $state([]);
+	let commentsError: string | undefined = $state();
+	// The open comment popover's target and request state; the rules live in commentPopover.ts.
+	let draft: CommentDraft | undefined = $state();
+	let popover: ReturnType<typeof CommentPopover> | undefined = $state();
+	// The popover places itself inside the viewport.
+	let viewportWidth = $state(0);
+	let viewportHeight = $state(0);
 
 	// Not reactive: the iframe registry is matched against event.source at message time, and
-	// the view / viewport size are read by handlers when they run.
+	// the view is read by handlers when they run.
 	const iframes = new Map<string, HTMLIFrameElement>();
 	const savedView = readSavedStageView();
 	let stageView: StageView = savedView ?? { x: 0, y: 0, zoom: 1 };
 	let initialViewApplied = false;
-	let viewportWidth = 0;
-	let viewportHeight = 0;
 
 	const displayFrames = $derived(withGestureOverride({ frames, gesture }));
 	const layout = $derived(layoutCanvasChrome({ frames: toChromeFrames(displayFrames) }));
@@ -97,6 +122,14 @@
 	const pickOutline = $derived(
 		frameOutline({ view: committedView, frames: displayFrames, target: picking.pick }),
 	);
+	// The popover follows pan, zoom and a drag of its frame, like the outlines.
+	const draftAnchor = $derived.by(() => {
+		const draftFrame = displayFrames.find((frame) => frame.id === draft?.frameId);
+		return draft === undefined || draftFrame === undefined || committedView === undefined
+			? undefined
+			: popoverAnchor({ view: committedView, frame: draftFrame, target: draft.target });
+	});
+	const canStep = $derived(draft !== undefined && picking.pick?.frameId === draft.frameId);
 	const zoomText = $derived(
 		`${Math.round((committedView === undefined ? 1 : committedView.zoom) * 100)}%`,
 	);
@@ -136,7 +169,7 @@
 		// A deleted artboard file (or an entry that failed validation) leaves the stage; its
 		// Frame unmounts and revokes its blob URL.
 		frames = mergeCanvasFrames({ records: frames, frames: message.frames });
-		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
+		keepLiveCommentState();
 		gesture = settleFrameGesture({ gesture, diskPlacement });
 		errorMessage = undefined;
 		if (frames.length === 0) {
@@ -158,6 +191,15 @@
 			gesture = failFrameGesture(gesture);
 			return;
 		}
+		if (message.type === 'comments:updated') {
+			comments = message.comments;
+			commentsError = message.error;
+			return;
+		}
+		if (message.type === 'comment:added' || message.type === 'ui:error') {
+			handleCommentAnswer(message);
+			return;
+		}
 		mcpUnavailable = !message.mcpAvailable;
 		handoffStale = message.handoffStale;
 	};
@@ -177,8 +219,78 @@
 		}
 	};
 
+	// Frames that left the stage or became tiles take their hover, pick and draft with them; an
+	// empty stage leaves Comment mode.
+	const keepLiveCommentState = (): void => {
+		const liveFrameIds = liveIframeIds(frames);
+		picking = keepLiveFrames({ state: picking, liveFrameIds });
+		draft = keepLiveDraft({ draft, commentMode: picking.commentMode, liveFrameIds });
+	};
+
+	// Entering or leaving the mode discards any draft, pending or not; a late answer is ignored.
 	const handleToggleComment = (): void => {
+		draft = undefined;
 		applyPickStep(toggleCommentMode({ state: picking, frameIds: iframes.keys() }));
+	};
+
+	const popoverHasFocus = (): boolean =>
+		document.activeElement?.closest('[data-cd-comment-popover]') != null;
+
+	// Typed text goes with the draft. The frame forgets its pick too, and gets focus back when
+	// asked, so ↑/↓ and a second Escape reach its runtime.
+	const closeDraft = (focusFrame: boolean): void => {
+		const frameId = draft?.frameId;
+		draft = undefined;
+		applyPickStep(clearPick(picking));
+		if (focusFrame && frameId !== undefined) {
+			iframes.get(frameId)?.focus();
+		}
+	};
+
+	// Cancel, popover Escape, or a chrome Escape after focus left the popover. Never while a
+	// create is pending, so a Cancel never hides a comment that is being written.
+	const handleCancel = (): void => {
+		if (draft !== undefined && draft.pendingRequestId === undefined) {
+			closeDraft(true);
+		}
+	};
+
+	const handleAdd = (body: string): void => {
+		if (draft === undefined) {
+			return;
+		}
+		// randomUUID: unique across webview reloads, so a previous webview's answer never matches.
+		const submitted = submitDraft({ draft, body, requestId: crypto.randomUUID() });
+		if (submitted !== undefined) {
+			draft = submitted.draft;
+			postCommentCreate(submitted.message);
+		}
+	};
+
+	const handleCommentAnswer = (answer: Parameters<typeof answerDraft>[1]): void => {
+		if (draft === undefined) {
+			return;
+		}
+		const next = answerDraft(draft, answer);
+		if (next === undefined) {
+			closeDraft(popoverHasFocus());
+		} else {
+			draft = next;
+		}
+	};
+
+	// A cd:pick in Comment mode opens or retargets the draft (re-posts only move it). Focus goes to
+	// the textarea on open, or on a retarget whose click moved focus into the frame, after the
+	// frame's own window.focus() settled. A re-post never moves focus.
+	const applyPickToDraft = (frame: FrameRecord, pick: FramePickMessage): void => {
+		const opened = draft === undefined;
+		draft = draftFromPick({ draft, frameId: frame.id, pick, generation: frame.generation });
+		if (pick.repost || (!opened && document.activeElement?.tagName !== 'IFRAME')) {
+			return;
+		}
+		requestAnimationFrame(() => {
+			popover?.focusBody();
+		});
 	};
 
 	const stepPick = (type: PickStepType): void => {
@@ -191,21 +303,42 @@
 		target instanceof HTMLElement &&
 		(target.isContentEditable || target.matches('input, textarea, select'));
 
+	// C toggles Comment mode; Escape leaves it (toggling off is leaving it) or cancels the draft.
+	const applyModeKey = (action: ModeKeyAction | undefined): void => {
+		if (action === 'toggle' || action === 'exit') {
+			handleToggleComment();
+		} else if (action === 'cancel') {
+			handleCancel();
+		}
+	};
+
+	// The chrome's own keydown and a frame's cd:key share one rule, with the live state.
+	const modeKey = (
+		key: Omit<ModeKeyInput, 'commentMode' | 'hasFrames' | 'popoverOpen'>,
+	): ModeKeyAction | undefined =>
+		modeKeyAction({
+			...key,
+			commentMode: picking.commentMode,
+			hasFrames: liveIframeIds(frames).size > 0,
+			popoverOpen: draft !== undefined,
+		});
+
 	const handleWindowKeydown = (event: KeyboardEvent): void => {
 		// A key with chrome focus ends any frame gesture, so the root scroll it causes (PageDown,
 		// Space, arrows) never pans through the scroll sink.
 		lastSinkGestureAt = Number.NEGATIVE_INFINITY;
-		const step = arrowPickStep({
-			state: picking,
-			key: event.key,
-			hasModifier: event.ctrlKey || event.metaKey || event.altKey || event.shiftKey,
-			defaultPrevented: event.defaultPrevented,
-			inTextEntry: isTextEntry(event.target),
-		});
-		if (step !== undefined) {
-			event.preventDefault();
-			stepPick(step);
-		}
+		applyModeKey(
+			modeKey({
+				key: event.key,
+				ctrlKey: event.ctrlKey,
+				metaKey: event.metaKey,
+				altKey: event.altKey,
+				repeat: event.repeat,
+				defaultPrevented: event.defaultPrevented,
+				inTextEntry: isTextEntry(event.target),
+				forwarded: false,
+			}),
+		);
 	};
 
 	const handleStageWheel = (wheel: StageWheel): void => {
@@ -223,12 +356,31 @@
 			return;
 		}
 		if (message.type === 'cd:ready' || message.type === 'cd:hover' || message.type === 'cd:pick') {
+			if (message.type === 'cd:pick' && picking.commentMode) {
+				applyPickToDraft(frame, message);
+			}
 			applyPickStep(applyPickMessage({ state: picking, frameId, message }));
 			return;
 		}
 		if (message.type === 'cd:frame-height') {
 			updateFrame(frameId, (record) => applyFrameHeight({ record, reported: message.height }));
 			commitStageView(stageView);
+			return;
+		}
+		if (message.type === 'cd:key') {
+			// The runtime already dropped modified, repeated, composing and text-entry keys.
+			applyModeKey(
+				modeKey({
+					key: message.key,
+					ctrlKey: false,
+					metaKey: false,
+					altKey: false,
+					repeat: false,
+					defaultPrevented: false,
+					inTextEntry: false,
+					forwarded: true,
+				}),
+			);
 			return;
 		}
 		// The gesture may leave this frame and continue as root scroll (handleSinkScroll).
@@ -331,7 +483,7 @@
 
 	const handleRenderError = (id: string): void => {
 		updateFrame(id, demoteToTile);
-		picking = keepLiveFrames({ state: picking, liveFrameIds: liveIframeIds(frames) });
+		keepLiveCommentState();
 	};
 
 	// The body's hidden scroll room comes from the one constant (CSSOM, allowed by the nonce CSP).
@@ -363,10 +515,8 @@
 	onPreset={handlePreset}
 	onFit={handleFit}
 	onToggleComment={handleToggleComment}
-	onPickParent={() => stepPick('cd:pick-parent')}
-	onPickChild={() => stepPick('cd:pick-child')}
 />
-<Banners {errorMessage} {mcpUnavailable} />
+<Banners {errorMessage} {commentsError} {mcpUnavailable} />
 <p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
 <Stage
 	frames={displayFrames}
@@ -386,7 +536,22 @@
 	onIframe={handleIframe}
 	onRenderError={handleRenderError}
 	onFrameGesture={handleFrameGesture}
-/>
+>
+	{#if draft !== undefined && draftAnchor !== undefined}
+		<CommentPopover
+			bind:this={popover}
+			{draft}
+			anchor={draftAnchor}
+			{viewportWidth}
+			{viewportHeight}
+			{canStep}
+			onAdd={handleAdd}
+			onCancel={handleCancel}
+			onParent={() => stepPick('cd:pick-parent')}
+			onChild={() => stepPick('cd:pick-child')}
+		/>
+	{/if}
+</Stage>
 
 <style>
 	:global(html),

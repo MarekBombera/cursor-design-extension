@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8e Comments disk + MCP (`feature/comments-disk-mcp`): comment MCP tools over `comments.json`, Agent skill sync on activate, per-frame `FRAME_CSP`.
+**Last verified against code:** feature 8f1 Comment mode + popover (`feature/comment-mode-popover`): `C` / `cd:key` mode keys, the comment popover, `comment:create` → `addComment` with one answer per attempt, `comments:updated` to the panel.
 
 ## Chart checklist
 
@@ -46,7 +46,7 @@ flowchart LR
   end
   subgraph Host["Extension host (dist/extension.js)"]
     Watcher["watcher .cursor-design/**<br/>200ms debounce, skips .lock / *.tmp"]
-    Panel["openArtboardPanel<br/>postMessage, parseChromeMessage"]
+    Panel["openArtboardPanel + panelComments<br/>postMessage, parseChromeMessage"]
     Cmds["commands: Open Artboard,<br/>Export Handoff, Reveal Folder"]
     Skill["syncAgentSkill on activate (Cursor only)"]
   end
@@ -64,11 +64,11 @@ flowchart LR
   Watcher --> Panel
   Cmds --> Panel
   Cmds -->|exportHandoff via disk lib| Disk
-  Panel -->|canvas:updated, artboard:error, ui:status| Chrome
-  Chrome -->|artboard:ready, frame:place| Panel
-  Panel -->|placeFrameFromChrome under the lock| Disk
+  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, ui:error| Chrome
+  Chrome -->|artboard:ready, frame:place, comment:create| Panel
+  Panel -->|placeFrameFromChrome and addComment under the lock;<br/>readComments| Disk
   Chrome -->|blob URL: stamped HTML + runtime| Frames
-  Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick| Chrome
+  Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key| Chrome
   Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child| Frames
 ```
 
@@ -102,8 +102,8 @@ sequenceDiagram
 - `stale` and `targetMissing` come from disk only (`commentTarget.ts`): the stored selector runs
   through css-select only when it has buildSelector's shape (at most 2 descendant steps) and the
   page is at most 64 deep, 20,000 elements and 5,000 siblings wide; otherwise flags are `null`.
-- The panel does not read `comments.json` yet (8f1), and nothing else on the canvas or export path
-  does, so a broken comments file never blanks the stage.
+- The panel reads `comments.json` without flags (`readComments`, 8f1) and shows a broken file as
+  its own banner; nothing on the canvas or export path reads it, so it never blanks the stage.
 
 ## Panel open and handshake
 
@@ -125,13 +125,16 @@ sequenceDiagram
     H->>C: artboard:error {message}
   end
   H->>C: ui:status {mcpAvailable, handoffStale}
+  H->>C: comments:updated {comments, error?}
 ```
 
-- Before `artboard:ready`, the host keeps only the latest snapshot and status, and flushes them on
-  ready (`createPanelOutbox`). A later `artboard:ready` (webview reload) re-sends both; `ui:status`
-  waits until `mcpAvailable` is known.
+- Before `artboard:ready`, the host keeps only the latest snapshot, status and comment list, and
+  flushes them on ready in that order (`createPanelOutbox`). A later `artboard:ready` (webview
+  reload) re-sends all three; `ui:status` waits until `mcpAvailable` is known. Answers to a chrome
+  request (`comment:added`, `ui:error`) are posted only while ready and never replayed.
 - The panel can also open from the **Open Artboard** command.
-- When the panel becomes visible, `reloadVisibleArtboardFromDisk` posts a fresh snapshot.
+- When the panel becomes visible, `reloadVisibleArtboardFromDisk` posts a fresh snapshot and
+  comment list. Every watcher refresh re-reads the comment list too; the last read started wins.
 - In an untrusted workspace the host posts `frames: []` plus the untrusted error, and `ui:status`
   reports `mcpAvailable: false`. No watcher runs and no artboard script loads.
 
@@ -188,7 +191,7 @@ sequenceDiagram
   U->>A: pointer move
   A->>C: cd:hover {rect|null} (once per animation frame, on change)
   U->>A: click (picked, then blocked; frame takes focus)
-  A->>C: cd:pick {selector|null, tagName, text, rect|null, point, styles, isPage}
+  A->>C: cd:pick {selector|null, tagName, text, rect|null, point, box, styles, isPage, repost}
   U->>A: ↑ / ↓ (focus in frame)
   A->>C: cd:pick (parent / child)
   U->>C: Parent / Child, or ↑/↓ with chrome focus
@@ -203,6 +206,59 @@ sequenceDiagram
 - Only iframe frames hold a pick: a frame that becomes a tile or leaves the stage drops it; an
   empty stage leaves Comment mode.
 - Frame data reaches the UI only as chip text and outline geometry (never `{@html}`).
+
+## Comment mode and popover (8f1)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome (App, CommentPopover)
+  participant F as Frame runtime
+  participant H as Host (panelComments, outbox)
+  participant D as Disk (.cursor-design)
+  alt key with chrome focus
+    U->>C: c / Escape
+  else key with frame focus (not editable, no Ctrl/Meta/Alt, no repeat)
+    U->>F: c / Escape
+    F->>C: cd:key {key: 'c' | 'Escape'}
+    Note over C: ignored while the popover is open
+  end
+  C->>F: cd:mode {comment | interact} (every live frame)
+  U->>F: click (blocked, picked)
+  F->>C: cd:pick {..., box, repost: false}
+  C->>C: open or retarget the popover, focus the box next frame
+  F->>C: cd:pick {..., repost: true} (scroll / resize)
+  Note over C: moves the open draft only; never opens one
+  U->>C: ↑ / ↓ (box empty, focus in popover)
+  C->>F: cd:pick-parent / cd:pick-child
+  F->>C: cd:pick {repost: false}
+  U->>C: Enter (box has text)
+  C->>H: comment:create {requestId (UUID), frameId, generation, pick fields, body}
+  alt no valid requestId
+    H->>H: logged, no answer
+  else untrusted, no folder, malformed, or addComment fails (PICK_OUTDATED, busy, corrupt)
+    H->>C: ui:error {requestId, message} (text kept)
+  else ok
+    H->>D: addComment under withWorkspaceLock
+    H->>C: comment:added {requestId}
+    C->>F: cd:mode {comment} (pick cleared, popover closed)
+    H->>D: readComments
+    H->>C: comments:updated {comments}
+  end
+  U->>C: Escape in popover (mode stays)
+  C->>F: cd:mode {comment} (pick cleared, focus to frame)
+  U->>F: Escape again
+  F->>C: cd:key {Escape}
+  C->>F: cd:mode {interact}
+```
+
+- An answer whose `requestId` is not the pending one is ignored; Cancel is disabled while a save
+  is pending. Toggling the mode drops the draft, so a late answer finds nothing.
+- An Agent edit reloads the frame and drops the pick; the popover keeps its text and greys out
+  Parent and Child, and the next Add gets "Pick it again" (`PICK_OUTDATED`).
+- A forged `cd:key` from a design script cannot discard a draft. A forged user `cd:pick` can
+  retarget it; the text is kept and the chip changes.
+- The panel shows nothing new on the canvas after Add: pins arrive in 8f2.
 
 ## Frame drag / resize (8c)
 
@@ -244,14 +300,19 @@ settles the gesture to disk (the Agent wins).
 |---|---|---|
 | chrome → host | `artboard:ready` | none |
 | chrome → host | `frame:place` | `{id, x, y, width, base: {x, y, width}}` |
+| chrome → host | `comment:create` | `{requestId, frameId, generation, selector, tagName, text, rect \| null, point, box, styles, isPage, body}` |
 | host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
+| host → chrome | `comments:updated` | `{comments[], error?}` (no stale / missing flags until 8f2) |
+| host → chrome | `comment:added` | `{requestId}` |
+| host → chrome | `ui:error` | `{message, requestId?}` (safe copy) |
 | frame → chrome | `cd:frame-height` | `{height}` |
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |
 | frame → chrome | `cd:ready` | none |
 | frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
-| frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, styles, isPage}` (selector from finder inside the frame; `point` relative to the target's box) |
+| frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, box, styles, isPage, repost}` (selector from finder inside the frame; `point` relative to the target's box, `box` its unclipped size; `repost` true for a scroll or resize re-post) |
+| frame → chrome | `cd:key` | `{key: 'c' \| 'Escape'}` (frame focus, not editable, no modifiers or repeat) |
 | chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 

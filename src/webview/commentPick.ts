@@ -101,6 +101,11 @@ export const applyPickMessage = ({
 	// ponytail: a cd:pick already in flight from that frame can still flip the pick back; after
 	// the reset it posts nothing, so the window is one message.
 	const previous = state.pick;
+	// A re-post only moves a pick chrome still holds. One already in flight when the draft closed
+	// (clearPick) would otherwise put the outline back on a frame that forgot its path.
+	if (message.repost && previous?.frameId !== frameId) {
+		return { state, sends: [] };
+	}
 	const sends: FrameSend[] =
 		previous !== undefined && previous.frameId !== frameId
 			? [{ frameId: previous.frameId, message: frameModeMessage(true) }]
@@ -111,29 +116,56 @@ export const applyPickMessage = ({
 	return { state: { ...state, pick: { frameId, sequence, ...fields } }, sends };
 };
 
-// ↑/↓ while focus is in chrome. Label nudges call preventDefault first, and modified arrows or
-// arrows in a text field belong to someone else. With focus in a frame the runtime steps itself.
-export const arrowPickStep = ({
-	state,
-	key,
-	hasModifier,
-	defaultPrevented,
-	inTextEntry,
-}: {
-	state: CommentPickState;
+// One pick at a time: the draft closed, so its frame forgets the path too (cd:mode resets it).
+export const clearPick = (state: CommentPickState): CommentPickStep => ({
+	state: { ...state, pick: undefined },
+	sends:
+		state.pick === undefined
+			? []
+			: [{ frameId: state.pick.frameId, message: frameModeMessage(state.commentMode) }],
+});
+
+export type ModeKeyAction = 'toggle' | 'exit' | 'cancel';
+
+// C and Escape, from the chrome's own keydown or a frame's cd:key (`forwarded`, already filtered
+// by the runtime). First match wins. While the popover is open it owns keys: only a chrome Escape
+// that reaches here (focus had left the popover) cancels it, so neither C nor a forged cd:key
+// discards a draft.
+export type ModeKeyInput = {
 	key: string;
-	hasModifier: boolean;
+	ctrlKey: boolean;
+	metaKey: boolean;
+	altKey: boolean;
+	repeat: boolean;
 	defaultPrevented: boolean;
 	inTextEntry: boolean;
-}): PickStepType | undefined => {
-	if (!state.commentMode || state.pick === undefined || defaultPrevented || hasModifier) {
+	commentMode: boolean;
+	hasFrames: boolean;
+	popoverOpen: boolean;
+	forwarded: boolean;
+};
+
+export const modeKeyAction = ({
+	key,
+	ctrlKey,
+	metaKey,
+	altKey,
+	repeat,
+	defaultPrevented,
+	inTextEntry,
+	commentMode,
+	hasFrames,
+	popoverOpen,
+	forwarded,
+}: ModeKeyInput): ModeKeyAction | undefined => {
+	if (defaultPrevented || inTextEntry || ctrlKey || metaKey || altKey || repeat) {
 		return undefined;
 	}
-	if (inTextEntry) {
-		return undefined;
+	if (popoverOpen) {
+		return key === 'Escape' && !forwarded ? 'cancel' : undefined;
 	}
-	if (key === 'ArrowUp') {
-		return 'cd:pick-parent';
+	if (key === 'c' || key === 'C') {
+		return hasFrames ? 'toggle' : undefined;
 	}
-	return key === 'ArrowDown' ? 'cd:pick-child' : undefined;
+	return key === 'Escape' && commentMode ? 'exit' : undefined;
 };

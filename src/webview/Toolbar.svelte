@@ -6,12 +6,10 @@
 		zoomText: string;
 		disabled: boolean;
 		commentMode: boolean;
-		pick: { selector: string | null; tagName: string; isPage: boolean; sequence: number } | undefined;
+		pick: { tagName: string; isPage: boolean; sequence: number } | undefined;
 		onPreset: (zoom: number) => void;
 		onFit: () => void;
 		onToggleComment: () => void;
-		onPickParent: () => void;
-		onPickChild: () => void;
 	};
 
 	let {
@@ -25,24 +23,14 @@
 		onPreset,
 		onFit,
 		onToggleComment,
-		onPickParent,
-		onPickChild,
 	}: Props = $props();
 
-	// Frame data, rendered as text only.
-	const pickText = $derived(
-		!commentMode || pick === undefined
-			? ''
-			: pick.isPage
-				? 'Whole frame'
-				: (pick.selector ?? `${pick.tagName} (no unique selector)`),
-	);
-
-	// The live region stays mounted, so a new pick is announced, not just inserted. It reads the
-	// tag, not a selector of up to 1000 characters. Equal text is not re-announced, so every other
-	// pick ends in a no-break space: two div picks in a row still both speak.
+	// The live region stays mounted, so a new pick is announced, not just inserted (the chip is in
+	// the comment popover). It reads the tag, not a selector of up to 1000 characters. Equal text is
+	// not re-announced, so every other pick ends in a no-break space: two div picks in a row still
+	// both speak.
 	const pickAnnouncement = $derived.by(() => {
-		if (pickText === '' || pick === undefined) {
+		if (!commentMode || pick === undefined) {
 			return '';
 		}
 		const text = pick.isPage ? 'Whole frame selected' : `${pick.tagName} element selected`;
@@ -71,28 +59,13 @@
 		class="action"
 		type="button"
 		aria-pressed={commentMode}
+		aria-keyshortcuts="c"
+		title="Comment (C)"
 		{disabled}
 		onclick={onToggleComment}>Comment</button
 	>
-	<span class="chip" title={pickText} hidden={pickText === ''}>{pickText}</span>
+	<span class="badge" hidden={!commentMode}>Click to comment.</span>
 	<span class="visually-hidden" aria-live="polite">{pickAnnouncement}</span>
-	{#if pickText !== ''}
-		<button
-			class="action"
-			type="button"
-			aria-label="Select parent element"
-			title="Parent (↑)"
-			aria-disabled={pick?.isPage}
-			onclick={pick?.isPage === true ? undefined : onPickParent}>Parent</button
-		>
-		<button
-			class="action"
-			type="button"
-			aria-label="Select child element"
-			title="Child (↓)"
-			onclick={onPickChild}>Child</button
-		>
-	{/if}
 	<span class="badge readout">{zoomText}</span>
 	<select class="preset" aria-label="Zoom preset" {disabled} onchange={choosePreset}>
 		<option value="" selected disabled>Zoom</option>
@@ -139,24 +112,8 @@
 		color: var(--vscode-button-foreground);
 		background: var(--vscode-button-background);
 	}
-	/* aria-disabled keeps a focused Parent button focusable when it reaches Whole frame. */
-	.action:disabled,
-	.action[aria-disabled='true'] {
+	.action:disabled {
 		opacity: 0.5;
-	}
-	/* A long selector ellipsizes; the full text is the title. */
-	.chip {
-		max-width: 16rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		padding: 0 0.375rem;
-		font-family: var(--vscode-editor-font-family);
-		color: var(--vscode-badge-foreground);
-		background: var(--vscode-badge-background);
-	}
-	.chip[hidden] {
-		display: none;
 	}
 	.visually-hidden {
 		position: absolute;

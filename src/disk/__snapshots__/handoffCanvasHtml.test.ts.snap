@@ -45,6 +45,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
 	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
 	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_KEY_MESSAGE = &quot;cd:key&quot;;
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
@@ -575,12 +576,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				last: lastPosted,
 				next
 			})) return;
+			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
 				point: next.point,
-				isPage: isRoot(current)
+				box: {
+					width: Math.min(box.width, MAX_FRAME_COORDINATE),
+					height: Math.min(box.height, MAX_FRAME_COORDINATE)
+				},
+				isPage: isRoot(current),
+				repost: !force
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -790,6 +797,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
+		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		if (key === void 0) return;
+		const origin = event.composedPath()[0];
+		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
+		host.postMessage({
+			type: FRAME_KEY_MESSAGE,
+			key
+		}, &quot;*&quot;);
+	}, { capture: true });
 	installCommentPicking(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
@@ -822,6 +840,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
 	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
 	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_KEY_MESSAGE = &quot;cd:key&quot;;
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
@@ -1352,12 +1371,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				last: lastPosted,
 				next
 			})) return;
+			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
 				point: next.point,
-				isPage: isRoot(current)
+				box: {
+					width: Math.min(box.width, MAX_FRAME_COORDINATE),
+					height: Math.min(box.height, MAX_FRAME_COORDINATE)
+				},
+				isPage: isRoot(current),
+				repost: !force
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -1567,6 +1592,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
+		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		if (key === void 0) return;
+		const origin = event.composedPath()[0];
+		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
+		host.postMessage({
+			type: FRAME_KEY_MESSAGE,
+			key
+		}, &quot;*&quot;);
+	}, { capture: true });
 	installCommentPicking(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
@@ -1599,6 +1635,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
 	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
 	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_KEY_MESSAGE = &quot;cd:key&quot;;
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
@@ -2129,12 +2166,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				last: lastPosted,
 				next
 			})) return;
+			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
 				point: next.point,
-				isPage: isRoot(current)
+				box: {
+					width: Math.min(box.width, MAX_FRAME_COORDINATE),
+					height: Math.min(box.height, MAX_FRAME_COORDINATE)
+				},
+				isPage: isRoot(current),
+				repost: !force
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -2344,6 +2387,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
+		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		if (key === void 0) return;
+		const origin = event.composedPath()[0];
+		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
+		host.postMessage({
+			type: FRAME_KEY_MESSAGE,
+			key
+		}, &quot;*&quot;);
+	}, { capture: true });
 	installCommentPicking(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
@@ -2376,6 +2430,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
 	var FRAME_HOVER_MESSAGE = &quot;cd:hover&quot;;
 	var FRAME_PICK_MESSAGE = &quot;cd:pick&quot;;
+	var FRAME_KEY_MESSAGE = &quot;cd:key&quot;;
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
@@ -2906,12 +2961,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				last: lastPosted,
 				next
 			})) return;
+			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
 			host.postMessage({
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
 				point: next.point,
-				isPage: isRoot(current)
+				box: {
+					width: Math.min(box.width, MAX_FRAME_COORDINATE),
+					height: Math.min(box.height, MAX_FRAME_COORDINATE)
+				},
+				isPage: isRoot(current),
+				repost: !force
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -3121,6 +3182,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
+		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
+		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		if (key === void 0) return;
+		const origin = event.composedPath()[0];
+		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
+		host.postMessage({
+			type: FRAME_KEY_MESSAGE,
+			key
+		}, &quot;*&quot;);
+	}, { capture: true });
 	installCommentPicking(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion

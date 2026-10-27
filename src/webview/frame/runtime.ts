@@ -1,6 +1,11 @@
 import { MAX_FRAME_HEIGHT } from '../../disk/layout';
 import { installCommentPicking } from './commentPicking';
-import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE, FRAME_WHEEL_MESSAGE } from './frameMessages';
+import {
+	FRAME_HEIGHT_MESSAGE,
+	FRAME_KEY_MESSAGE,
+	FRAME_READY_MESSAGE,
+	FRAME_WHEEL_MESSAGE,
+} from './frameMessages';
 
 // Runs inside the artboard iframe, injected first in head. Consumers import it as a string
 // through `?iife` (scripts/iifeStringPlugin.ts). `parent` is a replaceable global, so it is
@@ -115,6 +120,35 @@ window.addEventListener(
 		postWheel(event, false);
 	},
 	{ passive: false, capture: true },
+);
+
+// C and Escape with focus in the frame reach the chrome as cd:key; the chrome decides what they do.
+// Never prevented, so the design still sees them. Separate from Comment mode's input blocking.
+// ponytail: a design with its own bare `c` shortcut also toggles Comment mode in Interact mode;
+// only editable targets are excluded. `event.key` is layout-dependent, so a layout that never
+// produces `c` cannot toggle by key (the Comment button still works).
+window.addEventListener(
+	'keydown',
+	(event) => {
+		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) {
+			return;
+		}
+		const key =
+			event.key === 'c' || event.key === 'C' ? 'c' : event.key === 'Escape' ? 'Escape' : undefined;
+		if (key === undefined) {
+			return;
+		}
+		// composedPath, so an input inside a shadow root counts as editable too.
+		const origin = event.composedPath()[0];
+		if (
+			origin instanceof HTMLElement &&
+			(origin.isContentEditable || origin.matches('input, textarea, select'))
+		) {
+			return;
+		}
+		host.postMessage({ type: FRAME_KEY_MESSAGE, key }, '*');
+	},
+	{ capture: true },
 );
 
 installCommentPicking(host);

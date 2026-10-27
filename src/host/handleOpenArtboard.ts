@@ -7,6 +7,7 @@ import {
 	UNTRUSTED_WORKSPACE_MESSAGE,
 } from './artboardDisk';
 import { firstWorkspaceFolder, NO_FOLDER_MESSAGE } from './hostFs';
+import { postPanelComments } from './panelComments';
 import { ensureArtboardWatcher } from './watchArtboardDisk';
 import { openArtboardPanel, postArtboardSnapshotToPanel } from '../panel/openArtboardPanel';
 
@@ -23,9 +24,11 @@ export const reloadVisibleArtboardFromDisk = async (
 		postArtboardSnapshotToPanel(
 			emptyArtboardSnapshot(vscode.workspace.isTrusted ? undefined : UNTRUSTED_WORKSPACE_MESSAGE),
 		);
+		void postPanelComments({ outputChannel });
 		return;
 	}
 	postArtboardSnapshotToPanel(await readActiveArtboardFromDisk({ workspaceFolder, outputChannel }));
+	void postPanelComments({ outputChannel });
 };
 
 export const handleOpenArtboard = async ({
@@ -40,6 +43,7 @@ export const handleOpenArtboard = async ({
 	}
 
 	postArtboardSnapshotToPanel(await initAndLoadArtboard({ workspaceFolder, outputChannel }));
+	void postPanelComments({ outputChannel });
 	openArtboardPanel({ context });
 	ensureArtboardWatcher({ context, outputChannel });
 };

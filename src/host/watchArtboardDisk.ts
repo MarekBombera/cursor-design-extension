@@ -4,6 +4,7 @@ import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { isLockOrTempPath } from '../disk/workspaceLock';
 import { readActiveArtboardFromDisk } from './artboardDisk';
 import { fileExists, firstWorkspaceFolder, isFileNotFound, logDiskError } from './hostFs';
+import { postPanelComments } from './panelComments';
 import {
 	hasCurrentArtboardPanel,
 	openArtboardPanel,
@@ -61,6 +62,7 @@ const refreshWatchedArtboard = async ({
 		return;
 	}
 	postArtboardSnapshotToPanel(snapshot);
+	void postPanelComments({ outputChannel });
 };
 
 const deleteEnsurePanelMarker = async (

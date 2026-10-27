@@ -31,12 +31,11 @@ type WorkspaceDiskArgs = {
 	outputChannel: vscode.OutputChannel;
 };
 
-const toSafeArtboardErrorMessage = (error: unknown): string => {
-	if (error instanceof CursorDesignError) {
-		return error.message;
-	}
-	return 'Could not load artboard. Check the Output panel: Cursor Design.';
-};
+// Our authored copy for a domain error; the fallback for anything else (it may carry a path).
+export const toSafeArtboardErrorMessage = (
+	error: unknown,
+	fallback = 'Could not load artboard. Check the Output panel: Cursor Design.',
+): string => (error instanceof CursorDesignError ? error.message : fallback);
 
 const joinWorkspace = (
 	workspaceFolder: vscode.WorkspaceFolder,

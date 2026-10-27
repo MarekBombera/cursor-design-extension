@@ -101,7 +101,11 @@ const reveal = async ({ stage, ...target }: FrameTarget & { stage: Box }): Promi
 	return screenBox(target);
 };
 
-const commentButton = (page: Page): Locator => page.getByRole('button', { name: 'Comment' });
+const commentButton = (page: Page): Locator =>
+	page.getByRole('button', { name: 'Comment', exact: true });
+
+// The pick's target chip lives in the comment popover.
+const popoverChip = (page: Page): Locator => page.locator('[data-cd-comment-popover] .chip');
 
 const toggleComment = async (page: Page, pressed: boolean): Promise<void> => {
 	await clickChrome(commentButton(page));
@@ -223,7 +227,7 @@ test('Comment mode: clicks pick instead of acting', async ({ page }) => {
 	expect(pick.tagName).toBe('button');
 	expect(await statusText(page)).toBe('Nothing fired yet.');
 	await expect(page.locator('.overlay .outline.pick')).toBeVisible();
-	await expect(page.locator('.bar .chip')).toBeVisible();
+	await expect(popoverChip(page)).toBeVisible();
 
 	// A default action, not a handler: only preventDefault keeps <details> shut (F-61). The
 	// Interact-mode test proves the same click opens it.
@@ -233,9 +237,7 @@ test('Comment mode: clicks pick instead of acting', async ({ page }) => {
 	expect(await detailsOpen(page)).toBe(false);
 });
 
-test('Comment mode: Parent, ↑/↓ with chrome focus, and ↑ with frame focus step the pick', async ({
-	page,
-}) => {
+test('Comment mode: Parent, and ↑/↓ with focus in the popover, step the pick', async ({ page }) => {
 	const stage = await openPickingStage(page);
 	await toggleComment(page, true);
 	const button = await revealChangeButton(page, stage);
@@ -247,7 +249,7 @@ test('Comment mode: Parent, ↑/↓ with chrome focus, and ↑ with frame focus 
 		await resolvesTo({ page, selector: await nextPickSelector(page, count), expected: 'parent' }),
 	).toBe(true);
 
-	// Focus is on the toolbar button now: the chrome's own ↑/↓ handler steps the pick (F-63).
+	// Focus is on the popover's Parent button and the box is empty: the popover steps (F-63).
 	count += 1;
 	await page.keyboard.press('ArrowDown');
 	expect(
@@ -263,8 +265,10 @@ test('Comment mode: Parent, ↑/↓ with chrome focus, and ↑ with frame focus 
 		await resolvesTo({ page, selector: await nextPickSelector(page, count), expected: 'parent' }),
 	).toBe(true);
 
+	// A new click retargets; focus lands in the empty textarea, where ↑ steps too.
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
 	expect((await picksOf(page, 'a')).at(-1)?.tagName).toBe('button');
+	await expect(page.getByRole('textbox', { name: 'Comment' })).toBeFocused();
 	count = (await picksOf(page, 'a')).length;
 	await page.keyboard.press('ArrowUp');
 	expect(
@@ -308,12 +312,12 @@ test('Comment mode: a picked frame leaving takes its pick; an empty stage ends C
 	await toggleComment(page, true);
 	const button = await revealChangeButton(page, stage);
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
-	await expect(page.locator('.bar .chip')).toBeVisible();
+	await expect(popoverChip(page)).toBeVisible();
 
 	await postToChrome(page, canvasUpdated([FRAME_B]));
 	await expect(page.locator('[data-cd-frame-id="a"]')).toHaveCount(0);
 	await expect(page.locator('.overlay .outline')).toHaveCount(0);
-	await expect(page.locator('.bar .chip')).toBeHidden();
+	await expect(popoverChip(page)).toBeHidden();
 	// Frame B is still live, so the mode stays on.
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 
@@ -366,8 +370,10 @@ const FORGED_PICK = {
 	text: 'Forged',
 	rect: { x: 0, y: 0, width: 200, height: 100 },
 	point: { x: 1, y: 1 },
+	box: { width: 200, height: 100 },
 	styles: {},
 	isPage: false,
+	repost: false,
 };
 
 const postFromFrameA = async (page: Page, message: unknown): Promise<void> => {
@@ -393,7 +399,7 @@ test('Interact mode: a forged cd:hover and cd:pick from the design draw nothing'
 		.toBe(1);
 	await nextAnimationFrame(page);
 	await expect(page.locator('.overlay .outline')).toHaveCount(0);
-	await expect(page.locator('.bar .chip')).toBeHidden();
+	await expect(popoverChip(page)).toBeHidden();
 });
 
 test('Comment mode: a forged cd:pick with a control character changes nothing', async ({
@@ -403,7 +409,7 @@ test('Comment mode: a forged cd:pick with a control character changes nothing', 
 	await toggleComment(page, true);
 	const button = await revealChangeButton(page, stage);
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
-	const chip = page.locator('.bar .chip');
+	const chip = popoverChip(page);
 	const chipText = (await chip.textContent()) ?? '';
 	expect(chipText).not.toBe('');
 
@@ -504,4 +510,24 @@ test('selector: an item of a scrolled box', async ({ page }) => {
 	expect(
 		await resolvesTo({ page, selector: pick.selector, expected: '.scroll-box > li:nth-child(12)' }),
 	).toBe(true);
+});
+
+test('a click posts a user pick; a scroll inside the picked frame re-posts it', async ({
+	page,
+}) => {
+	const stage = await openPickingStage(page);
+	await toggleComment(page, true);
+	const scrollBox = await reveal({ page, stage, frameId: 'a', selector: '.scroll-box' });
+	const item = await screenBox({ page, frameId: 'a', selector: '.scroll-box > li:nth-child(2)' });
+	const pick = await pickInFrame({ page, frameId: 'a', point: centerOf(item) });
+	expect(pick.repost).toBe(false);
+	expect(pick.box.width).toBeGreaterThan(0);
+	expect(pick.box.height).toBeGreaterThan(0);
+
+	const count = (await picksOf(page, 'a')).length;
+	// The box's left edge: the popover opens below-right of the pick point.
+	await page.mouse.move(scrollBox.x + 10, scrollBox.y + scrollBox.height / 2);
+	await page.mouse.wheel(0, 60);
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(count);
+	expect((await picksOf(page, 'a')).at(-1)?.repost).toBe(true);
 });

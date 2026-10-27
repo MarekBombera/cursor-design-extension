@@ -1,3 +1,4 @@
+import { MAX_FRAME_COORDINATE } from '../../disk/layout';
 import {
 	FRAME_HOVER_MESSAGE,
 	FRAME_MODE_MESSAGE,
@@ -177,13 +178,23 @@ export const installCommentPicking = (host: Window): void => {
 		if (!force && lastPosted !== undefined && isUnchangedPick({ last: lastPosted, next })) {
 			return;
 		}
+		// The unclipped border box `point` is relative to (pickPoint's box for a page pick), capped
+		// like `point` so a pick never fails its own guard.
+		// ponytail: past the cap (a 100000 px element) the pin fraction is off; upgrade is scaling
+		// point and box together.
+		const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
 		host.postMessage(
 			{
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
 				point: next.point,
+				box: {
+					width: Math.min(box.width, MAX_FRAME_COORDINATE),
+					height: Math.min(box.height, MAX_FRAME_COORDINATE),
+				},
 				isPage: isRoot(current),
+				repost: !force,
 			},
 			'*',
 		);

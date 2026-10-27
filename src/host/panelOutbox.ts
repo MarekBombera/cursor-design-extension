@@ -1,4 +1,10 @@
-import type { HostMessage, PostedCanvasFrame } from '../webview/hostMessages';
+import type {
+	CommentAddedMessage,
+	CommentsUpdatedMessage,
+	HostMessage,
+	PostedCanvasFrame,
+	UiErrorMessage,
+} from '../webview/hostMessages';
 import { type CanvasSnapshot, postedFrameFromSnapshot } from './canvasSnapshot';
 
 type CanvasHostView = {
@@ -15,11 +21,14 @@ type UiStatusPartial = { mcpAvailable?: boolean; handoffStale?: boolean };
 type PanelOutbox = {
 	postSnapshot: (snapshot: CanvasSnapshot) => void;
 	postUiStatus: (partial: UiStatusPartial) => void;
+	postComments: (comments: Omit<CommentsUpdatedMessage, 'type'>) => void;
+	postAnswer: (answer: CommentAddedMessage | UiErrorMessage) => void;
 	markReady: () => void;
 	reset: () => void;
 };
 
-// What the chrome sees, and when: nothing before artboard:ready, then the latest view and status.
+// What the chrome sees, and when: nothing before artboard:ready, then the latest view, status and
+// comments. Answers to a chrome request are never held: a chrome that reloaded has no request.
 // The vscode glue (openArtboardPanel.ts) owns the panel; this owns only the pending state.
 export const createPanelOutbox = ({
 	post,
@@ -31,6 +40,7 @@ export const createPanelOutbox = ({
 	let chromeReady = false;
 	let pendingView: CanvasHostView | undefined;
 	let pendingUiStatus: { mcpAvailable?: boolean; handoffStale: boolean } = { handoffStale: false };
+	let pendingComments: CommentsUpdatedMessage | undefined;
 
 	const flushView = (): void => {
 		if (!chromeReady || pendingView === undefined) {
@@ -51,6 +61,12 @@ export const createPanelOutbox = ({
 			mcpAvailable: pendingUiStatus.mcpAvailable,
 			handoffStale: pendingUiStatus.handoffStale,
 		});
+	};
+
+	const flushComments = (): void => {
+		if (chromeReady && pendingComments !== undefined) {
+			post(pendingComments);
+		}
 	};
 
 	const postUiStatus = (partial: UiStatusPartial): void => {
@@ -77,16 +93,28 @@ export const createPanelOutbox = ({
 			flushView();
 		},
 		postUiStatus,
-		// A second artboard:ready (webview reload) re-sends the cached view and status.
+		postComments: (comments) => {
+			pendingComments = { type: 'comments:updated', ...comments };
+			flushComments();
+		},
+		postAnswer: (answer) => {
+			if (chromeReady) {
+				post(answer);
+			}
+		},
+		// A second artboard:ready (webview reload) re-sends the cached view, status and comments.
 		markReady: () => {
 			chromeReady = true;
 			flushView();
 			flushUiStatus();
+			flushComments();
 		},
-		// Panel disposed: drop the view and stale flag; mcpAvailable is process state and survives.
+		// Panel disposed: drop the view, comments and stale flag; mcpAvailable is process state and
+		// survives.
 		reset: () => {
 			chromeReady = false;
 			pendingView = undefined;
+			pendingComments = undefined;
 			pendingUiStatus = { mcpAvailable: pendingUiStatus.mcpAvailable, handoffStale: false };
 		},
 	};

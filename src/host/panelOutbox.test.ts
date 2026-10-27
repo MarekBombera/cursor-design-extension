@@ -95,3 +95,34 @@ test('reset (dispose) drops the view and stale flag and waits for ready, keeping
 	outbox.markReady();
 	assert.deepEqual(posted, [{ type: 'ui:status', mcpAvailable: true, handoffStale: false }]);
 });
+
+test('comments queued before ready flush after the view and status, and every ready re-sends them', () => {
+	const { outbox, posted, types } = setup();
+	outbox.postComments({ comments: [], error: 'broken' });
+	outbox.postSnapshot(snapshot());
+	outbox.postUiStatus({ mcpAvailable: true });
+	outbox.markReady();
+	assert.deepEqual(types(), ['canvas:updated', 'ui:status', 'comments:updated']);
+	assert.deepEqual(posted.at(-1), { type: 'comments:updated', comments: [], error: 'broken' });
+	posted.length = 0;
+	outbox.markReady();
+	assert.deepEqual(types(), ['canvas:updated', 'ui:status', 'comments:updated']);
+});
+
+test('an answer before ready is dropped and never replayed; after ready it posts once', () => {
+	const { outbox, posted, types } = setup();
+	outbox.postAnswer({ type: 'comment:added', requestId: 'r1' });
+	outbox.markReady();
+	assert.deepEqual(types(), []);
+	outbox.postAnswer({ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' });
+	outbox.markReady();
+	assert.deepEqual(posted, [{ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' }]);
+});
+
+test('reset drops the cached comments', () => {
+	const { outbox, types } = setup();
+	outbox.postComments({ comments: [] });
+	outbox.reset();
+	outbox.markReady();
+	assert.deepEqual(types(), []);
+});

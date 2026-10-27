@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
 	import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
@@ -36,6 +37,8 @@
 		onIframe: (id: string, iframe: HTMLIFrameElement | undefined) => void;
 		onRenderError: (id: string) => void;
 		onFrameGesture: (gesture: StageFrameGesture) => void;
+		// Viewport-local chrome above the frames and outlines (the comment popover).
+		children?: Snippet;
 	};
 
 	let {
@@ -56,6 +59,7 @@
 		onIframe,
 		onRenderError,
 		onFrameGesture,
+		children,
 	}: Props = $props();
 
 	// The resize handle is a fixed 8 screen px wide, centered on the frame's right edge.
@@ -412,6 +416,7 @@
 		{/each}
 	</div>
 	<Overlay hover={hoverOutline} pick={pickOutline} />
+	{@render children?.()}
 </div>
 
 <style>

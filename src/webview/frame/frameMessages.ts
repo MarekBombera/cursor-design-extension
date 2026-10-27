@@ -21,6 +21,8 @@ export const FRAME_HOVER_MESSAGE = 'cd:hover';
 
 export const FRAME_PICK_MESSAGE = 'cd:pick';
 
+export const FRAME_KEY_MESSAGE = 'cd:key';
+
 export const FRAME_MODE_MESSAGE = 'cd:mode';
 
 export const PICK_PARENT_MESSAGE = 'cd:pick-parent';
@@ -58,16 +60,24 @@ export type FramePickMessage = {
 	rect: FrameRect | null;
 	// CSS px relative to the current target's unclipped border box.
 	point: { x: number; y: number };
+	// That unclipped border box's size, so the pin fraction is right for a clipped target.
+	box: { width: number; height: number };
 	styles: CommentStyles;
 	isPage: boolean;
+	// True for a scroll or resize re-post of the same pick; false for a click or ↑/↓ step.
+	repost: boolean;
 };
+
+// The mode keys, forwarded so they work with focus inside a frame.
+type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: 'c' | 'Escape' };
 
 export type FrameMessage =
 	| FrameHeightMessage
 	| FrameWheelMessage
 	| FrameReadyMessage
 	| FrameHoverMessage
-	| FramePickMessage;
+	| FramePickMessage
+	| FrameKeyMessage;
 
 export type ChromeFrameMessage =
 	| { type: typeof FRAME_MODE_MESSAGE; mode: FrameMode }
@@ -103,7 +113,8 @@ export const isSafeStyleValue = (value: string): boolean =>
 const asRecord = (data: unknown): Record<string, unknown> | undefined =>
 	data === null || typeof data !== 'object' ? undefined : (data as Record<string, unknown>);
 
-const parseFrameRect = (value: unknown): FrameRect | undefined => {
+// Also guards the rects in comments:updated (hostMessages.ts).
+export const parseFrameRect = (value: unknown): FrameRect | undefined => {
 	const record = asRecord(value);
 	if (record === undefined) {
 		return undefined;
@@ -167,6 +178,18 @@ const parsePoint = (value: unknown): { x: number; y: number } | undefined => {
 	return { x: record.x, y: record.y };
 };
 
+const parseBox = (value: unknown): { width: number; height: number } | undefined => {
+	const record = asRecord(value);
+	if (
+		record === undefined ||
+		!isPointCoordinate(record.width) ||
+		!isPointCoordinate(record.height)
+	) {
+		return undefined;
+	}
+	return { width: record.width, height: record.height };
+};
+
 const isStyleKey = (key: string): key is (typeof COMMENT_STYLE_KEYS)[number] =>
 	(COMMENT_STYLE_KEYS as readonly string[]).includes(key);
 
@@ -187,12 +210,16 @@ const parseStyles = (value: unknown): CommentStyles | undefined => {
 };
 
 const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {
-	const { tagName, text, isPage } = record;
+	const { tagName, text, isPage, repost } = record;
 	const rect = parseNullableRect(record.rect);
 	const selector = parseSelector(record.selector);
 	const point = parsePoint(record.point);
+	const box = parseBox(record.box);
 	const styles = parseStyles(record.styles);
 	if (!isTagName(tagName) || rect === undefined || typeof isPage !== 'boolean') {
+		return undefined;
+	}
+	if (box === undefined || typeof repost !== 'boolean') {
 		return undefined;
 	}
 	if (selector === undefined || !isPickText(text) || point === undefined || styles === undefined) {
@@ -202,7 +229,18 @@ const parseFramePick = (record: Record<string, unknown>): FramePickMessage | und
 	if (isPage && (selector !== 'body' || tagName !== 'body')) {
 		return undefined;
 	}
-	return { type: FRAME_PICK_MESSAGE, selector, tagName, text, rect, point, styles, isPage };
+	return {
+		type: FRAME_PICK_MESSAGE,
+		selector,
+		tagName,
+		text,
+		rect,
+		point,
+		box,
+		styles,
+		isPage,
+		repost,
+	};
 };
 
 // Frame → chrome posts are untrusted (rule 02). The bridge has already matched event.source
@@ -228,6 +266,10 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
 		}
 		case FRAME_PICK_MESSAGE:
 			return parseFramePick(record);
+		case FRAME_KEY_MESSAGE:
+			return record.key === 'c' || record.key === 'Escape'
+				? { type: FRAME_KEY_MESSAGE, key: record.key }
+				: undefined;
 		default:
 			return undefined;
 	}
