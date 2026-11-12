@@ -1,4 +1,5 @@
 import { MAX_FRAME_COORDINATE } from '../../disk/layout';
+import { clampNumber } from '../stageGeometry';
 import type { AnchorRect, FrameRect } from './frameMessages';
 
 // Sub-pixel jitter (layout rounding, a 0.5px border) is not a move.
@@ -39,15 +40,10 @@ export const anchorsMoved = ({
 	});
 };
 
-const clampCoordinate = (value: number): number =>
-	Math.min(MAX_FRAME_COORDINATE, Math.max(-MAX_FRAME_COORDINATE, value));
-
-const clampSize = (value: number): number => Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
-
 // Into parseFrameRect's bounds, so a measured rect never fails the chrome's own guard.
 export const capAnchorRect = (rect: FrameRect): FrameRect => ({
-	x: clampCoordinate(rect.x),
-	y: clampCoordinate(rect.y),
-	width: clampSize(rect.width),
-	height: clampSize(rect.height),
+	x: clampNumber({ value: rect.x, min: -MAX_FRAME_COORDINATE, max: MAX_FRAME_COORDINATE }),
+	y: clampNumber({ value: rect.y, min: -MAX_FRAME_COORDINATE, max: MAX_FRAME_COORDINATE }),
+	width: clampNumber({ value: rect.width, min: 0, max: MAX_FRAME_COORDINATE }),
+	height: clampNumber({ value: rect.height, min: 0, max: MAX_FRAME_COORDINATE }),
 });

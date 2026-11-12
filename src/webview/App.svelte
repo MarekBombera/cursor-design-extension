@@ -217,7 +217,6 @@
 			comments = message.comments;
 			commentsError = message.error;
 			sendAnchors(liveIframeIds(frames));
-			keepThread();
 			return;
 		}
 		if (message.type === 'comment:added' || message.type === 'ui:error') {
@@ -259,12 +258,14 @@
 		}
 	};
 
-	// Runs after every change that can unplace the open thread's pin.
-	const keepThread = (): void => {
+	// Closes the open thread whenever its pin is no longer placed, whatever moved it (comments,
+	// a frame's answer, its height, a reload, a drag preview or its settle). Pre: it runs before the
+	// thread leaves the DOM, so focus inside it still moves to the stage viewport, never body.
+	$effect.pre(() => {
 		if (keepOpenThread({ openThreadId, pins }) === undefined) {
 			closeThreadImplicitly();
 		}
-	};
+	});
 
 	// A pin opens its thread, swaps to it from another, or closes it when it is the open one.
 	const handlePinOpen = (id: string): void => {
@@ -298,7 +299,6 @@
 				anchors = dropFrameAnchors({ state: anchors, frameId });
 			}
 		}
-		keepThread();
 	};
 
 	// Entering or leaving the mode discards any draft, pending or not; a late answer is ignored.
@@ -441,14 +441,12 @@
 			if (message.type === 'cd:ready') {
 				anchors = dropFrameAnchors({ state: anchors, frameId });
 				sendAnchors([frameId]);
-				keepThread();
 			}
 			return;
 		}
 		if (message.type === 'cd:anchor-rects') {
 			// Keyed by the sending frame, in any mode: a forged answer only moves its own pins.
 			anchors = applyAnchorRects({ state: anchors, frameId, anchors: message.anchors });
-			keepThread();
 			return;
 		}
 		if (message.type === 'cd:frame-height') {
@@ -532,7 +530,6 @@
 	const handleFrameGesture = (event: StageFrameGesture): void => {
 		const step = stepFrameGesture({ gesture, event, diskPlacement, view: stageView });
 		gesture = step.gesture;
-		keepThread();
 		if (step.commit !== undefined) {
 			postFramePlace(step.commit);
 		}

@@ -82,7 +82,7 @@ const DOOMED = comment({
 	tagName: 'div',
 	text: 'Doomed',
 	// The pick-time rect the missing pin falls back to.
-	rect: { x: 24, y: 300, width: 80, height: 24 },
+	rect: { x: 24, y: 200, width: 80, height: 24 },
 	pin: { x: 0.5, y: 0.5 },
 	body: 'Doomed',
 });
@@ -315,7 +315,8 @@ test('a static page goes quiet after its forced answer', async ({ page }) => {
 	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
 	// Count every measurement the runtime schedules from here (Interact mode: picking schedules
 	// none): a static page triggers nothing. Chromium makes re-observing an observed element a
-	// no-op, so this cannot catch a missing observed-set diff; it catches any other self-trigger.
+	// no-op, so this cannot catch a missing observed-set diff (the observer test below does); it
+	// catches any other self-trigger.
 	await inFrame(
 		page,
 		`(() => {
@@ -333,6 +334,59 @@ test('a static page goes quiet after its forced answer', async ({ page }) => {
 	}
 	expect(await anchorAnswers(page)).toBe(answers);
 	expect(await (await frameOf(page, 'a')).evaluate('window.__cdScheduled')).toBe(0);
+});
+
+// Departure from rule 09: a ResizeObserver's targets are invisible to the page, and Chromium makes
+// a repeated observe() a no-op, so no message or box shows the observed-set diff. This wraps the
+// prototype inside the frame after the height observer started and before the pin observer does.
+const TRACK_RESIZE_OBSERVER = `(() => {
+	const proto = ResizeObserver.prototype;
+	const { observe, unobserve, disconnect } = proto;
+	window.__cdObserved = new Set();
+	window.__cdObserveCalls = 0;
+	proto.observe = function (target, options) {
+		window.__cdObserveCalls += 1;
+		window.__cdObserved.add(target);
+		return observe.call(this, target, options);
+	};
+	proto.unobserve = function (target) {
+		window.__cdObserved.delete(target);
+		return unobserve.call(this, target);
+	};
+	proto.disconnect = function () {
+		window.__cdObserved.clear();
+		return disconnect.call(this);
+	};
+})()`;
+
+test('the pin observer watches only current targets and stops on empty anchors', async ({
+	page,
+}) => {
+	await openPinStage(page, []);
+	await inFrame(page, TRACK_RESIZE_OBSERVER);
+	const frame = await frameOf(page, 'a');
+	// Every comments:updated makes the frame answer once (a forced measurement).
+	const sendComments = async (comments: PostedComment[]): Promise<void> => {
+		const answers = await anchorAnswers(page);
+		await postToChrome(page, { type: 'comments:updated', comments });
+		await expect.poll(() => anchorAnswers(page)).toBeGreaterThan(answers);
+	};
+	const observed = (): Promise<unknown> =>
+		frame.evaluate(
+			`[...window.__cdObserved].map((element) => element.id || element.tagName).sort()`,
+		);
+	await sendComments([TITLE, MOVER]);
+	expect(await observed()).toEqual(['HTML', 'mover', 'title']);
+	// A measurement with the same targets observes nothing again.
+	const calls = await frame.evaluate('window.__cdObserveCalls');
+	await sendComments([TITLE, MOVER]);
+	expect(await frame.evaluate('window.__cdObserveCalls')).toBe(calls);
+	// A target that is no longer requested is unobserved.
+	await sendComments([TITLE]);
+	expect(await observed()).toEqual(['HTML', 'title']);
+	// Empty anchors tear the observer down.
+	await sendComments([]);
+	expect(await observed()).toEqual([]);
 });
 
 test('a pointer drag starting on a pin does not pan', async ({ page }) => {
@@ -461,6 +515,25 @@ test('a reload that unplaces the open pin closes its thread, and it does not com
 	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
 	await expect(thread(page)).toHaveCount(0);
 	await expect(page.locator('.viewport')).toBeFocused();
+});
+
+test('a page shrink that unplaces the open pin closes its thread, and it does not come back', async ({
+	page,
+}) => {
+	await openPinStage(page, [DOOMED]);
+	await expectPinOn({ page, id: DOOMED.id, selector: '#doomed', pin: DOOMED.pin });
+	await openThread(page, DOOMED.id);
+	// The target goes (box: null, so the pin falls back to the stored rect at y 200), then the page
+	// shrinks to its padding. Only cd:frame-height reports the shrink; the frame's answer is unchanged.
+	await inFrame(page, `document.body.replaceChildren()`);
+	await expect(pinOf(page, DOOMED.id)).toHaveCount(0);
+	await expect(thread(page)).toHaveCount(0);
+	await expect(page.locator('.viewport')).toBeFocused();
+	await inFrame(page, `document.body.style.height = '400px'`);
+	await expect(
+		page.getByRole('button', { name: 'Open comment, target missing: Doomed' }),
+	).toBeVisible();
+	await expect(thread(page)).toHaveCount(0);
 });
 
 test('a body with markup shows as literal text', async ({ page }) => {

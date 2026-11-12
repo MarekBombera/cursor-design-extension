@@ -1,135 +1,61 @@
-# Pins (8f2) - Overview for review
+# Fix: Pin review follow-ups - Overview for review
 
-Source of truth: `blueprint/history/features/08f2-pins.md`. This file is the steering summary, not the build spec.
-
-Open in Markdown preview to render the diagrams.
+Source of truth: `blueprint/history/fixes/pin-review-follow-ups.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Every comment now shows a pin on the canvas. The pin sits on its element inside the live frame and
-follows scroll, resize, DOM changes, frame drag, zoom and pan. It shows its status and one warning
-badge. A click opens a read-only thread. Reply, Resolve and Copy arrive in 8g and 8h.
-
-## System map
-
-```mermaid
-flowchart LR
-  Disk[(".cursor-design/<br/>comments.json, artboards/id.html")]
-  Host["Host<br/>readComments, postPanelComments"]
-  Chrome["Chrome<br/>App, pins.ts, Pins, CommentThread"]
-  Frame["Frame runtime<br/>installPinAnchors"]
-  MCP["MCP<br/>list_comments, get_comment"]
-  Disk -->|comments + artboard HTML| Host
-  Disk -->|same flag path| MCP
-  Host -->|"comments:updated + stale, targetMissing"| Chrome
-  Chrome -->|"cd:anchors"| Frame
-  Frame -->|"cd:anchor-rects"| Chrome
-```
-
-## Key loop
-
-```mermaid
-sequenceDiagram
-  participant D as Disk (.cursor-design)
-  participant H as Host (panelComments)
-  participant C as Chrome (App, Pins)
-  participant F as Frame runtime (pinAnchors)
-  Note over D,H: watcher refresh, comment:create success, panel opened or shown
-  H->>D: readComments (comments.json + artboards/id.html)
-  Note over H: parse cached by HTML text, css-select within 200 ms, then null flags
-  H->>C: comments:updated {comments[ + stale|null, targetMissing|null ], error?}
-  C->>F: cd:anchors {anchors[{id, selector}]} (every live frame, [] with no element comments)
-  alt from a sender other than the captured parent, or any bad entry
-    F->>F: message dropped
-  else empty list
-    F->>F: observers off, pending measurement cancelled
-  else non-empty list
-    F->>F: ResizeObserver, MutationObserver, scroll, resize, transitionend, animationend
-  end
-  F->>C: cd:anchor-rects {anchors[{id, box|null, visible|null}]} (forced once per cd:anchors)
-  loop any trigger, one measurement per animation frame
-    opt a target moved more than 0.5px, or a null flipped, or the id list changed
-      F->>C: cd:anchor-rects {all anchors}
-    end
-  end
-  alt not a registered iframe, or any bad entry
-    C->>C: message dropped
-  else valid
-    C->>C: store under the sender's frame id (any mode), layoutPins from drawn frames + view
-  end
-  opt frame reload (cd:ready)
-    F->>C: cd:ready
-    C->>F: cd:mode {current}
-    C->>C: drop that frame's anchors, pins fall back to the stored rect
-    C->>F: cd:anchors {that frame's list}
-  end
-```
+Closes the three findings left open by the independent review of 8f2 Pins (F-88, F-91, F-92). It also fixes one flaky 8f2 browser test and adds a test for the pin observer. The only visible change: an open comment thread now always closes when its pin disappears, and it never comes back by itself.
 
 ## Rule logic
 
 ```mermaid
 flowchart TD
-  Start["Comment on a live iframe frame"] --> Hidden{"Target clipped out,<br/>or point outside the frame?"}
-  Hidden -->|yes| NoPin["No pin"]
-  Hidden -->|no| Resolved{"Resolved?"}
-  Resolved -->|yes| Plain["Pin, no badge"]
-  Resolved -->|no| Missing{"Live box null,<br/>or targetMissing true?"}
-  Missing -->|yes| X["× missing"]
-  Missing -->|no| Stale{"stale true?"}
-  Stale -->|yes| Bang["! stale"]
-  Stale -->|no| Unchecked{"Both flags null?"}
-  Unchecked -->|yes| Q["? unchecked"]
-  Unchecked -->|no| Plain
+  A["pins or openThreadId changes<br/>(comments, frame answer, frame height,<br/>reload, drag preview or settle)"] --> B{"Is the open thread's pin<br/>still in pins?"}
+  B -- yes --> C[Thread stays open]
+  B -- no --> D["openThreadId = undefined<br/>(runs before the thread unmounts)"]
+  D --> E{"Was focus inside the thread?"}
+  E -- yes --> F[Focus moves to the stage viewport]
+  E -- no --> G[Focus unchanged]
 ```
 
 ## What you will see
 
-- A 20px pin on each commented element: **open** is filled, **sent** is a hollow ring, **resolved**
-  is dimmed with a ✓ and sits under the others.
-- One corner badge: **!** stale, **×** target missing, **?** unchecked. Resolved pins never get one.
-- A page comment pins to its fraction of the frame.
-- A target scrolled out of its box hides its pin. A target the design removed shows **×** near its
-  stored position.
-- A pin click opens a popover with the target, status, badge text, body and replies. Escape or Close
-  returns focus to the pin. If the comment or pin goes away, it closes and focus moves to the stage.
-- While you write a new comment, a click on a pin picks the element under it.
+- An open thread closes, and focus moves to the stage, whenever its pin stops being placed: the page got shorter, a drag settled or was refused, the frame reloaded, or the comment went away.
+- When the pin comes back, the thread stays closed. Before this fix, the thread could stay invisibly "open", focus fell to the page body, and the thread popped back later.
+- Nothing else changes visibly.
 
 ## Architecture decisions
 
-- Flags use the same `commentFlags` as `get_comment`. `null` means unchecked, never guessed.
-- Live beats disk: a target the frame cannot find is missing whatever disk said.
-- Untrusted ids never become object keys: payloads are arrays, and anchor state is a `Map` per frame.
-- The parse is cached by HTML text (32 frames at most). Target checks stop after 200 ms per read and
-  report the rest unchecked, with a hint to read again.
-- Artboard `<style>` blocks no longer log chrome CSP violations (F-90): `stampArtboardHtml` parses
-  into a detached root.
+- **F-88:** one `$effect.pre` in `App.svelte` replaces the 5 per-caller `keepThread()` calls. Every path that moves pins is covered, including the 3 that were missing and any future one. It is "pre" so it runs before the thread leaves the DOM, which keeps the focus fallback working.
+- **F-91:** `capAnchorRect` uses the shared `clampNumber` instead of two private copies with the same bounds. In the exported `canvas.html`, only the `anchorRects` code in each embedded runtime changes.
+- **F-92:** the `'*'` target origin stays. Only its comment changed: a sandboxed frame has no origin to target, it can only navigate to `blob:`, and it receives only its own comment ids and selectors.
+
+## Decisions locked
+
+- No new message, contract or helper. The system map changed only the pins sentence and its "last verified" line.
+- The observer test wraps `ResizeObserver` inside the frame. This departs from the browser-test rule on purpose, because the observed set is invisible to the page.
+- The `DOOMED.rect` test data moved to y 200. The old value made `a removed target shows the missing badge at its stored rect` fail 3 of 8 runs.
 
 ## Out of scope
 
-- Reply, Resolve, Reopen, the comments panel and click to jump (8g). Copy and marking sent (8h).
-- Following an element during a CSS animation: pins catch up on transition or animation end.
-- Image and web-font load triggers, because `FRAME_CSP` blocks those loads.
-- An HTML byte cap, or parsing in a worker.
+- The other open, fixed and unverified findings in the ledger (F-09 to F-84).
+- Changing what `cd:anchors` sends, or the postMessage target.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Anchor | A comment's selector, which the frame resolves to a live element |
-| `box` / `visible` | The target's full box, and the part of it you can actually see |
-| Stale | The target element changed on disk since the comment |
-| Unchecked | The target cannot be checked from disk, or the read ran out of budget |
-| Thread | The read-only popover that shows a comment and its replies |
+| Pin | The dot on a design element that marks a comment. Clicking it opens the comment's thread. |
+| Placed | The pin has a position inside its frame. A pin whose target and stored position both fall outside the frame is not drawn. |
+| `$effect.pre` | A Svelte reaction that runs before the screen updates, so it can move focus before the thread is removed. |
+| Pin observer | Watches the commented elements' sizes inside a frame, so pins follow them. |
 
 ## Your actions
 
-Run the `## Try it now` path in the archive. The independent review could not exercise F5, so these
-were not checked there: pins across panel hide/show, a real `update_artboard` flipping a badge to
-stale, and the webview console under the real CSP.
+- Optional F5 in `fixtures/dev-workspace`: open a thread near the bottom of a design, have the design delete its element and shorten the page, then lengthen it again. The archive's `## Try it now` has the steps.
 
 ## Done means
 
-- `pnpm verify` and `pnpm test:browser` are green.
-- Pins, states, badges, page pins and the read-only thread work as described above.
-- Carried forward open: F-88 (a thread can be hidden but still open after a `cd:frame-height`
-  shrink), F-91 (a twin clamp) and F-92 (an out-of-date `postToFrame` comment).
+- `pnpm verify` is green: 36 test files, 451 tests.
+- `pnpm test:browser` is green: 81 passed, including the 2 new `pins.spec.ts` cases.
+- F-88, F-91 and F-92 are closed by an independent review and archived with this fix.

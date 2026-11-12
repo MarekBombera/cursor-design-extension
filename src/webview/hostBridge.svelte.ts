@@ -50,8 +50,10 @@ export const postCommentCreate = (message: CommentCreateMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
-// The only chrome → frame send. '*' because sandboxed frames have an opaque origin; the payload
-// is only a mode or a step command, nothing private.
+// The only chrome → frame send. '*' because a sandboxed frame has an opaque origin, so there is
+// nothing to target; the frame can only navigate to blob: (chrome CSP frame-src), a document its
+// own script made. The payload is a mode, a step command, or this frame's own comment ids and
+// selectors (cd:anchors), never comment bodies or another frame's data.
 export const postToFrame = (iframe: HTMLIFrameElement, message: ChromeFrameMessage): void => {
 	iframe.contentWindow?.postMessage(message, '*');
 };

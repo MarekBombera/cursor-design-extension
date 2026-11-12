@@ -769,13 +769,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
 		});
 	};
-	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
-	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
 	var capAnchorRect = (rect) =&gt; ({
-		x: clampCoordinate(rect.x),
-		y: clampCoordinate(rect.y),
-		width: clampSize(rect.width),
-		height: clampSize(rect.height)
+		x: clampNumber({
+			value: rect.x,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		y: clampNumber({
+			value: rect.y,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		width: clampNumber({
+			value: rect.width,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		}),
+		height: clampNumber({
+			value: rect.height,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		})
 	});
 	//#endregion
 	//#region src/webview/frame/pinAnchors.ts
@@ -1721,13 +1735,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
 		});
 	};
-	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
-	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
 	var capAnchorRect = (rect) =&gt; ({
-		x: clampCoordinate(rect.x),
-		y: clampCoordinate(rect.y),
-		width: clampSize(rect.width),
-		height: clampSize(rect.height)
+		x: clampNumber({
+			value: rect.x,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		y: clampNumber({
+			value: rect.y,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		width: clampNumber({
+			value: rect.width,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		}),
+		height: clampNumber({
+			value: rect.height,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		})
 	});
 	//#endregion
 	//#region src/webview/frame/pinAnchors.ts
@@ -2673,13 +2701,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
 		});
 	};
-	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
-	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
 	var capAnchorRect = (rect) =&gt; ({
-		x: clampCoordinate(rect.x),
-		y: clampCoordinate(rect.y),
-		width: clampSize(rect.width),
-		height: clampSize(rect.height)
+		x: clampNumber({
+			value: rect.x,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		y: clampNumber({
+			value: rect.y,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		width: clampNumber({
+			value: rect.width,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		}),
+		height: clampNumber({
+			value: rect.height,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		})
 	});
 	//#endregion
 	//#region src/webview/frame/pinAnchors.ts
@@ -3625,13 +3667,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
 		});
 	};
-	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
-	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
 	var capAnchorRect = (rect) =&gt; ({
-		x: clampCoordinate(rect.x),
-		y: clampCoordinate(rect.y),
-		width: clampSize(rect.width),
-		height: clampSize(rect.height)
+		x: clampNumber({
+			value: rect.x,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		y: clampNumber({
+			value: rect.y,
+			min: -1e5,
+			max: MAX_FRAME_COORDINATE
+		}),
+		width: clampNumber({
+			value: rect.width,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		}),
+		height: clampNumber({
+			value: rect.height,
+			min: 0,
+			max: MAX_FRAME_COORDINATE
+		})
 	});
 	//#endregion
 	//#region src/webview/frame/pinAnchors.ts

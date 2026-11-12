@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8f2 Pins (`feature/pins`): `stale` / `targetMissing` on `comments:updated`, the `cd:anchors` / `cd:anchor-rects` channel, the pin layout and the read-only thread.
+**Last verified against code:** fix Pin review follow-ups (`fix/pin-review-follow-ups`): the open thread closes from one `$effect.pre` in App (F-88). Before it, feature 8f2 Pins (`feature/pins`): `stale` / `targetMissing` on `comments:updated`, the `cd:anchors` / `cd:anchor-rects` channel, the pin layout and the read-only thread.
 
 ## Chart checklist
 
@@ -315,8 +315,8 @@ sequenceDiagram
   `inert` while a draft is open, so a click there picks the element under it.
 - A pin click opens `CommentThread` with no message to the host. Escape or Close returns focus to
   the pin. The thread closes when its comment or pin goes away, or a draft opens; focus inside it
-  then moves to the stage viewport. Open finding F-88: a `cd:frame-height` shrink that unplaces a
-  fallback pin hides the thread without closing it.
+  then moves to the stage viewport. One `$effect.pre` in App closes it whenever `pins` no longer
+  holds it, before it unmounts, so it never stays open while hidden.
 
 ## Frame drag / resize (8c)
 
