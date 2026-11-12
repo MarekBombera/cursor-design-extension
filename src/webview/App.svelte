@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Banners from './Banners.svelte';
 	import CommentPopover from './CommentPopover.svelte';
+	import CommentThread from './CommentThread.svelte';
+	import Pins from './Pins.svelte';
 	import {
 		applyPickMessage,
 		clearPick,
@@ -60,6 +62,14 @@
 		toChromeFrames,
 		withGestureOverride,
 	} from './canvasFrames';
+	import {
+		type AnchorState,
+		anchorSends,
+		applyAnchorRects,
+		dropFrameAnchors,
+		keepOpenThread,
+		layoutPins,
+	} from './pins';
 	import Stage from './Stage.svelte';
 	import {
 		clampStageView,
@@ -84,8 +94,14 @@
 	let gesture: FrameGesture | undefined = $state();
 	// Comment mode, hover and pick; the rules live in commentPick.ts.
 	let picking: CommentPickState = $state(INITIAL_COMMENT_PICK);
-	// comments.json as the host last read it (8f2 draws pins from it); its own banner on failure.
+	// comments.json as the host last read it, pins drawn from it; its own banner on failure.
 	let comments: PostedComment[] = $state([]);
+	// Where each live frame last said its comments' targets are (cd:anchor-rects); rules in pins.ts.
+	let anchors: AnchorState = $state.raw(new Map());
+	// The comment whose read-only thread is open; it closes when its pin is no longer placed.
+	let openThreadId: string | undefined = $state();
+	let pinsView: ReturnType<typeof Pins> | undefined = $state();
+	let stage: ReturnType<typeof Stage> | undefined = $state();
 	let commentsError: string | undefined = $state();
 	// The open comment popover's target and request state; the rules live in commentPopover.ts.
 	let draft: CommentDraft | undefined = $state();
@@ -129,6 +145,12 @@
 			? undefined
 			: popoverAnchor({ view: committedView, frame: draftFrame, target: draft.target });
 	});
+	// Pins follow the same drawn frames and committed view as the outlines.
+	const pins = $derived(
+		layoutPins({ comments, anchors, frames: displayFrames, view: committedView }),
+	);
+	const openPin = $derived(pins.find((pin) => pin.id === openThreadId));
+	const openComment = $derived(comments.find((entry) => entry.id === openThreadId));
 	const canStep = $derived(draft !== undefined && picking.pick?.frameId === draft.frameId);
 	const zoomText = $derived(
 		`${Math.round((committedView === undefined ? 1 : committedView.zoom) * 100)}%`,
@@ -194,6 +216,8 @@
 		if (message.type === 'comments:updated') {
 			comments = message.comments;
 			commentsError = message.error;
+			sendAnchors(liveIframeIds(frames));
+			keepThread();
 			return;
 		}
 		if (message.type === 'comment:added' || message.type === 'ui:error') {
@@ -212,6 +236,50 @@
 		}
 	};
 
+	// Each frame measures only its own element comments; [] stops its observers.
+	const sendAnchors = (frameIds: Iterable<string>): void => {
+		for (const send of anchorSends({ comments, frameIds })) {
+			sendToFrame(send.frameId, { type: 'cd:anchors', anchors: send.anchors });
+		}
+	};
+
+	const threadHasFocus = (): boolean =>
+		document.activeElement?.closest('[data-cd-comment-thread]') != null;
+
+	// Closes the thread without a user asking (its pin is gone, or a draft opened). Focus that was
+	// inside it lands on the stage viewport, never on body.
+	const closeThreadImplicitly = (): void => {
+		if (openThreadId === undefined) {
+			return;
+		}
+		const hadFocus = threadHasFocus();
+		openThreadId = undefined;
+		if (hadFocus) {
+			stage?.focusViewport();
+		}
+	};
+
+	// Runs after every change that can unplace the open thread's pin.
+	const keepThread = (): void => {
+		if (keepOpenThread({ openThreadId, pins }) === undefined) {
+			closeThreadImplicitly();
+		}
+	};
+
+	// A pin opens its thread, swaps to it from another, or closes it when it is the open one.
+	const handlePinOpen = (id: string): void => {
+		openThreadId = openThreadId === id ? undefined : id;
+	};
+
+	// Escape or Close: focus goes back to the pin that opened it.
+	const handleThreadClose = (): void => {
+		const id = openThreadId;
+		openThreadId = undefined;
+		if (id !== undefined) {
+			pinsView?.focusPin(id);
+		}
+	};
+
 	const applyPickStep = (step: CommentPickStep): void => {
 		picking = step.state;
 		for (const send of step.sends) {
@@ -225,6 +293,12 @@
 		const liveFrameIds = liveIframeIds(frames);
 		picking = keepLiveFrames({ state: picking, liveFrameIds });
 		draft = keepLiveDraft({ draft, commentMode: picking.commentMode, liveFrameIds });
+		for (const frameId of anchors.keys()) {
+			if (!liveFrameIds.has(frameId)) {
+				anchors = dropFrameAnchors({ state: anchors, frameId });
+			}
+		}
+		keepThread();
 	};
 
 	// Entering or leaving the mode discards any draft, pending or not; a late answer is ignored.
@@ -285,6 +359,9 @@
 	const applyPickToDraft = (frame: FrameRecord, pick: FramePickMessage): void => {
 		const opened = draft === undefined;
 		draft = draftFromPick({ draft, frameId: frame.id, pick, generation: frame.generation });
+		if (draft !== undefined) {
+			closeThreadImplicitly();
+		}
 		if (pick.repost || (!opened && document.activeElement?.tagName !== 'IFRAME')) {
 			return;
 		}
@@ -360,6 +437,18 @@
 				applyPickToDraft(frame, message);
 			}
 			applyPickStep(applyPickMessage({ state: picking, frameId, message }));
+			// A new document: its old answers are gone, and it measures after the cd:mode above.
+			if (message.type === 'cd:ready') {
+				anchors = dropFrameAnchors({ state: anchors, frameId });
+				sendAnchors([frameId]);
+				keepThread();
+			}
+			return;
+		}
+		if (message.type === 'cd:anchor-rects') {
+			// Keyed by the sending frame, in any mode: a forged answer only moves its own pins.
+			anchors = applyAnchorRects({ state: anchors, frameId, anchors: message.anchors });
+			keepThread();
 			return;
 		}
 		if (message.type === 'cd:frame-height') {
@@ -443,6 +532,7 @@
 	const handleFrameGesture = (event: StageFrameGesture): void => {
 		const step = stepFrameGesture({ gesture, event, diskPlacement, view: stageView });
 		gesture = step.gesture;
+		keepThread();
 		if (step.commit !== undefined) {
 			postFramePlace(step.commit);
 		}
@@ -519,6 +609,7 @@
 <Banners {errorMessage} {commentsError} {mcpUnavailable} />
 <p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
 <Stage
+	bind:this={stage}
 	frames={displayFrames}
 	{labels}
 	headings={layout.headings}
@@ -537,6 +628,25 @@
 	onRenderError={handleRenderError}
 	onFrameGesture={handleFrameGesture}
 >
+	<Pins
+		bind:this={pinsView}
+		{pins}
+		inert={draft !== undefined}
+		openId={openThreadId}
+		onOpen={handlePinOpen}
+	/>
+	{#if openPin !== undefined && openComment !== undefined}
+		{#key openThreadId}
+			<CommentThread
+				comment={openComment}
+				badge={openPin.badge}
+				anchor={openPin}
+				{viewportWidth}
+				{viewportHeight}
+				onClose={handleThreadClose}
+			/>
+		{/key}
+	{/if}
 	{#if draft !== undefined && draftAnchor !== undefined}
 		<CommentPopover
 			bind:this={popover}

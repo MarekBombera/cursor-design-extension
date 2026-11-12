@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Pins</title>
+		<!--
+    8f2 pins fixture (tests/browser/pins.spec.ts). The tests move targets with frame.evaluate, so
+    each target is seen by exactly one runtime trigger:
+    - #in-box scrolls inside .scroll-box (scroll);
+    - #mover is position: absolute and moves by style.left only, with no size change on it or the
+      root (MutationObserver only);
+    - #slider moves by a transform-only transition (transitionend only; ResizeObserver never sees
+      a transform);
+    - #doomed is removed (MutationObserver, then box: null).
+    Copy: cp fixtures/pins.html fixtures/dev-workspace/.cursor-design/artboards/pins.html
+  -->
+		<style>
+			body {
+				margin: 0;
+				padding: 24px;
+				font-family: system-ui, sans-serif;
+				color: #111827;
+			}
+			#title {
+				margin: 0 0 16px;
+				font-size: 24px;
+			}
+			.scroll-box {
+				width: 300px;
+				height: 120px;
+				overflow: auto;
+				border: 1px solid #cbd5e1;
+			}
+			#in-box {
+				margin: 40px 0 0;
+				height: 30px;
+				background: #e2e8f0;
+			}
+			.spacer {
+				height: 400px;
+			}
+			.track {
+				position: relative;
+				height: 60px;
+			}
+			#mover {
+				position: absolute;
+				left: 0;
+				top: 10px;
+				width: 60px;
+				height: 30px;
+				background: #bfdbfe;
+			}
+			#slider {
+				width: 60px;
+				height: 30px;
+				background: #fed7aa;
+				transition: transform 200ms linear;
+			}
+			#slider.moved {
+				transform: translateX(160px);
+			}
+			#doomed {
+				width: 80px;
+				height: 24px;
+				margin-top: 16px;
+				background: #fecaca;
+			}
+		</style>
+	</head>
+	<body>
+		<h1 id="title">Pins</h1>
+		<div class="scroll-box" id="box">
+			<p id="in-box">In the box</p>
+			<div class="spacer"></div>
+		</div>
+		<div class="track"><div id="mover"></div></div>
+		<div id="slider"></div>
+		<div id="doomed">Doomed</div>
+	</body>
+</html>

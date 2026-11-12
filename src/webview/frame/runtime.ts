@@ -6,6 +6,7 @@ import {
 	FRAME_READY_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
 } from './frameMessages';
+import { installPinAnchors } from './pinAnchors';
 
 // Runs inside the artboard iframe, injected first in head. Consumers import it as a string
 // through `?iife` (scripts/iifeStringPlugin.ts). `parent` is a replaceable global, so it is
@@ -152,6 +153,7 @@ window.addEventListener(
 );
 
 installCommentPicking(host);
+installPinAnchors(host);
 
 // Last, after every listener exists: chrome answers with the current cd:mode.
 host.postMessage({ type: FRAME_READY_MESSAGE }, '*');

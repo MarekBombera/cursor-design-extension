@@ -1,0 +1,236 @@
+import assert from 'node:assert/strict';
+import { test } from 'vite-plus/test';
+
+import type { FrameRecord } from './canvasFrames';
+import type { PostedComment } from './hostMessages';
+import {
+	type AnchorState,
+	anchorSends,
+	applyAnchorRects,
+	dropFrameAnchors,
+	keepOpenThread,
+	layoutPins,
+	pinBadge,
+	pinLabel,
+	pinPoint,
+} from './pins';
+
+const comment = (overrides: Partial<PostedComment> = {}): PostedComment => ({
+	id: 'c1',
+	frameId: 'a',
+	selector: 'h1',
+	tagName: 'h1',
+	text: 'Hello',
+	rect: { x: 10, y: 20, width: 100, height: 40 },
+	pin: { x: 0.5, y: 0.25 },
+	body: 'Make this bolder',
+	isPage: false,
+	status: 'open',
+	createdAt: '2026-10-26T10:00:00.000Z',
+	replies: [],
+	stale: false,
+	targetMissing: false,
+	...overrides,
+});
+
+const frame = (overrides: Partial<FrameRecord> = {}): FrameRecord => ({
+	id: 'a',
+	label: 'A',
+	x: 1000,
+	y: 500,
+	width: 400,
+	height: 300,
+	generation: 1,
+	kind: 'iframe',
+	tileText: '',
+	html: '<p>a</p>',
+	group: undefined,
+	measuredHeight: 300,
+	guard: { lastGrowth: 0, frozen: false },
+	...overrides,
+});
+
+const view = { x: 0, y: 0, zoom: 1 };
+
+const box = { x: 50, y: 60, width: 200, height: 80 };
+
+const answered = (
+	frameId: string,
+	id: string,
+	anchor: { box: typeof box | null; visible: typeof box | null },
+): AnchorState => applyAnchorRects({ state: new Map(), frameId, anchors: [{ id, ...anchor }] });
+
+test('applyAnchorRects keeps the last duplicate and never touches another frame', () => {
+	const state = applyAnchorRects({
+		state: answered('b', 'c2', { box, visible: box }),
+		frameId: 'a',
+		anchors: [
+			{ id: 'c1', box: null, visible: null },
+			{ id: 'c1', box, visible: box },
+			// Forged: frame A answering for frame B's comment.
+			{ id: 'c2', box: { ...box, x: 0 }, visible: null },
+		],
+	});
+	assert.deepEqual(state.get('a')?.get('c1'), { box, visible: box });
+	assert.deepEqual(state.get('b')?.get('c2'), { box, visible: box });
+});
+
+test('a forged cd:anchor-rects from frame A with a frame B id moves nothing in B', () => {
+	const comments = [comment({ id: 'b1', frameId: 'b' })];
+	const frames = [frame({ id: 'b' })];
+	const before = layoutPins({ comments, anchors: new Map(), frames, view });
+	const forged = answered('a', 'b1', { box: { x: 0, y: 0, width: 1, height: 1 }, visible: null });
+	assert.deepEqual(layoutPins({ comments, anchors: forged, frames, view }), before);
+	assert.equal(before.length, 1);
+});
+
+test('dropFrameAnchors removes one frame and returns the same state when absent', () => {
+	const state = answered('a', 'c1', { box, visible: box });
+	assert.equal(dropFrameAnchors({ state, frameId: 'b' }), state);
+	assert.equal(dropFrameAnchors({ state, frameId: 'a' }).has('a'), false);
+});
+
+test('anchorSends sends element comments of each frame, and [] to a frame without any', () => {
+	const comments = [
+		comment({ id: 'c1' }),
+		comment({ id: 'p1', isPage: true, selector: 'body', tagName: 'body', rect: null }),
+		comment({ id: 'r1', status: 'resolved', selector: 'p' }),
+		comment({ id: 'b1', frameId: 'b' }),
+	];
+	assert.deepEqual(anchorSends({ comments, frameIds: ['a', 'c'] }), [
+		{
+			frameId: 'a',
+			anchors: [
+				{ id: 'c1', selector: 'h1' },
+				{ id: 'r1', selector: 'p' },
+			],
+		},
+		{ frameId: 'c', anchors: [] },
+	]);
+});
+
+test('pinBadge: resolved shows none; a live box: null beats disk stale', () => {
+	const gone = { box: null, visible: null };
+	assert.equal(
+		pinBadge({ comment: comment({ status: 'resolved', stale: true }), live: gone }),
+		undefined,
+	);
+	assert.equal(pinBadge({ comment: comment({ stale: true }), live: gone }), 'missing');
+	assert.equal(pinBadge({ comment: comment({ targetMissing: true }), live: undefined }), 'missing');
+	assert.equal(pinBadge({ comment: comment({ stale: true }), live: undefined }), 'stale');
+	assert.equal(
+		pinBadge({
+			comment: comment({ status: 'sent', stale: null, targetMissing: null }),
+			live: undefined,
+		}),
+		'unchecked',
+	);
+	// Unchecked needs both flags null; a page comment on a present frame is never stale.
+	assert.equal(pinBadge({ comment: comment({ stale: null }), live: undefined }), undefined);
+	assert.equal(pinBadge({ comment: comment(), live: { box, visible: box } }), undefined);
+});
+
+test('pinPoint: live box, stored rect fallback, page fraction, and no NaN on a zero-size box', () => {
+	const element = comment();
+	assert.deepEqual(pinPoint({ comment: element, live: { box, visible: box }, frame: frame() }), {
+		x: 150,
+		y: 80,
+	});
+	assert.deepEqual(
+		pinPoint({ comment: element, live: { box: null, visible: null }, frame: frame() }),
+		{
+			x: 60,
+			y: 30,
+		},
+	);
+	const zero = { x: 5, y: 7, width: 0, height: 0 };
+	assert.deepEqual(
+		pinPoint({ comment: element, live: { box: zero, visible: null }, frame: frame() }),
+		{
+			x: 5,
+			y: 7,
+		},
+	);
+	const page = comment({ isPage: true, rect: null, pin: { x: 0.25, y: 0.5 } });
+	assert.deepEqual(pinPoint({ comment: page, live: undefined, frame: frame() }), {
+		x: 100,
+		y: 150,
+	});
+});
+
+test('layoutPins: screen point on the drawn frame at the committed view', () => {
+	const pins = layoutPins({
+		comments: [comment()],
+		anchors: answered('a', 'c1', { box, visible: box }),
+		frames: [frame()],
+		view: { x: 10, y: 20, zoom: 2 },
+	});
+	assert.deepEqual(pins, [
+		{
+			id: 'c1',
+			x: 10 + (1000 + 150) * 2,
+			y: 20 + (500 + 80) * 2,
+			status: 'open',
+			badge: undefined,
+			label: 'Open comment: Make this bolder',
+		},
+	]);
+	assert.deepEqual(
+		layoutPins({ comments: [comment()], anchors: new Map(), frames: [frame()], view: undefined }),
+		[],
+	);
+});
+
+test('layoutPins hides a pin outside visible, fully clipped, or outside the frame', () => {
+	const place = (anchors: AnchorState, comments = [comment()]): number =>
+		layoutPins({ comments, anchors, frames: [frame()], view }).length;
+	assert.equal(place(answered('a', 'c1', { box, visible: box })), 1);
+	assert.equal(place(answered('a', 'c1', { box, visible: null })), 0);
+	// The point (150, 80) is 0.5px inside the tolerance, then just past it.
+	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 150.5, width: 10 } })), 1);
+	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 150.6, width: 10 } })), 0);
+	// A zero-area target is hidden by design.
+	const zero = { x: 5, y: 7, width: 0, height: 0 };
+	assert.equal(place(answered('a', 'c1', { box: zero, visible: null })), 0);
+	// A forged rect outside the frame never draws over a neighbor, even with visible set.
+	const far = { x: 5000, y: 0, width: 10, height: 10 };
+	assert.equal(place(answered('a', 'c1', { box: far, visible: far })), 0);
+	// box: null draws the missing pin at the stored rect.
+	const missing = layoutPins({
+		comments: [comment()],
+		anchors: answered('a', 'c1', { box: null, visible: null }),
+		frames: [frame()],
+		view,
+	});
+	assert.equal(missing[0]?.badge, 'missing');
+});
+
+test('layoutPins places nothing on a tile or a frame that is not drawn', () => {
+	const comments = [comment(), comment({ id: 'b1', frameId: 'b' })];
+	assert.deepEqual(
+		layoutPins({ comments, anchors: new Map(), frames: [frame({ kind: 'tile' })], view }),
+		[],
+	);
+});
+
+test('pinLabel collapses whitespace and cuts at 60 characters with an ellipsis', () => {
+	assert.equal(
+		pinLabel({ comment: comment({ body: '  Make\n this\tbolder ' }), badge: 'stale' }),
+		'Open comment, stale: Make this bolder',
+	);
+	assert.equal(
+		pinLabel({ comment: comment({ body: 'x'.repeat(60), status: 'sent' }), badge: undefined }),
+		`Sent comment: ${'x'.repeat(60)}`,
+	);
+	assert.equal(
+		pinLabel({ comment: comment({ body: 'x'.repeat(61), status: 'resolved' }), badge: 'missing' }),
+		`Resolved comment, target missing: ${'x'.repeat(60)}…`,
+	);
+});
+
+test('keepOpenThread keeps the id only while its pin is placed', () => {
+	const pins = layoutPins({ comments: [comment()], anchors: new Map(), frames: [frame()], view });
+	assert.equal(keepOpenThread({ openThreadId: 'c1', pins }), 'c1');
+	assert.equal(keepOpenThread({ openThreadId: 'c2', pins }), undefined);
+	assert.equal(keepOpenThread({ openThreadId: undefined, pins }), undefined);
+});

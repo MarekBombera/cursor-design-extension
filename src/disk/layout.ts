@@ -76,6 +76,9 @@ export const MAX_COMMENT_BODY_CHARS = 2000;
 
 export const MAX_COMMENTS = 500;
 
+// Comment and reply ids in comments.json, and the comment ids cd:anchors / cd:anchor-rects carry.
+export const COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 // User replies stop at MAX - 1; the last slot is the resolve note's.
 export const MAX_COMMENT_REPLIES = 100;
 

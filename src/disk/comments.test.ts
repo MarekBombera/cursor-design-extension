@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+	chmod,
 	lstat,
 	mkdir,
 	mkdtemp,
@@ -12,10 +13,11 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, test } from 'vite-plus/test';
+import { afterEach, test, vi } from 'vite-plus/test';
 
 import { createArtboard } from './artboardFs';
 import {
+	MAX_PARSED_DOCUMENTS,
 	addComment,
 	getComment,
 	listComments,
@@ -29,7 +31,13 @@ import {
 	setCommentStatus,
 	type NewComment,
 } from './comments';
-import { HINT_FRAME_MISSING, HINT_FRAME_UNREADABLE, HINT_UNCHECKED } from './commentTarget';
+import {
+	HINT_CHECK_BUDGET,
+	HINT_FRAME_MISSING,
+	HINT_FRAME_UNREADABLE,
+	HINT_UNCHECKED,
+	parseArtboardDocument,
+} from './commentTarget';
 import {
 	ArtboardNotFoundError,
 	CommentNotFoundError,
@@ -47,8 +55,17 @@ import {
 	MAX_COMMENTS,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
+	artboardsDirSegments,
 	commentsPathSegments,
 } from './layout';
+
+// The real parser behind a counter, so the parse cache's reuse and eviction are observable.
+vi.mock('./commentTarget', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./commentTarget')>();
+	return { ...actual, parseArtboardDocument: vi.fn(actual.parseArtboardDocument) };
+});
+
+const parseCount = (): number => vi.mocked(parseArtboardDocument).mock.calls.length;
 
 const tempRoots: string[] = [];
 
@@ -59,6 +76,7 @@ const makeTempRoot = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await Promise.all(
 		tempRoots.splice(0).map((workspaceRoot) => rm(workspaceRoot, { recursive: true, force: true })),
 	);
@@ -727,4 +745,152 @@ test('readComments refuses a symlinked .cursor-design like listComments', async 
 	await symlink(join(elsewhere, CURSOR_DESIGN_DIR), join(workspaceRoot, CURSOR_DESIGN_DIR));
 	await assert.rejects(readComments({ workspaceRoot }), DiskError);
 	await assert.rejects(listComments({ workspaceRoot }), DiskError);
+});
+
+const PAGE_PICK: Partial<NewComment> = {
+	body: 'whole page',
+	isPage: true,
+	selector: 'body',
+	tagName: 'body',
+	text: '',
+	rect: null,
+};
+
+const flagsOf = (comment: {
+	stale: boolean | null;
+	targetMissing: boolean | null;
+	hint?: string;
+}): { stale: boolean | null; targetMissing: boolean | null; hint?: string } =>
+	comment.hint === undefined
+		? { stale: comment.stale, targetMissing: comment.targetMissing }
+		: { stale: comment.stale, targetMissing: comment.targetMissing, hint: comment.hint };
+
+test('readComments flags resolved comments too', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	const added = await addComment({ workspaceRoot, comment: pick() });
+	await setCommentStatus({ workspaceRoot, id: added.id, status: 'resolved' });
+	const [view] = await readComments({ workspaceRoot });
+	assert.equal(view?.status, 'resolved');
+	assert.deepEqual(view && flagsOf(view), { stale: false, targetMissing: false });
+});
+
+// The parse cache is keyed by the HTML text, so an edit between two reads is never missed.
+test('an edit inside the target between two reads flips stale', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, false);
+	await writeFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		HERO_HTML.replace('<h1>Hello</h1>', '<h1>Hello there</h1>'),
+		'utf8',
+	);
+	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, true);
+});
+
+test('an unchanged frame is parsed once across reads, and again after an edit', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	const before = parseCount();
+	await readComments({ workspaceRoot });
+	await readComments({ workspaceRoot });
+	assert.equal(parseCount() - before, 1);
+	await writeFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		HERO_HTML.replace('<h1>Hello</h1>', '<h1>Hello there</h1>'),
+		'utf8',
+	);
+	await readComments({ workspaceRoot });
+	assert.equal(parseCount() - before, 2);
+});
+
+test('the parse cache keeps at most MAX_PARSED_DOCUMENTS frames', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const frameIds = Array.from({ length: MAX_PARSED_DOCUMENTS + 1 }, (_, index) => `f${index}`);
+	for (const artboardId of frameIds) {
+		await createArtboard({
+			workspaceRoot,
+			artboardId,
+			html: HERO_HTML,
+			writeEnsurePanelMarker: false,
+		});
+	}
+	await writeComments(
+		workspaceRoot,
+		commentsFileOf(frameIds.map((frameId) => validComment({ id: `c-${frameId}`, frameId }))),
+	);
+	await readComments({ workspaceRoot });
+	const before = parseCount();
+	// The first frame was evicted by the last one, so the second read parses it again.
+	await readComments({ workspaceRoot });
+	assert.ok(parseCount() > before);
+});
+
+test('a deleted frame is targetMissing and a re-created one is checked again', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+	assert.equal((await readComments({ workspaceRoot }))[0]?.targetMissing, false);
+	await unlink(htmlPath);
+	assert.equal((await readComments({ workspaceRoot }))[0]?.targetMissing, true);
+	await writeFile(htmlPath, HERO_HTML, 'utf8');
+	const [view] = await readComments({ workspaceRoot });
+	assert.deepEqual(view && flagsOf(view), { stale: false, targetMissing: false });
+});
+
+test('an lstat failure on a page comment frame reads as unchecked, never a rejected read', async (context) => {
+	if (process.getuid?.() === 0) {
+		context.skip('root ignores chmod');
+		return;
+	}
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	await addComment({ workspaceRoot, comment: pick(PAGE_PICK) });
+	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+	const artboardsDir = join(workspaceRoot, ...artboardsDirSegments);
+	await chmod(artboardsDir, 0o000);
+	let views: Awaited<ReturnType<typeof readComments>>;
+	try {
+		views = await readComments({ workspaceRoot });
+	} finally {
+		await chmod(artboardsDir, 0o755);
+	}
+	assert.equal(views.length, 2);
+	const page = views.find((view) => view.isPage);
+	assert.deepEqual(page && flagsOf(page), {
+		stale: null,
+		targetMissing: null,
+		hint: HINT_FRAME_UNREADABLE,
+	});
+	assert.ok(stderr.mock.calls.length > 0);
+});
+
+test('past the check budget a fingerprinted comment is unchecked; a page comment is not', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	await addComment({
+		workspaceRoot,
+		comment: pick({ selector: 'p', tagName: 'p', text: 'World', body: 'second' }),
+	});
+	await addComment({ workspaceRoot, comment: pick(PAGE_PICK) });
+	// The read's start and the first check see 0 ms; every later check is far past the budget.
+	let calls = 0;
+	vi.spyOn(performance, 'now').mockImplementation(() => {
+		calls += 1;
+		return calls <= 2 ? 0 : 1000;
+	});
+	const [first, second, page] = await readComments({ workspaceRoot });
+	assert.equal(second?.targetFingerprint === undefined, false);
+	assert.deepEqual(first && flagsOf(first), { stale: false, targetMissing: false });
+	assert.deepEqual(second && flagsOf(second), {
+		stale: null,
+		targetMissing: null,
+		hint: HINT_CHECK_BUDGET,
+	});
+	assert.deepEqual(page && flagsOf(page), { stale: false, targetMissing: false });
 });

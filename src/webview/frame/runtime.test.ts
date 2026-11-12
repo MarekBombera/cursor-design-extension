@@ -3,6 +3,7 @@ import { test } from 'vite-plus/test';
 
 import runtimeSource from './runtime.ts?iife';
 import {
+	FRAME_ANCHOR_RECTS_MESSAGE,
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_HOVER_MESSAGE,
 	FRAME_KEY_MESSAGE,
@@ -12,14 +13,16 @@ import {
 } from './frameMessages';
 
 test('canvas runtime posts only its frame messages and never touches the artboard', () => {
-	// Picking listeners live in a function bundled above; what matters is the call order:
-	// capture parent, register wheel, install picking, then announce cd:ready.
+	// Picking and pin listeners live in functions bundled above; what matters is the call order:
+	// capture parent, register wheel, install picking, install pin anchors, then announce cd:ready.
 	const parentIndex = runtimeSource.indexOf('window.parent');
 	const wheelIndex = runtimeSource.indexOf('window.addEventListener("wheel"');
 	const installIndex = runtimeSource.indexOf('installCommentPicking(host);');
+	const anchorsIndex = runtimeSource.indexOf('installPinAnchors(host);');
 	const readyIndex = runtimeSource.indexOf('host.postMessage({ type: FRAME_READY_MESSAGE }');
 	assert.ok(parentIndex >= 0 && wheelIndex >= 0 && installIndex >= 0);
-	assert.ok(parentIndex < wheelIndex && wheelIndex < installIndex && installIndex < readyIndex);
+	assert.ok(parentIndex < wheelIndex && wheelIndex < installIndex && installIndex < anchorsIndex);
+	assert.ok(anchorsIndex < readyIndex);
 	assert.ok(!runtimeSource.includes('</'));
 	assert.ok(runtimeSource.includes(JSON.stringify(FRAME_HEIGHT_MESSAGE)));
 	assert.ok(runtimeSource.includes(JSON.stringify(FRAME_WHEEL_MESSAGE)));
@@ -28,11 +31,12 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 		FRAME_HOVER_MESSAGE,
 		FRAME_PICK_MESSAGE,
 		FRAME_KEY_MESSAGE,
+		FRAME_ANCHOR_RECTS_MESSAGE,
 	]) {
 		assert.ok(runtimeSource.includes(JSON.stringify(type)), type);
 	}
-	// height, wheel, key, hover, pick, ready
-	assert.equal(runtimeSource.split('host.postMessage').length - 1, 6);
+	// height, wheel, key, hover, pick, anchor-rects, ready
+	assert.equal(runtimeSource.split('host.postMessage').length - 1, 7);
 	assert.ok(runtimeSource.includes('parentElement'));
 	assert.ok(runtimeSource.includes('overflowY'));
 	assert.ok(runtimeSource.includes('overflowX'));
@@ -43,7 +47,9 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 	assert.ok(runtimeSource.includes('y: event.clientY'));
 	assert.ok(runtimeSource.includes('passive: false'));
 	assert.ok(runtimeSource.includes('capture: true'));
-	// Finder reads element.classList; only its mutators are forbidden.
+	// Finder reads element.classList; only its mutators are forbidden. pinAnchors.ts is bundled
+	// into the same string (its observers are present), so the check covers it too.
+	assert.ok(runtimeSource.includes('new MutationObserver('));
 	for (const forbidden of [
 		'.style',
 		'classList.add',

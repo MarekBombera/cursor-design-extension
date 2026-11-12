@@ -161,6 +161,8 @@ const validComment = {
 	status: 'open',
 	createdAt: '2026-10-26T10:00:00.000Z',
 	replies: [{ id: 'r1', author: 'agent', body: 'Done', createdAt: '2026-10-26T11:00:00.000Z' }],
+	stale: true,
+	targetMissing: false,
 };
 
 test('comments:updated drops a malformed comment and keeps the valid one', () => {
@@ -170,6 +172,24 @@ test('comments:updated drops a malformed comment and keeps the valid one', () =>
 			comments: [{ ...validComment, selector: 'h1\nh2' }, validComment],
 		}),
 		{ type: 'comments:updated', comments: [validComment] },
+	);
+});
+
+test('comments:updated keeps true, false and null flags and drops anything else', () => {
+	const unchecked = { ...validComment, id: 'c2', stale: null, targetMissing: null };
+	const noTargetMissing: Record<string, unknown> = { ...validComment, id: 'c3' };
+	delete noTargetMissing.targetMissing;
+	assert.deepEqual(
+		parseHostMessage({
+			type: 'comments:updated',
+			comments: [
+				validComment,
+				{ ...validComment, id: 'c4', stale: 'yes' },
+				noTargetMissing,
+				unchecked,
+			],
+		}),
+		{ type: 'comments:updated', comments: [validComment, unchecked] },
 	);
 });
 

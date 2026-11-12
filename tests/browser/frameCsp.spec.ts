@@ -4,8 +4,8 @@ import { canvasUpdated, frameOf, openHarness, postToChrome, untilHeightReported 
 
 // FRAME_CSP (stampArtboardHtml.ts): inline artboard code runs, but nothing leaves the frame, not
 // even a <script src> that carries the stamped nonce or one artboard JS adds at runtime with the
-// nonce it read. The harness has no chrome CSP, so FRAME_CSP is the only policy proven here; any
-// request it let through would reach the harness route and count as aborted.
+// nonce it read. This first test runs without the chrome CSP, so FRAME_CSP is the only policy
+// proven there; any request it let through would reach the harness route and count as aborted.
 const REMOTE = 'https://cdn.cd-remote.test';
 
 // The first script sits before <meta charset>: it must still run under FRAME_CSP.
@@ -62,4 +62,77 @@ test('an artboard runs its inline code but cannot load remote scripts, static, i
 		.toEqual([`${REMOTE}/early.js`, `${REMOTE}/static.js`, `${REMOTE}/injected.js`]);
 	await expect.poll(() => remoteFailures).toEqual(['csp', 'csp', 'csp']);
 	expect(harness.abortedRequests()).toBe(0);
+});
+
+// stampArtboardHtml parses untrusted HTML with innerHTML. Inside the frame FRAME_CSP stops this
+// image before the route, so a request can only come from a parse in the live chrome document.
+test('parsing an artboard loads nothing from the chrome document', async ({ page }) => {
+	const harness = await openHarness(page);
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{
+				id: 'a',
+				label: 'A',
+				x: 0,
+				y: 0,
+				width: 400,
+				generation: 1,
+				html: `<!doctype html><body><img src="${REMOTE}/chrome.png" alt=""></body>`,
+			},
+		]),
+	);
+	await untilHeightReported(page, 'a');
+	expect(harness.abortedRequests()).toBe(0);
+});
+
+const STYLED_PAGE = `<!doctype html><html lang="cs"><head>
+<style>.probe { color: rgb(1, 2, 3); }</style>
+</head><body><p class="probe">probe</p></body></html>`;
+
+// stampArtboardHtml's parse runs under this policy before the nonce is on the artboard's styles.
+test('under the chrome CSP, a styled frame and its pin log no violation', async ({ page }) => {
+	const violations: string[] = [];
+	page.on('console', (message) => {
+		if (message.text().includes('Content Security Policy')) {
+			violations.push(message.text());
+		}
+	});
+	await openHarness(page, { chromeCsp: true });
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{ id: 'a', label: 'A', x: 0, y: 0, width: 400, generation: 1, html: STYLED_PAGE },
+		]),
+	);
+	await untilHeightReported(page, 'a');
+	await postToChrome(page, {
+		type: 'comments:updated',
+		comments: [
+			{
+				id: 'c1',
+				frameId: 'a',
+				selector: '.probe',
+				tagName: 'p',
+				text: 'probe',
+				rect: { x: 0, y: 0, width: 100, height: 20 },
+				pin: { x: 0.5, y: 0.5 },
+				body: 'Probe',
+				isPage: false,
+				status: 'open',
+				createdAt: '2026-11-09T10:00:00.000Z',
+				replies: [],
+				stale: true,
+				targetMissing: false,
+			},
+		],
+	});
+	await expect(page.locator('[data-cd-pin="c1"]')).toBeVisible();
+	const frame = await frameOf(page, 'a');
+
+	expect(
+		await frame.evaluate(() => getComputedStyle(document.querySelector('.probe')!).color),
+	).toBe('rgb(1, 2, 3)');
+	expect(await frame.evaluate(() => document.documentElement.lang)).toBe('cs');
+	expect(violations).toEqual([]);
 });

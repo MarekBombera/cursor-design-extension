@@ -101,14 +101,6 @@
 **Suggested fix:** In the existing `isUnchangedPick` test, add three lines that change only `y`, only `width` and only `height` of the rect and expect `false`. No product change.
 **Resolution:** 2026-10-25 /implement (audit repair): `isUnchangedPick`'s test now also changes only the rect's `y`, `width` and `height`, each expecting `false`. Dropping `left.y === right.y` from `sameRect` fails it (mutation-checked, file restored byte for byte).
 
-### F-60 [P3] fixed - The "describe a removed target once" guard keys on selector !== null, which two cases defeat
-
-**File:** src/webview/frame/commentPicking.ts:155
-**Found:** 2026-10-25 by /audit (scope: current; lens: performance, quality)
-**Why it matters:** The guard assumes that after the re-describe the cached selector is `null`. (1) A page pick: `describeElement(element, true)` returns `selector: 'body'` before it checks `isConnected` (`selector.ts:116-125`). If the design replaces `document.body`, the picked old `body` is disconnected, the guard fires on every re-post, and each call builds a new object, so `isUnchangedPick` never matches and the full pick posts once per frame of scroll or resize with `rect: null`, the F-46 symptom the spec says a page pick cannot reach. (2) An element that never had a selector (finder threw, or the selector passed 1000 chars) skips the re-describe after removal, so chrome gets its old `text` and `styles` beside `selector: null` and `rect: null`, the stale pairing F-56 meant to remove. Both need an uncommon design (a script swapping the body, or a very deep or odd node removed after a pick), and the cost is one small post per frame, so it is P3.
-**Suggested fix:** Key the guard on a flag, not the selector: keep `const removed = new WeakSet<Element>()` next to `descriptions`, reset it wherever `descriptions = new Map()` is, and re-describe only when `!current.isConnected && !removed.has(current)`, adding `current` after the `descriptions.set`. No requirement is lost. Alternatively accept it for now: page-body replacement is not something the picking fixture exercises.
-**Resolution:** 2026-10-25 /implement (audit repair): the removed-target guard uses a per-pick `removed` `WeakSet` (reset with `descriptions` on click and `cd:mode`) instead of `selector !== null`: any disconnected path element, a replaced `body` page pick or a target finder never resolved included, is described again exactly once, so later re-posts carry the same description object and compare equal, and stale text/styles never pair with `selector: null`.
-
 ### F-75 [P3] open - getComment reads comments.json twice, and commentsTextIfExists forwards to readUtf8IfExists
 
 **File:** src/disk/comments.ts:371 and :773
@@ -140,3 +132,28 @@
 **Why it matters:** The function decides, in order: no usable requestId (log only), untrusted workspace (refuse, never write), no folder, malformed message, then `addComment`. The write refusal for an untrusted workspace is a trust boundary (rule 07), and the spec accepted the missing F5 run for it ("no repeatable test observes the host refusal"). Nothing in `vp test` fails if the `isTrusted` check, its position before the parse, or the single-answer behaviour is removed. The file is glue by design, but the ordering is logic, and a `vi.mock('vscode')` unit test of two or three cases is possible without a display.
 **Suggested fix:** Optional: a colocated `panelComments.test.ts` with a mocked `vscode` (untrusted gives one `ui:error` and no `addComment` call; a bad requestId posts nothing; a malformed message gives one `ui:error`). Or keep it as an F5 item. Needs the user's decision because the spec chose glue-without-test.
 **Resolution:** open
+
+### F-88 [P3] open - The thread can be hidden but still "open" after a frame reload or a frame-width preview
+
+**File:** src/webview/App.svelte:454 (render condition at :638)
+**Found:** 2026-10-27 by /audit (scope: current; lens: quality)
+**Why it matters:** The thread renders while `openPin !== undefined`, but it is closed (`keepThread`) only from `comments:updated`, `cd:anchor-rects` and `keepLiveCommentState`. The `cd:ready` branch drops the frame's anchors, which moves its pins to the stored-rect fallback, and does not call `keepThread`; a width drag preview changes `displayFrames` and does not either. If the fallback point (or the narrowed frame) leaves the pin unplaced, the thread disappears while `openThreadId` is still set, focus inside it falls to body (the thing `closeThreadImplicitly` exists to prevent), and it reappears when the pin comes back, which the spec says it must not. Narrow: it needs a stored rect outside the frame after a reload, or a shrink past the pin during a resize drag.
+**Suggested fix:** Call `keepThread()` after the `dropFrameAnchors` in the `cd:ready` branch and in `handleFrameGesture` after it updates `gesture`. Alternatively render from `keepOpenThread({ openThreadId, pins })` so the hidden state and the closed state cannot differ. A browser case (reload with the open pin's frame shrunk) would pin it.
+**Resolution:** 2026-10-27 /implement (audit repair): `App.svelte` calls `keepThread()` after `dropFrameAnchors` in the `cd:ready` branch and after `handleFrameGesture` updates `gesture`. New browser case `a reload that unplaces the open pin closes its thread, and it does not come back` (stored rect outside the frame) fails without the `cd:ready` call (mutation-checked, file restored).
+2026-11-09 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests): both named `keepThread()` calls are present, but the defect is still reachable after a reload, so this goes back to `open`. The `cd:frame-height` branch (App.svelte:454) updates the frame record and never calls `keepThread`. Path: the open thread's pin has a stored-rect position (a live `box: null`, shown as missing); a reload or script makes the page shorter, and `nextFrameHeight` applies a shrink at once. `layoutPins` then puts the point outside the frame, so `openPin` is undefined and the thread unmounts with `openThreadId` still set. The runtime's `resize` measurement sends nothing, because `anchorsMoved` sees `box: null` unchanged, so `keepThread` is not called. Focus falls to body, and if the frame later grows the thread remounts and `focusOnOpen` takes focus. `applyCanvasUpdated` has the same order problem: `keepLiveCommentState` (:194) runs before `settleFrameGesture` (:195). Found by reading the code; not reproduced in a browser. New suggested fix: add `keepThread()` after `updateFrame` in the `cd:frame-height` branch and move or repeat it after `settleFrameGesture`, or render from `keepOpenThread({ openThreadId, pins })` so hidden and closed cannot differ.
+
+### F-91 [P3] open - capAnchorRect adds a third copy of the frame-coordinate clamp
+
+**File:** src/webview/frame/anchorRects.ts:42
+**Found:** 2026-11-09 by independent /audit (scope: current; lens: quality)
+**Why it matters:** `clampCoordinate` and `clampSize` hand-write `Math.min` / `Math.max`, while `stageGeometry.ts` already owns `clampNumber` and a private `clampCoordinate` with the same name and bounds (:359). Rule 03 calls a twin helper a bug, and rule 05 says to extend the owner. The frame bundle already imports `clampNumber` (`pickTarget.ts:5`), so the shared helper is available there. No behavior differs today.
+**Suggested fix:** Delete both local helpers and call `clampNumber({ value, min, max })` from `stageGeometry.ts` in `capAnchorRect`, or export `clampCoordinate` from there. `clampNumber` replaces them. Current requirement lost: None.
+**Resolution:**
+
+### F-92 [P3] open - postToFrame's wildcard-origin justification no longer describes the payload
+
+**File:** src/webview/hostBridge.svelte.ts:53
+**Found:** 2026-11-09 by independent /audit (scope: current; lens: security, quality)
+**Why it matters:** The comment says the `'*'` target is safe because "the payload is only a mode or a step command, nothing private". `cd:anchors` now sends comment ids and selectors through the same call. The risk is small: selectors describe the frame's own DOM, and comment bodies are not sent. But a design script can navigate its own frame, and a `'*'` post then reaches that page, so the next change to this payload would be weighed against a false statement.
+**Suggested fix:** Reword the comment to say what is sent and why it is acceptable: mode, step commands, and this frame's own comment ids and selectors, never comment bodies. Comment only.
+**Resolution:**

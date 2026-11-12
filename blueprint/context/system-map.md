@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8f1 Comment mode + popover (`feature/comment-mode-popover`): `C` / `cd:key` mode keys, the comment popover, `comment:create` → `addComment` with one answer per attempt, `comments:updated` to the panel.
+**Last verified against code:** feature 8f2 Pins (`feature/pins`): `stale` / `targetMissing` on `comments:updated`, the `cd:anchors` / `cd:anchor-rects` channel, the pin layout and the read-only thread.
 
 ## Chart checklist
 
@@ -68,8 +68,8 @@ flowchart LR
   Chrome -->|artboard:ready, frame:place, comment:create| Panel
   Panel -->|placeFrameFromChrome and addComment under the lock;<br/>readComments| Disk
   Chrome -->|blob URL: stamped HTML + runtime| Frames
-  Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key| Chrome
-  Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child| Frames
+  Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key,<br/>cd:anchor-rects| Chrome
+  Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child, cd:anchors| Frames
 ```
 
 Each blob frame's head starts with the artboard's `<meta charset>`, then `FRAME_CSP` (inline
@@ -102,8 +102,12 @@ sequenceDiagram
 - `stale` and `targetMissing` come from disk only (`commentTarget.ts`): the stored selector runs
   through css-select only when it has buildSelector's shape (at most 2 descendant steps) and the
   page is at most 64 deep, 20,000 elements and 5,000 siblings wide; otherwise flags are `null`.
-- The panel reads `comments.json` without flags (`readComments`, 8f1) and shows a broken file as
-  its own banner; nothing on the canvas or export path reads it, so it never blanks the stage.
+- Every flag read (MCP and panel) shares one path: a parse cached per workspace and frame while
+  the HTML text is identical (32 frames at most, oldest evicted), and a 200 ms target-check budget
+  timed after the parse. Past the budget, a comment that needs a match reports `null` flags and a
+  hint to read again.
+- The panel reads the same flags (`readComments`, 8f2) and shows a broken file as its own banner;
+  nothing on the canvas or export path reads it, so it never blanks the stage.
 
 ## Panel open and handshake
 
@@ -258,7 +262,61 @@ sequenceDiagram
   Parent and Child, and the next Add gets "Pick it again" (`PICK_OUTDATED`).
 - A forged `cd:key` from a design script cannot discard a draft. A forged user `cd:pick` can
   retarget it; the text is kept and the chip changes.
-- The panel shows nothing new on the canvas after Add: pins arrive in 8f2.
+- After Add, the new comment's pin arrives with that `comments:updated` (8f2, next section).
+
+## Pins (8f2)
+
+```mermaid
+sequenceDiagram
+  participant D as Disk (.cursor-design)
+  participant H as Host (panelComments)
+  participant C as Chrome (App, Pins)
+  participant F as Frame runtime (pinAnchors)
+  Note over D,H: watcher refresh, comment:create success, panel opened or shown
+  H->>D: readComments (comments.json + artboards/id.html)
+  Note over H: parse cached by HTML text, css-select within 200 ms, then null flags
+  H->>C: comments:updated {comments[ + stale|null, targetMissing|null ], error?}
+  C->>F: cd:anchors {anchors[{id, selector}]} (every live frame, [] with no element comments)
+  alt from a sender other than the captured parent, or any bad entry
+    F->>F: message dropped
+  else empty list
+    F->>F: observers off, pending measurement cancelled
+  else non-empty list
+    F->>F: ResizeObserver, MutationObserver, scroll, resize, transitionend, animationend
+  end
+  F->>C: cd:anchor-rects {anchors[{id, box|null, visible|null}]} (forced once per cd:anchors)
+  loop any trigger, one measurement per animation frame
+    opt a target moved more than 0.5px, or a null flipped, or the id list changed
+      F->>C: cd:anchor-rects {all anchors}
+    end
+  end
+  alt not a registered iframe, or any bad entry
+    C->>C: message dropped
+  else valid
+    C->>C: store under the sender's frame id (any mode), layoutPins from drawn frames + view
+  end
+  opt frame reload (cd:ready)
+    F->>C: cd:ready
+    C->>F: cd:mode {current}
+    C->>C: drop that frame's anchors, pins fall back to the stored rect
+    C->>F: cd:anchors {that frame's list}
+  end
+```
+
+- A pin is placed only for a comment on a live iframe frame. Frame-local point: a page comment is
+  its fraction of the frame record; an element comment is its fraction of the live `box`, or of
+  the stored `rect` until the frame answers or when `box` is `null`.
+- A pin is hidden when the live `box` exists and `visible` is `null` or the point is outside it,
+  and when the point is outside the frame. A forged `cd:anchor-rects` only moves or hides that
+  frame's own pins: it is stored under the sender's id and never draws over a neighbor frame.
+- Badge (`pinBadge`): none for a resolved comment, else `missing` (live `box: null` or
+  `targetMissing: true`), else `stale`, else `unchecked` (both flags `null`).
+- `cd:anchors` is ignored by `commentPicking`, so it never steps an open pick. The pin layer is
+  `inert` while a draft is open, so a click there picks the element under it.
+- A pin click opens `CommentThread` with no message to the host. Escape or Close returns focus to
+  the pin. The thread closes when its comment or pin goes away, or a draft opens; focus inside it
+  then moves to the stage viewport. Open finding F-88: a `cd:frame-height` shrink that unplaces a
+  fallback pin hides the thread without closing it.
 
 ## Frame drag / resize (8c)
 
@@ -291,7 +349,8 @@ settles the gesture to disk (the Agent wins).
   `<group>/<id>/index.html`.
 - They record `lastExport` in `manifest.json`.
 - `canvas.html` embeds the frame runtime and a preview controller that accepts only
-  `cd:frame-height` and `cd:frame-wheel` from its own frames.
+  `cd:frame-height` and `cd:frame-wheel` from its own frames. It never sends `cd:anchors`, so the
+  runtime's pin observers stay off there.
 - `handoff_status`, and `ui:status.handoffStale`, compare the current frames with `lastExport`.
 
 ## Message contract (shipped)
@@ -304,7 +363,7 @@ settles the gesture to disk (the Agent wins).
 | host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
-| host → chrome | `comments:updated` | `{comments[], error?}` (no stale / missing flags until 8f2) |
+| host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
 | host → chrome | `comment:added` | `{requestId}` |
 | host → chrome | `ui:error` | `{message, requestId?}` (safe copy) |
 | frame → chrome | `cd:frame-height` | `{height}` |
@@ -313,8 +372,10 @@ settles the gesture to disk (the Agent wins).
 | frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
 | frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, box, styles, isPage, repost}` (selector from finder inside the frame; `point` relative to the target's box, `box` its unclipped size; `repost` true for a scroll or resize re-post) |
 | frame → chrome | `cd:key` | `{key: 'c' \| 'Escape'}` (frame focus, not editable, no modifiers or repeat) |
+| frame → chrome | `cd:anchor-rects` | `{anchors: [{id, box \| null, visible \| null}]}` (frame-local CSS px; `box` unclipped, `visible` clipped by scrolling ancestors and the frame viewport; `box: null` requires `visible: null`) |
 | chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
+| chrome → frame | `cd:anchors` | `{anchors: [{id, selector}]}` (the frame's element comments, every status; replaces its previous list) |
 
 Rule 02 is the normative contract. If this table and rule 02 disagree, fix whichever no longer
 matches the code.

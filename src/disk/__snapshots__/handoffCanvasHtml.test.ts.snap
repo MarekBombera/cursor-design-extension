@@ -38,6 +38,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;height&quot;,
 		&quot;gap&quot;
 	];
+	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
@@ -49,11 +50,36 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
+	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseSelector = (value) =&gt; {
+		if (value === null) return null;
+		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var parseAnchorList = (value, parseEntry) =&gt; {
+		if (!Array.isArray(value) || value.length &gt; 500) return;
+		const entries = [];
+		for (const entry of value) {
+			const record = asRecord(entry);
+			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			if (parsed === void 0) return;
+			entries.push(parsed);
+		}
+		return entries;
+	};
+	var isCommentId = (value) =&gt; typeof value === &quot;string&quot; &amp;&amp; COMMENT_ID_PATTERN.test(value);
+	var parseAnchorRequest = (record) =&gt; {
+		const selector = parseSelector(record.selector);
+		return isCommentId(record.id) &amp;&amp; typeof selector === &quot;string&quot; ? {
+			id: record.id,
+			selector
+		} : void 0;
+	};
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
 		if (record === void 0) return;
@@ -64,6 +90,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case FRAME_ANCHORS_MESSAGE: {
+				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				return anchors === void 0 ? void 0 : {
+					type: FRAME_ANCHORS_MESSAGE,
+					anchors
+				};
+			}
 			default: return;
 		}
 	};
@@ -473,6 +506,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	};
 	//#endregion
 	//#region src/webview/frame/commentPicking.ts
+	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+	var toFrameRect = (box) =&gt; ({
+		x: box.x,
+		y: box.y,
+		width: box.width,
+		height: box.height
+	});
+	var visibleRect = (element) =&gt; {
+		if (!element.isConnected) return null;
+		const viewport = {
+			x: 0,
+			y: 0,
+			width: window.innerWidth,
+			height: window.innerHeight
+		};
+		if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+		const clips = [];
+		for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+			const style = window.getComputedStyle(ancestor);
+			if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+		}
+		clips.push(viewport);
+		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+	};
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
@@ -487,7 +544,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		let pendingHover;
 		let lastPosted;
 		let pendingRepost;
-		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
 			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
@@ -520,29 +576,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				contains
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
-		};
-		const toFrameRect = (box) =&gt; ({
-			x: box.x,
-			y: box.y,
-			width: box.width,
-			height: box.height
-		});
-		const visibleRect = (element) =&gt; {
-			if (!element.isConnected) return null;
-			const viewport = {
-				x: 0,
-				y: 0,
-				width: window.innerWidth,
-				height: window.innerHeight
-			};
-			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
-			const clips = [];
-			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
-				const style = window.getComputedStyle(ancestor);
-				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
-			}
-			clips.push(viewport);
-			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -719,7 +752,130 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
+	//#endregion
+	//#region src/webview/frame/anchorRects.ts
+	var MOVE_THRESHOLD_PX = .5;
+	var rectMoved = (last, next) =&gt; {
+		if (last === null || next === null) return last !== next;
+		return Math.abs(last.x - next.x) &gt; MOVE_THRESHOLD_PX || Math.abs(last.y - next.y) &gt; MOVE_THRESHOLD_PX || Math.abs(last.width - next.width) &gt; MOVE_THRESHOLD_PX || Math.abs(last.height - next.height) &gt; MOVE_THRESHOLD_PX;
+	};
+	var anchorsMoved = ({ last, next }) =&gt; {
+		if (last === void 0 || last.length !== next.length) return true;
+		return next.some((anchor, index) =&gt; {
+			const previous = last[index];
+			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
+		});
+	};
+	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
+	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
+	var capAnchorRect = (rect) =&gt; ({
+		x: clampCoordinate(rect.x),
+		y: clampCoordinate(rect.y),
+		width: clampSize(rect.width),
+		height: clampSize(rect.height)
+	});
+	//#endregion
+	//#region src/webview/frame/pinAnchors.ts
+	var CAPTURED_TRIGGERS = [
+		&quot;scroll&quot;,
+		&quot;transitionend&quot;,
+		&quot;animationend&quot;
+	];
+	var installPinAnchors = (host) =&gt; {
+		let requests = [];
+		let last;
+		let force = false;
+		let pending;
+		let resizeObserver;
+		let mutationObserver;
+		let observed = /* @__PURE__ */ new Set();
+		const measure = () =&gt; {
+			pending = void 0;
+			const resolved = /* @__PURE__ */ new Set([document.documentElement]);
+			const anchors = requests.map(({ id, selector }) =&gt; {
+				let matches;
+				try {
+					matches = document.querySelectorAll(selector);
+				} catch {
+					matches = void 0;
+				}
+				const target = matches?.length === 1 ? matches[0] : void 0;
+				if (target === void 0) return {
+					id,
+					box: null,
+					visible: null
+				};
+				resolved.add(target);
+				const { x, y, width, height } = target.getBoundingClientRect();
+				const visible = visibleRect(target);
+				return {
+					id,
+					box: capAnchorRect({
+						x,
+						y,
+						width,
+						height
+					}),
+					visible: visible === null ? null : capAnchorRect(visible)
+				};
+			});
+			if (resizeObserver !== void 0) {
+				for (const element of observed) if (!resolved.has(element)) resizeObserver.unobserve(element);
+				for (const element of resolved) if (!observed.has(element)) resizeObserver.observe(element);
+				observed = resolved;
+			}
+			if (!force &amp;&amp; !anchorsMoved({
+				last,
+				next: anchors
+			})) return;
+			force = false;
+			last = anchors;
+			host.postMessage({
+				type: FRAME_ANCHOR_RECTS_MESSAGE,
+				anchors
+			}, &quot;*&quot;);
+		};
+		const schedule = () =&gt; {
+			if (pending === void 0) pending = requestAnimationFrame(measure);
+		};
+		const start = () =&gt; {
+			if (resizeObserver !== void 0) return;
+			resizeObserver = new ResizeObserver(schedule);
+			mutationObserver = new MutationObserver(schedule);
+			mutationObserver.observe(document.documentElement, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				characterData: true
+			});
+			for (const type of CAPTURED_TRIGGERS) window.addEventListener(type, schedule, { capture: true });
+			window.addEventListener(&quot;resize&quot;, schedule);
+		};
+		const stop = () =&gt; {
+			resizeObserver?.disconnect();
+			mutationObserver?.disconnect();
+			resizeObserver = void 0;
+			mutationObserver = void 0;
+			observed = /* @__PURE__ */ new Set();
+			for (const type of CAPTURED_TRIGGERS) window.removeEventListener(type, schedule, { capture: true });
+			window.removeEventListener(&quot;resize&quot;, schedule);
+			if (pending !== void 0) {
+				cancelAnimationFrame(pending);
+				pending = void 0;
+			}
+		};
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message?.type !== &quot;cd:anchors&quot;) return;
+			requests = message.anchors;
+			if (requests.length === 0) stop();
+			else start();
+			force = true;
+			schedule();
 		});
 	};
 	//#endregion
@@ -809,6 +965,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}, &quot;*&quot;);
 	}, { capture: true });
 	installCommentPicking(host);
+	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
@@ -833,6 +990,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;height&quot;,
 		&quot;gap&quot;
 	];
+	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
@@ -844,11 +1002,36 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
+	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseSelector = (value) =&gt; {
+		if (value === null) return null;
+		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var parseAnchorList = (value, parseEntry) =&gt; {
+		if (!Array.isArray(value) || value.length &gt; 500) return;
+		const entries = [];
+		for (const entry of value) {
+			const record = asRecord(entry);
+			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			if (parsed === void 0) return;
+			entries.push(parsed);
+		}
+		return entries;
+	};
+	var isCommentId = (value) =&gt; typeof value === &quot;string&quot; &amp;&amp; COMMENT_ID_PATTERN.test(value);
+	var parseAnchorRequest = (record) =&gt; {
+		const selector = parseSelector(record.selector);
+		return isCommentId(record.id) &amp;&amp; typeof selector === &quot;string&quot; ? {
+			id: record.id,
+			selector
+		} : void 0;
+	};
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
 		if (record === void 0) return;
@@ -859,6 +1042,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case FRAME_ANCHORS_MESSAGE: {
+				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				return anchors === void 0 ? void 0 : {
+					type: FRAME_ANCHORS_MESSAGE,
+					anchors
+				};
+			}
 			default: return;
 		}
 	};
@@ -1268,6 +1458,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	};
 	//#endregion
 	//#region src/webview/frame/commentPicking.ts
+	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+	var toFrameRect = (box) =&gt; ({
+		x: box.x,
+		y: box.y,
+		width: box.width,
+		height: box.height
+	});
+	var visibleRect = (element) =&gt; {
+		if (!element.isConnected) return null;
+		const viewport = {
+			x: 0,
+			y: 0,
+			width: window.innerWidth,
+			height: window.innerHeight
+		};
+		if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+		const clips = [];
+		for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+			const style = window.getComputedStyle(ancestor);
+			if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+		}
+		clips.push(viewport);
+		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+	};
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
@@ -1282,7 +1496,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		let pendingHover;
 		let lastPosted;
 		let pendingRepost;
-		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
 			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
@@ -1315,29 +1528,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				contains
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
-		};
-		const toFrameRect = (box) =&gt; ({
-			x: box.x,
-			y: box.y,
-			width: box.width,
-			height: box.height
-		});
-		const visibleRect = (element) =&gt; {
-			if (!element.isConnected) return null;
-			const viewport = {
-				x: 0,
-				y: 0,
-				width: window.innerWidth,
-				height: window.innerHeight
-			};
-			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
-			const clips = [];
-			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
-				const style = window.getComputedStyle(ancestor);
-				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
-			}
-			clips.push(viewport);
-			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -1514,7 +1704,130 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
+	//#endregion
+	//#region src/webview/frame/anchorRects.ts
+	var MOVE_THRESHOLD_PX = .5;
+	var rectMoved = (last, next) =&gt; {
+		if (last === null || next === null) return last !== next;
+		return Math.abs(last.x - next.x) &gt; MOVE_THRESHOLD_PX || Math.abs(last.y - next.y) &gt; MOVE_THRESHOLD_PX || Math.abs(last.width - next.width) &gt; MOVE_THRESHOLD_PX || Math.abs(last.height - next.height) &gt; MOVE_THRESHOLD_PX;
+	};
+	var anchorsMoved = ({ last, next }) =&gt; {
+		if (last === void 0 || last.length !== next.length) return true;
+		return next.some((anchor, index) =&gt; {
+			const previous = last[index];
+			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
+		});
+	};
+	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
+	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
+	var capAnchorRect = (rect) =&gt; ({
+		x: clampCoordinate(rect.x),
+		y: clampCoordinate(rect.y),
+		width: clampSize(rect.width),
+		height: clampSize(rect.height)
+	});
+	//#endregion
+	//#region src/webview/frame/pinAnchors.ts
+	var CAPTURED_TRIGGERS = [
+		&quot;scroll&quot;,
+		&quot;transitionend&quot;,
+		&quot;animationend&quot;
+	];
+	var installPinAnchors = (host) =&gt; {
+		let requests = [];
+		let last;
+		let force = false;
+		let pending;
+		let resizeObserver;
+		let mutationObserver;
+		let observed = /* @__PURE__ */ new Set();
+		const measure = () =&gt; {
+			pending = void 0;
+			const resolved = /* @__PURE__ */ new Set([document.documentElement]);
+			const anchors = requests.map(({ id, selector }) =&gt; {
+				let matches;
+				try {
+					matches = document.querySelectorAll(selector);
+				} catch {
+					matches = void 0;
+				}
+				const target = matches?.length === 1 ? matches[0] : void 0;
+				if (target === void 0) return {
+					id,
+					box: null,
+					visible: null
+				};
+				resolved.add(target);
+				const { x, y, width, height } = target.getBoundingClientRect();
+				const visible = visibleRect(target);
+				return {
+					id,
+					box: capAnchorRect({
+						x,
+						y,
+						width,
+						height
+					}),
+					visible: visible === null ? null : capAnchorRect(visible)
+				};
+			});
+			if (resizeObserver !== void 0) {
+				for (const element of observed) if (!resolved.has(element)) resizeObserver.unobserve(element);
+				for (const element of resolved) if (!observed.has(element)) resizeObserver.observe(element);
+				observed = resolved;
+			}
+			if (!force &amp;&amp; !anchorsMoved({
+				last,
+				next: anchors
+			})) return;
+			force = false;
+			last = anchors;
+			host.postMessage({
+				type: FRAME_ANCHOR_RECTS_MESSAGE,
+				anchors
+			}, &quot;*&quot;);
+		};
+		const schedule = () =&gt; {
+			if (pending === void 0) pending = requestAnimationFrame(measure);
+		};
+		const start = () =&gt; {
+			if (resizeObserver !== void 0) return;
+			resizeObserver = new ResizeObserver(schedule);
+			mutationObserver = new MutationObserver(schedule);
+			mutationObserver.observe(document.documentElement, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				characterData: true
+			});
+			for (const type of CAPTURED_TRIGGERS) window.addEventListener(type, schedule, { capture: true });
+			window.addEventListener(&quot;resize&quot;, schedule);
+		};
+		const stop = () =&gt; {
+			resizeObserver?.disconnect();
+			mutationObserver?.disconnect();
+			resizeObserver = void 0;
+			mutationObserver = void 0;
+			observed = /* @__PURE__ */ new Set();
+			for (const type of CAPTURED_TRIGGERS) window.removeEventListener(type, schedule, { capture: true });
+			window.removeEventListener(&quot;resize&quot;, schedule);
+			if (pending !== void 0) {
+				cancelAnimationFrame(pending);
+				pending = void 0;
+			}
+		};
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message?.type !== &quot;cd:anchors&quot;) return;
+			requests = message.anchors;
+			if (requests.length === 0) stop();
+			else start();
+			force = true;
+			schedule();
 		});
 	};
 	//#endregion
@@ -1604,6 +1917,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}, &quot;*&quot;);
 	}, { capture: true });
 	installCommentPicking(host);
+	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
@@ -1628,6 +1942,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;height&quot;,
 		&quot;gap&quot;
 	];
+	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
@@ -1639,11 +1954,36 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
+	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseSelector = (value) =&gt; {
+		if (value === null) return null;
+		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var parseAnchorList = (value, parseEntry) =&gt; {
+		if (!Array.isArray(value) || value.length &gt; 500) return;
+		const entries = [];
+		for (const entry of value) {
+			const record = asRecord(entry);
+			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			if (parsed === void 0) return;
+			entries.push(parsed);
+		}
+		return entries;
+	};
+	var isCommentId = (value) =&gt; typeof value === &quot;string&quot; &amp;&amp; COMMENT_ID_PATTERN.test(value);
+	var parseAnchorRequest = (record) =&gt; {
+		const selector = parseSelector(record.selector);
+		return isCommentId(record.id) &amp;&amp; typeof selector === &quot;string&quot; ? {
+			id: record.id,
+			selector
+		} : void 0;
+	};
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
 		if (record === void 0) return;
@@ -1654,6 +1994,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case FRAME_ANCHORS_MESSAGE: {
+				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				return anchors === void 0 ? void 0 : {
+					type: FRAME_ANCHORS_MESSAGE,
+					anchors
+				};
+			}
 			default: return;
 		}
 	};
@@ -2063,6 +2410,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	};
 	//#endregion
 	//#region src/webview/frame/commentPicking.ts
+	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+	var toFrameRect = (box) =&gt; ({
+		x: box.x,
+		y: box.y,
+		width: box.width,
+		height: box.height
+	});
+	var visibleRect = (element) =&gt; {
+		if (!element.isConnected) return null;
+		const viewport = {
+			x: 0,
+			y: 0,
+			width: window.innerWidth,
+			height: window.innerHeight
+		};
+		if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+		const clips = [];
+		for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+			const style = window.getComputedStyle(ancestor);
+			if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+		}
+		clips.push(viewport);
+		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+	};
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
@@ -2077,7 +2448,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		let pendingHover;
 		let lastPosted;
 		let pendingRepost;
-		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
 			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
@@ -2110,29 +2480,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				contains
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
-		};
-		const toFrameRect = (box) =&gt; ({
-			x: box.x,
-			y: box.y,
-			width: box.width,
-			height: box.height
-		});
-		const visibleRect = (element) =&gt; {
-			if (!element.isConnected) return null;
-			const viewport = {
-				x: 0,
-				y: 0,
-				width: window.innerWidth,
-				height: window.innerHeight
-			};
-			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
-			const clips = [];
-			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
-				const style = window.getComputedStyle(ancestor);
-				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
-			}
-			clips.push(viewport);
-			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -2309,7 +2656,130 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
+	//#endregion
+	//#region src/webview/frame/anchorRects.ts
+	var MOVE_THRESHOLD_PX = .5;
+	var rectMoved = (last, next) =&gt; {
+		if (last === null || next === null) return last !== next;
+		return Math.abs(last.x - next.x) &gt; MOVE_THRESHOLD_PX || Math.abs(last.y - next.y) &gt; MOVE_THRESHOLD_PX || Math.abs(last.width - next.width) &gt; MOVE_THRESHOLD_PX || Math.abs(last.height - next.height) &gt; MOVE_THRESHOLD_PX;
+	};
+	var anchorsMoved = ({ last, next }) =&gt; {
+		if (last === void 0 || last.length !== next.length) return true;
+		return next.some((anchor, index) =&gt; {
+			const previous = last[index];
+			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
+		});
+	};
+	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
+	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
+	var capAnchorRect = (rect) =&gt; ({
+		x: clampCoordinate(rect.x),
+		y: clampCoordinate(rect.y),
+		width: clampSize(rect.width),
+		height: clampSize(rect.height)
+	});
+	//#endregion
+	//#region src/webview/frame/pinAnchors.ts
+	var CAPTURED_TRIGGERS = [
+		&quot;scroll&quot;,
+		&quot;transitionend&quot;,
+		&quot;animationend&quot;
+	];
+	var installPinAnchors = (host) =&gt; {
+		let requests = [];
+		let last;
+		let force = false;
+		let pending;
+		let resizeObserver;
+		let mutationObserver;
+		let observed = /* @__PURE__ */ new Set();
+		const measure = () =&gt; {
+			pending = void 0;
+			const resolved = /* @__PURE__ */ new Set([document.documentElement]);
+			const anchors = requests.map(({ id, selector }) =&gt; {
+				let matches;
+				try {
+					matches = document.querySelectorAll(selector);
+				} catch {
+					matches = void 0;
+				}
+				const target = matches?.length === 1 ? matches[0] : void 0;
+				if (target === void 0) return {
+					id,
+					box: null,
+					visible: null
+				};
+				resolved.add(target);
+				const { x, y, width, height } = target.getBoundingClientRect();
+				const visible = visibleRect(target);
+				return {
+					id,
+					box: capAnchorRect({
+						x,
+						y,
+						width,
+						height
+					}),
+					visible: visible === null ? null : capAnchorRect(visible)
+				};
+			});
+			if (resizeObserver !== void 0) {
+				for (const element of observed) if (!resolved.has(element)) resizeObserver.unobserve(element);
+				for (const element of resolved) if (!observed.has(element)) resizeObserver.observe(element);
+				observed = resolved;
+			}
+			if (!force &amp;&amp; !anchorsMoved({
+				last,
+				next: anchors
+			})) return;
+			force = false;
+			last = anchors;
+			host.postMessage({
+				type: FRAME_ANCHOR_RECTS_MESSAGE,
+				anchors
+			}, &quot;*&quot;);
+		};
+		const schedule = () =&gt; {
+			if (pending === void 0) pending = requestAnimationFrame(measure);
+		};
+		const start = () =&gt; {
+			if (resizeObserver !== void 0) return;
+			resizeObserver = new ResizeObserver(schedule);
+			mutationObserver = new MutationObserver(schedule);
+			mutationObserver.observe(document.documentElement, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				characterData: true
+			});
+			for (const type of CAPTURED_TRIGGERS) window.addEventListener(type, schedule, { capture: true });
+			window.addEventListener(&quot;resize&quot;, schedule);
+		};
+		const stop = () =&gt; {
+			resizeObserver?.disconnect();
+			mutationObserver?.disconnect();
+			resizeObserver = void 0;
+			mutationObserver = void 0;
+			observed = /* @__PURE__ */ new Set();
+			for (const type of CAPTURED_TRIGGERS) window.removeEventListener(type, schedule, { capture: true });
+			window.removeEventListener(&quot;resize&quot;, schedule);
+			if (pending !== void 0) {
+				cancelAnimationFrame(pending);
+				pending = void 0;
+			}
+		};
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message?.type !== &quot;cd:anchors&quot;) return;
+			requests = message.anchors;
+			if (requests.length === 0) stop();
+			else start();
+			force = true;
+			schedule();
 		});
 	};
 	//#endregion
@@ -2399,6 +2869,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}, &quot;*&quot;);
 	}, { capture: true });
 	installCommentPicking(host);
+	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();
@@ -2423,6 +2894,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;height&quot;,
 		&quot;gap&quot;
 	];
+	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 	//#endregion
 	//#region src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
@@ -2434,11 +2906,36 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
+	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
 	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
+	var parseSelector = (value) =&gt; {
+		if (value === null) return null;
+		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var parseAnchorList = (value, parseEntry) =&gt; {
+		if (!Array.isArray(value) || value.length &gt; 500) return;
+		const entries = [];
+		for (const entry of value) {
+			const record = asRecord(entry);
+			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			if (parsed === void 0) return;
+			entries.push(parsed);
+		}
+		return entries;
+	};
+	var isCommentId = (value) =&gt; typeof value === &quot;string&quot; &amp;&amp; COMMENT_ID_PATTERN.test(value);
+	var parseAnchorRequest = (record) =&gt; {
+		const selector = parseSelector(record.selector);
+		return isCommentId(record.id) &amp;&amp; typeof selector === &quot;string&quot; ? {
+			id: record.id,
+			selector
+		} : void 0;
+	};
 	var parseChromeFrameMessage = (data) =&gt; {
 		const record = asRecord(data);
 		if (record === void 0) return;
@@ -2449,6 +2946,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case FRAME_ANCHORS_MESSAGE: {
+				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				return anchors === void 0 ? void 0 : {
+					type: FRAME_ANCHORS_MESSAGE,
+					anchors
+				};
+			}
 			default: return;
 		}
 	};
@@ -2858,6 +3362,30 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	};
 	//#endregion
 	//#region src/webview/frame/commentPicking.ts
+	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
+	var toFrameRect = (box) =&gt; ({
+		x: box.x,
+		y: box.y,
+		width: box.width,
+		height: box.height
+	});
+	var visibleRect = (element) =&gt; {
+		if (!element.isConnected) return null;
+		const viewport = {
+			x: 0,
+			y: 0,
+			width: window.innerWidth,
+			height: window.innerHeight
+		};
+		if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+		const clips = [];
+		for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
+			const style = window.getComputedStyle(ancestor);
+			if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+		}
+		clips.push(viewport);
+		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+	};
 	var installCommentPicking = (host) =&gt; {
 		let mode = &quot;interact&quot;;
 		let path = [];
@@ -2872,7 +3400,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		let pendingHover;
 		let lastPosted;
 		let pendingRepost;
-		const isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 		const resolve = (element) =&gt; {
 			let current = element;
 			while (current instanceof SVGElement &amp;&amp; current.ownerSVGElement !== null) current = current.ownerSVGElement;
@@ -2905,29 +3432,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				contains
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
-		};
-		const toFrameRect = (box) =&gt; ({
-			x: box.x,
-			y: box.y,
-			width: box.width,
-			height: box.height
-		});
-		const visibleRect = (element) =&gt; {
-			if (!element.isConnected) return null;
-			const viewport = {
-				x: 0,
-				y: 0,
-				width: window.innerWidth,
-				height: window.innerHeight
-			};
-			if (isRoot(element)) return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
-			const clips = [];
-			for (let ancestor = element.parentElement; ancestor !== null &amp;&amp; !isRoot(ancestor); ancestor = ancestor.parentElement) {
-				const style = window.getComputedStyle(ancestor);
-				if (style.overflowX !== &quot;visible&quot; || style.overflowY !== &quot;visible&quot;) clips.push(toFrameRect(ancestor.getBoundingClientRect()));
-			}
-			clips.push(viewport);
-			return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -3104,7 +3608,130 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+		});
+	};
+	//#endregion
+	//#region src/webview/frame/anchorRects.ts
+	var MOVE_THRESHOLD_PX = .5;
+	var rectMoved = (last, next) =&gt; {
+		if (last === null || next === null) return last !== next;
+		return Math.abs(last.x - next.x) &gt; MOVE_THRESHOLD_PX || Math.abs(last.y - next.y) &gt; MOVE_THRESHOLD_PX || Math.abs(last.width - next.width) &gt; MOVE_THRESHOLD_PX || Math.abs(last.height - next.height) &gt; MOVE_THRESHOLD_PX;
+	};
+	var anchorsMoved = ({ last, next }) =&gt; {
+		if (last === void 0 || last.length !== next.length) return true;
+		return next.some((anchor, index) =&gt; {
+			const previous = last[index];
+			return previous === void 0 || previous.id !== anchor.id || rectMoved(previous.box, anchor.box) || rectMoved(previous.visible, anchor.visible);
+		});
+	};
+	var clampCoordinate = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(-1e5, value));
+	var clampSize = (value) =&gt; Math.min(MAX_FRAME_COORDINATE, Math.max(0, value));
+	var capAnchorRect = (rect) =&gt; ({
+		x: clampCoordinate(rect.x),
+		y: clampCoordinate(rect.y),
+		width: clampSize(rect.width),
+		height: clampSize(rect.height)
+	});
+	//#endregion
+	//#region src/webview/frame/pinAnchors.ts
+	var CAPTURED_TRIGGERS = [
+		&quot;scroll&quot;,
+		&quot;transitionend&quot;,
+		&quot;animationend&quot;
+	];
+	var installPinAnchors = (host) =&gt; {
+		let requests = [];
+		let last;
+		let force = false;
+		let pending;
+		let resizeObserver;
+		let mutationObserver;
+		let observed = /* @__PURE__ */ new Set();
+		const measure = () =&gt; {
+			pending = void 0;
+			const resolved = /* @__PURE__ */ new Set([document.documentElement]);
+			const anchors = requests.map(({ id, selector }) =&gt; {
+				let matches;
+				try {
+					matches = document.querySelectorAll(selector);
+				} catch {
+					matches = void 0;
+				}
+				const target = matches?.length === 1 ? matches[0] : void 0;
+				if (target === void 0) return {
+					id,
+					box: null,
+					visible: null
+				};
+				resolved.add(target);
+				const { x, y, width, height } = target.getBoundingClientRect();
+				const visible = visibleRect(target);
+				return {
+					id,
+					box: capAnchorRect({
+						x,
+						y,
+						width,
+						height
+					}),
+					visible: visible === null ? null : capAnchorRect(visible)
+				};
+			});
+			if (resizeObserver !== void 0) {
+				for (const element of observed) if (!resolved.has(element)) resizeObserver.unobserve(element);
+				for (const element of resolved) if (!observed.has(element)) resizeObserver.observe(element);
+				observed = resolved;
+			}
+			if (!force &amp;&amp; !anchorsMoved({
+				last,
+				next: anchors
+			})) return;
+			force = false;
+			last = anchors;
+			host.postMessage({
+				type: FRAME_ANCHOR_RECTS_MESSAGE,
+				anchors
+			}, &quot;*&quot;);
+		};
+		const schedule = () =&gt; {
+			if (pending === void 0) pending = requestAnimationFrame(measure);
+		};
+		const start = () =&gt; {
+			if (resizeObserver !== void 0) return;
+			resizeObserver = new ResizeObserver(schedule);
+			mutationObserver = new MutationObserver(schedule);
+			mutationObserver.observe(document.documentElement, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				characterData: true
+			});
+			for (const type of CAPTURED_TRIGGERS) window.addEventListener(type, schedule, { capture: true });
+			window.addEventListener(&quot;resize&quot;, schedule);
+		};
+		const stop = () =&gt; {
+			resizeObserver?.disconnect();
+			mutationObserver?.disconnect();
+			resizeObserver = void 0;
+			mutationObserver = void 0;
+			observed = /* @__PURE__ */ new Set();
+			for (const type of CAPTURED_TRIGGERS) window.removeEventListener(type, schedule, { capture: true });
+			window.removeEventListener(&quot;resize&quot;, schedule);
+			if (pending !== void 0) {
+				cancelAnimationFrame(pending);
+				pending = void 0;
+			}
+		};
+		window.addEventListener(&quot;message&quot;, (event) =&gt; {
+			if (event.source !== host) return;
+			const message = parseChromeFrameMessage(event.data);
+			if (message?.type !== &quot;cd:anchors&quot;) return;
+			requests = message.anchors;
+			if (requests.length === 0) stop();
+			else start();
+			force = true;
+			schedule();
 		});
 	};
 	//#endregion
@@ -3194,6 +3821,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}, &quot;*&quot;);
 	}, { capture: true });
 	installCommentPicking(host);
+	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
 	//#endregion
 })();

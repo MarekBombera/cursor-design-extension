@@ -59,6 +59,16 @@ test('FRAME_CSP precedes every artboard script, even one placed before meta char
 	}
 });
 
+// The parse is a fragment parse, which drops the <html> tag; only the DOMParser step keeps these.
+test('the html element keeps its attributes, including a value containing >', () => {
+	const stamped = stamp(
+		'<!doctype html><html lang="cs" data-x="a>b"><head><style>p{}</style></head><body class="b">x</body></html>',
+	);
+	assert.equal(stamped.documentElement.getAttribute('lang'), 'cs');
+	assert.equal(stamped.documentElement.getAttribute('data-x'), 'a>b');
+	assert.equal(stamped.body.getAttribute('class'), 'b');
+});
+
 test('a pre-existing runtime script is replaced, not duplicated', () => {
 	const stamped = stamp(
 		`<head><meta charset="utf-8"></head><body><script ${CANVAS_RUNTIME_ATTRIBUTE}>evil()</script></body>`,

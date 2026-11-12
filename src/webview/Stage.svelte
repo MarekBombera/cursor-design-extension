@@ -250,6 +250,12 @@
 		};
 	};
 
+	// Where focus goes when the chrome closes something focus was in (the comment thread), so it
+	// never falls to body. tabindex -1: focusable by script only, never a Tab stop.
+	export const focusViewport = (): void => {
+		viewportElement?.focus({ preventScroll: true });
+	};
+
 	const attachViewport: Attachment<HTMLDivElement> = (element) => {
 		viewportElement = element;
 		return () => {
@@ -316,6 +322,7 @@
 		},
 	]}
 	role="presentation"
+	tabindex="-1"
 	{hidden}
 	{@attach attachViewport}
 	{@attach attachWheel}
@@ -432,6 +439,10 @@
 	}
 	.viewport[hidden] {
 		display: none;
+	}
+	/* Focused by script only (focusViewport), as a fallback; it is not a control. */
+	.viewport:focus {
+		outline: none;
 	}
 	.dragging {
 		cursor: grabbing;

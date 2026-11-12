@@ -50,6 +50,9 @@ export const HINT_UNCHECKED =
 
 export const HINT_NO_SINGLE_MATCH = 'The selector now matches no element or several elements.';
 
+export const HINT_CHECK_BUDGET =
+	'Too many comments to check at once; read again to check this one.';
+
 export const HINT_CONTAINER =
 	'The target contains other elements; edits inside it (including fixes for nested comments) mark it stale.';
 

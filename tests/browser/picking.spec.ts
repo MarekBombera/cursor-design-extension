@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
 import {
+	FRAME_ANCHORS_MESSAGE,
+	FRAME_ANCHOR_RECTS_MESSAGE,
 	FRAME_HOVER_MESSAGE,
 	FRAME_PICK_MESSAGE,
 	type FramePickMessage,
@@ -530,4 +532,30 @@ test('a click posts a user pick; a scroll inside the picked frame re-posts it', 
 	await page.mouse.wheel(0, 60);
 	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(count);
 	expect((await picksOf(page, 'a')).at(-1)?.repost).toBe(true);
+});
+
+// cd:anchors shares the runtime's chrome → frame channel with the pick steps; it must never step
+// an open pick (that would retarget the draft).
+test('Comment mode: a cd:anchors to a frame with a pick posts no cd:pick', async ({ page }) => {
+	const stage = await openPickingStage(page);
+	await toggleComment(page, true);
+	const button = await revealChangeButton(page, stage);
+	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
+	const picks = (await picksOf(page, 'a')).length;
+	const chip = await popoverChip(page).textContent();
+	const answers = async (): Promise<number> =>
+		(await messagesOfType({ page, frameId: 'a', type: FRAME_ANCHOR_RECTS_MESSAGE })).length;
+	const answered = await answers();
+	await page.evaluate((type) => {
+		const iframe = document.querySelector('[data-cd-frame-id="a"] iframe');
+		if (!(iframe instanceof HTMLIFrameElement)) {
+			throw new Error('Frame "a" has no iframe.');
+		}
+		iframe.contentWindow?.postMessage({ type, anchors: [] }, '*');
+	}, FRAME_ANCHORS_MESSAGE);
+	// The forced answer proves the frame handled it.
+	await expect.poll(answers).toBeGreaterThan(answered);
+	await nextAnimationFrame(page);
+	expect((await picksOf(page, 'a')).length).toBe(picks);
+	expect(await popoverChip(page).textContent()).toBe(chip);
 });

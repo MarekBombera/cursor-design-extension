@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import type { Comment } from '../disk/comments';
+import type { CommentView } from '../disk/comments';
 import {
 	commentCreateRequestId,
 	isCommentCreateAttempt,
@@ -142,8 +142,8 @@ test('toNewComment pins by the unclipped box, never by the rect', () => {
 	assert.deepEqual(nullRect.pin, { x: 0.5, y: 0.5 });
 });
 
-test('toPostedComment never carries artboard, version, styles or the fingerprint', () => {
-	const comment: Comment = {
+test('toPostedComment emits exactly the posted fields, flags included, never the hint', () => {
+	const comment: CommentView = {
 		id: 'c1',
 		frameId: 'hero',
 		artboard: 'Landing',
@@ -160,11 +160,28 @@ test('toPostedComment never carries artboard, version, styles or the fingerprint
 		status: 'resolved',
 		createdAt: '2026-10-26T10:00:00.000Z',
 		replies: [{ id: 'r1', author: 'agent', body: 'Done', createdAt: '2026-10-26T11:00:00.000Z' }],
+		stale: null,
+		targetMissing: false,
+		hint: 'Agent copy',
 	};
 	const posted = toPostedComment(comment);
-	for (const key of ['artboard', 'version', 'styles', 'targetFingerprint']) {
-		assert.equal(key in posted, false, key);
-	}
-	assert.equal(posted.status, 'resolved');
+	assert.deepEqual(Object.keys(posted), [
+		'id',
+		'frameId',
+		'selector',
+		'tagName',
+		'text',
+		'rect',
+		'pin',
+		'body',
+		'isPage',
+		'status',
+		'createdAt',
+		'replies',
+		'stale',
+		'targetMissing',
+	]);
+	assert.equal(posted.stale, null);
+	assert.equal(posted.targetMissing, false);
 	assert.deepEqual(posted.replies, comment.replies);
 });

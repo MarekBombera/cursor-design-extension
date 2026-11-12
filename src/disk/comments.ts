@@ -2,8 +2,10 @@ import * as z from 'zod/mini';
 
 import { readArtboard } from './artboardFs';
 import {
+	type ArtboardDocument,
 	type CommentDocument,
 	type CommentFlags,
+	HINT_CHECK_BUDGET,
 	commentFlags,
 	matchCommentTarget,
 	parseArtboardDocument,
@@ -22,6 +24,7 @@ import {
 import { isArtboardHash, normalizeHash } from './hash';
 import {
 	COMMENTS_SCHEMA_VERSION,
+	COMMENT_ID_PATTERN,
 	COMMENT_STYLE_KEYS,
 	MAX_COMMENT_BODY_CHARS,
 	MAX_COMMENT_REPLIES,
@@ -100,8 +103,6 @@ export type NewComment = {
 	body: string;
 	isPage: boolean;
 };
-
-const COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const COMMENT_FIELDS_INVALID_MESSAGE = 'Comment fields are invalid. Pick the element again.';
 
@@ -452,21 +453,48 @@ const logTargetReadError = (error: unknown): void => {
 	);
 };
 
+// The flag read's time budget: past it, a comment that needs a css-select match reports unchecked.
+const CHECK_BUDGET_MS = 200;
+
+// One parse per workspace and frame, reused only while the HTML text is identical. An unchanged
+// document also keeps matchCommentTarget's per-document match cache, so a re-read of an unchanged
+// frame runs no css-select at all.
+// ponytail: capped at MAX_PARSED_DOCUMENTS, oldest insert evicted first (FIFO, not LRU), so a
+// deleted frame or a previous workspace stops holding its tree once newer frames arrive; past the
+// cap a read that needs every frame reparses them all. Upgrade path: LRU (re-insert on hit).
+export const MAX_PARSED_DOCUMENTS = 32;
+const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
+
 const loadArtboardDocument = async (
 	workspaceRoot: string,
 	frameId: string,
 ): Promise<CommentDocument> => {
+	const key = `${workspaceRoot}\0${frameId}`;
 	try {
 		const html = await readUtf8IfExists(
 			workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(frameId)),
 		);
 		if (html === undefined) {
+			parsedDocuments.delete(key);
 			return 'missing';
 		}
-		return parseArtboardDocument(html);
+		const cached = parsedDocuments.get(key);
+		if (cached?.html === html) {
+			return cached.document;
+		}
+		const document = parseArtboardDocument(html);
+		parsedDocuments.set(key, { html, document });
+		for (const oldest of parsedDocuments.keys()) {
+			if (parsedDocuments.size <= MAX_PARSED_DOCUMENTS) {
+				break;
+			}
+			parsedDocuments.delete(oldest);
+		}
+		return document;
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
 			logTargetReadError(error);
+			parsedDocuments.delete(key);
 			return 'unreadable';
 		}
 		throw error;
@@ -477,23 +505,32 @@ const loadFramePresence = async (
 	workspaceRoot: string,
 	frameId: string,
 ): Promise<CommentDocument> => {
-	const kind = await layoutEntryKind(
-		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(frameId)),
-	);
-	if (kind === 'missing') {
-		return 'missing';
+	try {
+		const kind = await layoutEntryKind(
+			workspaceJoin(workspaceRoot, artboardHtmlPathSegments(frameId)),
+		);
+		if (kind === 'missing') {
+			return 'missing';
+		}
+		if (kind === 'file') {
+			return 'present';
+		}
+		return 'unreadable';
+	} catch (error: unknown) {
+		if (error instanceof DiskError) {
+			logTargetReadError(error);
+			return 'unreadable';
+		}
+		throw error;
 	}
-	if (kind === 'file') {
-		return 'present';
-	}
-	return 'unreadable';
 };
 
 // Parse only frames a fingerprinted element comment needs; every other comment needs only to know
 // whether its frame file still exists.
-// ponytail: one css-select pass per distinct selector per call, each bounded by the commentTarget
-// caps (~0.2 s worst case), so 500 distinct hostile selectors on one capped page could take ~100 s.
-// Upgrade path: a per-call time budget that reports the rest unchecked.
+// ponytail: parse5 parses the whole file before commentTarget's 64-deep / 20,000-element caps
+// apply, so parse time grows with HTML size (no byte cap exists). It runs on the extension host
+// thread once per HTML change per frame; css-select is bounded by the read budget. Upgrade path:
+// a worker thread for the host read.
 const documentsFor = async (
 	workspaceRoot: string,
 	comments: readonly Comment[],
@@ -524,10 +561,18 @@ const withCommentViews = async (
 	comments: Comment[],
 ): Promise<CommentView[]> => {
 	const documents = await documentsFor(workspaceRoot, comments);
-	return comments.map((comment) => ({
-		...comment,
-		...commentFlags({ target: comment, document: documents.get(comment.frameId) ?? 'missing' }),
-	}));
+	// After the parse: the budget bounds css-select only, so a slow parse never skips a match.
+	const started = performance.now();
+	return comments.map((comment) => {
+		const document = documents.get(comment.frameId) ?? 'missing';
+		// Page and presence-only comments cost no css-select, so the budget never skips them.
+		const needsMatch =
+			typeof document === 'object' && !comment.isPage && comment.targetFingerprint !== undefined;
+		if (needsMatch && performance.now() - started > CHECK_BUDGET_MS) {
+			return { ...comment, stale: null, targetMissing: null, hint: HINT_CHECK_BUDGET };
+		}
+		return { ...comment, ...commentFlags({ target: comment, document }) };
+	});
 };
 
 export const addComment = async ({
@@ -761,14 +806,14 @@ export const listComments = async ({
 	return { comments: await withCommentViews(workspaceRoot, comments) };
 };
 
-// The panel's read: every stored comment, resolved included, without flags (8f2 adds them).
+// The panel's read: every stored comment, resolved included, with the same flags as get_comment.
 export const readComments = async ({
 	workspaceRoot,
 }: {
 	workspaceRoot: string;
-}): Promise<Comment[]> => {
+}): Promise<CommentView[]> => {
 	await assertLayoutDirsOwned(workspaceRoot);
-	return (await readCommentsFile(workspaceRoot)).comments;
+	return withCommentViews(workspaceRoot, (await readCommentsFile(workspaceRoot)).comments);
 };
 
 export const getComment = async ({

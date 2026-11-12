@@ -1,6 +1,6 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 7d9667a18211a3c1c6c8a52f92ee1e812c333173635f34969d080dd9318282df -->
+<!-- blueprint:source-hash 6b9ac876ab71e13e67fc0a135aacba701192a7ef0313a8c5679ea63a7f7d6285 -->
 
 > Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 (in progress) adds Svelte chrome, frame drag/resize, element picking and comments for the Agent.
 

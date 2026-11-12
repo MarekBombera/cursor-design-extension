@@ -205,7 +205,9 @@ export const keepLiveDraft = ({
 	draft !== undefined && commentMode && liveFrameIds.has(draft.frameId) ? draft : undefined;
 
 // Frame data, rendered as text only.
-export const targetChipText = (target: DraftTarget): string => {
+export const targetChipText = (
+	target: Pick<DraftTarget, 'isPage' | 'text' | 'tagName'>,
+): string => {
 	if (target.isPage) {
 		return 'Whole frame';
 	}

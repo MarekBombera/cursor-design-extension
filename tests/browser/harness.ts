@@ -12,8 +12,8 @@ import type {
 import type { StageView } from '../../src/webview/stageGeometry';
 
 // The chrome's top-level document with a stubbed VS Code host. The page mirrors
-// buildArtboardChromeHtml (src/panel/artboardChromeHtml.ts) minus the CSP, nonces and
-// asWebviewUri. Frames are the real sandboxed blob iframes the chrome creates.
+// buildArtboardChromeHtml (src/panel/artboardChromeHtml.ts) minus asWebviewUri, and its CSP is
+// opt-in. Frames are the real sandboxed blob iframes the chrome creates.
 
 type FrameMessageRecord = { frameId: string; data: unknown };
 
@@ -32,6 +32,16 @@ declare global {
 // HTTPS so the page is a secure context, like the webview. `.test` is a reserved TLD.
 const HARNESS_ORIGIN = 'https://cd-harness.test';
 
+const HARNESS_NONCE = 'harness-nonce';
+
+// The policy buildArtboardChromeHtml sets (artboardChromeHtml.test.ts pins the original).
+const CHROME_CSP = [
+	"default-src 'none'",
+	`style-src 'nonce-${HARNESS_NONCE}' ${HARNESS_ORIGIN}`,
+	`script-src 'nonce-${HARNESS_NONCE}' ${HARNESS_ORIGIN}`,
+	'frame-src blob:',
+].join('; ');
+
 const WEBVIEW_DIST = join(__dirname, '..', '..', 'dist', 'webview');
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -48,11 +58,11 @@ const harnessPage = (initialState: unknown): string => `<!DOCTYPE html>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Cursor Design</title>
-	<link rel="stylesheet" href="/chrome.css">
+	<link rel="stylesheet" nonce="${HARNESS_NONCE}" href="/chrome.css">
 </head>
 <body>
 	<div id="svelte-root"></div>
-	<script>
+	<script nonce="${HARNESS_NONCE}">
 		const record = { posted: [], state: ${JSON.stringify(initialState) ?? 'undefined'}, frameMessages: [] };
 		window.__cdHarness = record;
 		window.acquireVsCodeApi = () => ({
@@ -70,7 +80,7 @@ const harnessPage = (initialState: unknown): string => `<!DOCTYPE html>
 			}
 		});
 	</script>
-	<script type="module" src="/chrome.js"></script>
+	<script type="module" nonce="${HARNESS_NONCE}" src="/chrome.js"></script>
 </body>
 </html>`;
 
@@ -85,7 +95,7 @@ export const isMessageOfType = (data: unknown, type: string): data is Record<str
 // for artboard:ready, like createPanelOutbox.
 export const openHarness = async (
 	page: Page,
-	options: { savedView?: StageView } = {},
+	options: { savedView?: StageView; chromeCsp?: boolean } = {},
 ): Promise<{ abortedRequests: () => number }> => {
 	let aborted = 0;
 	const initialState =
@@ -98,7 +108,11 @@ export const openHarness = async (
 			return;
 		}
 		if (url.pathname === '/') {
-			await route.fulfill({ contentType: 'text/html', body: harnessPage(initialState) });
+			await route.fulfill({
+				contentType: 'text/html',
+				headers: options.chromeCsp === true ? { 'content-security-policy': CHROME_CSP } : {},
+				body: harnessPage(initialState),
+			});
 			return;
 		}
 		const fileName = url.pathname.slice(1);
@@ -195,7 +209,7 @@ export const canvasUpdated = (frames: PostedCanvasFrame[]): CanvasUpdatedMessage
 	type: 'canvas:updated',
 	activeArtboardId: frames[0]?.id ?? '',
 	generation: 1,
-	cspNonce: 'harness-nonce',
+	cspNonce: HARNESS_NONCE,
 	frames,
 });
 

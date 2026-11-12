@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
 
-import type { Comment, NewComment } from '../disk/comments';
+import type { CommentView, NewComment } from '../disk/comments';
 import { MAX_FRAME_COORDINATE, MAX_PICK_TEXT_CHARS, MAX_SELECTOR_CHARS } from '../disk/layout';
 import { hasControlChars, isTagName } from '../webview/frame/frameMessages';
 import type { ChromeMessage, CommentCreateMessage, PostedComment } from '../webview/hostMessages';
@@ -98,8 +98,9 @@ export const toNewComment = (message: CommentCreateMessage): NewComment => ({
 	isPage: message.isPage,
 });
 
-// An explicit pick, never a spread: artboard, version, styles and targetFingerprint stay on disk.
-export const toPostedComment = (comment: Comment): PostedComment => ({
+// An explicit pick, never a spread: artboard, version, styles and targetFingerprint stay on disk,
+// and the flag hint is Agent copy, not panel copy.
+export const toPostedComment = (comment: CommentView): PostedComment => ({
 	id: comment.id,
 	frameId: comment.frameId,
 	selector: comment.selector,
@@ -125,4 +126,6 @@ export const toPostedComment = (comment: Comment): PostedComment => ({
 		body: reply.body,
 		createdAt: reply.createdAt,
 	})),
+	stale: comment.stale,
+	targetMissing: comment.targetMissing,
 });

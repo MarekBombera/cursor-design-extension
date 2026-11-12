@@ -2,7 +2,9 @@
 // (src/disk/handoffCanvasHtml.ts) imports this under the root tsconfig, which has no DOM lib.
 
 import {
+	COMMENT_ID_PATTERN,
 	COMMENT_STYLE_KEYS,
+	MAX_COMMENTS,
 	MAX_FRAME_COORDINATE,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
@@ -28,6 +30,12 @@ export const FRAME_MODE_MESSAGE = 'cd:mode';
 export const PICK_PARENT_MESSAGE = 'cd:pick-parent';
 
 export const PICK_CHILD_MESSAGE = 'cd:pick-child';
+
+// Chrome → frame: the element comments of this frame to measure (8f2 pins).
+export const FRAME_ANCHORS_MESSAGE = 'cd:anchors';
+
+// Frame → chrome: where those comments' targets are now.
+export const FRAME_ANCHOR_RECTS_MESSAGE = 'cd:anchor-rects';
 
 // Frame-local CSS px (the frame's client coordinates).
 export type FrameRect = { x: number; y: number; width: number; height: number };
@@ -71,18 +79,34 @@ export type FramePickMessage = {
 // The mode keys, forwarded so they work with focus inside a frame.
 type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: 'c' | 'Escape' };
 
+export type AnchorRequest = { id: string; selector: string };
+
+// `box`: the target's unclipped border box; null when the selector matched 0 or 2+ elements or
+// threw. `visible`: that box clipped by scrolling ancestors and the frame viewport; null when fully
+// clipped, zero-area, or `box` is null.
+export type AnchorRect = { id: string; box: FrameRect | null; visible: FrameRect | null };
+
+type FrameAnchorsMessage = { type: typeof FRAME_ANCHORS_MESSAGE; anchors: AnchorRequest[] };
+
+type FrameAnchorRectsMessage = {
+	type: typeof FRAME_ANCHOR_RECTS_MESSAGE;
+	anchors: AnchorRect[];
+};
+
 export type FrameMessage =
 	| FrameHeightMessage
 	| FrameWheelMessage
 	| FrameReadyMessage
 	| FrameHoverMessage
 	| FramePickMessage
-	| FrameKeyMessage;
+	| FrameKeyMessage
+	| FrameAnchorRectsMessage;
 
 export type ChromeFrameMessage =
 	| { type: typeof FRAME_MODE_MESSAGE; mode: FrameMode }
 	| { type: typeof PICK_PARENT_MESSAGE }
-	| { type: typeof PICK_CHILD_MESSAGE };
+	| { type: typeof PICK_CHILD_MESSAGE }
+	| FrameAnchorsMessage;
 
 const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
@@ -243,6 +267,47 @@ const parseFramePick = (record: Record<string, unknown>): FramePickMessage | und
 	};
 };
 
+// At most MAX_COMMENTS entries; one bad entry rejects the whole list. Entries are rebuilt, so
+// extra fields are dropped and an id like `__proto__` stays a plain string value.
+const parseAnchorList = <Entry>(
+	value: unknown,
+	parseEntry: (record: Record<string, unknown>) => Entry | undefined,
+): Entry[] | undefined => {
+	if (!Array.isArray(value) || value.length > MAX_COMMENTS) {
+		return undefined;
+	}
+	const entries: Entry[] = [];
+	for (const entry of value as unknown[]) {
+		const record = asRecord(entry);
+		const parsed = record === undefined ? undefined : parseEntry(record);
+		if (parsed === undefined) {
+			return undefined;
+		}
+		entries.push(parsed);
+	}
+	return entries;
+};
+
+const isCommentId = (value: unknown): value is string =>
+	typeof value === 'string' && COMMENT_ID_PATTERN.test(value);
+
+const parseAnchorRequest = (record: Record<string, unknown>): AnchorRequest | undefined => {
+	const selector = parseSelector(record.selector);
+	return isCommentId(record.id) && typeof selector === 'string'
+		? { id: record.id, selector }
+		: undefined;
+};
+
+const parseAnchorRect = (record: Record<string, unknown>): AnchorRect | undefined => {
+	const box = parseNullableRect(record.box);
+	const visible = parseNullableRect(record.visible);
+	if (!isCommentId(record.id) || box === undefined || visible === undefined) {
+		return undefined;
+	}
+	// A target that does not resolve cannot be visible.
+	return box === null && visible !== null ? undefined : { id: record.id, box, visible };
+};
+
 // Frame → chrome posts are untrusted (rule 02). The bridge has already matched event.source
 // to a live frame; this only checks the payload and rebuilds it, dropping extra fields.
 // Anything else returns undefined.
@@ -270,6 +335,10 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
 			return record.key === 'c' || record.key === 'Escape'
 				? { type: FRAME_KEY_MESSAGE, key: record.key }
 				: undefined;
+		case FRAME_ANCHOR_RECTS_MESSAGE: {
+			const anchors = parseAnchorList(record.anchors, parseAnchorRect);
+			return anchors === undefined ? undefined : { type: FRAME_ANCHOR_RECTS_MESSAGE, anchors };
+		}
 		default:
 			return undefined;
 	}
@@ -290,6 +359,10 @@ export const parseChromeFrameMessage = (data: unknown): ChromeFrameMessage | und
 			return { type: PICK_PARENT_MESSAGE };
 		case PICK_CHILD_MESSAGE:
 			return { type: PICK_CHILD_MESSAGE };
+		case FRAME_ANCHORS_MESSAGE: {
+			const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+			return anchors === undefined ? undefined : { type: FRAME_ANCHORS_MESSAGE, anchors };
+		}
 		default:
 			return undefined;
 	}

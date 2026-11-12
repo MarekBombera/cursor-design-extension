@@ -5,6 +5,7 @@ import {
 	FRAME_PICK_MESSAGE,
 	type FrameMode,
 	type FrameRect,
+	PICK_CHILD_MESSAGE,
 	PICK_PARENT_MESSAGE,
 	parseChromeFrameMessage,
 } from './frameMessages';
@@ -18,6 +19,42 @@ import {
 	sameRect,
 } from './pickTarget';
 import { describeElement, type PickDescription } from './selector';
+
+const isRoot = (element: Element): boolean =>
+	element.localName === 'html' || element.localName === 'body';
+
+const toFrameRect = (box: DOMRect): FrameRect => ({
+	x: box.x,
+	y: box.y,
+	width: box.width,
+	height: box.height,
+});
+
+// Frame-local client px, clipped to scrolling ancestors and the frame viewport. html and body
+// are not clip boxes: their overflow applies to the viewport, which is clipped last. Shared by
+// picking and the pin anchors (pinAnchors.ts).
+export const visibleRect = (element: Element): FrameRect | null => {
+	if (!element.isConnected) {
+		return null;
+	}
+	const viewport = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+	if (isRoot(element)) {
+		return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
+	}
+	const clips: FrameRect[] = [];
+	for (
+		let ancestor = element.parentElement;
+		ancestor !== null && !isRoot(ancestor);
+		ancestor = ancestor.parentElement
+	) {
+		const style = window.getComputedStyle(ancestor);
+		if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+			clips.push(toFrameRect(ancestor.getBoundingClientRect()));
+		}
+	}
+	clips.push(viewport);
+	return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
+};
 
 // Comment mode (8d1). Chrome sends cd:mode / cd:pick-parent / cd:pick-child; the runtime blocks
 // the design's own input and reports what a click picks. It never writes to the design DOM.
@@ -47,9 +84,6 @@ export const installCommentPicking = (host: Window): void => {
 		  }
 		| undefined;
 	let pendingRepost: number | undefined;
-
-	const isRoot = (element: Element): boolean =>
-		element.localName === 'html' || element.localName === 'body';
 
 	// SVG internals resolve to the outermost <svg>.
 	const resolve = (element: Element): Element => {
@@ -95,38 +129,6 @@ export const installCommentPicking = (host: Window): void => {
 		});
 		const start = [picked ?? document.body ?? document.documentElement];
 		return point.altKey ? stepUp(start) : start;
-	};
-
-	const toFrameRect = (box: DOMRect): FrameRect => ({
-		x: box.x,
-		y: box.y,
-		width: box.width,
-		height: box.height,
-	});
-
-	// Frame-local client px, clipped to scrolling ancestors and the frame viewport. html and body
-	// are not clip boxes: their overflow applies to the viewport, which is clipped last.
-	const visibleRect = (element: Element): FrameRect | null => {
-		if (!element.isConnected) {
-			return null;
-		}
-		const viewport = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
-		if (isRoot(element)) {
-			return clipRect(toFrameRect(document.documentElement.getBoundingClientRect()), [viewport]);
-		}
-		const clips: FrameRect[] = [];
-		for (
-			let ancestor = element.parentElement;
-			ancestor !== null && !isRoot(ancestor);
-			ancestor = ancestor.parentElement
-		) {
-			const style = window.getComputedStyle(ancestor);
-			if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
-				clips.push(toFrameRect(ancestor.getBoundingClientRect()));
-			}
-		}
-		clips.push(viewport);
-		return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 	};
 
 	// A throw leaves no entry, so postPick sends nothing rather than another element's data.
@@ -372,6 +374,9 @@ export const installCommentPicking = (host: Window): void => {
 			setMode(message.mode);
 			return;
 		}
-		stepPick(message.type === PICK_PARENT_MESSAGE);
+		// Explicit types: any other chrome message (cd:anchors) must never step an open pick.
+		if (message.type === PICK_PARENT_MESSAGE || message.type === PICK_CHILD_MESSAGE) {
+			stepPick(message.type === PICK_PARENT_MESSAGE);
+		}
 	});
 };

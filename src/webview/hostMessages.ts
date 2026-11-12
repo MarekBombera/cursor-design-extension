@@ -52,7 +52,7 @@ type PostedReply = {
 };
 
 // What the chrome gets of a stored comment (toPostedComment): never the artboard label, version,
-// styles or fingerprint. 8f2 adds the stale / targetMissing flags.
+// styles or fingerprint. The flags are get_comment's: `null` means unchecked.
 export type PostedComment = {
 	id: string;
 	frameId: string;
@@ -66,6 +66,8 @@ export type PostedComment = {
 	status: 'open' | 'sent' | 'resolved';
 	createdAt: string;
 	replies: PostedReply[];
+	stale: boolean | null;
+	targetMissing: boolean | null;
 };
 
 // `error` is safe copy for the comments banner; the list is then empty and the canvas unaffected.
@@ -206,6 +208,9 @@ const parseReply = (entry: unknown): PostedReply | undefined => {
 const isCommentStatus = (value: unknown): value is PostedComment['status'] =>
 	value === 'open' || value === 'sent' || value === 'resolved';
 
+const isFlag = (value: unknown): value is boolean | null =>
+	value === true || value === false || value === null;
+
 // Field by field, with the cd:pick guards: comments.json is workspace data, and a design script
 // can write it through the Agent.
 const parsePostedComment = (entry: unknown): PostedComment | undefined => {
@@ -225,7 +230,9 @@ const parsePostedComment = (entry: unknown): PostedComment | undefined => {
 		typeof entry.isPage !== 'boolean' ||
 		!isCommentStatus(entry.status) ||
 		typeof entry.createdAt !== 'string' ||
-		!Array.isArray(entry.replies)
+		!Array.isArray(entry.replies) ||
+		!isFlag(entry.stale) ||
+		!isFlag(entry.targetMissing)
 	) {
 		return undefined;
 	}
@@ -247,6 +254,8 @@ const parsePostedComment = (entry: unknown): PostedComment | undefined => {
 		status: entry.status,
 		createdAt: entry.createdAt,
 		replies: replies.filter((reply) => reply !== undefined),
+		stale: entry.stale,
+		targetMissing: entry.targetMissing,
 	};
 };
 

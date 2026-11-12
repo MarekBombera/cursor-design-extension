@@ -11,10 +11,9 @@ export const FRAME_CSP =
 
 // The blob frame inherits the chrome's nonce CSP, so bare script/style tags would be blocked.
 // Stamping the chrome nonce re-allows exactly those tags; inline handlers and style attributes
-// stay blocked by the inherited policy, and FRAME_CSP blocks every subresource. DOMParser never
-// executes scripts. The artboard's own meta http-equiv is stripped so it cannot loosen or stack
-// policies; FRAME_CSP goes in first. The canvas runtime goes into the blob copy only; disk and
-// export HTML never see either.
+// stay blocked by the inherited policy, and FRAME_CSP blocks every subresource. The artboard's
+// own meta http-equiv is stripped so it cannot loosen or stack policies; FRAME_CSP goes in first.
+// The canvas runtime goes into the blob copy only; disk and export HTML never see either.
 export const stampArtboardHtml = ({
 	html,
 	nonce,
@@ -24,14 +23,27 @@ export const stampArtboardHtml = ({
 	nonce: string;
 	runtimeSource: string;
 }): string => {
-	const parsed = new DOMParser().parseFromString(html, 'text/html');
-	for (const element of parsed.querySelectorAll('meta[http-equiv]')) {
+	// A <style> connected to any document, even a DOMParser one, is checked against the chrome CSP
+	// before it has the nonce, and logs a violation. So the artboard parses into a detached <html>.
+	// Its document has no browsing context, so nothing in it runs or loads. A fragment parse drops
+	// the <html> tag's attributes, so DOMParser reads them from the text before head, body or style.
+	// ponytail: an <html> tag after those, or a leading comment naming one, loses its attributes;
+	// upgrade path: a real tokenizer (parse5).
+	const beforeContent = html.search(/<(?:head|body|style)\b/i);
+	const root = new DOMParser().parseFromString(
+		beforeContent === -1 ? html : html.slice(0, beforeContent),
+		'text/html',
+	).documentElement;
+	root.remove();
+	root.innerHTML = html;
+	const parsed = root.ownerDocument;
+	for (const element of root.querySelectorAll('meta[http-equiv]')) {
 		element.remove();
 	}
-	for (const element of parsed.querySelectorAll('script, style')) {
+	for (const element of root.querySelectorAll('script, style')) {
 		element.setAttribute('nonce', nonce);
 	}
-	for (const element of parsed.querySelectorAll(`script[${CANVAS_RUNTIME_ATTRIBUTE}]`)) {
+	for (const element of root.querySelectorAll(`script[${CANVAS_RUNTIME_ATTRIBUTE}]`)) {
 		element.remove();
 	}
 	// The runtime captures window.parent and registers its wheel listener before any artboard script.
@@ -46,10 +58,11 @@ export const stampArtboardHtml = ({
 	const policyMeta = parsed.createElement('meta');
 	policyMeta.setAttribute('http-equiv', 'Content-Security-Policy');
 	policyMeta.setAttribute('content', FRAME_CSP);
-	parsed.head.prepend(policyMeta, runtimeScript);
-	const charsetMeta = parsed.querySelector('meta[charset]');
+	const head = root.querySelector('head') ?? root;
+	head.prepend(policyMeta, runtimeScript);
+	const charsetMeta = root.querySelector('meta[charset]');
 	if (charsetMeta !== null) {
-		parsed.head.prepend(charsetMeta);
+		head.prepend(charsetMeta);
 	}
-	return `<!DOCTYPE html>${parsed.documentElement.outerHTML}`;
+	return `<!DOCTYPE html>${root.outerHTML}`;
 };

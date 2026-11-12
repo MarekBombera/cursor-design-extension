@@ -83,7 +83,7 @@ The user leaves comments on elements in the Cursor Design panel. Then they give 
    - `status` is `resolved`;
    - `targetMissing` is `true`;
    - `stale` is `true`. Exception: the `hint` says the target contains other elements, and you just edited inside it in this session. Then re-read and continue if `selector` and `text` still match one element.
-4. `null` flags mean the target cannot be checked from disk; `hint` says why. Tell the user. Continue only if `selector` and `text` clearly point at one element.
+4. `null` flags mean the target was not checked; `hint` says why. When the hint says to read again, the read ran out of time: call `get_comment({ id })` once more. Otherwise it cannot be checked from disk: tell the user, and continue only if `selector` and `text` clearly point at one element.
 5. Read the artboard (`artboardId` = the comment's `frameId`) and find the element with `selector`. `tagName`, `text` and `styles` help confirm it. `isPage: true` means the comment is about the whole frame.
 6. Make the change with `update_artboard`, then `resolve_comment({ id, note })`.
 
