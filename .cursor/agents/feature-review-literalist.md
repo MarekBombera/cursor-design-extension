@@ -1,7 +1,8 @@
 ---
 name: feature-review-literalist
 description: Literalist dual reviewer for /feature-review. Read-only spec review of blueprint/context/current-feature.md, biased toward two-implementer / Opus-handoff ambiguity.
-model: grok-4.6[effort=xhigh]
+model: claude-sonnet-5-5
+effort: high
 readonly: true
 ---
 

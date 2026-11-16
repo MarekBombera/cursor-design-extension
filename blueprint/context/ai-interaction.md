@@ -39,7 +39,8 @@ change the configured gates; Audit is not mandatory for every feature.
 or records acceptance. The numbered loop below is what those skills follow.
 
 In this project, every spec from `/feature`, `/fix`, or `/rollback` also goes
-through `/feature-review` (two isolated Grok reviews) and `/feature-review-fix`
+through `/feature-review` (two isolated reviews: Breaker on Opus 5.5, Literalist
+on Sonnet 5.5, both high effort) and `/feature-review-fix`
 (the judge rewrites the spec) before `/implement`.
 
 Before planning, `/explore <topic>` investigates an idea against the actual code

@@ -3,7 +3,7 @@ name: feature-review
 description: Dual-subagent review of the active current-feature.md spec for bugs, edge cases, security, and plan correctness. Writes both full reports to feature-review.md and stops. Use for /feature-review or pre-implementation spec review. Does not rewrite the spec.
 ---
 
-# feature-review - two Grok 4.6 reviewers (Breaker + Literalist), then stop
+# feature-review - two reviewers (Breaker on Opus 5.5, Literalist on Sonnet 5.5), then stop
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
@@ -12,19 +12,19 @@ description: Dual-subagent review of the active current-feature.md spec for bugs
 Where this sits in the workflow:
 
     /feature or /fix  ->  [feature-review]  ->  /feature-review-fix  ->  /implement
-    (spec exists)         (two Grok reviews,    (Claude is judge:        (build the
+    (spec exists)         (two Claude reviews,  (Claude is judge:        (build the
                            write reports,        research, push back,     fixed spec)
                            STOP)                 rewrite spec)
 
-This skill reviews the spec itself: `blueprint/context/current-feature.md`. It never reviews code (`/audit` does that), never rewrites the spec (`/feature-review-fix` is the judge), and never implements. Two isolated Grok 4.6 subagents — Breaker and Literalist — review in parallel through the same four lenses. After both reports validate, this skill writes them in full to `blueprint/context/feature-review.md` and stops. Two same-model reviewers still disagree usefully: Breaker hunts breakage; Literalist hunts Opus-implementer ambiguity.
+This skill reviews the spec itself: `blueprint/context/current-feature.md`. It never reviews code (`/audit` does that), never rewrites the spec (`/feature-review-fix` is the judge), and never implements. Two isolated subagents review in parallel through the same four lenses, both at high effort (never xhigh): Breaker on Opus 5.5 hunts breakage; Literalist on Sonnet 5.5 hunts what an Opus implementer would misread, and a model other than the implementer's is the better literal reader. After both reports validate, this skill writes them in full to `blueprint/context/feature-review.md` and stops.
 
 ## Step 0 - preflight (fail fast)
 
 1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/doctor`.
 2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature`, `/fix`, or `/rollback`. Never review an empty spec.
-3. Require both reviewer files, each with a `model:` line containing `grok-4.6`:
-   - `.cursor/agents/feature-review-breaker.md`
-   - `.cursor/agents/feature-review-literalist.md`
+3. Require both reviewer files, each with its `model:` line and an `effort: high` line:
+   - `.cursor/agents/feature-review-breaker.md`: `model: claude-opus-5-5`
+   - `.cursor/agents/feature-review-literalist.md`: `model: claude-sonnet-5-5`
    A missing file or a `model:` line pointing elsewhere stops the command: explain exactly which file and line, make no packet write. Runtimes without these subagents stop here too — never silently downgrade to a single-pass self-review.
 
 ## Step 1 - gather the packet
@@ -42,7 +42,7 @@ Do not read source, findings, review records, or history. This review judges the
 
 ## Step 2 - spawn both reviewers in parallel
 
-One message, two subagent calls, foreground blocking. Pass the exact file paths from Step 1 to both. Do not summarize the spec for them — each reviewer reads the raw files with its own tools for an independent read. When the runtime allows a model override, pass `cursor-grok-4.6-xhigh-fast` for both (that is the xhigh 4.6 fast slug).
+One message, two subagent calls, foreground blocking. Pass the exact file paths from Step 1 to both. Do not summarize the spec for them — each reviewer reads the raw files with its own tools for an independent read. When the runtime takes a model and effort per call (Claude Code's Agent tool), pass them explicitly so a changed default cannot downgrade a reviewer: Breaker `opus` + `high`, Literalist `sonnet` + `high`.
 
 - `/feature-review-breaker`: review the spec through your four lenses, return your report contract.
 - `/feature-review-literalist`: review the spec through your four lenses, return your report contract.
@@ -52,7 +52,7 @@ One message, two subagent calls, foreground blocking. Pass the exact file paths 
 Each report must contain all five sections: `Model`, `Verdict`, `Findings`, `Nits`, `Not reviewed`.
 
 - Spawn error, timeout, or missing/malformed report from either reviewer: stop immediately, write no packet, and shortly explain what went wrong and which reviewer failed.
-- `Model` must contain `grok-4.6` for both. An explicitly different family (e.g. muse-spark, or grok-4.7 as the only id with no grok-4.6) is a fallback: stop, write no packet, explain the fallback and the likely cause (plan limits, team block, Max Mode). The exact value `unknown (runtime did not expose exact model)` is not a mismatch: continue and mark the review `model unverified` in the final report.
+- Breaker's `Model` must contain `opus-5-5`, Literalist's `sonnet-5-5`. Any other model (another family, an older version, or the two swapped) is a fallback: stop, write no packet, explain the fallback and the likely cause (plan or usage limits, a model override in the runtime). The exact value `unknown (runtime did not expose exact model)` is not a mismatch: continue and mark the review `model unverified` in the final report.
 - Never persist a single report. Never rewrite the spec from this skill.
 
 ## Step 4 - write both full reports

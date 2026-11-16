@@ -14,7 +14,7 @@ contract in `AGENTS.md`.
 Where this sits in the workflow:
 
     /fix  ->  /feature-review  ->  /feature-review-fix  ->  /implement  ->  /complete
-    (spec     (two Grok reviews,    (judge rewrites         (build it,      (log + merge)
+    (spec     (two Claude reviews,  (judge rewrites         (build it,      (log + merge)
      the fix)  write reports)        the spec)               reviewed)
 
 A fix is a bug or small change that isn't a planned build-plan feature. It runs

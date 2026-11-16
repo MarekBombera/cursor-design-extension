@@ -1,7 +1,8 @@
 ---
 name: feature-review-breaker
 description: Breaker dual reviewer for /feature-review. Read-only spec review of blueprint/context/current-feature.md, biased toward what breaks at F5 / MCP / disk.
-model: grok-4.6[effort=xhigh]
+model: claude-opus-5-5
+effort: high
 readonly: true
 ---
 

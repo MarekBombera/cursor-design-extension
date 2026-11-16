@@ -12,7 +12,7 @@ description: Judge both dual-reviewer reports, research as needed, and rewrite t
 Where this sits in the workflow:
 
     /feature or /fix  ->  /feature-review  ->  [feature-review-fix]  ->  /implement
-    (spec exists)         (two Grok reviews,    (this skill:             (build the
+    (spec exists)         (two Claude reviews,  (this skill:             (build the
                            write reports,        research, push back,     fixed spec)
                            STOP)                 rewrite spec)
 
@@ -81,7 +81,7 @@ Set activity to `ready` (spec fixed, awaiting `/implement`) and report, scannabl
 ## Rules
 
 - This skill writes `blueprint/context/current-feature.md`, and when that spec is rewritten `blueprint/context/current-feature-overview.md`, plus the dashboard activity record. Never edit source, tests, config, findings, review records, or the feature-review packet. Never commit, branch, merge, or implement.
-- Do not self-review. A missing packet is `/feature-review`, not a second Grok pass from here.
+- Do not self-review. A missing packet is `/feature-review`, not a second review pass from here.
 - No silent ignore of a P0/P1 without a reject reason.
 - Ask Bombic when a product decision is needed; do not guess.
 - Findings first. Respect existing project patterns over generic advice.

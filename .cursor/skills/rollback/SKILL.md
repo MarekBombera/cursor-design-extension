@@ -14,7 +14,7 @@ contract in `AGENTS.md`.
 Where this sits in the workflow:
 
     completed feature + git history  ->  [rollback]  ->  /feature-review  ->  /feature-review-fix  ->  /implement  ->  /check  ->  /complete
-    (archive + squashed commit)           (risk review     (two Grok          (judge rewrites        (reverse       (prove)     (log + merge)
+    (archive + squashed commit)           (risk review     (two Claude        (judge rewrites        (reverse       (prove)     (log + merge)
                                            + spec)          reports)           the spec)              product diff)
 
 This skill plans a rollback. It does not change product code, create a branch,
