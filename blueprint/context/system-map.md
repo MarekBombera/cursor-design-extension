@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8g Comments panel (`feature/comments-panel`): `comment:reply` / `comment:set-status` answered once by `comment:saved` or `ui:error` before the `comments:updated` refresh, `commentsPanelOpen` saved beside `stageView` in webview state, and a chrome-only click to jump. Before it, fix Pin review follow-ups (`fix/pin-review-follow-ups`): the open thread closes from one `$effect.pre` in App (F-88).
+**Last verified against code:** feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome. Before it, feature 8g Comments panel (`feature/comments-panel`): `comment:reply` / `comment:set-status` answered once by `comment:saved` or `ui:error` before the `comments:updated` refresh.
 
 ## Chart checklist
 
@@ -57,6 +57,7 @@ flowchart LR
   Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
   Home[("~/.cursor/skills/cursor-design/SKILL.md")]
   State[("webview state<br/>stageView, commentsPanelOpen")]
+  Clip[("system clipboard")]
 
   Agent -->|MCP tool calls| Tools
   Tools -->|disk lib, withWorkspaceLock for canvas.json and comments.json| Disk
@@ -65,9 +66,10 @@ flowchart LR
   Watcher --> Panel
   Cmds --> Panel
   Cmds -->|exportHandoff via disk lib| Disk
-  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:error| Chrome
-  Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status| Panel
-  Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus under the lock; readComments| Disk
+  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:copied, ui:error| Chrome
+  Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status, comment:copy, comment:copy-open| Panel
+  Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent under the lock;<br/>readComments, getComment, listComments| Disk
+  Panel -->|vscode.env.clipboard.writeText: the locked Agent prompt (8h)| Clip
   Chrome -->|getState on load, setState: each save keeps the other key| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
   Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key,<br/>cd:anchor-rects| Chrome
@@ -393,6 +395,62 @@ sequenceDiagram
   outline for `JUMP_FLASH_MS` (1.5 s), following pan, zoom and later `cd:anchor-rects`. Nothing
   scrolls inside the frame.
 
+## Copy prompt (8h)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome (App + commentsPanel.ts rules, CommentCard / CommentsPanel)
+  participant H as Host (answerCommentRequest)
+  participant CB as vscode.env.clipboard
+  participant D as Disk (comments.json)
+  participant A as Agent chat
+  U->>C: Copy prompt (panel card or pin thread) / Copy all open (N)
+  alt any copy pending (copyPending), anything pending on that comment, or N = 0
+    C->>C: nothing posted (button aria-disabled)
+  else
+    C->>H: comment:copy {requestId (UUID), id} / comment:copy-open {requestId}
+    alt no valid requestId
+      H->>H: logged, no answer
+    else untrusted, no folder, malformed, gone id, zero open, clipboard rejects
+      H->>C: ui:error {requestId, message}
+      H->>C: comments:updated (refresh)
+    else
+      H->>D: getComment / listComments {status: open} (no lock)
+      H->>CB: await writeText(singleCommentPrompt / openCommentsPrompt)
+      H->>D: markCommentsSent(ids) (takes withWorkspaceLock; open → sent only)
+      alt mark throws (busy, corrupt)
+        H->>C: ui:error {requestId, COPIED_NOT_MARKED}
+        H->>C: comments:updated (refresh)
+      else
+        H->>C: ui:copied {requestId, count}
+        H->>D: readComments
+        H->>C: comments:updated
+        D-->>H: watcher (only when a comment changed): ui:status + canvas:updated (identical) + comments:updated
+      end
+    end
+    C->>C: answerAction / answerCopyOpen: "Copied" for 1.5 s, announcement, or the error linked to its button
+  end
+  U->>A: paste the prompt by hand
+```
+
+- The prompt is built in the host from disk (`commentPrompt.ts`): artboard, version and styles
+  never reach the chrome. Both templates are locked word for word and pinned by a literal test.
+  Frame-sourced fields (`artboard`, `selector`, `text`) pass `toOneLine` (control, format and
+  white-space runs become one space, capped, no lone surrogate); `{text}` also loses its `"`. The
+  body keeps its newlines (the user's own text, `ponytail:`).
+- The clipboard is written before `markCommentsSent`, so a rejected write marks nothing sent.
+  `count` is how many comments moved open → sent: 0 for a re-copy, or when the Agent resolved them
+  first (they stay resolved). `markCommentsSent` writes nothing when nothing changed, so a re-copy
+  fires no watcher.
+- Copy all open lists the open ids in `comments.json` (creation) order. Zero open answers
+  "There are no open comments to copy." with no clipboard write. Every copy answer, success or
+  failure, is followed by a `comments:updated`, so a stale N corrects itself.
+- Chrome: one copy at a time across the panel and threads (`copyPending`), so the clipboard holds
+  the prompt of the last answered copy. `ui:copied` matches only a pending copy and never touches a
+  reply draft. `comments:updated` never clears the batch's pending request. A lost answer keeps
+  every Copy button blocked until a webview reload (the 8g `ponytail:`).
+
 ## Frame drag / resize (8c)
 
 ```mermaid
@@ -437,12 +495,15 @@ settles the gesture to disk (the Agent wins).
 | chrome → host | `comment:create` | `{requestId, frameId, generation, selector, tagName, text, rect \| null, point, box, styles, isPage, body}` |
 | chrome → host | `comment:reply` | `{requestId, id, body}` |
 | chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
+| chrome → host | `comment:copy` | `{requestId, id}` (8h) |
+| chrome → host | `comment:copy-open` | `{requestId}` (8h) |
 | host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
 | host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
 | host → chrome | `comment:added` | `{requestId}` |
 | host → chrome | `comment:saved` | `{requestId}` (answer to `comment:reply` / `comment:set-status`, posted before the `comments:updated` it causes) |
+| host → chrome | `ui:copied` | `{requestId, count}` (answer to `comment:copy` / `comment:copy-open`; `count` = comments moved open → sent; posted before the `comments:updated` it causes) |
 | host → chrome | `ui:error` | `{message, requestId?}` (safe copy) |
 | frame → chrome | `cd:frame-height` | `{height}` |
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |

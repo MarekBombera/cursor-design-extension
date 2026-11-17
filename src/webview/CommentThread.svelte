@@ -8,8 +8,8 @@
 	import type { PinBadge } from './pins';
 	import type { StagePoint } from './stageGeometry';
 
-	// The thread of one comment, opened from its pin: the comment card (Reply, Resolve / Reopen;
-	// 8h adds Copy), then Close.
+	// The thread of one comment, opened from its pin: the comment card (Reply, Resolve / Reopen,
+	// Copy prompt), then Close.
 	type Props = {
 		comment: PostedComment;
 		badge: PinBadge | undefined;
@@ -25,6 +25,9 @@
 		onReplyCancel: () => void;
 		onReplySubmit: () => void;
 		onToggleStatus: () => void;
+		copyBlocked: boolean;
+		copied: boolean;
+		onCopy: () => void;
 	};
 
 	let {
@@ -41,6 +44,9 @@
 		onReplyCancel,
 		onReplySubmit,
 		onToggleStatus,
+		copyBlocked,
+		copied,
+		onCopy,
 	}: Props = $props();
 
 	let width = $state(0);
@@ -96,6 +102,9 @@
 		{onReplyCancel}
 		{onReplySubmit}
 		{onToggleStatus}
+		{copyBlocked}
+		{copied}
+		{onCopy}
 	/>
 	<div class="row end">
 		<button class="action" type="button" {@attach focusOnOpen} onclick={onClose}>Close</button>

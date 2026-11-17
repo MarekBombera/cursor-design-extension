@@ -2,7 +2,7 @@
 	import type { Attachment } from 'svelte/attachments';
 
 	import CommentCard from './CommentCard.svelte';
-	import type { CommentActions, PanelItem } from './commentsPanel';
+	import type { CommentActions, CopyOpenState, PanelItem } from './commentsPanel';
 
 	// Every comment in comments.json, unresolved first. Always mounted (the toolbar toggle's
 	// aria-controls must resolve); its content renders only while open, so a closed panel costs
@@ -21,6 +21,15 @@
 		onReplyCancel: (id: string) => void;
 		onReplySubmit: (id: string) => void;
 		onToggleStatus: (id: string) => void;
+		// copyPending: a copy is in flight, so every Copy button waits (one copy at a time).
+		copyBlocked: boolean;
+		// The comment id whose copy just succeeded, or '*open' for Copy all open.
+		copiedKey: string | undefined;
+		copyOpen: CopyOpenState;
+		// Comments with status `open`: the N in Copy all open (N).
+		openCount: number;
+		onCopy: (id: string) => void;
+		onCopyOpen: () => void;
 	};
 
 	let {
@@ -35,7 +44,22 @@
 		onReplyCancel,
 		onReplySubmit,
 		onToggleStatus,
+		copyBlocked,
+		copiedKey,
+		copyOpen,
+		openCount,
+		onCopy,
+		onCopyOpen,
 	}: Props = $props();
+
+	const copyOpenErrorId = $props.id();
+	const copyOpenDisabled = $derived(openCount === 0 || copyBlocked);
+
+	const handleCopyOpen = (): void => {
+		if (!copyOpenDisabled) {
+			onCopyOpen();
+		}
+	};
 
 	// Read by the focus effects only, so not reactive.
 	let aside: HTMLElement | undefined;
@@ -128,6 +152,9 @@
 						onReplyCancel={() => onReplyCancel(id)}
 						onReplySubmit={() => onReplySubmit(id)}
 						onToggleStatus={() => onToggleStatus(id)}
+						{copyBlocked}
+						copied={copiedKey === id}
+						onCopy={() => onCopy(id)}
 					/>
 				</li>
 			{/each}
@@ -149,6 +176,21 @@
 		{:else if items.unresolved.length === 0 && items.resolved.length === 0}
 			<p class="state">No comments yet. Press C, then click an element to add one.</p>
 		{:else}
+			<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
+			<div class="copy-open">
+				<button
+					class="action"
+					type="button"
+					aria-disabled={copyOpenDisabled}
+					aria-describedby={copyOpen.error === undefined ? undefined : copyOpenErrorId}
+					data-cd-copy-open
+					onclick={handleCopyOpen}
+					>{copiedKey === '*open' ? 'Copied' : `Copy all open (${String(openCount)})`}</button
+				>
+				{#if copyOpen.error !== undefined}
+					<p class="error" id={copyOpenErrorId}>{copyOpen.error}</p>
+				{/if}
+			</div>
 			{@render group('Unresolved', items.unresolved)}
 			{@render group('Resolved', items.resolved)}
 		{/if}
@@ -185,6 +227,34 @@
 		margin: 0 0 0.75rem;
 		padding: 0;
 		list-style: none;
+	}
+	.copy-open {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.375rem;
+		margin: 0.5rem 0;
+	}
+	.copy-open p {
+		margin: 0;
+	}
+	.error {
+		color: var(--vscode-errorForeground);
+	}
+	button {
+		font: inherit;
+		padding: 0.125rem 0.5rem;
+		border: 0;
+	}
+	.action {
+		color: var(--vscode-button-secondaryForeground);
+		background: var(--vscode-button-secondaryBackground);
+	}
+	button[aria-disabled='true'] {
+		opacity: 0.5;
+	}
+	button:focus-visible {
+		outline: 1px solid var(--vscode-focusBorder);
 	}
 	.state {
 		margin: 0.5rem 0;

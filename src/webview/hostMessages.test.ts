@@ -204,6 +204,23 @@ test('comments:updated with a non-array list or a non-string error is rejected',
 	});
 });
 
+test('ui:copied needs a string requestId and a non-negative integer count', () => {
+	assert.deepEqual(parseHostMessage({ type: 'ui:copied', requestId: 'r1', count: 0, extra: 1 }), {
+		type: 'ui:copied',
+		requestId: 'r1',
+		count: 0,
+	});
+	for (const broken of [
+		{ count: 1 },
+		{ requestId: 7, count: 1 },
+		{ requestId: 'r1', count: -1 },
+		{ requestId: 'r1', count: 1.5 },
+		{ requestId: 'r1', count: '2' },
+	]) {
+		assert.equal(parseHostMessage({ type: 'ui:copied', ...broken }), undefined);
+	}
+});
+
 test('comment:saved needs a string requestId', () => {
 	assert.deepEqual(parseHostMessage({ type: 'comment:saved', requestId: 'r1' }), {
 		type: 'comment:saved',

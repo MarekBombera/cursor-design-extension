@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/comments';
-import { CommentNotFoundError, InvalidArgsError } from '../disk/errors';
+import { CommentNotFoundError, InvalidArgsError, LockTimeoutError } from '../disk/errors';
 import {
 	CHANGE_FALLBACK_MESSAGE,
 	COMMENT_GONE_MESSAGE,
+	COPY_FAILED_MESSAGE,
 	CREATE_FALLBACK_MESSAGE,
 	MALFORMED_CHANGE_MESSAGE,
 	MALFORMED_CREATE_MESSAGE,
@@ -144,6 +145,39 @@ test('comment:reply and comment:set-status reject sent, bad ids, missing body an
 	]) {
 		assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken));
 	}
+});
+
+test('comment:copy and comment:copy-open parse; bad ids and requestIds are rejected but answerable', () => {
+	const copy = { type: 'comment:copy', requestId: 'r-4', id: 'c-1' };
+	const copyOpen = { type: 'comment:copy-open', requestId: 'r-5' };
+	assert.deepEqual(parseChromeMessage({ ...copy, extra: 1 }), copy);
+	assert.deepEqual(parseChromeMessage(copyOpen), copyOpen);
+	for (const broken of [
+		{ ...copy, id: 'a b' },
+		{ ...copy, id: undefined },
+		{ ...copyOpen, requestId: undefined },
+		{ ...copyOpen, requestId: 'a b' },
+	]) {
+		assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken));
+	}
+	assert.equal(commentRequestType({ ...copy, id: 'a b' }), 'comment:copy');
+	assert.equal(commentRequestId({ ...copy, id: 'a b' }), 'r-4');
+	assert.equal(commentRequestType(copyOpen), 'comment:copy-open');
+	assert.equal(commentRequestId(copyOpen), 'r-5');
+	assert.equal(malformedRequestMessage('comment:copy-open'), COPY_FAILED_MESSAGE);
+});
+
+test('a copy error: gone comment remapped, domain copy kept, anything else the copy fallback', () => {
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:copy', error: new CommentNotFoundError() }),
+		COMMENT_GONE_MESSAGE,
+	);
+	const busy = new LockTimeoutError();
+	assert.equal(commentRequestErrorMessage({ type: 'comment:copy', error: busy }), busy.message);
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:copy-open', error: new Error('clipboard') }),
+		COPY_FAILED_MESSAGE,
+	);
 });
 
 test('a malformed comment request is still an attempt with an answerable requestId', () => {

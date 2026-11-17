@@ -455,7 +455,12 @@ test('a pin click opens its thread with the body, reply authors and actions', as
 		/^You\b[\s\S]*And darker$/,
 		/^Agent\b[\s\S]*Done$/,
 	]);
-	await expect(thread(page).getByRole('button')).toHaveText(['Reply', 'Resolve', 'Close']);
+	await expect(thread(page).getByRole('button')).toHaveText([
+		'Reply',
+		'Resolve',
+		'Copy prompt',
+		'Close',
+	]);
 });
 
 test('Escape closes the thread and focuses its pin', async ({ page }) => {

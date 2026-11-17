@@ -27,13 +27,19 @@
 	} from './commentPopover';
 	import {
 		answerAction,
+		answerCopyOpen,
 		closeReply,
 		type CommentActions,
+		COPY_FEEDBACK_MS,
+		copyPending,
+		type CopyOpenState,
 		editReply,
 		keepLiveActions,
 		liveRegionText,
 		openReply,
 		panelItems,
+		submitCopy,
+		submitCopyOpen,
 		submitReply,
 		submitStatus,
 		unresolvedCount,
@@ -54,6 +60,7 @@
 		CanvasUpdatedMessage,
 		FramePlacement,
 		CommentSavedMessage,
+		CopiedMessage,
 		HostMessage,
 		PostedComment,
 		UiErrorMessage,
@@ -128,6 +135,11 @@
 	let commentsError: string | undefined = $state();
 	// Reply composers and status requests by comment id; the rules live in commentsPanel.ts.
 	let actions: CommentActions = $state.raw(new Map());
+	// Copy all open's request state; the rules live in commentsPanel.ts.
+	let copyOpen: CopyOpenState = $state({});
+	// The Copy button that reads "Copied": a comment id, or '*open' for Copy all open. The sequence
+	// restarts the timer on a repeat; cleared after COPY_FEEDBACK_MS.
+	let copyFeedback: { key: string; sequence: number } | undefined = $state.raw();
 	// The comments live region's text; the sequence makes a repeat speak again (liveRegionText).
 	let announcement = $state({ text: '', sequence: 0 });
 	// The Comments panel; closed by default, restored from webview state.
@@ -204,6 +216,9 @@
 			target: { frameId: frame.id, rect: outline ?? null },
 		});
 	});
+	// One copy at a time across the chrome.
+	const copyBlocked = $derived(copyPending({ actions, copyOpen }));
+	const openCount = $derived(comments.filter((comment) => comment.status === 'open').length);
 	const openPin = $derived(pins.find((pin) => pin.id === openThreadId));
 	const openComment = $derived(comments.find((entry) => entry.id === openThreadId));
 	const canStep = $derived(draft !== undefined && picking.pick?.frameId === draft.frameId);
@@ -279,14 +294,20 @@
 			handleCommentAnswer(message);
 			return;
 		}
-		// A ui:error answers either a draft or an action; UUIDs never cross-match.
+		// A ui:error answers a draft, an action or Copy all open; UUIDs never cross-match.
 		if (message.type === 'ui:error') {
 			handleCommentAnswer(message);
 			handleActionAnswer(message);
+			handleCopyOpenAnswer(message);
 			return;
 		}
 		if (message.type === 'comment:saved') {
 			handleActionAnswer(message);
+			return;
+		}
+		if (message.type === 'ui:copied') {
+			handleActionAnswer(message);
+			handleCopyOpenAnswer(message);
 			return;
 		}
 		mcpUnavailable = !message.mcpAvailable;
@@ -457,6 +478,32 @@
 		}
 	};
 
+	const handleCopy = (id: string): void => {
+		const submitted = submitCopy({ actions, copyOpen, id, requestId: crypto.randomUUID() });
+		actions = submitted.actions;
+		if (submitted.message !== undefined) {
+			postCommentRequest(submitted.message);
+		}
+	};
+
+	const handleCopyOpen = (): void => {
+		const submitted = submitCopyOpen({
+			actions,
+			copyOpen,
+			openCount,
+			requestId: crypto.randomUUID(),
+		});
+		copyOpen = submitted.copyOpen;
+		if (submitted.message !== undefined) {
+			postCommentRequest(submitted.message);
+		}
+	};
+
+	// A new success replaces any other button's "Copied" and restarts the timer.
+	const showCopied = (key: string): void => {
+		copyFeedback = { key, sequence: (copyFeedback?.sequence ?? 0) + 1 };
+	};
+
 	const handleToggleCommentsPanel = (): void => {
 		commentsPanelOpen = !commentsPanelOpen;
 		saveCommentsPanelOpen(commentsPanelOpen);
@@ -504,9 +551,36 @@
 		};
 	});
 
-	const handleActionAnswer = (answer: CommentSavedMessage | UiErrorMessage): void => {
+	// Each copy success restarts the "Copied" timer; the cleanup cancels the previous one.
+	$effect(() => {
+		if (copyFeedback === undefined) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			copyFeedback = undefined;
+		}, COPY_FEEDBACK_MS);
+		return () => {
+			clearTimeout(timer);
+		};
+	});
+
+	const handleActionAnswer = (
+		answer: CommentSavedMessage | CopiedMessage | UiErrorMessage,
+	): void => {
 		const answered = answerAction({ actions, answer });
 		actions = answered.actions;
+		if (answered.copiedId !== undefined) {
+			showCopied(answered.copiedId);
+		}
+		announce(answered.announcement);
+	};
+
+	const handleCopyOpenAnswer = (answer: CopiedMessage | UiErrorMessage): void => {
+		const answered = answerCopyOpen({ state: copyOpen, answer });
+		copyOpen = answered.state;
+		if (answered.copied) {
+			showCopied('*open');
+		}
 		announce(answered.announcement);
 	};
 
@@ -788,6 +862,12 @@
 		onReplyCancel={handleReplyCancel}
 		onReplySubmit={handleReplySubmit}
 		onToggleStatus={handleToggleStatus}
+		{copyBlocked}
+		copiedKey={copyFeedback?.key}
+		{copyOpen}
+		{openCount}
+		onCopy={handleCopy}
+		onCopyOpen={handleCopyOpen}
 	/>
 	<Stage
 		bind:this={stage}
@@ -833,6 +913,9 @@
 					onReplyCancel={() => handleReplyCancel(openComment.id)}
 					onReplySubmit={() => handleReplySubmit(openComment.id)}
 					onToggleStatus={() => handleToggleStatus(openComment.id)}
+					{copyBlocked}
+					copied={copyFeedback?.key === openComment.id}
+					onCopy={() => handleCopy(openComment.id)}
 				/>
 			{/key}
 		{/if}

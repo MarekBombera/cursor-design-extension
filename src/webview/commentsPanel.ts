@@ -1,9 +1,12 @@
 import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type {
+	CommentCopyMessage,
+	CommentCopyOpenMessage,
 	CommentReplyMessage,
 	CommentSavedMessage,
 	CommentSetStatusMessage,
+	CopiedMessage,
 	PostedComment,
 	UiErrorMessage,
 } from './hostMessages';
@@ -18,10 +21,12 @@ export type CommentAction = {
 	// The one request in flight for this comment.
 	// ponytail: a lost answer (the host dies between the request and its answer) keeps `pending`
 	// set until the webview reloads, which resets `actions`. The host always answers while the
-	// chrome is ready, so there is no timeout. Upgrade path: a host-level answer timeout.
+	// chrome is ready, so there is no timeout. Upgrade path: a host-level answer timeout. A lost copy
+	// answer also blocks every Copy button (one copy at a time) until that reload.
 	pending?:
 		| { requestId: string; kind: 'reply' }
-		| { requestId: string; kind: 'status'; status: 'open' | 'resolved' };
+		| { requestId: string; kind: 'status'; status: 'open' | 'resolved' }
+		| { requestId: string; kind: 'copy' };
 	// The last failed request's host copy.
 	error?: string;
 };
@@ -225,14 +230,116 @@ export const submitStatus = ({
 	};
 };
 
-// The host's answer to one request. An answer to no pending request returns the same object.
+// Copy all open's one request in flight and its last failure (8h).
+export type CopyOpenState = { pending?: string; error?: string };
+
+// How long a Copy button reads "Copied" after its own success.
+export const COPY_FEEDBACK_MS = 1500;
+
+// One copy at a time across the chrome, so the clipboard always holds the last answered copy.
+export const copyPending = ({
+	actions,
+	copyOpen,
+}: {
+	actions: CommentActions;
+	copyOpen: CopyOpenState;
+}): boolean =>
+	copyOpen.pending !== undefined ||
+	[...actions.values()].some((action) => action.pending?.kind === 'copy');
+
+export const copyAnnouncement = ({
+	kind,
+	count,
+}: {
+	kind: 'single' | 'batch';
+	count: number;
+}): string => {
+	if (count === 0) {
+		return 'Prompt copied.';
+	}
+	if (kind === 'single') {
+		return 'Prompt copied. Comment marked sent.';
+	}
+	return count === 1
+		? 'Prompt copied. 1 comment marked sent.'
+		: `Prompt copied. ${String(count)} comments marked sent.`;
+};
+
+export const submitCopy = ({
+	actions,
+	copyOpen,
+	id,
+	requestId,
+}: {
+	actions: CommentActions;
+	copyOpen: CopyOpenState;
+	id: string;
+	requestId: string;
+}): { actions: CommentActions; message?: CommentCopyMessage } => {
+	const action = actions.get(id);
+	if (copyPending({ actions, copyOpen }) || anythingPending(action)) {
+		return { actions };
+	}
+	return {
+		actions: withAction({
+			actions,
+			id,
+			action: { ...action, pending: { requestId, kind: 'copy' }, error: undefined },
+		}),
+		message: { type: 'comment:copy', requestId, id },
+	};
+};
+
+export const submitCopyOpen = ({
+	actions,
+	copyOpen,
+	openCount,
+	requestId,
+}: {
+	actions: CommentActions;
+	copyOpen: CopyOpenState;
+	openCount: number;
+	requestId: string;
+}): { copyOpen: CopyOpenState; message?: CommentCopyOpenMessage } => {
+	if (openCount === 0 || copyPending({ actions, copyOpen })) {
+		return { copyOpen };
+	}
+	return {
+		copyOpen: { pending: requestId },
+		message: { type: 'comment:copy-open', requestId },
+	};
+};
+
+// The host's answer to Copy all open. A non-matching answer returns the same state.
+export const answerCopyOpen = ({
+	state,
+	answer,
+}: {
+	state: CopyOpenState;
+	answer: CopiedMessage | UiErrorMessage;
+}): { state: CopyOpenState; announcement?: string; copied: boolean } => {
+	if (state.pending === undefined || answer.requestId !== state.pending) {
+		return { state, copied: false };
+	}
+	if (answer.type === 'ui:error') {
+		return { state: { error: answer.message }, announcement: answer.message, copied: false };
+	}
+	return {
+		state: {},
+		announcement: copyAnnouncement({ kind: 'batch', count: answer.count }),
+		copied: true,
+	};
+};
+
+// The host's answer to one request. An answer to no pending request, or of the wrong kind
+// (ui:copied only answers a copy, comment:saved only a reply or status), returns the same object.
 export const answerAction = ({
 	actions,
 	answer,
 }: {
 	actions: CommentActions;
-	answer: CommentSavedMessage | UiErrorMessage;
-}): { actions: CommentActions; announcement?: string } => {
+	answer: CommentSavedMessage | CopiedMessage | UiErrorMessage;
+}): { actions: CommentActions; announcement?: string; copiedId?: string } => {
 	if (answer.requestId === undefined) {
 		return { actions };
 	}
@@ -242,6 +349,17 @@ export const answerAction = ({
 	}
 	const [id, action] = match;
 	const { pending } = action;
+	if ((answer.type === 'ui:copied') !== (pending?.kind === 'copy') && answer.type !== 'ui:error') {
+		return { actions };
+	}
+	if (answer.type === 'ui:copied') {
+		// Before the reply fallthrough: a copy never touches the composer.
+		return {
+			actions: withAction({ actions, id, action: { ...action, pending: undefined } }),
+			announcement: copyAnnouncement({ kind: 'single', count: answer.count }),
+			copiedId: id,
+		};
+	}
 	if (answer.type === 'ui:error') {
 		return {
 			actions: withAction({

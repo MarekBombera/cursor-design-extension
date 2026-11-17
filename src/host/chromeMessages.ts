@@ -66,6 +66,17 @@ const commentSetStatusSchema = z.object({
 	status: z.enum(['open', 'resolved']),
 });
 
+const commentCopySchema = z.object({
+	type: z.literal('comment:copy'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
+});
+
+const commentCopyOpenSchema = z.object({
+	type: z.literal('comment:copy-open'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+});
+
 // The artboard id charset is enforced by placeFrame's parseArtboardId.
 const chromeMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('artboard:ready') }),
@@ -78,6 +89,8 @@ const chromeMessageSchema = z.discriminatedUnion('type', [
 	commentCreateSchema,
 	commentReplySchema,
 	commentSetStatusSchema,
+	commentCopySchema,
+	commentCopyOpenSchema,
 ]);
 
 // Unknown `type`, a non-object, or any failing field returns undefined; never throws.
@@ -99,6 +112,8 @@ const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
 	'comment:create',
 	'comment:reply',
 	'comment:set-status',
+	'comment:copy',
+	'comment:copy-open',
 ];
 
 // The claimed raw type of a comment request, valid or not (read before any parse), so every attempt
@@ -129,8 +144,32 @@ export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 
 export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
 
+// The copy types' fallback (a clipboard rejection lands here) and their malformed copy (8h).
+export const COPY_FAILED_MESSAGE =
+	'Could not copy the prompt. Check the Output panel: Cursor Design.';
+
+// The clipboard holds the prompt, but markCommentsSent threw (busy, corrupt, anything).
+export const COPIED_NOT_MARKED_MESSAGE =
+	'The prompt was copied, but the comment status was not updated. Try again.';
+
+export const NOTHING_OPEN_MESSAGE = 'There are no open comments to copy.';
+
+const isCopyType = (type: CommentRequestMessage['type']): boolean =>
+	type === 'comment:copy' || type === 'comment:copy-open';
+
+const fallbackMessage = (type: CommentRequestMessage['type']): string =>
+	type === 'comment:create'
+		? CREATE_FALLBACK_MESSAGE
+		: isCopyType(type)
+			? COPY_FAILED_MESSAGE
+			: CHANGE_FALLBACK_MESSAGE;
+
 export const malformedRequestMessage = (type: CommentRequestMessage['type']): string =>
-	type === 'comment:create' ? MALFORMED_CREATE_MESSAGE : MALFORMED_CHANGE_MESSAGE;
+	type === 'comment:create'
+		? MALFORMED_CREATE_MESSAGE
+		: isCopyType(type)
+			? COPY_FAILED_MESSAGE
+			: MALFORMED_CHANGE_MESSAGE;
 
 // The panel's own copy: the Agent copy of CommentNotFoundError says to call list_comments.
 export const commentRequestErrorMessage = ({
@@ -142,10 +181,7 @@ export const commentRequestErrorMessage = ({
 }): string =>
 	error instanceof CommentNotFoundError
 		? COMMENT_GONE_MESSAGE
-		: toSafeArtboardErrorMessage(
-				error,
-				type === 'comment:create' ? CREATE_FALLBACK_MESSAGE : CHANGE_FALLBACK_MESSAGE,
-			);
+		: toSafeArtboardErrorMessage(error, fallbackMessage(type));
 
 // The pin is the point as a fraction of the unclipped box, never of the (maybe clipped or null)
 // rect. A zero-size box pins at 0 instead of NaN (addComment clamps the pin to 0..1 but leaves

@@ -11,6 +11,7 @@ import type {
 	CommentAddedMessage,
 	CommentSavedMessage,
 	CommentsUpdatedMessage,
+	CopiedMessage,
 	UiErrorMessage,
 } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
@@ -41,7 +42,7 @@ export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void):
 	onFramePlace = handler;
 };
 
-// Gets every comment:create / comment:reply / comment:set-status attempt raw, valid or not; the handler owns the one answer.
+// Gets every comment request attempt (create, reply, set-status, copy, copy-open) raw, valid or not; the handler owns the one answer.
 export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => void): void => {
 	onCommentRequest = handler;
 };
@@ -62,7 +63,7 @@ export const postCommentsToPanel = (comments: Omit<CommentsUpdatedMessage, 'type
 };
 
 export const postAnswerToPanel = (
-	answer: CommentAddedMessage | CommentSavedMessage | UiErrorMessage,
+	answer: CommentAddedMessage | CommentSavedMessage | CopiedMessage | UiErrorMessage,
 ): void => {
 	outbox.postAnswer(answer);
 };

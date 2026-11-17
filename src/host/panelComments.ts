@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import {
+	COPIED_NOT_MARKED_MESSAGE,
+	NOTHING_OPEN_MESSAGE,
 	commentRequestErrorMessage,
 	commentRequestId,
 	commentRequestType,
@@ -10,8 +12,17 @@ import {
 	toNewComment,
 	toPostedComment,
 } from './chromeMessages';
+import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
 import { firstWorkspaceFolder, logDiskError } from './hostFs';
-import { addComment, readComments, replyToComment, setCommentStatus } from '../disk/comments';
+import {
+	addComment,
+	getComment,
+	listComments,
+	markCommentsSent,
+	readComments,
+	replyToComment,
+	setCommentStatus,
+} from '../disk/comments';
 import { InvalidArgsError, NoWorkspaceError, toSafeArtboardErrorMessage } from '../disk/errors';
 import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
 
@@ -56,11 +67,18 @@ const LOG_SCOPES = {
 	'comment:create': 'panelComments.create',
 	'comment:reply': 'panelComments.reply',
 	'comment:set-status': 'panelComments.setStatus',
+	'comment:copy': 'panelComments.copy',
+	'comment:copy-open': 'panelComments.copyOpen',
 } as const;
 
-// One comment:create / comment:reply / comment:set-status attempt, answered exactly once
-// (comment:added or comment:saved, else ui:error) unless it has no usable requestId to answer to.
-// replyToComment and setCommentStatus take withWorkspaceLock themselves: never wrap them.
+// One comment request attempt, answered exactly once (comment:added, comment:saved or ui:copied,
+// else ui:error) unless it has no usable requestId to answer to. replyToComment, setCommentStatus
+// and markCommentsSent take withWorkspaceLock themselves: never wrap them.
+// Copy (8h): clipboard first, then markCommentsSent, so a failed write never marks anything sent;
+// every copy answer, success or error, is followed by a refresh (a stale Copy all open count
+// corrects itself).
+// ponytail: getComment / listComments compute flags the prompt never uses, bounded by the shared
+// 200 ms target-check budget and the parse cache. Upgrade path: a flag-free disk read.
 export const answerCommentRequest = async ({
 	value,
 	outputChannel,
@@ -84,6 +102,9 @@ export const answerCommentRequest = async ({
 		logDiskError({ scope, error, outputChannel });
 		if (requestId !== undefined) {
 			postAnswerToPanel({ type: 'ui:error', requestId, message });
+			if (type === 'comment:copy' || type === 'comment:copy-open') {
+				void postPanelComments({ outputChannel });
+			}
 		}
 	};
 	try {
@@ -114,7 +135,17 @@ export const answerCommentRequest = async ({
 			return;
 		}
 		const workspaceRoot = workspaceFolder.uri.fsPath;
-		// Exhaustive on purpose: a fourth comment request type fails to compile here until it is
+		// The clipboard already holds the prompt here, so any throw gets its own copy; the typed
+		// message is only logged. Undefined: refused, stop.
+		const markSent = async (ids: readonly string[]): Promise<number | undefined> => {
+			try {
+				return (await markCommentsSent({ workspaceRoot, ids })).length;
+			} catch (error: unknown) {
+				refuse(COPIED_NOT_MARKED_MESSAGE, error);
+				return undefined;
+			}
+		};
+		// Exhaustive on purpose: a new comment request type fails to compile here until it is
 		// handled and answered.
 		switch (message.type) {
 			case 'comment:create':
@@ -129,6 +160,34 @@ export const answerCommentRequest = async ({
 				await setCommentStatus({ workspaceRoot, id: message.id, status: message.status });
 				postAnswerToPanel({ type: 'comment:saved', requestId });
 				break;
+			case 'comment:copy': {
+				const comment = await getComment({ workspaceRoot, id: message.id });
+				await vscode.env.clipboard.writeText(singleCommentPrompt(comment));
+				const count = await markSent([comment.id]);
+				if (count === undefined) {
+					return;
+				}
+				postAnswerToPanel({ type: 'ui:copied', requestId, count });
+				break;
+			}
+			case 'comment:copy-open': {
+				const { comments } = await listComments({ workspaceRoot, status: 'open' });
+				if (comments.length === 0) {
+					refuse(
+						NOTHING_OPEN_MESSAGE,
+						new InvalidArgsError('Copy all open with no open comments on disk.'),
+					);
+					return;
+				}
+				const ids = comments.map((comment) => comment.id);
+				await vscode.env.clipboard.writeText(openCommentsPrompt(ids));
+				const count = await markSent(ids);
+				if (count === undefined) {
+					return;
+				}
+				postAnswerToPanel({ type: 'ui:copied', requestId, count });
+				break;
+			}
 			default:
 				return message satisfies never;
 		}

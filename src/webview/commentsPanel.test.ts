@@ -5,16 +5,20 @@ import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
 import type { FrameRecord } from './canvasFrames';
 import {
 	answerAction,
+	answerCopyOpen,
 	canSubmitReply,
 	type CommentAction,
 	type CommentActions,
 	closeReply,
+	copyAnnouncement,
 	editReply,
 	keepLiveActions,
 	liveRegionText,
 	openReply,
 	panelItems,
 	relativeTime,
+	submitCopy,
+	submitCopyOpen,
 	submitReply,
 	submitStatus,
 	unresolvedCount,
@@ -262,4 +266,133 @@ test('keepLiveActions drops unlisted ids and keeps everything on an update with 
 test('liveRegionText alternates a trailing no-break space so repeats speak', () => {
 	assert.equal(liveRegionText({ text: 'Reply added.', sequence: 1 }), 'Reply added.');
 	assert.equal(liveRegionText({ text: 'Reply added.', sequence: 2 }), 'Reply added. ');
+});
+
+test('one copy at a time: a pending card copy or batch blocks every other copy', () => {
+	const cardPending = actionsOf({ a: { pending: { requestId: 'r1', kind: 'copy' } } });
+	const onB = submitCopy({ actions: cardPending, copyOpen: {}, id: 'b', requestId: 'r2' });
+	assert.equal(onB.message, undefined);
+	assert.equal(onB.actions, cardPending);
+	const batch = submitCopyOpen({
+		actions: cardPending,
+		copyOpen: {},
+		openCount: 2,
+		requestId: 'r2',
+	});
+	assert.equal(batch.message, undefined);
+	assert.equal(
+		submitCopy({ actions: new Map(), copyOpen: { pending: 'r0' }, id: 'b', requestId: 'r2' })
+			.message,
+		undefined,
+	);
+	assert.equal(
+		submitCopyOpen({
+			actions: new Map(),
+			copyOpen: { pending: 'r0' },
+			openCount: 2,
+			requestId: 'r2',
+		}).message,
+		undefined,
+	);
+});
+
+test('copy waits for a status request on the same comment; batch sends nothing with zero open', () => {
+	const statusPending = actionsOf({
+		c1: { pending: { requestId: 'r1', kind: 'status', status: 'resolved' } },
+	});
+	assert.equal(
+		submitCopy({ actions: statusPending, copyOpen: {}, id: 'c1', requestId: 'r2' }).message,
+		undefined,
+	);
+	assert.equal(
+		submitCopyOpen({ actions: new Map(), copyOpen: {}, openCount: 0, requestId: 'r2' }).message,
+		undefined,
+	);
+});
+
+test('a new copy clears the previous error and keeps the composer text', () => {
+	const result = submitCopy({
+		actions: actionsOf({ c1: { reply: 'Draft', error: 'Old failure' } }),
+		copyOpen: {},
+		id: 'c1',
+		requestId: 'r1',
+	});
+	assert.deepEqual(result.message, { type: 'comment:copy', requestId: 'r1', id: 'c1' });
+	assert.deepEqual(result.actions.get('c1'), {
+		reply: 'Draft',
+		pending: { requestId: 'r1', kind: 'copy' },
+	});
+	const batch = submitCopyOpen({
+		actions: new Map(),
+		copyOpen: { error: 'Old failure' },
+		openCount: 1,
+		requestId: 'r2',
+	});
+	assert.deepEqual(batch.copyOpen, { pending: 'r2' });
+});
+
+test('a copy answer leaves the reply draft alone and names the copied comment', () => {
+	const result = answerAction({
+		actions: actionsOf({ c1: { reply: 'Draft', pending: { requestId: 'r1', kind: 'copy' } } }),
+		answer: { type: 'ui:copied', requestId: 'r1', count: 1 },
+	});
+	assert.deepEqual(result.actions.get('c1'), { reply: 'Draft' });
+	assert.equal(result.copiedId, 'c1');
+	assert.equal(result.announcement, 'Prompt copied. Comment marked sent.');
+});
+
+test('an answer of the wrong kind returns the same object', () => {
+	const copying = actionsOf({ c1: { pending: { requestId: 'r1', kind: 'copy' } } });
+	assert.equal(
+		answerAction({ actions: copying, answer: { type: 'comment:saved', requestId: 'r1' } }).actions,
+		copying,
+	);
+	const replying = actionsOf({ c1: { reply: 'x', pending: { requestId: 'r1', kind: 'reply' } } });
+	const misfit = answerAction({
+		actions: replying,
+		answer: { type: 'ui:copied', requestId: 'r1', count: 1 },
+	});
+	assert.equal(misfit.actions, replying);
+	assert.equal(misfit.copiedId, undefined);
+});
+
+test('answerCopyOpen: success copies, an error is kept and announced, a stranger changes nothing', () => {
+	const state = { pending: 'r1' };
+	const copied = answerCopyOpen({
+		state,
+		answer: { type: 'ui:copied', requestId: 'r1', count: 3 },
+	});
+	assert.deepEqual(copied, {
+		state: {},
+		announcement: 'Prompt copied. 3 comments marked sent.',
+		copied: true,
+	});
+	const failed = answerCopyOpen({
+		state,
+		answer: { type: 'ui:error', requestId: 'r1', message: 'Busy' },
+	});
+	assert.deepEqual(failed, { state: { error: 'Busy' }, announcement: 'Busy', copied: false });
+	const stranger = answerCopyOpen({
+		state,
+		answer: { type: 'ui:copied', requestId: 'r9', count: 1 },
+	});
+	assert.equal(stranger.state, state);
+	assert.equal(stranger.copied, false);
+});
+
+test('copyAnnouncement for single 0 and 1, batch 0, 1 and 3', () => {
+	assert.equal(copyAnnouncement({ kind: 'single', count: 0 }), 'Prompt copied.');
+	assert.equal(
+		copyAnnouncement({ kind: 'single', count: 1 }),
+		'Prompt copied. Comment marked sent.',
+	);
+	assert.equal(copyAnnouncement({ kind: 'batch', count: 0 }), 'Prompt copied.');
+	assert.equal(
+		copyAnnouncement({ kind: 'batch', count: 1 }),
+		'Prompt copied. 1 comment marked sent.',
+	);
+	assert.equal(
+		copyAnnouncement({ kind: 'batch', count: 3 }),
+		'Prompt copied. 3 comments marked sent.',
+	);
 });

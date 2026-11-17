@@ -26,6 +26,11 @@
 		onReplyCancel: () => void;
 		onReplySubmit: () => void;
 		onToggleStatus: () => void;
+		// Another copy is in flight somewhere in the chrome (copyPending); one copy at a time.
+		copyBlocked: boolean;
+		// This card's own copy just succeeded (copyFeedback is live).
+		copied: boolean;
+		onCopy: () => void;
 	};
 
 	let {
@@ -41,6 +46,9 @@
 		onReplyCancel,
 		onReplySubmit,
 		onToggleStatus,
+		copyBlocked,
+		copied,
+		onCopy,
 	}: Props = $props();
 
 	// The same comment can render in the panel and the thread at once, so ids are per instance.
@@ -71,6 +79,7 @@
 	const replyPending = $derived(action?.pending?.kind === 'reply');
 	const anythingPending = $derived(action?.pending !== undefined);
 	const canSend = $derived(canSubmitReply(action));
+	const copyDisabled = $derived(copyBlocked || anythingPending);
 	const statusLabel = $derived(comment.status === 'resolved' ? 'Reopen' : 'Resolve');
 	const dimmed = $derived(surface === 'panel' && comment.status === 'resolved');
 
@@ -89,6 +98,12 @@
 		onReplyCancel();
 		await tick();
 		replyButton?.focus();
+	};
+
+	const handleCopy = (): void => {
+		if (!copyDisabled) {
+			onCopy();
+		}
 	};
 
 	const handleSend = (): void => {
@@ -198,6 +213,14 @@
 			aria-describedby={action?.error === undefined ? undefined : errorId}
 			data-cd-focus="status"
 			onclick={handleStatus}>{statusLabel}</button
+		>
+		<button
+			class="action"
+			type="button"
+			aria-disabled={copyDisabled}
+			aria-describedby={action?.error === undefined ? undefined : errorId}
+			data-cd-focus="copy"
+			onclick={handleCopy}>{copied ? 'Copied' : 'Copy prompt'}</button
 		>
 	</div>
 	{#if composerOpen}

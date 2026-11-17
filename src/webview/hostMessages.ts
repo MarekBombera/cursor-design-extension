@@ -85,6 +85,10 @@ export type CommentSavedMessage = { type: 'comment:saved'; requestId: string };
 
 export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: string };
 
+// Success answer to comment:copy and comment:copy-open (8h). `count` = comments this copy moved
+// from open to sent (0 for a re-copy, or when the Agent resolved them first).
+export type CopiedMessage = { type: 'ui:copied'; requestId: string; count: number };
+
 export type HostMessage =
 	| CanvasUpdatedMessage
 	| ArtboardErrorMessage
@@ -92,6 +96,7 @@ export type HostMessage =
 	| CommentsUpdatedMessage
 	| CommentAddedMessage
 	| CommentSavedMessage
+	| CopiedMessage
 	| UiErrorMessage;
 
 export type FramePlacement = { x: number; y: number; width: number };
@@ -138,11 +143,19 @@ export type CommentSetStatusMessage = {
 	status: 'open' | 'resolved';
 };
 
+// 8h: the host builds the prompt from disk, writes the clipboard, then marks the comment sent.
+export type CommentCopyMessage = { type: 'comment:copy'; requestId: string; id: string };
+
+// 8h: one prompt for every open comment, in comments.json order.
+export type CommentCopyOpenMessage = { type: 'comment:copy-open'; requestId: string };
+
 // Every chrome → host comment write; each attempt with a valid requestId is answered once.
 export type CommentRequestMessage =
 	| CommentCreateMessage
 	| CommentReplyMessage
-	| CommentSetStatusMessage;
+	| CommentSetStatusMessage
+	| CommentCopyMessage
+	| CommentCopyOpenMessage;
 
 export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage | CommentRequestMessage;
 
@@ -345,6 +358,14 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 	}
 	if (data.type === 'ui:error') {
 		return parseUiError(data);
+	}
+	if (data.type === 'ui:copied') {
+		return typeof data.requestId === 'string' &&
+			typeof data.count === 'number' &&
+			Number.isInteger(data.count) &&
+			data.count >= 0
+			? { type: 'ui:copied', requestId: data.requestId, count: data.count }
+			: undefined;
 	}
 	return undefined;
 };

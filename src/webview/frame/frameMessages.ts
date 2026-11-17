@@ -127,6 +127,22 @@ const CONTROL_CHARS = /[\p{Cc}\u2028\u2029]/u;
 
 export const hasControlChars = (value: string): boolean => CONTROL_CHARS.test(value);
 
+// Must cover every line breaker CONTROL_CHARS does (\s covers U+2028 / U+2029), plus format
+// characters (bidi overrides such as U+202E) that would visually reorder a pasted prompt.
+const ONE_LINE_BREAKERS = /[\p{Cc}\p{Cf}\s]+/gu;
+
+const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
+
+// One line of at most `cap` UTF-16 code units for an Agent prompt (8h): every run of control,
+// format or white-space characters becomes one space, trimmed, and a cut never leaves a lone
+// high surrogate.
+export const toOneLine = (value: string, cap: number): string => {
+	const collapsed = value.replace(ONE_LINE_BREAKERS, ' ').trim();
+	const cut = collapsed.slice(0, cap);
+	const whole = isHighSurrogate(cut.charCodeAt(cut.length - 1)) ? cut.slice(0, -1) : cut;
+	return whole.trimEnd();
+};
+
 // Letters and digits in any script (CJK font names), plus a short punctuation list. A plain
 // space, not \s, so no newline or tab passes; at least one non-space character.
 const STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\p{L}\p{N}_ #%.,()'"/+-]+$/u;

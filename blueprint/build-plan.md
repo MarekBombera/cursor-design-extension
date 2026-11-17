@@ -53,5 +53,5 @@ Plan, library choices, decisions D1-D4 (Bombic 2026-10-21), error and status tab
   - [x] 8f1. **Comment mode + popover** - `C` toggles mode; popover adds comments with D3 keys; panel replay of comment messages
   - [x] 8f2. **Pins** - pins follow elements (resize, scroll, DOM changes, transition/animation end), show open/sent/resolved/stale/missing/unchecked; page comments
   - [x] 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump
-  - [ ] 8h. **Copy prompt** - locked template word for word (literal test), Copy all open, marks sent only after the clipboard write, host clipboard
+  - [x] 8h. **Copy prompt** - locked template word for word (literal test), Copy all open, marks sent only after the clipboard write, host clipboard
   - [ ] 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code

@@ -724,3 +724,136 @@ test('jumping to a page comment flashes the whole frame and keeps the zoom', asy
 	await expect(zoomReadout(page)).toHaveText('200%');
 	expectBoxNear(await boxOf(flashOutline(page)), await frameBox(page, JUMP_FRAME.id));
 });
+
+// 8h: Copy prompt and Copy all open. The host side (clipboard, markCommentsSent) is unit-tested;
+// here the chrome posts the requests, blocks a second copy and renders the answers.
+
+const OPEN_SECOND = comment({ id: 'c-second', body: 'Second' });
+const RESOLVED = comment({ id: 'c-done', body: 'Done', status: 'resolved' });
+
+const copyOpenButton = (page: Page): Locator => panel(page).locator('[data-cd-copy-open]');
+
+test('Copy prompt posts one copy, blocks every other copy, and shows the answer', async ({
+	page,
+}) => {
+	await page.clock.install();
+	await openStage(page, [TITLE, OPEN_SECOND, SENT]);
+	await openPanel(page);
+	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	await clickChrome(copy);
+	const request = await nthRequest(page, 'comment:copy', 1);
+	expect(request).toMatchObject({ type: 'comment:copy', id: TITLE.id });
+	await expect(copy).toHaveAttribute('aria-disabled', 'true');
+	// One copy at a time: the same button, another card and the batch all post nothing.
+	await clickChrome(copy);
+	await clickChrome(panelButton(page, OPEN_SECOND.id, 'Copy prompt'));
+	await clickChrome(copyOpenButton(page));
+	await nextAnimationFrame(page);
+	expect(await requestsOf(page, 'comment:copy')).toHaveLength(1);
+	expect(await requestsOf(page, 'comment:copy-open')).toHaveLength(0);
+
+	await copy.focus();
+	await postToChrome(page, {
+		type: 'ui:copied',
+		requestId: String(request.requestId),
+		count: 1,
+	});
+	const copied = panelButton(page, TITLE.id, 'Copied');
+	await expect(copied).toBeFocused();
+	await expect(copied).not.toHaveAttribute('aria-disabled', 'true');
+	await expect(liveRegion(page)).toContainText('Prompt copied. Comment marked sent.');
+	await page.clock.fastForward(1500);
+	await expect(panelButton(page, TITLE.id, 'Copy prompt')).toBeVisible();
+});
+
+test('a copy answer keeps an open reply draft; a matching ui:error is linked to Copy prompt', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE]);
+	await openPanel(page);
+	await clickChrome(panelButton(page, TITLE.id, 'Reply'));
+	await page.keyboard.type('Half a thought');
+	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	await clickChrome(copy);
+	const first = await nthRequest(page, 'comment:copy', 1);
+	await postToChrome(page, { type: 'ui:copied', requestId: String(first.requestId), count: 0 });
+	await expect(liveRegion(page)).toContainText('Prompt copied.');
+	await expect(panelReplyBox(page, TITLE.id)).toHaveValue('Half a thought');
+
+	await clickChrome(panelButton(page, TITLE.id, 'Copied'));
+	const second = await nthRequest(page, 'comment:copy', 2);
+	// An answer to another request changes nothing.
+	await postToChrome(page, { type: 'ui:error', message: 'Unrelated.', requestId: 'another' });
+	await nextAnimationFrame(page);
+	await expect(page.getByText('Unrelated.')).toHaveCount(0);
+	const message = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
+	await postToChrome(page, { type: 'ui:error', message, requestId: String(second.requestId) });
+	await expect(panelItem(page, TITLE.id).locator('.error')).toHaveText(message);
+	await expect(panelButton(page, TITLE.id, 'Copy prompt')).toHaveAccessibleDescription(message);
+	await expect(liveRegion(page)).toContainText(message);
+});
+
+test('Copy prompt shows in the pin thread and on sent and resolved cards', async ({ page }) => {
+	await openStage(page, [TITLE, SENT, RESOLVED]);
+	await openThread(page, TITLE.id);
+	await expect(threadButton(page, 'Copy prompt')).toBeVisible();
+	await clickChrome(threadButton(page, 'Close'));
+	await openPanel(page);
+	await expect(panelButton(page, SENT.id, 'Copy prompt')).toBeVisible();
+	await expect(panelButton(page, RESOLVED.id, 'Copy prompt')).toBeVisible();
+});
+
+test('Copy all open counts open comments only, posts once, and announces the marked count', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE, OPEN_SECOND, SENT, RESOLVED]);
+	await openPanel(page);
+	const button = copyOpenButton(page);
+	await expect(button).toHaveText('Copy all open (2)');
+	await clickChrome(button);
+	const request = await nthRequest(page, 'comment:copy-open', 1);
+	expect(request).toMatchObject({ type: 'comment:copy-open' });
+	// The batch blocks card copies too.
+	await clickChrome(panelButton(page, TITLE.id, 'Copy prompt'));
+	await nextAnimationFrame(page);
+	expect(await requestsOf(page, 'comment:copy')).toHaveLength(0);
+
+	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 2 });
+	await expect(liveRegion(page)).toContainText('Prompt copied. 2 comments marked sent.');
+	await expect(button).toHaveText('Copied');
+
+	await clickChrome(button);
+	const retry = await nthRequest(page, 'comment:copy-open', 2);
+	const message = 'Another Cursor Design write is in progress. Retry in a moment.';
+	await postToChrome(page, { type: 'ui:error', message, requestId: String(retry.requestId) });
+	await expect(button).toHaveAccessibleDescription(message);
+});
+
+test('Copy all open is disabled with no open comments and posts nothing', async ({ page }) => {
+	await openStage(page, [SENT, RESOLVED]);
+	await openPanel(page);
+	const button = copyOpenButton(page);
+	await expect(button).toHaveText('Copy all open (0)');
+	await expect(button).toHaveAttribute('aria-disabled', 'true');
+	await clickChrome(button);
+	await nextAnimationFrame(page);
+	expect(await requestsOf(page, 'comment:copy-open')).toHaveLength(0);
+});
+
+test('a list update that marks the comment sent keeps focus on its Copy prompt', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE, SENT]);
+	await openPanel(page);
+	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	await clickChrome(copy);
+	const request = await nthRequest(page, 'comment:copy', 1);
+	await copy.focus();
+	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 1 });
+	await postToChrome(page, {
+		type: 'comments:updated',
+		comments: [{ ...TITLE, status: 'sent' }, SENT],
+	});
+	await expect(panelItem(page, TITLE.id)).toHaveAttribute('data-cd-status', 'sent');
+	await expect(panelItem(page, TITLE.id).locator('[data-cd-focus="copy"]')).toBeFocused();
+});
