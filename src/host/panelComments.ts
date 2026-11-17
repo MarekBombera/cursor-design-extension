@@ -7,6 +7,7 @@ import {
 	commentRequestErrorMessage,
 	commentRequestId,
 	commentRequestType,
+	isCopyType,
 	malformedRequestMessage,
 	parseChromeMessage,
 	toNewComment,
@@ -102,7 +103,7 @@ export const answerCommentRequest = async ({
 		logDiskError({ scope, error, outputChannel });
 		if (requestId !== undefined) {
 			postAnswerToPanel({ type: 'ui:error', requestId, message });
-			if (type === 'comment:copy' || type === 'comment:copy-open') {
+			if (isCopyType(type)) {
 				void postPanelComments({ outputChannel });
 			}
 		}

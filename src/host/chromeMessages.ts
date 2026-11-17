@@ -154,7 +154,9 @@ export const COPIED_NOT_MARKED_MESSAGE =
 
 export const NOTHING_OPEN_MESSAGE = 'There are no open comments to copy.';
 
-const isCopyType = (type: CommentRequestMessage['type']): boolean =>
+// The one copy-type rule (8h): the copy fallback and malformed copy here, and the refresh after
+// every copy ui:error in panelComments.ts.
+export const isCopyType = (type: CommentRequestMessage['type']): boolean =>
 	type === 'comment:copy' || type === 'comment:copy-open';
 
 const fallbackMessage = (type: CommentRequestMessage['type']): string =>

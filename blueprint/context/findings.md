@@ -135,10 +135,11 @@
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 6097011..d72811d): stays `unverified`. Re-read App.svelte `commentItems` and CommentsPanel: unchanged since the finding; no profile was run in this pass.
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 583bb93..9304fec): stays `unverified`. 8h passes three more props per card (`copyBlocked`, `copied`, `onCopy`) and adds the Copy all open row but leaves `commentItems` / `panelItems` unchanged; no profile was run in this pass.
 
-### F-91 [P3] open - The host's copy-type check twins chromeMessages' private isCopyType
+### F-91 [P3] fixed - The host's copy-type check twins chromeMessages' private isCopyType
 
 **File:** src/host/panelComments.ts:105 (owner at src/host/chromeMessages.ts:83)
 **Found:** 2026-11-17 by independent /audit (scope: current; lens: quality)
 **Why it matters:** `refuse` re-spells `type === 'comment:copy' || type === 'comment:copy-open'`, while `chromeMessages.ts` already owns that rule as the unexported `isCopyType` (used by `fallbackMessage` and `malformedRequestMessage`). Rule 05 asks for one owner per rule. A future copy request type must be added in both places, or its failures stop being followed by the `comments:updated` refresh while its error copy still says "Could not copy". No current behavior is wrong.
 **Suggested fix:** Export `isCopyType` from `chromeMessages.ts`, use it in `refuse`, and add it to the rule 05 catalog line. Nothing to delete beyond the inline condition; no current requirement is lost.
 **Resolution:**
+2026-11-17 fix/share-the-copy-type-check: `isCopyType` exported from `chromeMessages.ts`, `refuse` in `panelComments.ts` calls it, rule 05 lists it. `pnpm verify` green (512 tests); the copy-failure tests in `panelComments.test.ts` still assert the refresh. Awaits `/audit` to close.
