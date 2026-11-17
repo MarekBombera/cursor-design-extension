@@ -12,6 +12,12 @@ export abstract class CursorDesignError extends Error {
 	abstract readonly code: string;
 }
 
+// Our authored copy for a domain error; the fallback for anything else (it may carry a path).
+export const toSafeArtboardErrorMessage = (
+	error: unknown,
+	fallback = 'Could not load artboard. Check the Output panel: Cursor Design.',
+): string => (error instanceof CursorDesignError ? error.message : fallback);
+
 export const isErrno = (error: unknown, code: string): boolean =>
 	typeof error === 'object' &&
 	error !== null &&

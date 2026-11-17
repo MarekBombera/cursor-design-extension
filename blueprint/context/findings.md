@@ -125,10 +125,11 @@
 **Suggested fix:** Add the missing broken variants to the existing array in the rejects test (one line each). No product change.
 **Resolution:** open
 
-### F-84 [P3] open - createCommentFromChrome's untrusted-workspace refusal, answer ordering and one-answer rule have no automated check
+### F-90 [P3] unverified - The open panel rebuilds every item on each cd:anchor-rects and drag move
 
-**File:** src/host/panelComments.ts:59
-**Found:** 2026-10-27 by independent /audit (scope: current; lens: tests, security)
-**Why it matters:** The function decides, in order: no usable requestId (log only), untrusted workspace (refuse, never write), no folder, malformed message, then `addComment`. The write refusal for an untrusted workspace is a trust boundary (rule 07), and the spec accepted the missing F5 run for it ("no repeatable test observes the host refusal"). Nothing in `vp test` fails if the `isTrusted` check, its position before the parse, or the single-answer behaviour is removed. The file is glue by design, but the ordering is logic, and a `vi.mock('vscode')` unit test of two or three cases is possible without a display.
-**Suggested fix:** Optional: a colocated `panelComments.test.ts` with a mocked `vscode` (untrusted gives one `ui:error` and no `addComment` call; a bad requestId posts nothing; a malformed message gives one `ui:error`). Or keep it as an F5 item. Needs the user's decision because the spec chose glue-without-test.
-**Resolution:** open
+**File:** src/webview/App.svelte:186
+**Found:** 2026-11-16 by /audit (scope: current; lens: performance)
+**Why it matters:** `panelItems` returns new objects whenever `anchors` or `displayFrames` change: up to once per animation frame per frame while a target moves, and on every pointermove during a drag. Each keyed card then gets a new `item` and a fresh `target={{…}}` literal (up to `MAX_COMMENTS` = 500), and both focus effects re-run. The closed panel costs nothing. No profile shows a dropped frame yet.
+**Suggested fix:** None now. If profiling shows it, keep item identity when badge, label and `canJump` are unchanged, or pass `frameLabel` / `canJump` as scalar props instead of a fresh object.
+**Resolution:**
+2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 6097011..d72811d): stays `unverified`. Re-read App.svelte `commentItems` and CommentsPanel: unchanged since the finding; no profile was run in this pass.

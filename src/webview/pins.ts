@@ -1,7 +1,7 @@
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { AnchorRect, AnchorRequest, FrameRect } from './frame/frameMessages';
 import type { PostedComment } from './hostMessages';
-import { type StagePoint, type StageView, stageToScreen } from './stageGeometry';
+import { clampNumber, type StagePoint, type StageView, stageToScreen } from './stageGeometry';
 
 // Pin rules (8f2). Pure: App holds the comments, the live anchors and the open thread, and draws
 // what layoutPins returns with Pins.svelte.
@@ -27,6 +27,9 @@ export type PlacedPin = {
 const PIN_TOLERANCE_PX = 0.5;
 
 const EXCERPT_CHARS = 60;
+
+// How long the jump outline stays on the target.
+export const JUMP_FLASH_MS = 1500;
 
 const STATUS_LABELS: Record<PostedComment['status'], string> = {
 	open: 'Open',
@@ -125,6 +128,17 @@ export const pinBadge = ({
 	return undefined;
 };
 
+// The one live-anchor lookup: the frame's last answer for an element comment. Page comments have
+// no anchor.
+export const liveAnchor = ({
+	anchors,
+	comment,
+}: {
+	anchors: AnchorState;
+	comment: PostedComment;
+}): LiveAnchor | undefined =>
+	comment.isPage ? undefined : anchors.get(comment.frameId)?.get(comment.id);
+
 // Frame-local CSS px. Pins are fractions multiplied by a size, so a zero-size box gives its origin
 // and never NaN.
 // ponytail: the stored-rect fallback applies a fraction of the unclipped pick-time box to the
@@ -202,7 +216,7 @@ export const layoutPins = ({
 		if (frame === undefined) {
 			return [];
 		}
-		const live = comment.isPage ? undefined : anchors.get(comment.frameId)?.get(comment.id);
+		const live = liveAnchor({ anchors, comment });
 		const point = pinPoint({ comment, live, frame });
 		if (
 			live !== undefined &&
@@ -227,6 +241,59 @@ export const layoutPins = ({
 			},
 		];
 	});
+};
+
+const clampIntoRect = (point: StagePoint, rect: FrameRect): StagePoint => ({
+	x: clampNumber({ value: point.x, min: rect.x, max: rect.x + rect.width }),
+	y: clampNumber({ value: point.y, min: rect.y, max: rect.y + rect.height }),
+});
+
+// `box` clipped to `bounds`, or undefined when nothing with area is left.
+const intersectRect = (box: FrameRect | null, bounds: FrameRect): FrameRect | undefined => {
+	if (box === null) {
+		return undefined;
+	}
+	const left = Math.max(box.x, bounds.x);
+	const top = Math.max(box.y, bounds.y);
+	const width = Math.min(box.x + box.width, bounds.x + bounds.width) - left;
+	const height = Math.min(box.y + box.height, bounds.y + bounds.height) - top;
+	return width > 0 && height > 0 ? { x: left, y: top, width, height } : undefined;
+};
+
+// Click to jump, all frame-local CSS px: the point to center, the size to fit (undefined keeps the
+// zoom) and the rect to flash. The center is the target box (the pin is inside it), so both stay
+// on screen. A missing target flashes its stored rect; a target scrolled out of its box gets none.
+export const jumpTarget = ({
+	comment,
+	live,
+	frame,
+}: {
+	comment: PostedComment;
+	live: LiveAnchor | undefined;
+	frame: { width: number; height: number };
+}): {
+	center: StagePoint;
+	fit: { width: number; height: number } | undefined;
+	outline: FrameRect | undefined;
+} => {
+	const frameRect = { x: 0, y: 0, width: frame.width, height: frame.height };
+	const pinCenter = clampIntoRect(pinPoint({ comment, live, frame }), frameRect);
+	if (comment.isPage) {
+		return { center: pinCenter, fit: undefined, outline: frameRect };
+	}
+	const fitBox = intersectRect(live?.box ?? comment.rect, frameRect);
+	const outline =
+		live !== undefined && live.box !== null
+			? (live.visible ?? undefined)
+			: (comment.rect ?? undefined);
+	if (fitBox === undefined) {
+		return { center: pinCenter, fit: undefined, outline };
+	}
+	return {
+		center: { x: fitBox.x + fitBox.width / 2, y: fitBox.y + fitBox.height / 2 },
+		fit: { width: fitBox.width, height: fitBox.height },
+		outline,
+	};
 };
 
 // The open thread stays open only while its pin is placed. It never reopens by itself.

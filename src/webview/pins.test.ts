@@ -8,8 +8,10 @@ import {
 	anchorSends,
 	applyAnchorRects,
 	dropFrameAnchors,
+	jumpTarget,
 	keepOpenThread,
 	layoutPins,
+	liveAnchor,
 	pinBadge,
 	pinLabel,
 	pinPoint,
@@ -233,4 +235,81 @@ test('keepOpenThread keeps the id only while its pin is placed', () => {
 	assert.equal(keepOpenThread({ openThreadId: 'c1', pins }), 'c1');
 	assert.equal(keepOpenThread({ openThreadId: 'c2', pins }), undefined);
 	assert.equal(keepOpenThread({ openThreadId: undefined, pins }), undefined);
+});
+
+test('liveAnchor: undefined for a page comment, an unknown frame and an unknown id', () => {
+	const anchors = answered('a', 'c1', { box, visible: box });
+	assert.deepEqual(liveAnchor({ anchors, comment: comment() }), { box, visible: box });
+	assert.equal(liveAnchor({ anchors, comment: comment({ isPage: true }) }), undefined);
+	assert.equal(liveAnchor({ anchors, comment: comment({ frameId: 'b' }) }), undefined);
+	assert.equal(liveAnchor({ anchors, comment: comment({ id: 'c2' }) }), undefined);
+});
+
+const jumpFrame = { width: 400, height: 300 };
+
+test('jumpTarget: a page comment centers its pin, keeps the zoom and outlines the frame', () => {
+	assert.deepEqual(
+		jumpTarget({
+			comment: comment({ isPage: true, rect: null, pin: { x: 0.5, y: 0.5 } }),
+			live: undefined,
+			frame: jumpFrame,
+		}),
+		{
+			center: { x: 200, y: 150 },
+			fit: undefined,
+			outline: { x: 0, y: 0, width: 400, height: 300 },
+		},
+	);
+});
+
+test('jumpTarget: a live box is centered and fitted, and the outline is its visible part', () => {
+	const visible = { ...box, height: 40 };
+	assert.deepEqual(jumpTarget({ comment: comment(), live: { box, visible }, frame: jumpFrame }), {
+		center: { x: 150, y: 100 },
+		fit: { width: 200, height: 80 },
+		outline: visible,
+	});
+});
+
+test('jumpTarget: a live target scrolled out of view (visible: null) gets no outline', () => {
+	const target = jumpTarget({ comment: comment(), live: { box, visible: null }, frame: jumpFrame });
+	assert.equal(target.outline, undefined);
+	assert.deepEqual(target.fit, { width: 200, height: 80 });
+});
+
+test('jumpTarget: a missing target (box: null) or no live answer uses the stored rect', () => {
+	const stored = comment().rect;
+	for (const live of [{ box: null, visible: null }, undefined]) {
+		assert.deepEqual(jumpTarget({ comment: comment(), live, frame: jumpFrame }), {
+			center: { x: 60, y: 40 },
+			fit: { width: 100, height: 40 },
+			outline: stored,
+		});
+	}
+});
+
+test('jumpTarget: a box outside the frame or with no area has no fit and centers the clamped pin', () => {
+	const outside = { x: 900, y: -500, width: 100, height: 100 };
+	const far = jumpTarget({
+		comment: comment(),
+		live: { box: outside, visible: null },
+		frame: jumpFrame,
+	});
+	assert.equal(far.fit, undefined);
+	assert.deepEqual(far.center, { x: 400, y: 0 });
+	const flat = jumpTarget({
+		comment: comment({ rect: { x: 10, y: 20, width: 0, height: 40 } }),
+		live: undefined,
+		frame: jumpFrame,
+	});
+	assert.equal(flat.fit, undefined);
+	assert.deepEqual(flat.center, { x: 10, y: 30 });
+});
+
+test('jumpTarget: a box partly outside the frame fits only its inside part', () => {
+	const partial = { x: 300, y: 250, width: 200, height: 100 };
+	assert.deepEqual(
+		jumpTarget({ comment: comment(), live: { box: partial, visible: null }, frame: jumpFrame }).fit,
+		{ width: 100, height: 50 },
+	);
 });

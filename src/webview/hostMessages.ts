@@ -80,6 +80,9 @@ export type CommentsUpdatedMessage = {
 // The answers to one comment:create, matched by its requestId.
 export type CommentAddedMessage = { type: 'comment:added'; requestId: string };
 
+// Success answer to comment:reply and comment:set-status (comment:create keeps comment:added).
+export type CommentSavedMessage = { type: 'comment:saved'; requestId: string };
+
 export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: string };
 
 export type HostMessage =
@@ -88,6 +91,7 @@ export type HostMessage =
 	| UiStatusMessage
 	| CommentsUpdatedMessage
 	| CommentAddedMessage
+	| CommentSavedMessage
 	| UiErrorMessage;
 
 export type FramePlacement = { x: number; y: number; width: number };
@@ -120,7 +124,27 @@ export type CommentCreateMessage = {
 	body: string;
 };
 
-export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage | CommentCreateMessage;
+export type CommentReplyMessage = {
+	type: 'comment:reply';
+	requestId: string;
+	id: string;
+	body: string;
+};
+
+export type CommentSetStatusMessage = {
+	type: 'comment:set-status';
+	requestId: string;
+	id: string;
+	status: 'open' | 'resolved';
+};
+
+// Every chrome → host comment write; each attempt with a valid requestId is answered once.
+export type CommentRequestMessage =
+	| CommentCreateMessage
+	| CommentReplyMessage
+	| CommentSetStatusMessage;
+
+export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage | CommentRequestMessage;
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
@@ -314,9 +338,9 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 	if (data.type === 'comments:updated') {
 		return parseCommentsUpdated(data);
 	}
-	if (data.type === 'comment:added') {
+	if (data.type === 'comment:added' || data.type === 'comment:saved') {
 		return typeof data.requestId === 'string'
-			? { type: 'comment:added', requestId: data.requestId }
+			? { type: data.type, requestId: data.requestId }
 			: undefined;
 	}
 	if (data.type === 'ui:error') {

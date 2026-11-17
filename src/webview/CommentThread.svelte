@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
 
-	import { placePopover, targetChipText } from './commentPopover';
+	import CommentCard from './CommentCard.svelte';
+	import { placePopover } from './commentPopover';
+	import type { CommentAction } from './commentsPanel';
 	import type { PostedComment } from './hostMessages';
-	import { type PinBadge, THREAD_BADGE_COPY, THREAD_STATUS_COPY } from './pins';
+	import type { PinBadge } from './pins';
 	import type { StagePoint } from './stageGeometry';
 
-	// Read-only thread of one comment, opened from its pin. 8g adds Reply and Resolve / Reopen,
-	// 8h adds Copy. Every field is comments.json data, rendered as text only.
+	// The thread of one comment, opened from its pin: the comment card (Reply, Resolve / Reopen;
+	// 8h adds Copy), then Close.
 	type Props = {
 		comment: PostedComment;
 		badge: PinBadge | undefined;
@@ -15,10 +17,31 @@
 		anchor: StagePoint;
 		viewportWidth: number;
 		viewportHeight: number;
+		now: number;
+		action: CommentAction | undefined;
 		onClose: () => void;
+		onReplyOpen: () => void;
+		onReplyInput: (text: string) => void;
+		onReplyCancel: () => void;
+		onReplySubmit: () => void;
+		onToggleStatus: () => void;
 	};
 
-	let { comment, badge, anchor, viewportWidth, viewportHeight, onClose }: Props = $props();
+	let {
+		comment,
+		badge,
+		anchor,
+		viewportWidth,
+		viewportHeight,
+		now,
+		action,
+		onClose,
+		onReplyOpen,
+		onReplyInput,
+		onReplyCancel,
+		onReplySubmit,
+		onToggleStatus,
+	}: Props = $props();
 
 	let width = $state(0);
 	let height = $state(0);
@@ -26,16 +49,16 @@
 	const position = $derived(
 		placePopover({ anchor, width, height, viewportWidth, viewportHeight }),
 	);
-	const chipText = $derived(targetChipText(comment));
 
 	// App keys this component by the open thread, so each open lands focus on Close.
 	const focusOnOpen: Attachment<HTMLButtonElement> = (element) => {
 		element.focus({ preventScroll: true });
 	};
 
-	// Prevented, so App's window keydown (the mode-key rule) ignores this Escape.
+	// Prevented, so App's window keydown (the mode-key rule) ignores this Escape. An Escape the
+	// card's composer already handled (prevented) closes only the composer.
 	const handleKeydown = (event: KeyboardEvent): void => {
-		if (event.key === 'Escape' && !event.isComposing) {
+		if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented) {
 			event.preventDefault();
 			onClose();
 		}
@@ -61,24 +84,19 @@
 	onpointerdown={stopAtThread}
 	onwheel={stopAtThread}
 >
-	<div class="row">
-		<span class="chip" title={comment.selector}>{chipText}</span>
-		<span class="status">{THREAD_STATUS_COPY[comment.status]}</span>
-	</div>
-	{#if badge !== undefined}
-		<p class={['badge', badge]}>{THREAD_BADGE_COPY[badge]}</p>
-	{/if}
-	<p class="body">{comment.body}</p>
-	{#if comment.replies.length > 0}
-		<ol class="replies">
-			{#each comment.replies as reply (reply.id)}
-				<li>
-					<span class="author">{reply.author === 'agent' ? 'Agent' : 'You'}</span>
-					<p class="body">{reply.body}</p>
-				</li>
-			{/each}
-		</ol>
-	{/if}
+	<CommentCard
+		{comment}
+		{badge}
+		{now}
+		{action}
+		surface="thread"
+		target={undefined}
+		{onReplyOpen}
+		{onReplyInput}
+		{onReplyCancel}
+		{onReplySubmit}
+		{onToggleStatus}
+	/>
 	<div class="row end">
 		<button class="action" type="button" {@attach focusOnOpen} onclick={onClose}>Close</button>
 	</div>
@@ -108,46 +126,6 @@
 	}
 	.end {
 		justify-content: flex-end;
-	}
-	/* A long element text ellipsizes; the selector is the title. */
-	.chip {
-		flex: 1 1 auto;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		padding: 0 0.375rem;
-		font-family: var(--vscode-editor-font-family);
-		color: var(--vscode-badge-foreground);
-		background: var(--vscode-badge-background);
-	}
-	.status,
-	.author {
-		color: var(--vscode-descriptionForeground);
-	}
-	p {
-		margin: 0;
-	}
-	.body {
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-	.stale {
-		color: var(--vscode-editorWarning-foreground);
-	}
-	.missing {
-		color: var(--vscode-editorError-foreground);
-	}
-	.unchecked {
-		color: var(--vscode-descriptionForeground);
-	}
-	.replies {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		margin: 0;
-		padding: 0;
-		list-style: none;
 	}
 	button {
 		font: inherit;

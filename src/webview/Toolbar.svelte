@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { liveRegionText } from './commentsPanel';
+
 	type Props = {
 		artboardId: string;
 		generation: string;
@@ -7,9 +9,12 @@
 		disabled: boolean;
 		commentMode: boolean;
 		pick: { tagName: string; isPage: boolean; sequence: number } | undefined;
+		commentsPanelOpen: boolean;
+		unresolvedCount: number;
 		onPreset: (zoom: number) => void;
 		onFit: () => void;
 		onToggleComment: () => void;
+		onToggleCommentsPanel: () => void;
 	};
 
 	let {
@@ -20,9 +25,12 @@
 		disabled,
 		commentMode,
 		pick,
+		commentsPanelOpen,
+		unresolvedCount,
 		onPreset,
 		onFit,
 		onToggleComment,
+		onToggleCommentsPanel,
 	}: Props = $props();
 
 	// The live region stays mounted, so a new pick is announced, not just inserted (the chip is in
@@ -34,7 +42,7 @@
 			return '';
 		}
 		const text = pick.isPage ? 'Whole frame selected' : `${pick.tagName} element selected`;
-		return pick.sequence % 2 === 0 ? `${text}\u00a0` : text;
+		return liveRegionText({ text, sequence: pick.sequence });
 	});
 
 	const presets = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
@@ -63,6 +71,15 @@
 		title="Comment (C)"
 		{disabled}
 		onclick={onToggleComment}>Comment</button
+	>
+	<!-- Never disabled: the panel lists comments whether or not a frame is drawn. -->
+	<button
+		class="action"
+		type="button"
+		aria-expanded={commentsPanelOpen}
+		aria-controls="cd-comments-panel"
+		onclick={onToggleCommentsPanel}
+		>{unresolvedCount > 0 ? `Comments (${unresolvedCount})` : 'Comments'}</button
 	>
 	<span class="badge" hidden={!commentMode}>Click to comment.</span>
 	<span class="visually-hidden" aria-live="polite">{pickAnnouncement}</span>
@@ -108,20 +125,13 @@
 		background: var(--vscode-button-secondaryBackground);
 		border: 0;
 	}
-	.action[aria-pressed='true'] {
+	.action[aria-pressed='true'],
+	.action[aria-expanded='true'] {
 		color: var(--vscode-button-foreground);
 		background: var(--vscode-button-background);
 	}
 	.action:disabled {
 		opacity: 0.5;
-	}
-	.visually-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
 	}
 	.preset:focus-visible,
 	.action:focus-visible {

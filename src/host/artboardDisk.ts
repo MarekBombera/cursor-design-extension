@@ -18,9 +18,9 @@ import {
 } from '../disk/artboardFs';
 import {
 	ArtboardExistsError,
-	CursorDesignError,
 	InvalidArgsError,
 	NoWorkspaceError,
+	toSafeArtboardErrorMessage,
 } from '../disk/errors';
 import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from '../disk/layout';
 
@@ -30,12 +30,6 @@ type WorkspaceDiskArgs = {
 	workspaceFolder: vscode.WorkspaceFolder;
 	outputChannel: vscode.OutputChannel;
 };
-
-// Our authored copy for a domain error; the fallback for anything else (it may carry a path).
-export const toSafeArtboardErrorMessage = (
-	error: unknown,
-	fallback = 'Could not load artboard. Check the Output panel: Cursor Design.',
-): string => (error instanceof CursorDesignError ? error.message : fallback);
 
 const joinWorkspace = (
 	workspaceFolder: vscode.WorkspaceFolder,

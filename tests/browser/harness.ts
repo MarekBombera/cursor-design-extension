@@ -92,14 +92,18 @@ export const isMessageOfType = (data: unknown, type: string): data is Record<str
 	typeof data === 'object' && data !== null && 'type' in data && data.type === type;
 
 // Routes the harness origin, aborts (and counts) every other request, opens the page and waits
-// for artboard:ready, like createPanelOutbox.
+// for artboard:ready, like createPanelOutbox. `state` is a whole saved webview state (a reload
+// passes what savedState returned); otherwise `savedView` seeds only the stage view.
 export const openHarness = async (
 	page: Page,
-	options: { savedView?: StageView; chromeCsp?: boolean } = {},
+	options: { savedView?: StageView; state?: unknown; chromeCsp?: boolean } = {},
 ): Promise<{ abortedRequests: () => number }> => {
 	let aborted = 0;
 	const initialState =
-		options.savedView === undefined ? undefined : { stageView: options.savedView };
+		options.state ??
+		(options.savedView === undefined ? undefined : { stageView: options.savedView });
+	// A second open on the same page (a reload) replaces the first route.
+	await page.context().unrouteAll();
 	await page.context().route('**/*', async (route) => {
 		const url = new URL(route.request().url());
 		if (url.origin !== HARNESS_ORIGIN) {

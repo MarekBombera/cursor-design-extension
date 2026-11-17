@@ -4094,16 +4094,34 @@ var stageGeometry = (function(exports) {
 			zoom
 		};
 	};
+	var fitZoom = ({ width, height, viewportWidth, viewportHeight }) => {
+		if (width <= 0 || height <= 0 || viewportWidth <= 96 || viewportHeight <= 96) return;
+		return Math.min((viewportWidth - 96) / width, (viewportHeight - 96) / height);
+	};
 	var fitStageView = ({ bounds, viewportWidth, viewportHeight }) => {
-		if (bounds === null || bounds.width <= 0 || bounds.height <= 0 || viewportWidth <= 96 || viewportHeight <= 96) return {
+		const fit = bounds === null ? void 0 : fitZoom({
+			width: bounds.width,
+			height: bounds.height,
+			viewportWidth,
+			viewportHeight
+		});
+		if (bounds === null || fit === void 0) return {
 			x: 0,
 			y: 0,
 			zoom: 1
 		};
-		const zoom = clampStageZoom({ zoom: Math.min((viewportWidth - 96) / bounds.width, (viewportHeight - 96) / bounds.height, 1) });
+		const zoom = clampStageZoom({ zoom: Math.min(fit, 1) });
 		return {
 			x: (viewportWidth - bounds.width * zoom) / 2 - bounds.x * zoom,
 			y: (viewportHeight - bounds.height * zoom) / 2 - bounds.y * zoom,
+			zoom
+		};
+	};
+	var jumpStageView = ({ view, center, fitZoom: targetFitZoom, viewportWidth, viewportHeight }) => {
+		const zoom = clampStageZoom({ zoom: Math.min(view.zoom, targetFitZoom ?? view.zoom) });
+		return {
+			x: viewportWidth / 2 - center.x * zoom,
+			y: viewportHeight / 2 - center.y * zoom,
 			zoom
 		};
 	};
@@ -4137,8 +4155,10 @@ var stageGeometry = (function(exports) {
 	exports.clampStageView = clampStageView;
 	exports.dragFrame = dragFrame;
 	exports.fitStageView = fitStageView;
+	exports.fitZoom = fitZoom;
 	exports.frameBounds = frameBounds;
 	exports.frameRectToScreen = frameRectToScreen;
+	exports.jumpStageView = jumpStageView;
 	exports.layoutCanvasChrome = layoutCanvasChrome;
 	exports.nextFrameHeight = nextFrameHeight;
 	exports.panStage = panStage;

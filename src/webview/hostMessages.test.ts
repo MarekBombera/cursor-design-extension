@@ -204,6 +204,15 @@ test('comments:updated with a non-array list or a non-string error is rejected',
 	});
 });
 
+test('comment:saved needs a string requestId', () => {
+	assert.deepEqual(parseHostMessage({ type: 'comment:saved', requestId: 'r1' }), {
+		type: 'comment:saved',
+		requestId: 'r1',
+	});
+	assert.equal(parseHostMessage({ type: 'comment:saved' }), undefined);
+	assert.equal(parseHostMessage({ type: 'comment:saved', requestId: 7 }), undefined);
+});
+
 test('comment:added needs a string requestId; ui:error a string message and optional requestId', () => {
 	assert.equal(parseHostMessage({ type: 'comment:added' }), undefined);
 	assert.equal(parseHostMessage({ type: 'comment:added', requestId: 7 }), undefined);

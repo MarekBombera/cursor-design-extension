@@ -4,7 +4,7 @@ import {
 	parseFrameMessage,
 } from './frame/frameMessages';
 import {
-	type CommentCreateMessage,
+	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
 	parseHostMessage,
@@ -26,17 +26,25 @@ declare const acquireVsCodeApi: () => VsCodeApi;
 
 const vscodeApi = acquireVsCodeApi();
 
-export const readSavedStageView = (): StageView | undefined => {
+// Webview state is one record, {stageView, commentsPanelOpen}; each save keeps the other key, so
+// the stage view and the panel state never erase each other.
+const savedRecord = (): Record<string, unknown> => {
 	const state = vscodeApi.getState();
-	return parseSavedStageView(
-		state !== null && typeof state === 'object' && 'stageView' in state
-			? state.stageView
-			: undefined,
-	);
+	return state !== null && typeof state === 'object' ? { ...state } : {};
 };
 
+export const readSavedStageView = (): StageView | undefined =>
+	parseSavedStageView(savedRecord().stageView);
+
 export const saveStageView = (stageView: StageView): void => {
-	vscodeApi.setState({ stageView });
+	vscodeApi.setState({ ...savedRecord(), stageView });
+};
+
+// A missing or non-boolean value reads as closed.
+export const readSavedCommentsPanelOpen = (): boolean => savedRecord().commentsPanelOpen === true;
+
+export const saveCommentsPanelOpen = (open: boolean): void => {
+	vscodeApi.setState({ ...savedRecord(), commentsPanelOpen: open });
 };
 
 // Snapshot: callers pass gesture fields that are $state proxies, and postMessage's structured
@@ -46,7 +54,7 @@ export const postFramePlace = (message: FramePlaceMessage): void => {
 };
 
 // Snapshot for the same reason: the draft target is $state.
-export const postCommentCreate = (message: CommentCreateMessage): void => {
+export const postCommentRequest = (message: CommentRequestMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 

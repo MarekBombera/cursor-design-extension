@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Jump</title>
+		<!--
+    8g click-to-jump fixture (tests/browser/commentsPanel.spec.ts). The frame is larger than the
+    stage viewport, so centering a target never hits clampStageView:
+    - #target sits near the middle and fits the stage at 100%;
+    - #tall is 500px tall, taller than the stage at 200%, and fits again above MIN_STAGE_ZOOM.
+  -->
+		<style>
+			body {
+				position: relative;
+				margin: 0;
+				height: 1400px;
+				font-family: system-ui, sans-serif;
+				color: #111827;
+			}
+			#target,
+			#tall {
+				position: absolute;
+				margin: 0;
+			}
+			#target {
+				left: 600px;
+				top: 700px;
+				width: 200px;
+				height: 60px;
+				background: #bfdbfe;
+			}
+			#tall {
+				left: 100px;
+				top: 100px;
+				width: 100px;
+				height: 500px;
+				background: #fed7aa;
+			}
+		</style>
+	</head>
+	<body>
+		<p id="target">Target</p>
+		<div id="tall"></div>
+	</body>
+</html>

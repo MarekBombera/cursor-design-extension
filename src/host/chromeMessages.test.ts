@@ -2,10 +2,18 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/comments';
+import { CommentNotFoundError, InvalidArgsError } from '../disk/errors';
 import {
-	commentCreateRequestId,
-	isCommentCreateAttempt,
+	CHANGE_FALLBACK_MESSAGE,
+	COMMENT_GONE_MESSAGE,
+	CREATE_FALLBACK_MESSAGE,
+	MALFORMED_CHANGE_MESSAGE,
+	MALFORMED_CREATE_MESSAGE,
+	commentRequestErrorMessage,
+	commentRequestId,
+	commentRequestType,
 	isFramePlaceAttempt,
+	malformedRequestMessage,
 	parseChromeMessage,
 	toNewComment,
 	toPostedComment,
@@ -109,14 +117,79 @@ test('comment:create rejects bad ids, selectors, numbers and shapes', () => {
 	}
 });
 
-test('a malformed comment:create is still an attempt with an answerable requestId', () => {
+const validReply = { type: 'comment:reply', requestId: 'r-2', id: 'c_1', body: 'More detail' };
+const validStatus = { type: 'comment:set-status', requestId: 'r-3', id: 'c_1', status: 'resolved' };
+
+test('comment:reply and comment:set-status parse', () => {
+	assert.deepEqual(parseChromeMessage(validReply), validReply);
+	assert.deepEqual(parseChromeMessage(validStatus), validStatus);
+	assert.deepEqual(parseChromeMessage({ ...validStatus, status: 'open' }), {
+		...validStatus,
+		status: 'open',
+	});
+});
+
+test('comment:reply and comment:set-status reject sent, bad ids, missing body and bad requestIds', () => {
+	const { body: _body, ...withoutBody } = validReply;
+	for (const broken of [
+		{ ...validStatus, status: 'sent' },
+		{ ...validStatus, status: undefined },
+		{ ...validStatus, id: 'a b' },
+		{ ...validReply, id: '' },
+		{ ...validReply, id: 'a'.repeat(65) },
+		withoutBody,
+		{ ...validReply, body: 7 },
+		{ ...validReply, requestId: 'a b' },
+		{ ...validStatus, requestId: 'a'.repeat(65) },
+	]) {
+		assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken));
+	}
+});
+
+test('a malformed comment request is still an attempt with an answerable requestId', () => {
 	const malformed = { type: 'comment:create', requestId: 'req-1', selector: 7 };
 	assert.equal(parseChromeMessage(malformed), undefined);
-	assert.equal(isCommentCreateAttempt(malformed), true);
-	assert.equal(commentCreateRequestId(malformed), 'req-1');
-	assert.equal(commentCreateRequestId({ ...malformed, requestId: 'a b' }), undefined);
-	assert.equal(isCommentCreateAttempt(validPlace), false);
-	assert.equal(commentCreateRequestId(validPlace), undefined);
+	assert.equal(commentRequestType(malformed), 'comment:create');
+	assert.equal(commentRequestId(malformed), 'req-1');
+	assert.equal(commentRequestId({ ...malformed, requestId: 'a b' }), undefined);
+	assert.equal(commentRequestType({ ...validReply, body: 7 }), 'comment:reply');
+	assert.equal(commentRequestId({ ...validReply, body: 7 }), 'r-2');
+	assert.equal(commentRequestType({ ...validStatus, status: 'sent' }), 'comment:set-status');
+	assert.equal(commentRequestId(validStatus), 'r-3');
+	for (const other of [validPlace, null, 'comment:reply', 7, undefined]) {
+		assert.equal(commentRequestType(other), undefined);
+		assert.equal(commentRequestId(other), undefined);
+	}
+});
+
+test('commentRequestErrorMessage remaps a missing comment and keeps domain copy', () => {
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:reply', error: new CommentNotFoundError() }),
+		COMMENT_GONE_MESSAGE,
+	);
+	const capped = new InvalidArgsError('This comment has the maximum number of replies.');
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:reply', error: capped }),
+		capped.message,
+	);
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:reply', error: new Error('/secret/path') }),
+		CHANGE_FALLBACK_MESSAGE,
+	);
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:set-status', error: new Error('x') }),
+		CHANGE_FALLBACK_MESSAGE,
+	);
+	assert.equal(
+		commentRequestErrorMessage({ type: 'comment:create', error: new Error('x') }),
+		CREATE_FALLBACK_MESSAGE,
+	);
+});
+
+test('malformedRequestMessage gives create its own copy and replies and status changes the change copy', () => {
+	assert.equal(malformedRequestMessage('comment:create'), MALFORMED_CREATE_MESSAGE);
+	assert.equal(malformedRequestMessage('comment:reply'), MALFORMED_CHANGE_MESSAGE);
+	assert.equal(malformedRequestMessage('comment:set-status'), MALFORMED_CHANGE_MESSAGE);
 });
 
 test('toNewComment pins by the unclipped box, never by the rect', () => {

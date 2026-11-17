@@ -444,15 +444,18 @@ const openThread = async (page: Page, id: string): Promise<void> => {
 	await expect(thread(page).getByRole('button', { name: 'Close' })).toBeFocused();
 };
 
-test('a pin click opens its read-only thread with the body and reply authors', async ({ page }) => {
+test('a pin click opens its thread with the body, reply authors and actions', async ({ page }) => {
 	await openPinStage(page, [THREADED, MOVER]);
 	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
 	await openThread(page, TITLE.id);
 	await expect(thread(page)).toContainText('Make the title bolder');
 	await expect(thread(page)).toContainText('Open');
-	await expect(thread(page).locator('li')).toHaveText([/^You\s*And darker$/, /^Agent\s*Done$/]);
-	// Read-only until 8g / 8h: Close is its only action.
-	await expect(thread(page).getByRole('button')).toHaveCount(1);
+	// Each reply: its author, its relative time, then its body.
+	await expect(thread(page).locator('li')).toHaveText([
+		/^You\b[\s\S]*And darker$/,
+		/^Agent\b[\s\S]*Done$/,
+	]);
+	await expect(thread(page).getByRole('button')).toHaveText(['Reply', 'Resolve', 'Close']);
 });
 
 test('Escape closes the thread and focuses its pin', async ({ page }) => {

@@ -5,14 +5,17 @@
 	type Props = {
 		hover: StageRect | undefined;
 		pick: StageRect | undefined;
+		// Click to jump: the target's outline, shown for JUMP_FLASH_MS.
+		flash: StageRect | undefined;
 	};
 
-	let { hover, pick }: Props = $props();
+	let { hover, pick, flash }: Props = $props();
 </script>
 
-{#snippet outline(rect: StageRect, kind: 'hover' | 'pick')}
+{#snippet outline(rect: StageRect, kind: 'hover' | 'pick' | 'flash')}
 	<div
 		class={['outline', kind]}
+		data-cd-flash={kind === 'flash' ? '' : undefined}
 		style:left="{rect.x}px"
 		style:top="{rect.y}px"
 		style:width="{rect.width}px"
@@ -26,6 +29,9 @@
 	{/if}
 	{#if pick !== undefined}
 		{@render outline(pick, 'pick')}
+	{/if}
+	{#if flash !== undefined}
+		{@render outline(flash, 'flash')}
 	{/if}
 </div>
 
@@ -45,5 +51,8 @@
 	}
 	.pick {
 		border: 2px solid var(--vscode-focusBorder);
+	}
+	.flash {
+		border: 2px solid var(--vscode-editorInfo-foreground, var(--vscode-focusBorder));
 	}
 </style>

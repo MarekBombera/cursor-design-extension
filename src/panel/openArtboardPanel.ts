@@ -2,13 +2,14 @@ import * as vscode from 'vscode';
 
 import type { CanvasSnapshot } from '../host/canvasSnapshot';
 import {
-	isCommentCreateAttempt,
+	commentRequestType,
 	isFramePlaceAttempt,
 	parseChromeMessage,
 } from '../host/chromeMessages';
 import { createPanelOutbox } from '../host/panelOutbox';
 import type {
 	CommentAddedMessage,
+	CommentSavedMessage,
 	CommentsUpdatedMessage,
 	UiErrorMessage,
 } from '../webview/hostMessages';
@@ -19,7 +20,7 @@ const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
 let currentPanel: vscode.WebviewPanel | undefined;
 let onPanelBecameVisible: (() => void) | undefined;
 let onFramePlace: ((value: unknown) => void) | undefined;
-let onCommentCreate: ((value: unknown) => void) | undefined;
+let onCommentRequest: ((value: unknown) => void) | undefined;
 let chromeCspNonce = '';
 
 const outbox = createPanelOutbox({
@@ -40,9 +41,9 @@ export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void):
 	onFramePlace = handler;
 };
 
-// Gets every comment:create attempt raw, valid or not; the handler owns the one answer.
-export const setArtboardPanelOnCommentCreate = (handler: (value: unknown) => void): void => {
-	onCommentCreate = handler;
+// Gets every comment:create / comment:reply / comment:set-status attempt raw, valid or not; the handler owns the one answer.
+export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => void): void => {
+	onCommentRequest = handler;
 };
 
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
@@ -60,7 +61,9 @@ export const postCommentsToPanel = (comments: Omit<CommentsUpdatedMessage, 'type
 	outbox.postComments(comments);
 };
 
-export const postAnswerToPanel = (answer: CommentAddedMessage | UiErrorMessage): void => {
+export const postAnswerToPanel = (
+	answer: CommentAddedMessage | CommentSavedMessage | UiErrorMessage,
+): void => {
 	outbox.postAnswer(answer);
 };
 
@@ -97,8 +100,8 @@ export const openArtboardPanel = ({
 			onFramePlace?.(message);
 			return;
 		}
-		if (isCommentCreateAttempt(message)) {
-			onCommentCreate?.(message);
+		if (commentRequestType(message) !== undefined) {
+			onCommentRequest?.(message);
 			return;
 		}
 		if (parseChromeMessage(message)?.type !== 'artboard:ready') {

@@ -1,9 +1,20 @@
 import * as z from 'zod/mini';
 
 import type { CommentView, NewComment } from '../disk/comments';
-import { MAX_FRAME_COORDINATE, MAX_PICK_TEXT_CHARS, MAX_SELECTOR_CHARS } from '../disk/layout';
+import { CommentNotFoundError, toSafeArtboardErrorMessage } from '../disk/errors';
+import {
+	COMMENT_ID_PATTERN,
+	MAX_FRAME_COORDINATE,
+	MAX_PICK_TEXT_CHARS,
+	MAX_SELECTOR_CHARS,
+} from '../disk/layout';
 import { hasControlChars, isTagName } from '../webview/frame/frameMessages';
-import type { ChromeMessage, CommentCreateMessage, PostedComment } from '../webview/hostMessages';
+import type {
+	ChromeMessage,
+	CommentCreateMessage,
+	CommentRequestMessage,
+	PostedComment,
+} from '../webview/hostMessages';
 
 // No `vscode` import: the panel's untrusted chrome → host input is parsed here, and the chrome ↔
 // host mapping lives here, so both stay unit-testable.
@@ -39,6 +50,22 @@ const commentCreateSchema = z.object({
 	body: z.string(),
 });
 
+// The body rule (trim, 1..MAX_COMMENT_BODY_CHARS) is the disk lib's, before it takes the lock.
+const commentReplySchema = z.object({
+	type: z.literal('comment:reply'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
+	body: z.string(),
+});
+
+// `sent` is the host's to set (8h), so it fails the parse here.
+const commentSetStatusSchema = z.object({
+	type: z.literal('comment:set-status'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
+	status: z.enum(['open', 'resolved']),
+});
+
 // The artboard id charset is enforced by placeFrame's parseArtboardId.
 const chromeMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('artboard:ready') }),
@@ -49,6 +76,8 @@ const chromeMessageSchema = z.discriminatedUnion('type', [
 		base: z.object(placementShape),
 	}),
 	commentCreateSchema,
+	commentReplySchema,
+	commentSetStatusSchema,
 ]);
 
 // Unknown `type`, a non-object, or any failing field returns undefined; never throws.
@@ -66,17 +95,57 @@ const claimsType = (value: unknown, type: string): value is Record<string, unkno
 // True for anything that claims to be frame:place, valid or not, so every attempt gets an answer.
 export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value, 'frame:place');
 
-// The same for comment:create.
-export const isCommentCreateAttempt = (value: unknown): boolean =>
-	claimsType(value, 'comment:create');
+const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
+	'comment:create',
+	'comment:reply',
+	'comment:set-status',
+];
+
+// The claimed raw type of a comment request, valid or not (read before any parse), so every attempt
+// gets an answer. Undefined: not a comment request.
+export const commentRequestType = (value: unknown): CommentRequestMessage['type'] | undefined =>
+	COMMENT_REQUEST_TYPES.find((type) => claimsType(value, type));
 
 // The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
-export const commentCreateRequestId = (value: unknown): string | undefined =>
-	claimsType(value, 'comment:create') &&
-	typeof value.requestId === 'string' &&
-	REQUEST_ID_PATTERN.test(value.requestId)
-		? value.requestId
+export const commentRequestId = (value: unknown): string | undefined => {
+	const requestId =
+		commentRequestType(value) === undefined
+			? undefined
+			: (value as { requestId?: unknown }).requestId;
+	return typeof requestId === 'string' && REQUEST_ID_PATTERN.test(requestId)
+		? requestId
 		: undefined;
+};
+
+export const CREATE_FALLBACK_MESSAGE =
+	'Could not add the comment. Check the Output panel: Cursor Design.';
+
+export const MALFORMED_CREATE_MESSAGE = 'Could not add the comment. Pick the element again.';
+
+export const CHANGE_FALLBACK_MESSAGE =
+	'Could not save the change. Check the Output panel: Cursor Design.';
+
+export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
+
+export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
+
+export const malformedRequestMessage = (type: CommentRequestMessage['type']): string =>
+	type === 'comment:create' ? MALFORMED_CREATE_MESSAGE : MALFORMED_CHANGE_MESSAGE;
+
+// The panel's own copy: the Agent copy of CommentNotFoundError says to call list_comments.
+export const commentRequestErrorMessage = ({
+	type,
+	error,
+}: {
+	type: CommentRequestMessage['type'];
+	error: unknown;
+}): string =>
+	error instanceof CommentNotFoundError
+		? COMMENT_GONE_MESSAGE
+		: toSafeArtboardErrorMessage(
+				error,
+				type === 'comment:create' ? CREATE_FALLBACK_MESSAGE : CHANGE_FALLBACK_MESSAGE,
+			);
 
 // The pin is the point as a fraction of the unclipped box, never of the (maybe clipped or null)
 // rect. A zero-size box pins at 0 instead of NaN (addComment clamps the pin to 0..1 but leaves

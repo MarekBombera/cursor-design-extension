@@ -325,6 +325,52 @@ test('fit returns the default view for empty, zero-size, or tiny inputs', () => 
 	);
 });
 
+test('fitZoom is undefined for a zero-size box or a viewport no larger than the padding', () => {
+	const viewport = { viewportWidth: 800, viewportHeight: 600 };
+	assert.equal(geometry.fitZoom({ width: 0, height: 100, ...viewport }), undefined);
+	assert.equal(geometry.fitZoom({ width: 100, height: -1, ...viewport }), undefined);
+	const padded = 2 * geometry.FIT_PADDING;
+	assert.equal(
+		geometry.fitZoom({ width: 10, height: 10, viewportWidth: padded, viewportHeight: 600 }),
+		undefined,
+	);
+	// Unclamped and the tighter axis: a tiny box fits far past 100%.
+	assert.equal(geometry.fitZoom({ width: 10, height: 10, ...viewport }), 50.4);
+});
+
+const jumpViewport = { viewportWidth: 800, viewportHeight: 600 };
+
+test('jumpStageView keeps the zoom when the target fits and puts the center at the viewport center', () => {
+	const view = geometry.jumpStageView({
+		view: { x: 5, y: 5, zoom: 2 },
+		center: { x: 1000, y: 500 },
+		fitZoom: 3,
+		...jumpViewport,
+	});
+	assert.deepEqual(view, { x: 400 - 2000, y: 300 - 1000, zoom: 2 });
+	const screen = geometry.stageToScreen({ view, stageX: 1000, stageY: 500 });
+	assert.deepEqual(screen, { x: 400, y: 300 });
+});
+
+test('jumpStageView zooms out to fit, never zooms in, and keeps the zoom without a fit', () => {
+	const view = { x: 0, y: 0, zoom: 2 };
+	const center = { x: 0, y: 0 };
+	assert.equal(geometry.jumpStageView({ view, center, fitZoom: 0.5, ...jumpViewport }).zoom, 0.5);
+	assert.equal(
+		geometry.jumpStageView({ view: { ...view, zoom: 0.25 }, center, fitZoom: 4, ...jumpViewport })
+			.zoom,
+		0.25,
+	);
+	assert.equal(
+		geometry.jumpStageView({ view, center, fitZoom: undefined, ...jumpViewport }).zoom,
+		2,
+	);
+	assert.equal(
+		geometry.jumpStageView({ view, center, fitZoom: 0.001, ...jumpViewport }).zoom,
+		geometry.MIN_STAGE_ZOOM,
+	);
+});
+
 test('nextFrameHeight applies first report, shrink, growth, clamps, and freeze', () => {
 	const reset = { lastGrowth: 0, frozen: false };
 	const first = geometry.nextFrameHeight({ current: 800, reported: 1200, state: reset });

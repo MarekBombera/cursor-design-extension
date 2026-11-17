@@ -316,6 +316,33 @@ export const clampStageView = ({
 	};
 };
 
+// The zoom that fits a width x height box inside the padded viewport, unclamped. Undefined for a
+// zero-size box or a viewport too small to pad.
+export const fitZoom = ({
+	width,
+	height,
+	viewportWidth,
+	viewportHeight,
+}: {
+	width: number;
+	height: number;
+	viewportWidth: number;
+	viewportHeight: number;
+}): number | undefined => {
+	if (
+		width <= 0 ||
+		height <= 0 ||
+		viewportWidth <= 2 * FIT_PADDING ||
+		viewportHeight <= 2 * FIT_PADDING
+	) {
+		return undefined;
+	}
+	return Math.min(
+		(viewportWidth - 2 * FIT_PADDING) / width,
+		(viewportHeight - 2 * FIT_PADDING) / height,
+	);
+};
+
 export const fitStageView = ({
 	bounds,
 	viewportWidth,
@@ -325,25 +352,41 @@ export const fitStageView = ({
 	viewportWidth: number;
 	viewportHeight: number;
 }): StageView => {
-	if (
-		bounds === null ||
-		bounds.width <= 0 ||
-		bounds.height <= 0 ||
-		viewportWidth <= 2 * FIT_PADDING ||
-		viewportHeight <= 2 * FIT_PADDING
-	) {
+	const fit =
+		bounds === null
+			? undefined
+			: fitZoom({ width: bounds.width, height: bounds.height, viewportWidth, viewportHeight });
+	if (bounds === null || fit === undefined) {
 		return { x: 0, y: 0, zoom: 1 };
 	}
-	const zoom = clampStageZoom({
-		zoom: Math.min(
-			(viewportWidth - 2 * FIT_PADDING) / bounds.width,
-			(viewportHeight - 2 * FIT_PADDING) / bounds.height,
-			1,
-		),
-	});
+	const zoom = clampStageZoom({ zoom: Math.min(fit, 1) });
 	return {
 		x: (viewportWidth - bounds.width * zoom) / 2 - bounds.x * zoom,
 		y: (viewportHeight - bounds.height * zoom) / 2 - bounds.y * zoom,
+		zoom,
+	};
+};
+
+// Click to jump: `center` (stage px) lands at the viewport center. The zoom is kept, or lowered to
+// `fitZoom` when the target would not fit; never raised (fitStageView caps at 1, which would zoom
+// out a target that already fits at 200%). Not zoomStageTo: that keeps a screen point fixed.
+export const jumpStageView = ({
+	view,
+	center,
+	fitZoom: targetFitZoom,
+	viewportWidth,
+	viewportHeight,
+}: {
+	view: StageView;
+	center: StagePoint;
+	fitZoom: number | undefined;
+	viewportWidth: number;
+	viewportHeight: number;
+}): StageView => {
+	const zoom = clampStageZoom({ zoom: Math.min(view.zoom, targetFitZoom ?? view.zoom) });
+	return {
+		x: viewportWidth / 2 - center.x * zoom,
+		y: viewportHeight / 2 - center.y * zoom,
 		zoom,
 	};
 };

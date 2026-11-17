@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Pin review follow-ups (`fix/pin-review-follow-ups`): the open thread closes from one `$effect.pre` in App (F-88). Before it, feature 8f2 Pins (`feature/pins`): `stale` / `targetMissing` on `comments:updated`, the `cd:anchors` / `cd:anchor-rects` channel, the pin layout and the read-only thread.
+**Last verified against code:** feature 8g Comments panel (`feature/comments-panel`): `comment:reply` / `comment:set-status` answered once by `comment:saved` or `ui:error` before the `comments:updated` refresh, `commentsPanelOpen` saved beside `stageView` in webview state, and a chrome-only click to jump. Before it, fix Pin review follow-ups (`fix/pin-review-follow-ups`): the open thread closes from one `$effect.pre` in App (F-88).
 
 ## Chart checklist
 
@@ -56,6 +56,7 @@ flowchart LR
   end
   Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
   Home[("~/.cursor/skills/cursor-design/SKILL.md")]
+  State[("webview state<br/>stageView, commentsPanelOpen")]
 
   Agent -->|MCP tool calls| Tools
   Tools -->|disk lib, withWorkspaceLock for canvas.json and comments.json| Disk
@@ -64,9 +65,10 @@ flowchart LR
   Watcher --> Panel
   Cmds --> Panel
   Cmds -->|exportHandoff via disk lib| Disk
-  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, ui:error| Chrome
-  Chrome -->|artboard:ready, frame:place, comment:create| Panel
-  Panel -->|placeFrameFromChrome and addComment under the lock;<br/>readComments| Disk
+  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:error| Chrome
+  Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status| Panel
+  Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus under the lock; readComments| Disk
+  Chrome -->|getState on load, setState: each save keeps the other key| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
   Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key,<br/>cd:anchor-rects| Chrome
   Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child, cd:anchors| Frames
@@ -135,7 +137,8 @@ sequenceDiagram
 - Before `artboard:ready`, the host keeps only the latest snapshot, status and comment list, and
   flushes them on ready in that order (`createPanelOutbox`). A later `artboard:ready` (webview
   reload) re-sends all three; `ui:status` waits until `mcpAvailable` is known. Answers to a chrome
-  request (`comment:added`, `ui:error`) are posted only while ready and never replayed.
+  request (`comment:added`, `comment:saved`, `ui:error`) are posted only while ready and never
+  replayed.
 - The panel can also open from the **Open Artboard** command.
 - When the panel becomes visible, `reloadVisibleArtboardFromDisk` posts a fresh snapshot and
   comment list. Every watcher refresh re-reads the comment list too; the last read started wins.
@@ -318,6 +321,78 @@ sequenceDiagram
   then moves to the stage viewport. One `$effect.pre` in App closes it whenever `pins` no longer
   holds it, before it unmounts, so it never stays open while hidden.
 
+## Comments panel (8g)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome (App, CommentCard in the panel or a pin thread)
+  participant H as Host (answerCommentRequest, outbox)
+  participant D as Disk (.cursor-design)
+  participant M as MCP
+  participant A as Agent
+  alt Reply
+    U->>C: Reply, type, Enter
+    C->>H: comment:reply {requestId (UUID), id, body (trimmed)}
+  else Resolve or Reopen
+    U->>C: Resolve / Reopen
+    C->>H: comment:set-status {requestId (UUID), id, status: resolved | open}
+  end
+  Note over C: nothing is sent for blank text, or while this comment has a request pending
+  alt no valid requestId
+    H->>H: logged, no answer
+  else untrusted, no folder, malformed (status sent too), or the write fails (gone, reply cap, corrupt, busy)
+    H->>C: ui:error {requestId, message}
+    C->>C: reply text kept, error shown inline and announced
+  else ok
+    H->>D: replyToComment / setCommentStatus (each takes withWorkspaceLock itself)
+    H->>C: comment:saved {requestId}
+    C->>C: answerAction: reply box emptied but kept open, or the new status announced
+    H->>D: readComments
+    H->>C: comments:updated {comments, error?}
+    Note over C: keepLiveActions, focus kept, then cd:anchors (Pins)
+  end
+  A->>M: resolve_comment {id, note}
+  M->>D: withWorkspaceLock: re-read comments.json, resolved + agent reply, write
+  alt already resolved (the user resolved first)
+    M-->>A: isError COMMENT_RESOLVED (nothing written)
+  end
+  D-->>H: watcher (comments.json changed, 200 ms debounce)
+  H->>C: ui:status + canvas:updated (identical, no frame reload)
+  H->>D: readComments
+  H->>C: comments:updated (note as an Agent reply, item under Resolved)
+```
+
+- `openArtboardPanel` hands every message that claims `comment:create`, `comment:reply` or
+  `comment:set-status` (`commentRequestType`, read before any parse) to `answerCommentRequest`,
+  valid or not. It checks the `requestId`, trust, the folder, then a parse whose type must match
+  the claim, then writes. `comment:create` takes the same handler and is unchanged on the wire
+  (answered by `comment:added`, 8f1).
+- The answer is posted before `postPanelComments`, so `comment:saved` arrives before the
+  `comments:updated` it causes; a failure posts no refresh. A deleted comment reads "This comment
+  no longer exists." (`commentRequestErrorMessage`), never the Agent copy.
+- A user Resolve after the Agent's is a no-op that writes nothing and still answers
+  `comment:saved`. A reply keeps the status. The host's own write also fires the watcher, which
+  posts the same snapshot and list again.
+- Chrome: one request in flight per comment, matched only by `requestId`. A `ui:error` is offered
+  to both the draft (8f1) and the actions; UUIDs never cross-match. A `comments:updated` without
+  `error` drops actions for comments no longer listed; one with `error` keeps them, so typed text
+  survives a failed read. A webview reload resets the actions (a lost answer leaves `pending` set
+  until then, `ponytail:`).
+- The panel and the pin thread render the same `CommentCard`, and actions are keyed by comment
+  id, so a reply box open in one is open in the other with the same text. The panel is always
+  mounted and renders its list only while open. When an update rebuilds the focused item and focus
+  fell to body, it goes back to the same control, but only while the webview has focus.
+- Panel state: the toolbar toggle saves `commentsPanelOpen` (`saveCommentsPanelOpen`) in the one
+  webview state record beside `stageView`; each save keeps the other key. A missing or
+  non-boolean value reads as closed. Nothing new on disk.
+- Click to jump is chrome-only, with no message to the host or a frame. The target chip of a
+  comment on a live iframe frame runs `jumpTarget` from the frame's latest `cd:anchor-rects` (else
+  the stored rect), then `jumpStageView` (keeps the zoom, zooms out only to fit) through
+  `commitStageView`, which clamps and saves `stageView`. `Overlay` draws the `data-cd-flash`
+  outline for `JUMP_FLASH_MS` (1.5 s), following pan, zoom and later `cd:anchor-rects`. Nothing
+  scrolls inside the frame.
+
 ## Frame drag / resize (8c)
 
 ```mermaid
@@ -360,11 +435,14 @@ settles the gesture to disk (the Agent wins).
 | chrome → host | `artboard:ready` | none |
 | chrome → host | `frame:place` | `{id, x, y, width, base: {x, y, width}}` |
 | chrome → host | `comment:create` | `{requestId, frameId, generation, selector, tagName, text, rect \| null, point, box, styles, isPage, body}` |
+| chrome → host | `comment:reply` | `{requestId, id, body}` |
+| chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
 | host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
 | host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
 | host → chrome | `comment:added` | `{requestId}` |
+| host → chrome | `comment:saved` | `{requestId}` (answer to `comment:reply` / `comment:set-status`, posted before the `comments:updated` it causes) |
 | host → chrome | `ui:error` | `{message, requestId?}` (safe copy) |
 | frame → chrome | `cd:frame-height` | `{height}` |
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |

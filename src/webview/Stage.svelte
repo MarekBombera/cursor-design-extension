@@ -31,6 +31,7 @@
 		hidden: boolean;
 		hoverOutline: StageRect | undefined;
 		pickOutline: StageRect | undefined;
+		flashOutline: StageRect | undefined;
 		onWheel: (wheel: StageWheel) => void;
 		onDragPan: (deltaX: number, deltaY: number) => void;
 		onViewportSize: (width: number, height: number) => void;
@@ -53,6 +54,7 @@
 		hidden,
 		hoverOutline,
 		pickOutline,
+		flashOutline,
 		onWheel,
 		onDragPan,
 		onViewportSize,
@@ -422,7 +424,7 @@
 			</div>
 		{/each}
 	</div>
-	<Overlay hover={hoverOutline} pick={pickOutline} />
+	<Overlay hover={hoverOutline} pick={pickOutline} flash={flashOutline} />
 	{@render children?.()}
 </div>
 
@@ -434,6 +436,7 @@
 		overflow: clip;
 		background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
 		min-height: 0;
+		min-width: 0;
 		touch-action: none;
 		cursor: grab;
 	}

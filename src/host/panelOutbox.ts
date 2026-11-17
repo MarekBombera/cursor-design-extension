@@ -1,5 +1,6 @@
 import type {
 	CommentAddedMessage,
+	CommentSavedMessage,
 	CommentsUpdatedMessage,
 	HostMessage,
 	PostedCanvasFrame,
@@ -22,7 +23,7 @@ type PanelOutbox = {
 	postSnapshot: (snapshot: CanvasSnapshot) => void;
 	postUiStatus: (partial: UiStatusPartial) => void;
 	postComments: (comments: Omit<CommentsUpdatedMessage, 'type'>) => void;
-	postAnswer: (answer: CommentAddedMessage | UiErrorMessage) => void;
+	postAnswer: (answer: CommentAddedMessage | CommentSavedMessage | UiErrorMessage) => void;
 	markReady: () => void;
 	reset: () => void;
 };

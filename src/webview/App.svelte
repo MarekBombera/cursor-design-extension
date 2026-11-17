@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Banners from './Banners.svelte';
 	import CommentPopover from './CommentPopover.svelte';
+	import CommentsPanel from './CommentsPanel.svelte';
 	import CommentThread from './CommentThread.svelte';
 	import Pins from './Pins.svelte';
 	import {
@@ -24,21 +25,38 @@
 		popoverAnchor,
 		submitDraft,
 	} from './commentPopover';
+	import {
+		answerAction,
+		closeReply,
+		type CommentActions,
+		editReply,
+		keepLiveActions,
+		liveRegionText,
+		openReply,
+		panelItems,
+		submitReply,
+		submitStatus,
+		unresolvedCount,
+	} from './commentsPanel';
 	import type { ChromeFrameMessage, FrameMessage, FramePickMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
 	import {
 		connectHostBridge,
-		postCommentCreate,
+		postCommentRequest,
 		postFramePlace,
 		postToFrame,
+		readSavedCommentsPanelOpen,
 		readSavedStageView,
+		saveCommentsPanelOpen,
 		saveStageView,
 	} from './hostBridge.svelte';
 	import type {
 		CanvasUpdatedMessage,
 		FramePlacement,
+		CommentSavedMessage,
 		HostMessage,
 		PostedComment,
+		UiErrorMessage,
 	} from './hostMessages';
 	import {
 		type FrameGesture,
@@ -67,13 +85,18 @@
 		anchorSends,
 		applyAnchorRects,
 		dropFrameAnchors,
+		JUMP_FLASH_MS,
+		jumpTarget,
 		keepOpenThread,
 		layoutPins,
+		liveAnchor,
 	} from './pins';
 	import Stage from './Stage.svelte';
 	import {
 		clampStageView,
 		fitStageView,
+		fitZoom,
+		jumpStageView,
 		layoutCanvasChrome,
 		panStage,
 		stageToScreen,
@@ -103,9 +126,19 @@
 	let pinsView: ReturnType<typeof Pins> | undefined = $state();
 	let stage: ReturnType<typeof Stage> | undefined = $state();
 	let commentsError: string | undefined = $state();
+	// Reply composers and status requests by comment id; the rules live in commentsPanel.ts.
+	let actions: CommentActions = $state.raw(new Map());
+	// The comments live region's text; the sequence makes a repeat speak again (liveRegionText).
+	let announcement = $state({ text: '', sequence: 0 });
+	// The Comments panel; closed by default, restored from webview state.
+	let commentsPanelOpen = $state(readSavedCommentsPanelOpen());
+	// Epoch ms for relative times, refreshed every minute.
+	let now = $state(Date.now());
 	// The open comment popover's target and request state; the rules live in commentPopover.ts.
 	let draft: CommentDraft | undefined = $state();
 	let popover: ReturnType<typeof CommentPopover> | undefined = $state();
+	// The comment whose target flashes after a jump; cleared after JUMP_FLASH_MS.
+	let flash: { commentId: string; sequence: number } | undefined = $state.raw();
 	// The popover places itself inside the viewport.
 	let viewportWidth = $state(0);
 	let viewportHeight = $state(0);
@@ -149,6 +182,28 @@
 	const pins = $derived(
 		layoutPins({ comments, anchors, frames: displayFrames, view: committedView }),
 	);
+	// Read only while the panel is open (its content renders only then).
+	const commentItems = $derived(panelItems({ comments, anchors, frames: displayFrames }));
+	// The drawn frame a comment can jump to: only a live iframe, never a tile or an absent frame.
+	const jumpFrame = (comment: PostedComment): FrameRecord | undefined =>
+		liveIframeIds(frames).has(comment.frameId)
+			? displayFrames.find((frame) => frame.id === comment.frameId)
+			: undefined;
+
+	// The flash follows pan, zoom, a drag preview and the frame's latest cd:anchor-rects.
+	const flashOutline = $derived.by(() => {
+		const comment = comments.find((entry) => entry.id === flash?.commentId);
+		const frame = comment === undefined ? undefined : jumpFrame(comment);
+		if (comment === undefined || frame === undefined) {
+			return undefined;
+		}
+		const { outline } = jumpTarget({ comment, live: liveAnchor({ anchors, comment }), frame });
+		return frameOutline({
+			view: committedView,
+			frames: displayFrames,
+			target: { frameId: frame.id, rect: outline ?? null },
+		});
+	});
 	const openPin = $derived(pins.find((pin) => pin.id === openThreadId));
 	const openComment = $derived(comments.find((entry) => entry.id === openThreadId));
 	const canStep = $derived(draft !== undefined && picking.pick?.frameId === draft.frameId);
@@ -216,11 +271,22 @@
 		if (message.type === 'comments:updated') {
 			comments = message.comments;
 			commentsError = message.error;
+			actions = keepLiveActions({ actions, comments: message.comments, error: message.error });
 			sendAnchors(liveIframeIds(frames));
 			return;
 		}
-		if (message.type === 'comment:added' || message.type === 'ui:error') {
+		if (message.type === 'comment:added') {
 			handleCommentAnswer(message);
+			return;
+		}
+		// A ui:error answers either a draft or an action; UUIDs never cross-match.
+		if (message.type === 'ui:error') {
+			handleCommentAnswer(message);
+			handleActionAnswer(message);
+			return;
+		}
+		if (message.type === 'comment:saved') {
+			handleActionAnswer(message);
 			return;
 		}
 		mcpUnavailable = !message.mcpAvailable;
@@ -337,7 +403,7 @@
 		const submitted = submitDraft({ draft, body, requestId: crypto.randomUUID() });
 		if (submitted !== undefined) {
 			draft = submitted.draft;
-			postCommentCreate(submitted.message);
+			postCommentRequest(submitted.message);
 		}
 	};
 
@@ -352,6 +418,106 @@
 			draft = next;
 		}
 	};
+
+	const announce = (text: string | undefined): void => {
+		if (text !== undefined) {
+			announcement = { text, sequence: announcement.sequence + 1 };
+		}
+	};
+
+	const handleReplyOpen = (id: string): void => {
+		actions = openReply({ actions, id });
+	};
+
+	const handleReplyInput = (id: string, text: string): void => {
+		actions = editReply({ actions, id, text });
+	};
+
+	const handleReplyCancel = (id: string): void => {
+		actions = closeReply({ actions, id });
+	};
+
+	const handleReplySubmit = (id: string): void => {
+		const submitted = submitReply({ actions, id, requestId: crypto.randomUUID() });
+		actions = submitted.actions;
+		if (submitted.message !== undefined) {
+			postCommentRequest(submitted.message);
+		}
+	};
+
+	const handleToggleStatus = (id: string): void => {
+		const comment = comments.find((entry) => entry.id === id);
+		if (comment === undefined) {
+			return;
+		}
+		const submitted = submitStatus({ actions, comment, requestId: crypto.randomUUID() });
+		actions = submitted.actions;
+		if (submitted.message !== undefined) {
+			postCommentRequest(submitted.message);
+		}
+	};
+
+	const handleToggleCommentsPanel = (): void => {
+		commentsPanelOpen = !commentsPanelOpen;
+		saveCommentsPanelOpen(commentsPanelOpen);
+	};
+
+	// The target chip: center the target (zooming out only when it would not fit), then flash it.
+	const handleJump = (id: string): void => {
+		const comment = comments.find((entry) => entry.id === id);
+		const frame = comment === undefined ? undefined : jumpFrame(comment);
+		if (
+			comment === undefined ||
+			frame === undefined ||
+			committedView === undefined ||
+			viewportWidth === 0 ||
+			viewportHeight === 0
+		) {
+			return;
+		}
+		const target = jumpTarget({ comment, live: liveAnchor({ anchors, comment }), frame });
+		commitStageView(
+			jumpStageView({
+				view: committedView,
+				center: { x: frame.x + target.center.x, y: frame.y + target.center.y },
+				fitZoom:
+					target.fit === undefined
+						? undefined
+						: fitZoom({ ...target.fit, viewportWidth, viewportHeight }),
+				viewportWidth,
+				viewportHeight,
+			}),
+		);
+		flash = { commentId: id, sequence: (flash?.sequence ?? 0) + 1 };
+	};
+
+	// Each jump restarts the flash timer; the cleanup cancels the previous one.
+	$effect(() => {
+		if (flash === undefined) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			flash = undefined;
+		}, JUMP_FLASH_MS);
+		return () => {
+			clearTimeout(timer);
+		};
+	});
+
+	const handleActionAnswer = (answer: CommentSavedMessage | UiErrorMessage): void => {
+		const answered = answerAction({ actions, answer });
+		actions = answered.actions;
+		announce(answered.announcement);
+	};
+
+	$effect(() => {
+		const timer = setInterval(() => {
+			now = Date.now();
+		}, 60_000);
+		return () => {
+			clearInterval(timer);
+		};
+	});
 
 	// A cd:pick in Comment mode opens or retargets the draft (re-posts only move it). Focus goes to
 	// the textarea on open, or on a retarget whose click moved focus into the frame, after the
@@ -599,66 +765,94 @@
 	disabled={frames.length === 0}
 	commentMode={picking.commentMode}
 	pick={picking.pick}
+	{commentsPanelOpen}
+	unresolvedCount={unresolvedCount(comments)}
 	onPreset={handlePreset}
 	onFit={handleFit}
 	onToggleComment={handleToggleComment}
+	onToggleCommentsPanel={handleToggleCommentsPanel}
 />
 <Banners {errorMessage} {commentsError} {mcpUnavailable} />
 <p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
-<Stage
-	bind:this={stage}
-	frames={displayFrames}
-	{labels}
-	headings={layout.headings}
-	activeId={artboardId}
-	{nonce}
-	{runtimeSource}
-	{transform}
-	zoom={committedView?.zoom ?? 1}
-	hidden={frames.length === 0}
-	{hoverOutline}
-	{pickOutline}
-	onWheel={handleStageWheel}
-	onDragPan={handleDragPan}
-	onViewportSize={handleViewportSize}
-	onIframe={handleIframe}
-	onRenderError={handleRenderError}
-	onFrameGesture={handleFrameGesture}
->
-	<Pins
-		bind:this={pinsView}
-		{pins}
-		inert={draft !== undefined}
-		openId={openThreadId}
-		onOpen={handlePinOpen}
+<!-- The panel comes first (Tab order panel → stage); CSS order draws it on the right. -->
+<div class="workspace">
+	<CommentsPanel
+		open={commentsPanelOpen}
+		items={commentItems}
+		error={commentsError}
+		{now}
+		{actions}
+		onJump={handleJump}
+		onReplyOpen={handleReplyOpen}
+		onReplyInput={handleReplyInput}
+		onReplyCancel={handleReplyCancel}
+		onReplySubmit={handleReplySubmit}
+		onToggleStatus={handleToggleStatus}
 	/>
-	{#if openPin !== undefined && openComment !== undefined}
-		{#key openThreadId}
-			<CommentThread
-				comment={openComment}
-				badge={openPin.badge}
-				anchor={openPin}
+	<Stage
+		bind:this={stage}
+		frames={displayFrames}
+		{labels}
+		headings={layout.headings}
+		activeId={artboardId}
+		{nonce}
+		{runtimeSource}
+		{transform}
+		zoom={committedView?.zoom ?? 1}
+		hidden={frames.length === 0}
+		{hoverOutline}
+		{pickOutline}
+		{flashOutline}
+		onWheel={handleStageWheel}
+		onDragPan={handleDragPan}
+		onViewportSize={handleViewportSize}
+		onIframe={handleIframe}
+		onRenderError={handleRenderError}
+		onFrameGesture={handleFrameGesture}
+	>
+		<Pins
+			bind:this={pinsView}
+			{pins}
+			inert={draft !== undefined}
+			openId={openThreadId}
+			onOpen={handlePinOpen}
+		/>
+		{#if openPin !== undefined && openComment !== undefined}
+			{#key openThreadId}
+				<CommentThread
+					comment={openComment}
+					badge={openPin.badge}
+					anchor={openPin}
+					{viewportWidth}
+					{viewportHeight}
+					{now}
+					action={actions.get(openComment.id)}
+					onClose={handleThreadClose}
+					onReplyOpen={() => handleReplyOpen(openComment.id)}
+					onReplyInput={(text) => handleReplyInput(openComment.id, text)}
+					onReplyCancel={() => handleReplyCancel(openComment.id)}
+					onReplySubmit={() => handleReplySubmit(openComment.id)}
+					onToggleStatus={() => handleToggleStatus(openComment.id)}
+				/>
+			{/key}
+		{/if}
+		{#if draft !== undefined && draftAnchor !== undefined}
+			<CommentPopover
+				bind:this={popover}
+				{draft}
+				anchor={draftAnchor}
 				{viewportWidth}
 				{viewportHeight}
-				onClose={handleThreadClose}
+				{canStep}
+				onAdd={handleAdd}
+				onCancel={handleCancel}
+				onParent={() => stepPick('cd:pick-parent')}
+				onChild={() => stepPick('cd:pick-child')}
 			/>
-		{/key}
-	{/if}
-	{#if draft !== undefined && draftAnchor !== undefined}
-		<CommentPopover
-			bind:this={popover}
-			{draft}
-			anchor={draftAnchor}
-			{viewportWidth}
-			{viewportHeight}
-			{canStep}
-			onAdd={handleAdd}
-			onCancel={handleCancel}
-			onParent={() => stepPick('cd:pick-parent')}
-			onChild={() => stepPick('cd:pick-child')}
-		/>
-	{/if}
-</Stage>
+		{/if}
+	</Stage>
+</div>
+<span class="visually-hidden" aria-live="polite">{liveRegionText(announcement)}</span>
 
 <style>
 	:global(html),
@@ -682,11 +876,26 @@
 		display: flex;
 		flex-direction: column;
 	}
+	/* A row in the #svelte-root column: the panel and the stage share its width. */
+	.workspace {
+		display: flex;
+		flex: 1 1 auto;
+		min-height: 0;
+	}
 	.empty {
 		margin: 0;
 		padding: 0.75rem;
 	}
 	.empty[hidden] {
 		display: none;
+	}
+	/* The one screen-reader-only rule (Toolbar's pick region and App's comments region). */
+	:global(.visually-hidden) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 </style>
