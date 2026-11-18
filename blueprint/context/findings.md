@@ -134,6 +134,7 @@
 **Resolution:**
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 6097011..d72811d): stays `unverified`. Re-read App.svelte `commentItems` and CommentsPanel: unchanged since the finding; no profile was run in this pass.
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 583bb93..9304fec): stays `unverified`. 8h passes three more props per card (`copyBlocked`, `copied`, `onCopy`) and adds the Copy all open row but leaves `commentItems` / `panelItems` unchanged; no profile was run in this pass.
+2026-11-18 /audit current (fresh reviewer, all lenses): still unverified. App now builds `panelItems` from the committed `frames`, not `displayFrames`, so a drag move no longer rebuilds the list; the per-`cd:anchor-rects` rebuild remains.
 
 ### F-91 [P3] fixed - The host's copy-type check twins chromeMessages' private isCopyType
 
@@ -143,3 +144,99 @@
 **Suggested fix:** Export `isCopyType` from `chromeMessages.ts`, use it in `refuse`, and add it to the rule 05 catalog line. Nothing to delete beyond the inline condition; no current requirement is lost.
 **Resolution:**
 2026-11-17 fix/share-the-copy-type-check: `isCopyType` exported from `chromeMessages.ts`, `refuse` in `panelComments.ts` calls it, rule 05 lists it. `pnpm verify` green (512 tests); the copy-failure tests in `panelComments.test.ts` still assert the refresh. Awaits `/audit` to close.
+
+### F-108 [P2] fixed - Pins still cover the words they point at
+
+**File:** src/webview/pins.ts (`pinPoint`)
+**Found:** 2026-11-17 by critical review (design fidelity)
+**Why it matters:** The tip sits on the stored click point and the body grows up-left over the text ("d●signs", "boa●d"). The approved mockup puts the tip on the element's top-left corner with the body in the margin.
+**Suggested fix:** Element comments anchor the tip at the target box's top-left corner; page comments keep the stored fraction.
+**Resolution:**
+2026-11-17 Batch A: `pinPoint` puts an element pin's tip on its target box's top-left corner (page comments keep the stored fraction); `pins.test.ts` and the `pins.spec.ts` tip assertions updated on purpose.
+2026-11-18 /audit current (fresh reviewer, all lenses): left `fixed`. The original defect is gone (`pinPoint` returns the box top-left for element comments; `pins.spec.ts` covers the frame-corner case), but the repair makes pins on one element, or on nested elements sharing a top-left corner, stack on the identical point: see F-115. Close together with F-115 (or on Bombic's explicit acceptance of it).
+
+### F-112 [P3] open - Accessibility polish from the critical review
+
+**File:** several (src/webview/ui/Badge.svelte:22, CommentsPanel.svelte:215, CommentCard.svelte:270, :185, zoomChoices.ts, tests/browser/pins.spec.ts)
+**Found:** 2026-11-17 by critical review (accessibility and behavior)
+**Why it matters:**
+- Badge descriptions are exposed twice (title and hidden text).
+- "Copied N comments" renders in the disabled look.
+- The kbd hints are read aloud as symbols.
+- PinChip reads a bare number.
+- A non-preset zoom option sits before 50%, so arrow keys jump.
+- The frame inset ring also shows on mouse click (accept and document).
+- The stale / unchecked pin assertion moved from glyph text to "has an svg".
+- Untested: the reply composer's pending state, the hint pill being `aria-hidden`, and the spinner actually stopping under reduced motion.
+
+**Suggested fix:**
+- Put `title` on an `aria-hidden` wrapper.
+- No disabled look while copied (a click guard instead).
+- `aria-hidden` on the hints.
+- Visually hidden "Comment " before the number.
+- Insert the current zoom in sorted position.
+- Assert the flag icon by name.
+- Add the three missing assertions.
+- Name the zoom select in the inset-ring contrast exception.
+
+**Resolution:**
+2026-11-17 Batch A part: the zoom select slots a non-preset zoom in sorted place (`zoomChoices.test.ts`). The rest (Badge description, Copied look, kbd hints, PinChip context, flag icon, the three missing assertions) is Batch B.
+2026-11-17 Batch B part: Badge's `title` sits on an `aria-hidden` face with the label and description as hidden text (exposed once); "Copied N comments" is never drawn disabled (`handoffCopy`), and `submitCopyOpen` ignores a click while the feedback shows (tested); the composer key hints are `aria-hidden`; PinChip reads "Comment N"; the reply composer's pending "Adding…" with `aria-busy` is asserted. Still open: the flag icon asserted by name, the hint-pill `aria-hidden` and reduced-motion spinner assertions.
+2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for: the stale / unchecked flag icon asserted by name (`pins.spec.ts` still counts `svg`); an assertion that the Comment-mode hint pill is `aria-hidden` (specs only check visible / hidden by text); the spinner itself stopping under reduced motion (`theme.spec.ts` checks the `--cd-dur` / `--cd-spin` tokens, not the spinner's computed animation); the frame inset ring showing on mouse focus is not yet documented as accepted. Confirmed done: Badge description exposed once, Copied never disabled-looking with the `copiedShowing` click guard, `aria-hidden` key hints (Composer, toolbar C), PinChip "Comment N", sorted non-preset zoom, the zoom select named in the step 5 contrast exception, reply pending `aria-busy` asserted.
+
+### F-114 [P3] open - Architecture polish from the critical review
+
+**File:** several (ui/theme.css, Stage/Frame `--stage-zoom`, Frame lifted shadow, Button segment size, IconButton count label, TargetRef/Stage/Pins button resets, CommentCard layout numbers, `?? 0` number fallbacks, `frameSizeText` on tiles, guard exemptions, spec locator duplication, `STATUS_LABELS` twin)
+**Found:** 2026-11-17 by critical review (architecture and CSS)
+**Why it matters:**
+- `[hidden]` is fixed four times.
+- `--stage-zoom` sits outside the guarded namespace.
+- `--cd-lh-xs` equals `--cd-lh-sm`.
+- The lifted shadow and the kbd values are literals.
+- `segment` ignores `size`.
+- The IconButton count is only announced through its label (undocumented).
+- Three bare-button resets.
+- Layout numbers are coupled to other components.
+- Silent `?? 0` hides number mismatches.
+- A tile label keeps a stale height.
+- An exempt selector exempts its whole rule.
+- A meaning colour can pass through a local variable.
+- Locators are re-declared across specs.
+- The status words are written twice.
+
+**Suggested fix:**
+- One global `[hidden]` rule.
+- `--cd-stage-zoom`.
+- Merge the line heights.
+- Tokens for the lifted shadow and kbd.
+- `size?: never` on `segment`.
+- Document the IconButton label contract.
+- One global button reset.
+- `calc()` from local tokens.
+- Derive numbers where the full list is in hand.
+- Gate the size on `kind === 'iframe'`.
+- Exemptions list their allowed properties.
+- Detect meaning colours through local variables.
+- Shared locators in `harness.ts`.
+- Derive pin label words from `statusBadge`.
+
+**Resolution:**
+2026-11-17 Batch A part: one global `[hidden]` rule and `button` reset, `--cd-stage-zoom`, `--cd-lh-xs` merged into `--cd-lh-sm`, `--cd-shadow-lifted` and kbd tokens, `segment` typed `size?: never`, the IconButton label contract documented, guard exemptions list their properties, meaning colours caught through local custom properties (fixtures for both), `frameSizeText` only for iframes, shared spec locators in `harness.ts`. The CommentCard layout numbers, `?? 0` fallbacks and the status-word twin are Batch B.
+2026-11-17 Batch B part: TargetRef's button reset removed; the card's widget props gone (F-100); no `?? 0` numbers (`commentNumber` from the full list in `layoutPins` / `panelItems`, the thread takes its pin's number); `pinLabel` takes its status word from `statusBadge` (labels unchanged).
+2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for one part: the layout numbers coupled to other components (`CommentCard.svelte` `.actions` negative margins mirror the ghost `Button` padding; `.joined::before` mirrors the entry gap). Confirmed done: one `[hidden]` rule and one `button` reset, `--cd-stage-zoom`, no `--cd-lh-xs`, lifted-shadow and kbd tokens, `segment` `size?: never`, IconButton label contract, no `?? 0` comment numbers, `frameSizeText` iframe-only, exemptions list their properties, meaning colours caught through local custom properties, shared locators in `harness.ts`, pin label words from `statusBadge`.
+
+### F-115 [P2] open - Pins on one element, or on nested elements sharing a corner, now stack on one point
+
+**File:** src/webview/pins.ts:186 (`pinPoint`), src/webview/Pins.svelte:42
+**Found:** 2026-11-18 by /audit (scope: current; lens: quality, tests)
+**Why it matters:** F-108 anchors every element pin's tip at its target box's top-left corner. Before, each pin sat at its own click fraction, so two pins rarely coincided. Now two comments on the same element always draw at the identical tip. So do comments on a container and its first child when the container has no padding (a `section` and its heading, a `header` and its `nav`). The later pin fully covers the earlier one: pointer users cannot open the earlier thread from the canvas (Tab and the panel's jump still reach it). "Grouping overlapping pins" was ruled out of scope when overlaps were incidental; this change makes them deterministic. No test covers two comments on one target.
+**Suggested fix:** In `layoutPins`, step a pin whose tip equals an earlier placed pin's tip left by one pin width plus a gap. That is one pass over the placed list, with a `ponytail:` note for the O(n²) check. Add one `pins.test.ts` case with two comments on one target. Or Bombic explicitly accepts the overlap as a known ceiling. Either way, F-108 closes with this.
+**Resolution:**
+
+### F-116 [P3] open - A copy-open answer of 0 draws an enabled primary "Nothing new to send"
+
+**File:** src/webview/commentsPanel.ts:132 (`handoffCopy`), src/webview/App.svelte:586 (`handleCopyOpenAnswer`)
+**Found:** 2026-11-18 by /audit (scope: current; lens: quality, tests)
+**Why it matters:** `ui:copied` can carry `count: 0` when nothing was open on disk at copy time (for example, the Agent or another window sent them first). App still shows the feedback, so `handoffCopy` gets `copied = 0`. That returns "Nothing new to send" with `disabled: false` (`disabled = copied === undefined && open === 0`), drawn as the primary button with the sparkle. For `COPY_FEEDBACK_MS`, `submitCopyOpen` silently ignores clicks on it (`copiedShowing`). The spec's contract says the button is disabled at zero open. `commentsPanel.test.ts` pins the odd state (`open: 2, copied: 0` gives `disabled: false`).
+**Suggested fix:** Show the copy-open feedback only for a count above zero (`answerCopyOpen` returns `copiedCount` only when `count > 0`; the announcement stays). Then delete `handoffCopy`'s zero branch and its test case. Nothing current is lost.
+**Resolution:**

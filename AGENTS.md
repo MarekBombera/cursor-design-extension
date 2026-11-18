@@ -152,3 +152,5 @@ The unit Test command is `vp test` (Vite+ / Vitest; `src/**/*.test.ts` excluding
 Browser tests: `pnpm test:browser` (builds the chrome bundle, then runs Playwright
 Chromium over `tests/browser/`; the first run needs `pnpm exec playwright install chromium`;
 local only, not Verify or CI).
+
+Gallery: `pnpm gallery` (`CD_GALLERY=1 pnpm test:browser gallery`; every chrome state in both Cursor themes plus a WCAG contrast measurement; local only, not Verify or CI; writes to the gitignored `test-results/gallery/`; `pnpm test:browser` skips it).

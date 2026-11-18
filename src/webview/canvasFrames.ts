@@ -24,6 +24,8 @@ export type StageFrame = {
 	// The artboard generation the host last posted for this frame (comment:create's pick check).
 	generation: number;
 	kind: 'tile' | 'iframe';
+	// Why a tile shows: an empty file or a failure. Read only while kind is 'tile'.
+	tileKind: 'empty' | 'error';
 	tileText: string;
 	html: string;
 };
@@ -32,6 +34,8 @@ export type FrameRecord = StageFrame & {
 	group: string | undefined;
 	// Measured iframe height; the wrapper uses TILE_HEIGHT while kind is 'tile'.
 	measuredHeight: number;
+	// False until the first cd:frame-height: measuredHeight is still PROVISIONAL_FRAME_HEIGHT.
+	heightReported: boolean;
 	guard: FrameHeightGuard;
 };
 
@@ -52,8 +56,10 @@ const newRecord = (entry: PostedCanvasFrame): FrameRecord => ({
 	generation: entry.generation,
 	height: TILE_HEIGHT,
 	measuredHeight: PROVISIONAL_FRAME_HEIGHT,
+	heightReported: false,
 	guard: resetGuard(),
 	kind: 'tile',
+	tileKind: 'empty',
 	tileText: '',
 	html: '',
 });
@@ -73,6 +79,7 @@ const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord
 		return {
 			...placed,
 			kind: 'tile',
+			tileKind: entry.errorMessage === undefined ? 'empty' : 'error',
 			tileText: entry.errorMessage ?? EMPTY_ARTBOARD_COPY,
 			height: TILE_HEIGHT,
 		};
@@ -130,15 +137,27 @@ export const applyFrameHeight = ({
 	return {
 		...record,
 		measuredHeight: next.height,
+		heightReported: true,
 		guard: next.state,
 		height: record.kind === 'iframe' ? next.height : record.height,
 	};
+};
+
+// The size in a frame's label: the drawn width (a resize preview included) by the last reported
+// height, or the width alone before the first report. A tile shows none: it is not the artboard's
+// size, and its last measured height would be stale.
+export const frameSizeText = (frame: FrameRecord): string => {
+	if (frame.kind !== 'iframe') {
+		return '';
+	}
+	return frame.heightReported ? `${frame.width} × ${frame.measuredHeight}` : String(frame.width);
 };
 
 // The iframe failed to render (Frame's onRenderError): show a tile with the error copy instead.
 export const demoteToTile = (record: FrameRecord): FrameRecord => ({
 	...record,
 	kind: 'tile',
+	tileKind: 'error',
 	tileText: RENDER_ERROR_COPY,
 	height: TILE_HEIGHT,
 });

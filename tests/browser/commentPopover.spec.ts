@@ -14,6 +14,7 @@ import {
 	centerOf,
 	clickAt,
 	clickChrome,
+	commentButton,
 	frameBox,
 	frameOf,
 	isMessageOfType,
@@ -22,6 +23,7 @@ import {
 	nextAnimationFrame,
 	openHarness,
 	type Point,
+	popover,
 	posted,
 	postToChrome,
 	stageBox,
@@ -90,9 +92,6 @@ test('a broken comments.json shows its own banner and never blanks the stage', a
 	await expect(banner).toBeHidden();
 });
 
-const commentButton = (page: Page): Locator =>
-	page.getByRole('button', { name: 'Comment', exact: true });
-
 const openTwoFrames = async (page: Page): Promise<void> => {
 	await openHarness(page, { savedView: { x: 0, y: 0, zoom: 1 } });
 	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
@@ -126,14 +125,14 @@ test('C with chrome focus toggles Comment mode and Escape leaves it', async ({ p
 	await expect(commentButton(page)).toHaveAttribute('aria-keyshortcuts', 'c');
 	await page.keyboard.press('c');
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByText('Click to comment.')).toBeVisible();
+	await expect(page.getByText('Click an element to comment')).toBeVisible();
 	await page.keyboard.press('c');
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
 	await page.keyboard.press('c');
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await page.keyboard.press('Escape');
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.getByText('Click to comment.')).toBeHidden();
+	await expect(page.getByText('Click an element to comment')).toBeHidden();
 });
 
 test('C and Escape with frame focus reach the chrome as cd:key', async ({ page }) => {
@@ -219,7 +218,6 @@ test('C with no live frame does nothing', async ({ page }) => {
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
 });
 
-const popover = (page: Page): Locator => page.getByRole('dialog', { name: 'Add comment' });
 const commentBox = (page: Page): Locator => popover(page).getByRole('textbox', { name: 'Comment' });
 const cancelButton = (page: Page): Locator => popover(page).getByRole('button', { name: 'Cancel' });
 const addButton = (page: Page): Locator =>
@@ -291,10 +289,10 @@ test('a click in Comment mode opens the popover on the element, with focus in th
 }) => {
 	await openTwoFrames(page);
 	await openPopoverOn({ page, selector: '#a-title' });
-	const chip = popover(page).locator('.chip');
-	await expect(chip).toHaveText('Title A');
-	await expect(chip).toHaveAttribute('title', (await lastPick(page, 'a')).selector ?? '');
-	await expect(popover(page).getByText('↑ parent · ↓ child')).toBeVisible();
+	const target = popover(page).locator('[data-cd-comment-target]');
+	await expect(target.locator('.element')).toHaveText('Title A');
+	await expect(target).toHaveAttribute('title', (await lastPick(page, 'a')).selector ?? '');
+	await expect(popover(page).getByText('↑ ↓ parent / child')).toBeVisible();
 	await expect(page.locator('.overlay .outline.pick')).toHaveCount(1);
 });
 
@@ -307,7 +305,7 @@ test('↑ in the empty box steps to the parent; after typing it moves the caret'
 	await page.keyboard.press('ArrowUp');
 	await expectOneStep(page, before);
 	expect((await lastPick(page, 'a')).tagName).toBe('section');
-	await expect(popover(page).locator('.chip')).toHaveAttribute(
+	await expect(popover(page).locator('[data-cd-comment-target]')).toHaveAttribute(
 		'title',
 		(await lastPick(page, 'a')).selector ?? '',
 	);
@@ -417,13 +415,19 @@ test('Add pressed from the button keeps focus in the popover; on success focus g
 	await openTwoFrames(page);
 	await openPopoverOn({ page, selector: '#a-title' });
 	await page.keyboard.type('Bolder');
+	// Cancel, then Add (the VS Code order): Tab from the box reaches Cancel first.
+	await page.keyboard.press('Tab');
+	await expect(cancelButton(page)).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(addButton(page)).toBeFocused();
 	await page.keyboard.press('Enter');
 	await expect.poll(async () => (await creates(page)).length).toBe(1);
-	// Pending: Add is aria-disabled but keeps focus, so the popover's keys still work.
-	await expect(addButton(page)).toHaveAttribute('aria-disabled', 'true');
-	await expect(addButton(page)).toBeFocused();
+	// Pending: Add says so (busy, "Adding…"), is aria-disabled but keeps focus, so the popover's
+	// keys still work.
+	const pendingAdd = popover(page).getByRole('button', { name: 'Adding…', exact: true });
+	await expect(pendingAdd).toHaveAttribute('aria-busy', 'true');
+	await expect(pendingAdd).toHaveAttribute('aria-disabled', 'true');
+	await expect(pendingAdd).toBeFocused();
 	const message = 'This artboard changed since the element was picked. Pick it again.';
 	await postToChrome(page, { type: 'ui:error', requestId: await lastRequestId(page), message });
 	await expect(popover(page).getByRole('status')).toHaveText(message);
@@ -521,7 +525,7 @@ test('a wheel or a drag on the popover never moves the stage', async ({ page }) 
 	await openTwoFrames(page);
 	await openPopoverOn({ page, selector: '#a-title' });
 	const transform = await layerTransform(page);
-	const hint = centerOf(await boxOf(popover(page).getByText('↑ parent · ↓ child')));
+	const hint = centerOf(await boxOf(popover(page).getByText('↑ ↓ parent / child')));
 	await page.mouse.move(hint.x, hint.y);
 	await page.mouse.wheel(0, 200);
 	await page.mouse.down();

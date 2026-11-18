@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Mobile</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				position: relative;
+				min-height: 640px;
+				font-family:
+					system-ui,
+					-apple-system,
+					'Segoe UI',
+					sans-serif;
+				color: #0f172a;
+				background: #fff;
+			}
+			.bar {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 14px 16px;
+				border-bottom: 1px solid #e2e8f0;
+			}
+			.logo {
+				font-weight: 800;
+				color: #4f46e5;
+			}
+			#m-menu {
+				width: 36px;
+				height: 36px;
+				border-radius: 8px;
+				border: 1px solid #cbd5e1;
+				background: #fff;
+				font-size: 18px;
+			}
+			.hero {
+				padding: 28px 16px;
+			}
+			#m-hero-title {
+				font-size: 28px;
+				line-height: 1.1;
+				margin: 0 0 10px;
+				letter-spacing: -0.02em;
+			}
+			#m-sub {
+				font-size: 15px;
+				line-height: 1.5;
+				color: #475569;
+				margin: 0 0 20px;
+			}
+			#m-cta {
+				width: 100%;
+				padding: 14px;
+				border-radius: 12px;
+				background: #6366f1;
+				color: #fff;
+				font: 600 16px system-ui;
+				border: 0;
+			}
+			.list {
+				padding: 8px 16px;
+			}
+			.item {
+				display: flex;
+				gap: 12px;
+				align-items: center;
+				padding: 12px 0;
+				border-bottom: 1px solid #f1f5f9;
+				font-size: 14px;
+			}
+			.dot {
+				width: 36px;
+				height: 36px;
+				border-radius: 10px;
+				background: #e0e7ff;
+			}
+			#m-fab {
+				position: absolute;
+				right: 16px;
+				bottom: 16px;
+				width: 52px;
+				height: 52px;
+				border-radius: 50%;
+				background: #0f172a;
+				color: #fff;
+				font-size: 24px;
+				border: 0;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="bar">
+			<span class="logo">Lumen</span><button id="m-menu" type="button">☰</button>
+		</div>
+		<section class="hero">
+			<h1 id="m-hero-title">Review designs where they live</h1>
+			<p id="m-sub">Comment on any element, track versions and hand off to your agent.</p>
+			<button id="m-cta" type="button">Create a board</button>
+		</section>
+		<div class="list">
+			<div class="item"><span class="dot"></span>Onboarding flow</div>
+			<div class="item"><span class="dot"></span>Checkout redesign</div>
+			<div class="item"><span class="dot"></span>Settings</div>
+		</div>
+		<button id="m-fab" type="button">+</button>
+	</body>
+</html>

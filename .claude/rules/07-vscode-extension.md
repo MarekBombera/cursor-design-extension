@@ -44,7 +44,7 @@ panel.onDidDispose(() => {
 - Every command: `contributes.commands` **and** `registerCommand`. IDs `cursor-design.*`, `category: "Cursor Design"`.
 - Hide with `when` / `enablement`; still guard the handler (palette can invoke anyway).
 - Prefer Command Palette / QuickPick over custom wizard UI.
-- Chrome uses `var(--vscode-*)` theme tokens, keyboard order, and ARIA. Artboard HTML is user content; do not theme it as chrome.
+- Chrome reads the `--cd-*` tokens from `src/webview/ui/theme.css` (the only file that reads `var(--vscode-*)`), keyboard order, and ARIA. Artboard HTML is user content; do not theme it as chrome.
 
 ## Webview host (CSP contract is 02)
 

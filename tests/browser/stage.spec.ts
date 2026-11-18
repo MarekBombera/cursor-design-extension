@@ -5,12 +5,14 @@ import { FRAME_WHEEL_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
 import { parseSavedStageView } from '../../src/webview/hostMessages';
 import { NUDGE_STEP, type StageView } from '../../src/webview/stageGeometry';
+import { ZOOM_PRESETS } from '../../src/webview/zoomChoices';
 import {
 	type Box,
 	boxOf,
 	canvasUpdated,
 	centerOf,
 	clickChrome,
+	clickAt,
 	frameBox,
 	isMessageOfType,
 	loadsOf,
@@ -23,6 +25,8 @@ import {
 	savedState,
 	stageBox,
 	untilHeightReported,
+	zoomReadout,
+	zoomSelect,
 } from './harness';
 
 // Frame A: a 1200 px tall body that never scrolls internally. Frame B: a short page.
@@ -63,7 +67,7 @@ test('smoke: secure context, ready handshake, two frames load, network is blocke
 	await expect(page.locator('[data-cd-frame-id="b"] iframe')).toHaveCount(1);
 	await expect.poll(() => loadsOf(page, 'a')).toBeGreaterThanOrEqual(1);
 	await expect.poll(() => loadsOf(page, 'b')).toBeGreaterThanOrEqual(1);
-	await expect(page.getByText('No artboard yet.')).toBeHidden();
+	await expect(page.getByText('No artboard yet', { exact: true })).toBeHidden();
 	expect(harness.abortedRequests()).toBe(0);
 
 	const probe = await page.evaluate(() =>
@@ -99,7 +103,7 @@ const openSeededStage = async (page: Page): Promise<Point> => {
 	await untilHeightReported(page, 'a');
 	await untilHeightReported(page, 'b');
 	const stage = await stageBox(page);
-	await expect(page.locator('.bar .readout')).toHaveText('100%');
+	await expect(zoomReadout(page)).toHaveText('100%');
 	const box = await frameBox(page, 'a');
 	expect(box.x).toBeCloseTo(stage.x, 0);
 	expect(box.y).toBeCloseTo(stage.y, 0);
@@ -178,12 +182,90 @@ const zoomKeepsPointUnderCursor = async ({
 	} finally {
 		await page.keyboard.up('Control');
 	}
-	await expect(page.locator('.bar .readout')).not.toHaveText('100%');
+	await expect(zoomReadout(page)).not.toHaveText('100%');
 	await expect.poll(async () => (await savedView(page))?.zoom).not.toBe(1);
 	const after = await frameBox(page, frameId);
 	expect(Math.abs(after.x + fractionX * after.width - pointer.x)).toBeLessThanOrEqual(1);
 	expect(Math.abs(after.y + fractionY * after.height - pointer.y)).toBeLessThanOrEqual(1);
 };
+
+test('after a ctrl+wheel zoom the zoom select shows the zoom, not a preset', async ({ page }) => {
+	const stage = await openSeededStage(page);
+	await page.mouse.move(stage.x + 200, stage.y + 300);
+	await page.keyboard.down('Control');
+	try {
+		await page.mouse.wheel(0, -120);
+	} finally {
+		await page.keyboard.up('Control');
+	}
+	await expect.poll(async () => (await savedView(page))?.zoom).not.toBe(1);
+	const zoom = (await savedView(page))?.zoom ?? 1;
+	expect(ZOOM_PRESETS.map((preset) => Math.round(preset * 100))).not.toContain(
+		Math.round(zoom * 100),
+	);
+	const select = zoomSelect(page);
+	await expect(select).toHaveValue(String(zoom));
+	await expect(select.locator('option:checked')).toHaveText(`${Math.round(zoom * 100)}%`);
+});
+
+// An out-of-process iframe never matches :focus-visible, and the frame clips an outside ring: the
+// focused artboard gets an inset ring from the stage's own focus tracking.
+test('an artboard iframe with focus draws an inset ring, gone when focus returns to the chrome', async ({
+	page,
+}) => {
+	// The host theme supplies the focus colour the ring is drawn in.
+	await openHarness(page, { savedView: SEEDED_VIEW, vscodeHost: 'dark' });
+	await postToChrome(page, canvasUpdated([frameA(), frameB()]));
+	await untilHeightReported(page, 'a');
+	const handle = page.locator('[data-cd-frame-resize="a"]');
+	const iframe = page.locator('[data-cd-frame-id="a"] iframe');
+	const ring = (): Promise<string[]> =>
+		iframe.evaluate((element) => {
+			const style = getComputedStyle(element);
+			return [style.outlineStyle, style.outlineWidth, style.outlineOffset];
+		});
+	const frame = await frameBox(page, 'a');
+	await clickAt(page, { x: frame.x + 40, y: frame.y + 40 });
+	await expect(iframe).toBeFocused();
+	await expect.poll(ring).toEqual(['solid', '2px', '-2px']);
+	await handle.focus();
+	await expect.poll(async () => (await ring())[0]).toBe('none');
+});
+
+// F-98: frame to frame fires no chrome event (the chrome window stays blurred), so the ring must
+// still follow focus from one artboard into the next, by click and by Tab.
+test('the artboard ring follows focus from frame to frame, by click and by Tab', async ({
+	page,
+}) => {
+	await openHarness(page, { savedView: SEEDED_VIEW, vscodeHost: 'dark' });
+	// Tab enters an iframe only at a focusable element, so frame B gets a button.
+	const buttonPage = SHORT_PAGE.replace('<p>Frame B</p>', '<button>Frame B</button>');
+	await postToChrome(page, canvasUpdated([frameA(), frameB({ html: buttonPage })]));
+	await untilHeightReported(page, 'a');
+	await untilHeightReported(page, 'b');
+	const ring = (frameId: string): Promise<string> =>
+		page
+			.locator(`[data-cd-frame-id="${frameId}"] iframe`)
+			.evaluate((element) => getComputedStyle(element).outlineStyle);
+	const a = await frameBox(page, 'a');
+	const b = await frameBox(page, 'b');
+
+	await clickAt(page, { x: a.x + 40, y: a.y + 40 });
+	await expect.poll(() => ring('a')).toBe('solid');
+	await clickAt(page, centerOf(b));
+	await expect(page.locator('[data-cd-frame-id="b"] iframe')).toBeFocused();
+	await expect.poll(() => ring('b')).toBe('solid');
+	expect(await ring('a')).toBe('none');
+
+	// Frame A holds nothing focusable, so Tab leaves it for frame B's button, next in the chrome's
+	// order.
+	await clickAt(page, { x: a.x + 40, y: a.y + 40 });
+	await expect.poll(() => ring('a')).toBe('solid');
+	await page.keyboard.press('Tab');
+	await expect(page.locator('[data-cd-frame-id="b"] iframe')).toBeFocused();
+	await expect.poll(() => ring('b')).toBe('solid');
+	expect(await ring('a')).toBe('none');
+});
 
 // Frame B sits at stage x 1000, and a pan first moves the view off identity, so its frame-local
 // wheel point differs from the viewport point: the anchor must add the frame offset and map
@@ -253,13 +335,13 @@ test('Fit all brings every frame into the viewport', async ({ page }) => {
 	await clickChrome(page.getByRole('button', { name: 'Fit all' }));
 	await expect.poll(async () => isInside(await frameBox(page, 'a'), stage)).toBe(true);
 	expect(isInside(await frameBox(page, 'b'), stage)).toBe(true);
-	expect(
-		Number.parseInt((await page.locator('.bar .readout').textContent()) ?? '', 10),
-	).toBeLessThanOrEqual(100);
+	expect(Number.parseInt((await zoomReadout(page).textContent()) ?? '', 10)).toBeLessThanOrEqual(
+		100,
+	);
 });
 
 const choosePreset = async (page: Page, zoom: number): Promise<void> => {
-	await page.getByRole('combobox', { name: 'Zoom preset' }).selectOption(String(zoom));
+	await zoomSelect(page).selectOption(String(zoom));
 	await expect.poll(async () => (await savedView(page))?.zoom).toBe(zoom);
 };
 
@@ -270,7 +352,7 @@ test('a zoom preset sets the zoom about the viewport centre', async ({ page }) =
 	// The stage point under the viewport centre at the seeded view (x 0, y 0, zoom 1).
 	const stagePoint = { x: centre.x, y: centre.y };
 	await choosePreset(page, 1.5);
-	await expect(page.locator('.bar .readout')).toHaveText('150%');
+	await expect(zoomReadout(page)).toHaveText('150%');
 	const view = await savedView(page);
 	expect(Math.abs((view?.x ?? 0) + stagePoint.x * 1.5 - centre.x)).toBeLessThanOrEqual(1);
 	expect(Math.abs((view?.y ?? 0) + stagePoint.y * 1.5 - centre.y)).toBeLessThanOrEqual(1);
@@ -474,7 +556,7 @@ test('a standing artboard:error mid-drag keeps the drag preview', async ({ page 
 test('ui:status shows the MCP banner and the stale-handoff marker', async ({ page }) => {
 	await openSeededStage(page);
 	const mcpBanner = page.getByText('MCP unavailable. Artboard still loads from disk.');
-	const staleMarker = page.getByText('Handoff out of date. Re-export.');
+	const staleMarker = page.getByText('Handoff out of date', { exact: true });
 	await expect(mcpBanner).toBeHidden();
 	await expect(staleMarker).toBeHidden();
 	await postToChrome(page, { type: 'ui:status', mcpAvailable: false, handoffStale: false });

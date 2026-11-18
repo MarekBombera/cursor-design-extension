@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { liveRegionText } from './commentsPanel';
+	import { zoomChoices } from './zoomChoices';
+	import Badge from './ui/Badge.svelte';
+	import Button from './ui/Button.svelte';
+	import Icon from './ui/Icon.svelte';
+	import IconButton from './ui/IconButton.svelte';
 
 	type Props = {
 		artboardId: string;
 		generation: string;
 		handoffStale: boolean;
-		zoomText: string;
+		zoom: number;
 		disabled: boolean;
 		commentMode: boolean;
 		pick: { tagName: string; isPage: boolean; sequence: number } | undefined;
@@ -21,7 +26,7 @@
 		artboardId,
 		generation,
 		handoffStale,
-		zoomText,
+		zoom,
 		disabled,
 		commentMode,
 		pick,
@@ -45,96 +50,156 @@
 		return liveRegionText({ text, sequence: pick.sequence });
 	});
 
-	const presets = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+	const zoomChoice = $derived(zoomChoices(zoom));
 
 	const choosePreset = (event: Event & { currentTarget: HTMLSelectElement }): void => {
-		const select = event.currentTarget;
-		if (select.value === '') {
-			return;
+		onPreset(Number(event.currentTarget.value));
+	};
+
+	// Interact leaves Comment mode; in Interact mode it is already chosen.
+	const chooseInteract = (): void => {
+		if (commentMode) {
+			onToggleComment();
 		}
-		onPreset(Number(select.value));
-		select.selectedIndex = 0;
 	};
 </script>
 
 <header class="bar">
-	<span class="badge">{artboardId}</span>
-	<span class="badge">{generation}</span>
-	<span class="badge" aria-live="polite" hidden={!handoffStale}>
-		{handoffStale ? 'Handoff out of date. Re-export.' : ''}
+	<span class="artboard">
+		<Icon name="artboard" />
+		{#if artboardId === ''}
+			No artboard
+		{:else}
+			<span class="artboard-id">{artboardId}</span>
+		{/if}
+		{#if generation !== ''}
+			<span class="generation">gen {generation}</span>
+		{/if}
 	</span>
-	<button
-		class="action"
-		type="button"
-		aria-pressed={commentMode}
-		aria-keyshortcuts="c"
-		title="Comment (C)"
-		{disabled}
-		onclick={onToggleComment}>Comment</button
-	>
+	<!-- The live region stays mounted and toggles hidden: it must exist before its content. -->
+	<span aria-live="polite" hidden={!handoffStale}>
+		{#if handoffStale}
+			<Badge
+				tone="warning"
+				icon="warning"
+				label="Handoff out of date"
+				description="Re-export the handoff to update it."
+			/>
+		{/if}
+	</span>
+	<span class="divider"></span>
+	<!-- Toggle buttons, not radios: Comment keeps its aria-pressed toggle and C shortcut. -->
+	<div class="mode" role="group" aria-label="Mode">
+		<Button
+			variant="segment"
+			icon="cursor"
+			aria-pressed={!commentMode}
+			{disabled}
+			onclick={chooseInteract}>Interact</Button
+		>
+		<Button
+			variant="segment"
+			icon="comment"
+			aria-pressed={commentMode}
+			aria-keyshortcuts="c"
+			title="Comment (C)"
+			{disabled}
+			onclick={onToggleComment}>Comment</Button
+		>
+	</div>
+	<!-- Muted with the mode buttons it is the shortcut for. -->
+	<kbd class={{ muted: disabled }} aria-hidden="true">C</kbd>
+	<span class="visually-hidden" aria-live="polite">{pickAnnouncement}</span>
+	<span class="zoom">
+		<select aria-label="Zoom" {disabled} onchange={choosePreset}>
+			{#each zoomChoice.options as option (option.value)}
+				<option value={option.value} selected={option.value === zoomChoice.selected}
+					>{option.label}</option
+				>
+			{/each}
+		</select>
+		<span class="chevron"><Icon name="chevron-down" size={14} /></span>
+	</span>
+	<IconButton icon="fit" label="Fit all" {disabled} onclick={onFit} />
+	<span class="divider"></span>
 	<!-- Never disabled: the panel lists comments whether or not a frame is drawn. -->
-	<button
-		class="action"
-		type="button"
+	<IconButton
+		icon="comments"
+		label={unresolvedCount > 0 ? `Comments, ${unresolvedCount} unresolved` : 'Comments'}
+		count={unresolvedCount}
 		aria-expanded={commentsPanelOpen}
 		aria-controls="cd-comments-panel"
 		onclick={onToggleCommentsPanel}
-		>{unresolvedCount > 0 ? `Comments (${unresolvedCount})` : 'Comments'}</button
-	>
-	<span class="badge" hidden={!commentMode}>Click to comment.</span>
-	<span class="visually-hidden" aria-live="polite">{pickAnnouncement}</span>
-	<span class="badge readout">{zoomText}</span>
-	<select class="preset" aria-label="Zoom preset" {disabled} onchange={choosePreset}>
-		<option value="" selected disabled>Zoom</option>
-		{#each presets as preset (preset)}
-			<option value={String(preset)}>{Math.round(preset * 100)}%</option>
-		{/each}
-	</select>
-	<button class="action" type="button" {disabled} onclick={onFit}>Fit all</button>
+	/>
 </header>
 
 <style>
 	.bar {
 		display: flex;
-		gap: 0.75rem;
+		flex: none;
+		flex-wrap: wrap;
 		align-items: center;
+		gap: var(--cd-space-4) var(--cd-space-8);
 		box-sizing: border-box;
-		padding: 0.5rem 0.75rem;
-		border-bottom: 1px solid var(--vscode-panel-border);
-		flex: 0 0 auto;
+		min-height: var(--cd-toolbar-h);
+		padding: var(--cd-space-4) var(--cd-space-8) var(--cd-space-4) var(--cd-space-12);
+		border-bottom: 1px solid var(--cd-divider);
+		background: var(--cd-bg-chrome);
 	}
-	.badge {
-		color: var(--vscode-descriptionForeground);
+	.artboard {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--cd-space-6);
+		min-width: 0;
+		color: var(--cd-fg-2);
 	}
-	.badge[hidden] {
-		display: none;
+	.artboard-id {
+		overflow: hidden;
+		color: var(--cd-fg);
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.readout {
+	.generation {
+		font-size: var(--cd-fs-sm);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	.divider {
+		flex: none;
+		width: 1px;
+		height: 16px;
+		margin: 0 var(--cd-space-4);
+		background: var(--cd-divider);
+	}
+	.muted {
+		color: var(--cd-fg-disabled);
+	}
+	.mode {
+		display: inline-flex;
+		gap: var(--cd-space-2);
+		padding: var(--cd-space-2);
+		border-radius: var(--cd-radius-md);
+		background: var(--cd-bg-hover);
+	}
+	.zoom {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
 		margin-left: auto;
 	}
-	.preset {
-		font: inherit;
-		color: var(--vscode-dropdown-foreground);
-		background: var(--vscode-dropdown-background);
-		border: 1px solid var(--vscode-dropdown-border);
+	/* The global select look, with room for the chevron drawn over it. */
+	.zoom select {
+		appearance: none;
+		height: var(--cd-icon-btn);
+		padding: 0 var(--cd-space-24) 0 var(--cd-space-8);
+		font-size: var(--cd-fs-sm);
+		font-variant-numeric: tabular-nums;
 	}
-	.action {
-		font: inherit;
-		padding: 0.125rem 0.5rem;
-		color: var(--vscode-button-secondaryForeground);
-		background: var(--vscode-button-secondaryBackground);
-		border: 0;
-	}
-	.action[aria-pressed='true'],
-	.action[aria-expanded='true'] {
-		color: var(--vscode-button-foreground);
-		background: var(--vscode-button-background);
-	}
-	.action:disabled {
-		opacity: 0.5;
-	}
-	.preset:focus-visible,
-	.action:focus-visible {
-		outline: 1px solid var(--vscode-focusBorder);
+	.chevron {
+		position: absolute;
+		right: var(--cd-space-4);
+		display: flex;
+		color: var(--cd-fg-2);
+		pointer-events: none;
 	}
 </style>

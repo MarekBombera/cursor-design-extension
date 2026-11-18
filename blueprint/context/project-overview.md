@@ -120,7 +120,7 @@ Height is never stored; it comes from the rendered content (`cd:frame-height`). 
 ## Tech stack
 
 - **Host** - TypeScript Cursor/VS Code extension, `pnpm`, bundled by `vp pack` (tsdown) from 0.2.1. `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
-- **Chrome** - Svelte 5 + Vite under `src/webview/` from 0.3 (8b); the host keeps only the shell `src/panel/artboardChromeHtml.ts` (CSP, `chrome.css`, `chrome.js`). Through 0.2 it was a TS template-string document. `var(--vscode-*)` tokens.
+- **Chrome** - Svelte 5 + Vite under `src/webview/` from 0.3 (8b); the host keeps only the shell `src/panel/artboardChromeHtml.ts` (CSP, `chrome.css`, `chrome.js`). Through 0.2 it was a TS template-string document. Theme: `--cd-*` tokens in `src/webview/ui/theme.css`, built from the host's `var(--vscode-*)` values (the only file that reads them).
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.

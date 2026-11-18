@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { Attachment } from 'svelte/attachments';
 
-	import type { PinBadge, PlacedPin } from './pins';
+	import { flagBadge, type PlacedPin, statusBadge } from './pins';
+	import Icon from './ui/Icon.svelte';
 
-	// Viewport-local screen px, so a pin is the same size at any zoom. Layout, badge and label come
-	// from pins.ts; this only draws them.
+	// Viewport-local screen px, so a pin is the same size at any zoom. Layout, number, badge and
+	// label come from pins.ts; this only draws them. A pin is a teardrop whose tip (bottom-right
+	// corner) sits on the point, so the body never covers the spot being discussed.
 	type Props = {
 		pins: PlacedPin[];
 		// A comment draft is open: a click at a pin goes through to the frame and retargets it.
@@ -15,8 +17,6 @@
 	};
 
 	let { pins, inert, openId, onOpen }: Props = $props();
-
-	const BADGE_GLYPHS: Record<PinBadge, string> = { missing: '×', stale: '!', unchecked: '?' };
 
 	// Read by focusPin only, so not reactive.
 	let wrapper: HTMLDivElement | undefined;
@@ -40,9 +40,10 @@
      so a bare pin button would start a pan. -->
 <div class="pins" data-cd-pins {inert} {@attach attachWrapper}>
 	{#each pins as pin (pin.id)}
+		<!-- A missing target draws a ghost pin; stale and unchecked add a flag. The label says it. -->
 		<button
 			type="button"
-			class={['pin', pin.status]}
+			class={['pin', pin.status, { missing: pin.badge === 'missing' }]}
 			data-cd-pin={pin.id}
 			aria-label={pin.label}
 			aria-haspopup="dialog"
@@ -52,10 +53,14 @@
 			onclick={() => onOpen(pin.id)}
 		>
 			{#if pin.status === 'resolved'}
-				<span class="glyph" aria-hidden="true">✓</span>
+				<Icon name={statusBadge('resolved').icon} size={12} />
+			{:else}
+				{pin.number}
 			{/if}
-			{#if pin.badge !== undefined}
-				<span class={['badge', pin.badge]} aria-hidden="true">{BADGE_GLYPHS[pin.badge]}</span>
+			{#if pin.badge === 'stale' || pin.badge === 'unchecked'}
+				<span class={['badge', pin.badge]}>
+					<Icon name={flagBadge(pin.badge).icon} size={12} />
+				</span>
 			{/if}
 		</button>
 	{/each}
@@ -71,68 +76,95 @@
 		pointer-events: none;
 		isolation: isolate;
 	}
+	/* The body grows up and to the left of the tip; scaling from the tip keeps it on the point. */
 	.pin {
+		--cd-pin-fill: var(--cd-open);
+		--cd-pin-ink: var(--cd-on-open);
 		position: absolute;
+		z-index: 1;
+		display: grid;
+		place-items: center;
 		box-sizing: border-box;
-		width: 20px;
-		height: 20px;
-		margin: 0;
-		padding: 0;
-		transform: translate(-50%, -50%);
-		border: 2px solid var(--vscode-button-background);
-		border-radius: 50%;
+		width: var(--cd-pin);
+		height: var(--cd-pin);
+		border-radius: 50% 50% 3px 50%;
+		background: var(--cd-pin-fill);
+		color: var(--cd-pin-ink);
+		font: var(--cd-weight-strong) var(--cd-fs-xs) / 1 var(--cd-font);
+		font-variant-numeric: tabular-nums;
+		box-shadow:
+			0 0 0 2px var(--cd-pin-ring),
+			0 2px 6px var(--cd-shadow);
+		transform: translate(-100%, -100%);
+		transform-origin: bottom right;
+		transition: transform var(--cd-dur) var(--cd-ease);
 		pointer-events: auto;
 		cursor: pointer;
-		font: inherit;
-		z-index: 1;
 	}
-	.open {
-		background: var(--vscode-button-background);
+	.pin:hover {
+		transform: translate(-100%, -100%) scale(1.08);
 	}
 	.sent {
-		background: transparent;
+		--cd-pin-fill: var(--cd-agent);
+		--cd-pin-ink: var(--cd-on-agent);
 	}
 	.resolved {
+		--cd-pin-fill: var(--cd-pin-resolved-bg);
+		--cd-pin-ink: var(--cd-pin-resolved-fg);
 		z-index: 0;
-		opacity: 0.6;
-		border-color: var(--vscode-disabledForeground);
-		background: var(--vscode-disabledForeground);
+		width: var(--cd-pin-sm);
+		height: var(--cd-pin-sm);
 	}
-	.pin:focus-visible {
-		outline: 2px solid var(--vscode-focusBorder);
-		outline-offset: 1px;
+	/* Target gone: a ghost at the stored spot. The number stays readable text; the pin colour is
+	   the inner edge and a dashed ring (a pseudo-element, so the focus outline stays free). */
+	.missing {
+		background: var(--cd-pin-ring);
+		color: var(--cd-fg);
+		box-shadow:
+			inset 0 0 0 1.5px var(--cd-pin-fill),
+			0 0 0 2px var(--cd-pin-ring),
+			0 2px 6px var(--cd-shadow);
 	}
-	.glyph {
-		display: block;
-		font-size: 12px;
-		line-height: 16px;
-		text-align: center;
-		color: var(--vscode-editor-background);
+	.missing::after {
+		content: '';
+		position: absolute;
+		inset: -3.5px;
+		border: 1.5px dashed var(--cd-pin-fill);
+		border-radius: inherit;
+		pointer-events: none;
 	}
-	/* A filled disc with a ring: the badge sits on arbitrary artboard content, where a bare colored
-	   glyph disappears. */
+	/* The pin whose thread is open: a foreground ring around the halo, so it never reads as the
+	   keyboard focus ring (the global one, whose 2px offset touches the halo). */
+	.pin[aria-expanded='true'] {
+		z-index: 2;
+		box-shadow:
+			0 0 0 2px var(--cd-pin-ring),
+			0 0 0 4px var(--cd-fg),
+			0 2px 8px var(--cd-shadow);
+	}
+	.missing[aria-expanded='true'] {
+		box-shadow:
+			inset 0 0 0 1.5px var(--cd-pin-fill),
+			0 0 0 2px var(--cd-pin-ring),
+			0 0 0 4px var(--cd-fg),
+			0 2px 8px var(--cd-shadow);
+	}
+	/* The flag sits on the body's far corner, away from the tip; only its icon takes the meaning
+	   colour. */
 	.badge {
 		position: absolute;
-		top: -7px;
-		right: -7px;
-		box-sizing: border-box;
+		top: calc(-1 * var(--cd-space-6));
+		left: calc(-1 * var(--cd-space-6));
+		display: grid;
+		place-items: center;
 		width: 14px;
 		height: 14px;
-		border: 1px solid var(--vscode-editor-background);
-		border-radius: 50%;
-		color: var(--vscode-editor-background);
-		font-size: 10px;
-		font-weight: bold;
-		line-height: 12px;
-		text-align: center;
+		border-radius: var(--cd-radius-pill);
+		background: var(--cd-pin-ring);
+		box-shadow: 0 1px 2px var(--cd-shadow);
+		color: var(--cd-fg-2);
 	}
-	.stale {
-		background: var(--vscode-editorWarning-foreground);
-	}
-	.missing {
-		background: var(--vscode-editorError-foreground);
-	}
-	.unchecked {
-		background: var(--vscode-descriptionForeground);
+	.badge.stale {
+		color: var(--cd-warning);
 	}
 </style>

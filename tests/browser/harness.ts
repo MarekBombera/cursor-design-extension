@@ -10,6 +10,7 @@ import type {
 	PostedCanvasFrame,
 } from '../../src/webview/hostMessages';
 import type { StageView } from '../../src/webview/stageGeometry';
+import { DEFAULT_STYLES, VSCODE_THEME_VARIABLES, type VscodeTheme } from './vscodeHost';
 
 // The chrome's top-level document with a stubbed VS Code host. The page mirrors
 // buildArtboardChromeHtml (src/panel/artboardChromeHtml.ts) minus asWebviewUri, and its CSP is
@@ -50,17 +51,37 @@ const CONTENT_TYPES: Record<string, string> = {
 	'.map': 'application/json',
 };
 
+// With a host theme, the page gets what Cursor gives a webview, in Cursor's order: its default
+// styles ahead of chrome.css (after the metas, which must stay in the first 1024 bytes), the
+// theme variables on <html>, the theme class on <body>.
+const hostHead = (vscodeHost: VscodeTheme | undefined): string =>
+	vscodeHost === undefined
+		? ''
+		: `<style id="_defaultStyles" nonce="${HARNESS_NONCE}">${DEFAULT_STYLES}</style>
+	<script nonce="${HARNESS_NONCE}">
+		for (const [name, value] of Object.entries(${JSON.stringify(VSCODE_THEME_VARIABLES[vscodeHost])})) {
+			document.documentElement.style.setProperty(name, value);
+		}
+	</script>`;
+
 // The stub runs before the chrome module. The message capture is observation only: it records
 // window messages whose source is a frame iframe and never touches propagation.
-const harnessPage = (initialState: unknown): string => `<!DOCTYPE html>
+const harnessPage = ({
+	initialState,
+	vscodeHost,
+}: {
+	initialState: unknown;
+	vscodeHost: VscodeTheme | undefined;
+}): string => `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	${hostHead(vscodeHost)}
 	<title>Cursor Design</title>
 	<link rel="stylesheet" nonce="${HARNESS_NONCE}" href="/chrome.css">
 </head>
-<body>
+<body${vscodeHost === undefined ? '' : ` class="vscode-${vscodeHost}"`}>
 	<div id="svelte-root"></div>
 	<script nonce="${HARNESS_NONCE}">
 		const record = { posted: [], state: ${JSON.stringify(initialState) ?? 'undefined'}, frameMessages: [] };
@@ -93,10 +114,16 @@ export const isMessageOfType = (data: unknown, type: string): data is Record<str
 
 // Routes the harness origin, aborts (and counts) every other request, opens the page and waits
 // for artboard:ready, like createPanelOutbox. `state` is a whole saved webview state (a reload
-// passes what savedState returned); otherwise `savedView` seeds only the stage view.
+// passes what savedState returned); otherwise `savedView` seeds only the stage view. `vscodeHost`
+// emulates Cursor's theme and default styles (vscodeHost.ts); without it the page has neither.
 export const openHarness = async (
 	page: Page,
-	options: { savedView?: StageView; state?: unknown; chromeCsp?: boolean } = {},
+	options: {
+		savedView?: StageView;
+		state?: unknown;
+		chromeCsp?: boolean;
+		vscodeHost?: VscodeTheme;
+	} = {},
 ): Promise<{ abortedRequests: () => number }> => {
 	let aborted = 0;
 	const initialState =
@@ -115,7 +142,7 @@ export const openHarness = async (
 			await route.fulfill({
 				contentType: 'text/html',
 				headers: options.chromeCsp === true ? { 'content-security-policy': CHROME_CSP } : {},
-				body: harnessPage(initialState),
+				body: harnessPage({ initialState, vscodeHost: options.vscodeHost }),
 			});
 			return;
 		}
@@ -253,3 +280,47 @@ export const clickChrome = async (locator: Locator): Promise<void> => {
 // Lets the chrome apply a message (Svelte flushes in a microtask) before asserting an absence.
 export const nextAnimationFrame = (page: Page): Promise<void> =>
 	page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+// Shared locators: by role and data-cd-* hooks, one definition per control.
+export const commentButton = (page: Page): Locator =>
+	page.getByRole('button', { name: 'Comment', exact: true });
+
+export const pinOf = (page: Page, id: string): Locator => page.locator(`[data-cd-pin="${id}"]`);
+
+export const thread = (page: Page): Locator =>
+	page.getByRole('dialog', { name: 'Comment', exact: true });
+
+export const threadButton = (page: Page, name: string): Locator =>
+	thread(page).getByRole('button', { name, exact: true });
+
+export const popover = (page: Page): Locator =>
+	page.getByRole('dialog', { name: 'Add comment', exact: true });
+
+export const panelToggle = (page: Page): Locator => page.getByRole('button', { name: /^Comments/ });
+
+export const panel = (page: Page): Locator =>
+	page.getByRole('complementary', { name: 'Comments', exact: true });
+
+export const panelItem = (page: Page, id: string): Locator =>
+	panel(page).locator(`[data-cd-comment-item="${id}"]`);
+
+export const panelButton = (page: Page, id: string, name: string): Locator =>
+	panelItem(page, id).getByRole('button', { name, exact: true });
+
+export const copyOpenButton = (page: Page): Locator => panel(page).locator('[data-cd-copy-open]');
+
+// The toolbar's zoom <select>, and its shown option (which always names the current zoom).
+export const zoomSelect = (page: Page): Locator => page.getByRole('combobox', { name: 'Zoom' });
+
+export const zoomReadout = (page: Page): Locator => zoomSelect(page).locator('option:checked');
+
+// The target chip inside the open Add comment popover.
+export const popoverTarget = (page: Page): Locator =>
+	page.locator('[data-cd-comment-popover] [data-cd-comment-target] .element');
+
+export const expectBoxNear = (actual: Box, expected: Box): void => {
+	expect(Math.abs(actual.x - expected.x)).toBeLessThanOrEqual(1);
+	expect(Math.abs(actual.y - expected.y)).toBeLessThanOrEqual(1);
+	expect(Math.abs(actual.width - expected.width)).toBeLessThanOrEqual(1);
+	expect(Math.abs(actual.height - expected.height)).toBeLessThanOrEqual(1);
+};

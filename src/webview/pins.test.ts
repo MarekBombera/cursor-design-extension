@@ -44,16 +44,17 @@ const frame = (overrides: Partial<FrameRecord> = {}): FrameRecord => ({
 	height: 300,
 	generation: 1,
 	kind: 'iframe',
+	tileKind: 'empty',
 	tileText: '',
 	html: '<p>a</p>',
 	group: undefined,
 	measuredHeight: 300,
+	heightReported: true,
 	guard: { lastGrowth: 0, frozen: false },
 	...overrides,
 });
 
 const view = { x: 0, y: 0, zoom: 1 };
-
 const box = { x: 50, y: 60, width: 200, height: 80 };
 
 const answered = (
@@ -132,26 +133,31 @@ test('pinBadge: resolved shows none; a live box: null beats disk stale', () => {
 	assert.equal(pinBadge({ comment: comment(), live: { box, visible: box } }), undefined);
 });
 
-test('pinPoint: live box, stored rect fallback, page fraction, and no NaN on a zero-size box', () => {
+test('pinPoint: an element pin at its box corner (live, then stored rect), a page pin at its fraction', () => {
 	const element = comment();
 	assert.deepEqual(pinPoint({ comment: element, live: { box, visible: box }, frame: frame() }), {
-		x: 150,
-		y: 80,
+		x: box.x,
+		y: box.y,
 	});
+	// The stored fraction no longer moves an element pin.
+	assert.deepEqual(
+		pinPoint({
+			comment: comment({ pin: { x: 0.9, y: 0.9 } }),
+			live: { box, visible: box },
+			frame: frame(),
+		}),
+		{ x: box.x, y: box.y },
+	);
 	assert.deepEqual(
 		pinPoint({ comment: element, live: { box: null, visible: null }, frame: frame() }),
 		{
-			x: 60,
-			y: 30,
+			x: 10,
+			y: 20,
 		},
 	);
-	const zero = { x: 5, y: 7, width: 0, height: 0 };
 	assert.deepEqual(
-		pinPoint({ comment: element, live: { box: zero, visible: null }, frame: frame() }),
-		{
-			x: 5,
-			y: 7,
-		},
+		pinPoint({ comment: comment({ rect: null }), live: undefined, frame: frame() }),
+		{ x: 0, y: 0 },
 	);
 	const page = comment({ isPage: true, rect: null, pin: { x: 0.25, y: 0.5 } });
 	assert.deepEqual(pinPoint({ comment: page, live: undefined, frame: frame() }), {
@@ -160,9 +166,9 @@ test('pinPoint: live box, stored rect fallback, page fraction, and no NaN on a z
 	});
 });
 
-test('layoutPins: screen point on the drawn frame at the committed view', () => {
+test('layoutPins: screen point on the drawn frame at the committed view, numbered in file order', () => {
 	const pins = layoutPins({
-		comments: [comment()],
+		comments: [comment({ id: 'r0', frameId: 'gone', status: 'resolved' }), comment()],
 		anchors: answered('a', 'c1', { box, visible: box }),
 		frames: [frame()],
 		view: { x: 10, y: 20, zoom: 2 },
@@ -170,15 +176,22 @@ test('layoutPins: screen point on the drawn frame at the committed view', () => 
 	assert.deepEqual(pins, [
 		{
 			id: 'c1',
-			x: 10 + (1000 + 150) * 2,
-			y: 20 + (500 + 80) * 2,
+			x: 10 + (1000 + 50) * 2,
+			y: 20 + (500 + 60) * 2,
+			// The unplaced resolved comment before it keeps number 1.
+			number: 2,
 			status: 'open',
 			badge: undefined,
-			label: 'Open comment: Make this bolder',
+			label: 'Open comment 2: Make this bolder',
 		},
 	]);
 	assert.deepEqual(
-		layoutPins({ comments: [comment()], anchors: new Map(), frames: [frame()], view: undefined }),
+		layoutPins({
+			comments: [comment()],
+			anchors: new Map(),
+			frames: [frame()],
+			view: undefined,
+		}),
 		[],
 	);
 });
@@ -188,9 +201,9 @@ test('layoutPins hides a pin outside visible, fully clipped, or outside the fram
 		layoutPins({ comments, anchors, frames: [frame()], view }).length;
 	assert.equal(place(answered('a', 'c1', { box, visible: box })), 1);
 	assert.equal(place(answered('a', 'c1', { box, visible: null })), 0);
-	// The point (150, 80) is 0.5px inside the tolerance, then just past it.
-	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 150.5, width: 10 } })), 1);
-	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 150.6, width: 10 } })), 0);
+	// The point, the box corner (50, 60), is 0.5px inside the tolerance, then just past it.
+	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 50.5, width: 10 } })), 1);
+	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 50.6, width: 10 } })), 0);
 	// A zero-area target is hidden by design.
 	const zero = { x: 5, y: 7, width: 0, height: 0 };
 	assert.equal(place(answered('a', 'c1', { box: zero, visible: null })), 0);
@@ -217,21 +230,38 @@ test('layoutPins places nothing on a tile or a frame that is not drawn', () => {
 
 test('pinLabel collapses whitespace and cuts at 60 characters with an ellipsis', () => {
 	assert.equal(
-		pinLabel({ comment: comment({ body: '  Make\n this\tbolder ' }), badge: 'stale' }),
-		'Open comment, stale: Make this bolder',
+		pinLabel({ comment: comment({ body: '  Make\n this\tbolder ' }), badge: 'stale', number: 3 }),
+		'Open comment 3, target changed: Make this bolder',
 	);
 	assert.equal(
-		pinLabel({ comment: comment({ body: 'x'.repeat(60), status: 'sent' }), badge: undefined }),
-		`Sent comment: ${'x'.repeat(60)}`,
+		pinLabel({ comment: comment({ body: 'Hi' }), badge: 'unchecked', number: 2 }),
+		'Open comment 2, not checked: Hi',
 	);
 	assert.equal(
-		pinLabel({ comment: comment({ body: 'x'.repeat(61), status: 'resolved' }), badge: 'missing' }),
-		`Resolved comment, target missing: ${'x'.repeat(60)}…`,
+		pinLabel({
+			comment: comment({ body: 'x'.repeat(60), status: 'sent' }),
+			badge: undefined,
+			number: 1,
+		}),
+		`Sent comment 1: ${'x'.repeat(60)}`,
+	);
+	assert.equal(
+		pinLabel({
+			comment: comment({ body: 'x'.repeat(61), status: 'resolved' }),
+			badge: 'missing',
+			number: 12,
+		}),
+		`Resolved comment 12, target missing: ${'x'.repeat(60)}…`,
 	);
 });
 
 test('keepOpenThread keeps the id only while its pin is placed', () => {
-	const pins = layoutPins({ comments: [comment()], anchors: new Map(), frames: [frame()], view });
+	const pins = layoutPins({
+		comments: [comment()],
+		anchors: new Map(),
+		frames: [frame()],
+		view,
+	});
 	assert.equal(keepOpenThread({ openThreadId: 'c1', pins }), 'c1');
 	assert.equal(keepOpenThread({ openThreadId: 'c2', pins }), undefined);
 	assert.equal(keepOpenThread({ openThreadId: undefined, pins }), undefined);
@@ -303,7 +333,7 @@ test('jumpTarget: a box outside the frame or with no area has no fit and centers
 		frame: jumpFrame,
 	});
 	assert.equal(flat.fit, undefined);
-	assert.deepEqual(flat.center, { x: 10, y: 30 });
+	assert.deepEqual(flat.center, { x: 10, y: 20 });
 });
 
 test('jumpTarget: a box partly outside the frame fits only its inside part', () => {

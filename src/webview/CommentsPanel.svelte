@@ -2,7 +2,19 @@
 	import type { Attachment } from 'svelte/attachments';
 
 	import CommentCard from './CommentCard.svelte';
-	import type { CommentActions, CopyOpenState, PanelItem } from './commentsPanel';
+	import {
+		type CommentActions,
+		type CopiedButton,
+		type CopyOpenState,
+		handoffCopy,
+		type PanelItem,
+		type PanelSummary,
+		summaryParts,
+	} from './commentsPanel';
+	import Button from './ui/Button.svelte';
+	import EmptyState from './ui/EmptyState.svelte';
+	import Icon from './ui/Icon.svelte';
+	import Message from './ui/Message.svelte';
 
 	// Every comment in comments.json, unresolved first. Always mounted (the toolbar toggle's
 	// aria-controls must resolve); its content renders only while open, so a closed panel costs
@@ -23,11 +35,11 @@
 		onToggleStatus: (id: string) => void;
 		// copyPending: a copy is in flight, so every Copy button waits (one copy at a time).
 		copyBlocked: boolean;
-		// The comment id whose copy just succeeded, or '*open' for Copy all open.
-		copiedKey: string | undefined;
+		// The button whose copy just succeeded, while its "Copied" shows.
+		copied: CopiedButton | undefined;
 		copyOpen: CopyOpenState;
-		// Comments with status `open`: the N in Copy all open (N).
-		openCount: number;
+		// Open / sent / resolved counts: the summary line and the handoff button.
+		summary: PanelSummary;
 		onCopy: (id: string) => void;
 		onCopyOpen: () => void;
 	};
@@ -45,15 +57,24 @@
 		onReplySubmit,
 		onToggleStatus,
 		copyBlocked,
-		copiedKey,
+		copied,
 		copyOpen,
-		openCount,
+		summary,
 		onCopy,
 		onCopyOpen,
 	}: Props = $props();
 
 	const copyOpenErrorId = $props.id();
-	const copyOpenDisabled = $derived(openCount === 0 || copyBlocked);
+	const handoff = $derived(
+		handoffCopy({
+			open: summary.open,
+			sent: summary.sent,
+			copied: copied?.kind === 'open' ? copied.count : undefined,
+		}),
+	);
+	const copyOpenDisabled = $derived(handoff.disabled || copyBlocked);
+	const parts = $derived(summaryParts(summary));
+	const empty = $derived(items.unresolved.length === 0 && items.resolved.length === 0);
 
 	const handleCopyOpen = (): void => {
 		if (!copyOpenDisabled) {
@@ -63,8 +84,9 @@
 
 	// Read by the focus effects only, so not reactive.
 	let aside: HTMLElement | undefined;
+	type KeptFocus = { id: string; key: string | undefined };
 	// The focused item and control before a list update; set by the pre-pass, cleared after.
-	let kept: { id: string; key: string | undefined } | undefined;
+	let kept: KeptFocus | undefined;
 
 	const attachAside: Attachment<HTMLElement> = (element) => {
 		aside = element;
@@ -75,7 +97,7 @@
 
 	// An unfocused webview keeps a stale activeElement (the user is typing in Agent chat), so it
 	// records nothing: restoring that would pull focus out of the chat.
-	const focusedItem = (): { id: string; key: string | undefined } | undefined => {
+	const focusedItem = (): KeptFocus | undefined => {
 		if (!document.hasFocus()) {
 			return undefined;
 		}
@@ -87,7 +109,7 @@
 		return { id, key: active.getAttribute('data-cd-focus') ?? undefined };
 	};
 
-	const restoreFocus = ({ id, key }: { id: string; key: string | undefined }): void => {
+	const restoreFocus = ({ id, key }: KeptFocus): void => {
 		const item = aside?.querySelector(`[data-cd-comment-item="${CSS.escape(id)}"]`);
 		if (item === null || item === undefined) {
 			aside?.focus({ preventScroll: true });
@@ -134,26 +156,28 @@
 
 {#snippet group(title: string, list: PanelItem[])}
 	{#if list.length > 0}
-		<h2>{title} ({list.length})</h2>
+		<!-- The dot is decoration, so the heading's name reads "Unresolved 3". -->
+		<h2 class="section-title">{title} <span aria-hidden="true">·</span> {list.length}</h2>
 		<ol>
 			{#each list as item (item.comment.id)}
 				{@const id = item.comment.id}
 				<li data-cd-comment-item={id} data-cd-status={item.comment.status}>
 					<CommentCard
 						comment={item.comment}
+						number={item.number}
 						badge={item.badge}
 						{now}
 						action={actions.get(id)}
-						surface="panel"
-						target={{ frameLabel: item.frameLabel, canJump: item.canJump }}
-						onJump={() => onJump(id)}
+						frameLabel={item.frameLabel}
+						frameShown={item.canJump}
+						onJump={item.canJump ? () => onJump(id) : undefined}
 						onReplyOpen={() => onReplyOpen(id)}
 						onReplyInput={(text) => onReplyInput(id, text)}
 						onReplyCancel={() => onReplyCancel(id)}
 						onReplySubmit={() => onReplySubmit(id)}
 						onToggleStatus={() => onToggleStatus(id)}
 						{copyBlocked}
-						copied={copiedKey === id}
+						copied={copied?.kind === 'comment' && copied.id === id}
 						onCopy={() => onCopy(id)}
 					/>
 				</li>
@@ -171,93 +195,158 @@
 	{@attach attachAside}
 >
 	{#if open}
-		{#if error !== undefined}
-			<p class="state">Comments are unavailable.</p>
-		{:else if items.unresolved.length === 0 && items.resolved.length === 0}
-			<p class="state">No comments yet. Press C, then click an element to add one.</p>
-		{:else}
-			<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
-			<div class="copy-open">
-				<button
-					class="action"
-					type="button"
-					aria-disabled={copyOpenDisabled}
-					aria-describedby={copyOpen.error === undefined ? undefined : copyOpenErrorId}
-					data-cd-copy-open
-					onclick={handleCopyOpen}
-					>{copiedKey === '*open' ? 'Copied' : `Copy all open (${String(openCount)})`}</button
-				>
-				{#if copyOpen.error !== undefined}
-					<p class="error" id={copyOpenErrorId}>{copyOpen.error}</p>
+		<!-- Outside the scrolling list, so a focused card control is never under it. -->
+		<div class="head">
+			<p class="title">Comments</p>
+			{#if error === undefined && !empty}
+				{#if parts.length > 0}
+					<p class="summary">
+						{#each parts as part, index (part.text)}
+							<!-- Hidden commas, so the line reads as a list, not one run of words. -->
+							{#if index > 0}<span class="visually-hidden">,&nbsp;</span>{/if}<span class="part"
+								><span class={['summary-icon', `tone-${part.tone}`]}
+									><Icon name={part.icon} size={12} /></span
+								>{part.text}</span
+							>
+						{/each}
+					</p>
 				{/if}
+				<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
+				<div class="handoff">
+					<Button
+						variant={handoff.copied ? 'secondary' : 'primary'}
+						icon={handoff.copied ? 'check' : 'sparkle'}
+						block
+						aria-disabled={copyOpenDisabled}
+						aria-describedby={copyOpen.error === undefined ? undefined : copyOpenErrorId}
+						data-cd-copy-open
+						onclick={handleCopyOpen}>{handoff.label}</Button
+					>
+					{#if copyOpen.error !== undefined}
+						<Message tone="error" id={copyOpenErrorId}>{copyOpen.error}</Message>
+					{:else if handoff.hint !== undefined}
+						<p class="hint">{handoff.hint}</p>
+					{/if}
+				</div>
+			{/if}
+		</div>
+		{#if error !== undefined}
+			<EmptyState icon="warning" title="Comments are unavailable"
+				>The notice above the canvas says why.</EmptyState
+			>
+		{:else if empty}
+			<EmptyState icon="comment" title="No comments yet"
+				>Press <kbd>C</kbd>, then click an element to add one.</EmptyState
+			>
+		{:else}
+			<div class="list">
+				{@render group('Unresolved', items.unresolved)}
+				{@render group('Resolved', items.resolved)}
 			</div>
-			{@render group('Unresolved', items.unresolved)}
-			{@render group('Resolved', items.resolved)}
 		{/if}
 	{/if}
 </aside>
 
 <style>
-	/* No display declaration, so [hidden] hides it. */
+	/* A column: the header, then the list, which is the scroller. No display rule fights [hidden]:
+	   the global rule wins. */
 	aside {
 		order: 1;
+		display: flex;
 		flex: none;
-		width: 20rem;
+		flex-direction: column;
+		width: var(--cd-panel-w);
 		max-width: 50%;
 		margin-left: auto;
 		box-sizing: border-box;
-		padding: 0.5rem 0.75rem;
-		overflow: auto;
+		overflow: hidden;
 		overscroll-behavior: contain;
-		border-left: 1px solid var(--vscode-panel-border);
-		background: var(--vscode-sideBar-background);
+		border-left: 1px solid var(--cd-divider);
+		background: var(--cd-bg-chrome);
 	}
+	/* Focused by script only, as a fallback when focus would drop to body; it is not a control. */
 	aside:focus {
 		outline: none;
 	}
-	h2 {
-		margin: 0.5rem 0;
-		font-size: inherit;
-		font-weight: 600;
-	}
-	ol {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		margin: 0 0 0.75rem;
-		padding: 0;
-		list-style: none;
-	}
-	.copy-open {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.375rem;
-		margin: 0.5rem 0;
-	}
-	.copy-open p {
+	p {
 		margin: 0;
 	}
-	.error {
-		color: var(--vscode-errorForeground);
+	.head {
+		display: grid;
+		flex: none;
+		gap: var(--cd-space-8);
+		padding: var(--cd-space-8) var(--cd-space-12) var(--cd-space-10);
+		border-bottom: 1px solid var(--cd-divider);
 	}
-	button {
-		font: inherit;
-		padding: 0.125rem 0.5rem;
-		border: 0;
+	.title,
+	.section-title {
+		margin: 0;
+		font: var(--cd-weight-strong) var(--cd-fs-xs) / var(--cd-lh-sm) var(--cd-font);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 	}
-	.action {
-		color: var(--vscode-button-secondaryForeground);
-		background: var(--vscode-button-secondaryBackground);
+	.title {
+		display: flex;
+		align-items: center;
+		height: 24px;
 	}
-	button[aria-disabled='true'] {
-		opacity: 0.5;
+	.section-title {
+		margin-top: var(--cd-space-6);
+		color: var(--cd-fg-2);
 	}
-	button:focus-visible {
-		outline: 1px solid var(--vscode-focusBorder);
+	.section-title:first-child {
+		margin-top: 0;
 	}
-	.state {
-		margin: 0.5rem 0;
-		color: var(--vscode-descriptionForeground);
+	.summary {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--cd-space-4) var(--cd-space-10);
+		color: var(--cd-fg-2);
+		font-size: var(--cd-fs-sm);
+	}
+	.part {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--cd-space-4);
+	}
+	/* Each count's status icon in its meaning colour; the text stays --cd-fg-2. */
+	.summary-icon {
+		display: inline-flex;
+	}
+	.summary-icon.tone-accent {
+		color: var(--cd-open);
+	}
+	.summary-icon.tone-agent {
+		color: var(--cd-agent);
+	}
+	.summary-icon.tone-success {
+		color: var(--cd-resolved);
+	}
+	.handoff {
+		display: grid;
+		gap: var(--cd-space-4);
+	}
+	.hint {
+		color: var(--cd-fg-2);
+		font-size: var(--cd-fs-xs);
+		line-height: var(--cd-lh-sm);
+		text-align: center;
+	}
+	.list {
+		display: grid;
+		flex: 1 1 auto;
+		align-content: start;
+		gap: var(--cd-space-8);
+		min-height: 0;
+		padding: var(--cd-space-10) var(--cd-space-12) var(--cd-space-16);
+		overflow: auto;
+		overscroll-behavior: contain;
+	}
+	ol {
+		display: grid;
+		gap: var(--cd-space-8);
+		margin: 0;
+		padding: 0;
+		list-style: none;
 	}
 </style>

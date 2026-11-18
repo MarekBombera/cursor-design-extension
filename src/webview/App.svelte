@@ -31,18 +31,20 @@
 		closeReply,
 		type CommentActions,
 		COPY_FEEDBACK_MS,
+		type CopiedButton,
 		copyPending,
 		type CopyOpenState,
 		editReply,
+		frameLabel,
 		keepLiveActions,
 		liveRegionText,
 		openReply,
 		panelItems,
+		panelSummary,
 		submitCopy,
 		submitCopyOpen,
 		submitReply,
 		submitStatus,
-		unresolvedCount,
 	} from './commentsPanel';
 	import type { ChromeFrameMessage, FrameMessage, FramePickMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
@@ -82,6 +84,7 @@
 		demoteToTile,
 		type FrameRecord,
 		frameOutline,
+		frameSizeText,
 		liveIframeIds,
 		mergeCanvasFrames,
 		toChromeFrames,
@@ -111,6 +114,7 @@
 		zoomStageTo,
 	} from './stageGeometry';
 	import Toolbar from './Toolbar.svelte';
+	import EmptyState from './ui/EmptyState.svelte';
 
 	// First-seen order; never reordered (moving an iframe in the DOM reloads it).
 	let frames: FrameRecord[] = $state([]);
@@ -135,11 +139,11 @@
 	let commentsError: string | undefined = $state();
 	// Reply composers and status requests by comment id; the rules live in commentsPanel.ts.
 	let actions: CommentActions = $state.raw(new Map());
-	// Copy all open's request state; the rules live in commentsPanel.ts.
+	// The copy-open button's request state; the rules live in commentsPanel.ts.
 	let copyOpen: CopyOpenState = $state({});
-	// The Copy button that reads "Copied": a comment id, or '*open' for Copy all open. The sequence
-	// restarts the timer on a repeat; cleared after COPY_FEEDBACK_MS.
-	let copyFeedback: { key: string; sequence: number } | undefined = $state.raw();
+	// The Copy button that reads "Copied". The sequence restarts the timer on a repeat; cleared after
+	// COPY_FEEDBACK_MS.
+	let copyFeedback: (CopiedButton & { sequence: number }) | undefined = $state.raw();
 	// The comments live region's text; the sequence makes a repeat speak again (liveRegionText).
 	let announcement = $state({ text: '', sequence: 0 });
 	// The Comments panel; closed by default, restored from webview state.
@@ -165,10 +169,14 @@
 	const displayFrames = $derived(withGestureOverride({ frames, gesture }));
 	const layout = $derived(layoutCanvasChrome({ frames: toChromeFrames(displayFrames) }));
 	const labels = $derived(
-		layout.labels.map((box) => ({
-			...box,
-			text: displayFrames.find((frame) => frame.id === box.id)?.label ?? '',
-		})),
+		layout.labels.map((box) => {
+			const frame = displayFrames.find((candidate) => candidate.id === box.id);
+			return {
+				...box,
+				text: frame?.label ?? '',
+				size: frame === undefined ? '' : frameSizeText(frame),
+			};
+		}),
 	);
 	const transform = $derived(
 		committedView === undefined
@@ -190,12 +198,14 @@
 			? undefined
 			: popoverAnchor({ view: committedView, frame: draftFrame, target: draft.target });
 	});
-	// Pins follow the same drawn frames and committed view as the outlines.
+	// Pins follow the same drawn frames and committed view as the outlines. Both number the comments
+	// from the full list, so a pin, its card and its thread share one number.
 	const pins = $derived(
 		layoutPins({ comments, anchors, frames: displayFrames, view: committedView }),
 	);
-	// Read only while the panel is open (its content renders only then).
-	const commentItems = $derived(panelItems({ comments, anchors, frames: displayFrames }));
+	// Read only while the panel is open (its content renders only then). The committed frames, not
+	// the drawn ones: a drag changes only x / y / width, so the list does not rebuild on each move.
+	const commentItems = $derived(panelItems({ comments, anchors, frames }));
 	// The drawn frame a comment can jump to: only a live iframe, never a tile or an absent frame.
 	const jumpFrame = (comment: PostedComment): FrameRecord | undefined =>
 		liveIframeIds(frames).has(comment.frameId)
@@ -218,13 +228,10 @@
 	});
 	// One copy at a time across the chrome.
 	const copyBlocked = $derived(copyPending({ actions, copyOpen }));
-	const openCount = $derived(comments.filter((comment) => comment.status === 'open').length);
+	const summary = $derived(panelSummary(comments));
 	const openPin = $derived(pins.find((pin) => pin.id === openThreadId));
 	const openComment = $derived(comments.find((entry) => entry.id === openThreadId));
 	const canStep = $derived(draft !== undefined && picking.pick?.frameId === draft.frameId);
-	const zoomText = $derived(
-		`${Math.round((committedView === undefined ? 1 : committedView.zoom) * 100)}%`,
-	);
 
 	// The single write path for the view: clamp, transform the layer, readout, save.
 	const commitStageView = (nextView: StageView): void => {
@@ -294,7 +301,7 @@
 			handleCommentAnswer(message);
 			return;
 		}
-		// A ui:error answers a draft, an action or Copy all open; UUIDs never cross-match.
+		// A ui:error answers a draft, an action or the copy-open request; UUIDs never cross-match.
 		if (message.type === 'ui:error') {
 			handleCommentAnswer(message);
 			handleActionAnswer(message);
@@ -490,7 +497,8 @@
 		const submitted = submitCopyOpen({
 			actions,
 			copyOpen,
-			openCount,
+			openCount: summary.open,
+			copiedShowing: copyFeedback?.kind === 'open',
 			requestId: crypto.randomUUID(),
 		});
 		copyOpen = submitted.copyOpen;
@@ -500,8 +508,8 @@
 	};
 
 	// A new success replaces any other button's "Copied" and restarts the timer.
-	const showCopied = (key: string): void => {
-		copyFeedback = { key, sequence: (copyFeedback?.sequence ?? 0) + 1 };
+	const showCopied = (button: CopiedButton): void => {
+		copyFeedback = { ...button, sequence: (copyFeedback?.sequence ?? 0) + 1 };
 	};
 
 	const handleToggleCommentsPanel = (): void => {
@@ -570,7 +578,7 @@
 		const answered = answerAction({ actions, answer });
 		actions = answered.actions;
 		if (answered.copiedId !== undefined) {
-			showCopied(answered.copiedId);
+			showCopied({ kind: 'comment', id: answered.copiedId });
 		}
 		announce(answered.announcement);
 	};
@@ -578,8 +586,8 @@
 	const handleCopyOpenAnswer = (answer: CopiedMessage | UiErrorMessage): void => {
 		const answered = answerCopyOpen({ state: copyOpen, answer });
 		copyOpen = answered.state;
-		if (answered.copied) {
-			showCopied('*open');
+		if (answered.copiedCount !== undefined) {
+			showCopied({ kind: 'open', count: answered.copiedCount });
 		}
 		announce(answered.announcement);
 	};
@@ -835,19 +843,18 @@
 	{artboardId}
 	{generation}
 	{handoffStale}
-	{zoomText}
+	zoom={committedView?.zoom ?? 1}
 	disabled={frames.length === 0}
 	commentMode={picking.commentMode}
 	pick={picking.pick}
 	{commentsPanelOpen}
-	unresolvedCount={unresolvedCount(comments)}
+	unresolvedCount={summary.open + summary.sent}
 	onPreset={handlePreset}
 	onFit={handleFit}
 	onToggleComment={handleToggleComment}
 	onToggleCommentsPanel={handleToggleCommentsPanel}
 />
 <Banners {errorMessage} {commentsError} {mcpUnavailable} />
-<p class="empty" hidden={frames.length > 0}>No artboard yet.</p>
 <!-- The panel comes first (Tab order panel → stage); CSS order draws it on the right. -->
 <div class="workspace">
 	<CommentsPanel
@@ -863,9 +870,9 @@
 		onReplySubmit={handleReplySubmit}
 		onToggleStatus={handleToggleStatus}
 		{copyBlocked}
-		copiedKey={copyFeedback?.key}
+		copied={copyFeedback}
 		{copyOpen}
-		{openCount}
+		{summary}
 		onCopy={handleCopy}
 		onCopyOpen={handleCopyOpen}
 	/>
@@ -880,6 +887,7 @@
 		{transform}
 		zoom={committedView?.zoom ?? 1}
 		hidden={frames.length === 0}
+		commentMode={picking.commentMode}
 		{hoverOutline}
 		{pickOutline}
 		{flashOutline}
@@ -901,6 +909,8 @@
 			{#key openThreadId}
 				<CommentThread
 					comment={openComment}
+					number={openPin.number}
+					frameLabel={frameLabel(frames, openComment.frameId)}
 					badge={openPin.badge}
 					anchor={openPin}
 					{viewportWidth}
@@ -914,7 +924,7 @@
 					onReplySubmit={() => handleReplySubmit(openComment.id)}
 					onToggleStatus={() => handleToggleStatus(openComment.id)}
 					{copyBlocked}
-					copied={copyFeedback?.key === openComment.id}
+					copied={copyFeedback?.kind === 'comment' && copyFeedback.id === openComment.id}
 					onCopy={() => handleCopy(openComment.id)}
 				/>
 			{/key}
@@ -923,6 +933,7 @@
 			<CommentPopover
 				bind:this={popover}
 				{draft}
+				frameLabel={frameLabel(frames, draft.frameId)}
 				anchor={draftAnchor}
 				{viewportWidth}
 				{viewportHeight}
@@ -934,51 +945,25 @@
 			/>
 		{/if}
 	</Stage>
+	<!-- In the stage's place, centred in the space the panel leaves. -->
+	<EmptyState
+		icon="artboard"
+		title="No artboard yet"
+		example="“Design a pricing page with three plans”"
+		hidden={frames.length > 0}
+	>
+		Ask Cursor Agent to design something. It shows up here as you work.
+	</EmptyState>
 </div>
 <span class="visually-hidden" aria-live="polite">{liveRegionText(announcement)}</span>
 
 <style>
-	:global(html),
-	:global(body) {
-		height: 100%;
-		margin: 0;
-		background: var(--vscode-editor-background);
-		color: var(--vscode-foreground);
-		font-family: var(--vscode-font-family);
-		font-size: var(--vscode-font-size);
-	}
-	/* The root is the stage's scroll sink (frameGesture.ts): App sizes the body with
-	   SCROLL_SINK_ROOM of hidden scroll room, while the fixed chrome never moves when it scrolls. */
-	:global(html) {
-		scrollbar-width: none;
-		overscroll-behavior: none;
-	}
-	:global(#svelte-root) {
-		position: fixed;
-		inset: 0;
-		display: flex;
-		flex-direction: column;
-	}
 	/* A row in the #svelte-root column: the panel and the stage share its width. */
+	/* The stage tint also sits behind the empty state while the stage is hidden. */
 	.workspace {
 		display: flex;
 		flex: 1 1 auto;
 		min-height: 0;
-	}
-	.empty {
-		margin: 0;
-		padding: 0.75rem;
-	}
-	.empty[hidden] {
-		display: none;
-	}
-	/* The one screen-reader-only rule (Toolbar's pick region and App's comments region). */
-	:global(.visually-hidden) {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
+		background: var(--cd-bg-stage);
 	}
 </style>

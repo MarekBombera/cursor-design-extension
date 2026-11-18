@@ -11,17 +11,28 @@ import {
 	canvasUpdated,
 	centerOf,
 	clickChrome,
+	commentButton,
+	copyOpenButton,
+	expectBoxNear,
 	frameBox,
 	frameOf,
 	isMessageOfType,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	panel,
+	panelButton,
+	panelItem,
+	panelToggle,
+	pinOf,
 	posted,
 	postToChrome,
 	savedState,
 	stageBox,
+	thread,
+	threadButton,
 	untilHeightReported,
+	zoomReadout,
 } from './harness';
 
 const PINS_HTML = readFileSync(join(__dirname, '..', '..', 'fixtures', 'pins.html'), 'utf8');
@@ -63,20 +74,10 @@ const SENT = comment({
 	status: 'sent',
 });
 
-const pinOf = (page: Page, id: string): Locator => page.locator(`[data-cd-pin="${id}"]`);
-
-const thread = (page: Page): Locator => page.getByRole('dialog', { name: 'Comment', exact: true });
-
 const replyBox = (page: Page): Locator => thread(page).getByRole('textbox', { name: 'Reply' });
-
-const threadButton = (page: Page, name: string): Locator =>
-	thread(page).getByRole('button', { name, exact: true });
 
 // App's comments live region, a root node (Toolbar's pick region sits inside the header).
 const liveRegion = (page: Page): Locator => page.locator('#svelte-root > [aria-live="polite"]');
-
-const commentButton = (page: Page): Locator =>
-	page.getByRole('button', { name: 'Comment', exact: true });
 
 const requestsOf = async (page: Page, type: string): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((message): message is Record<string, unknown> =>
@@ -181,6 +182,9 @@ test('Reply opens a focused composer; Enter posts the trimmed body and saved emp
 	const request = await nthRequest(page, 'comment:reply', 1);
 	expect(request).toMatchObject({ id: TITLE.id, body: 'Make it \nbolder' });
 	await expect(box).not.toBeEditable();
+	// Pending: the primary says so in words and is busy.
+	const pending = thread(page).getByRole('button', { name: 'Adding…', exact: true });
+	await expect(pending).toHaveAttribute('aria-busy', 'true');
 
 	await postToChrome(page, { type: 'comment:saved', requestId: String(request.requestId) });
 	await expect(box).toHaveValue('');
@@ -211,7 +215,7 @@ test('a matching ui:error keeps the text and shows a linked, announced error', a
 	await postToChrome(page, { type: 'ui:error', message, requestId: String(request.requestId) });
 	await expect(replyBox(page)).toBeEditable();
 	await expect(replyBox(page)).toHaveValue('One more');
-	await expect(thread(page).locator('.error')).toHaveText(message);
+	await expect(thread(page).getByText(message, { exact: true })).toHaveText(message);
 	await expect(replyBox(page)).toHaveAccessibleDescription(message);
 	await expect(liveRegion(page)).toContainText(message);
 });
@@ -224,7 +228,7 @@ test('a failed Resolve is the accessible description of the status button', asyn
 	const request = await nthRequest(page, 'comment:set-status', 1);
 	const message = 'Could not resolve the comment.';
 	await postToChrome(page, { type: 'ui:error', message, requestId: String(request.requestId) });
-	await expect(thread(page).locator('.error')).toHaveText(message);
+	await expect(thread(page).getByText(message, { exact: true })).toHaveText(message);
 	await expect(resolve).toHaveAccessibleDescription(message);
 });
 
@@ -252,7 +256,7 @@ test('Escape on the composer Cancel button closes only the composer', async ({ p
 	await openStage(page, [TITLE]);
 	await openThread(page, TITLE.id);
 	await openComposer(page);
-	await page.keyboard.press('Tab');
+	// Cancel comes right after the textarea, before Add reply.
 	await page.keyboard.press('Tab');
 	await expect(threadButton(page, 'Cancel')).toBeFocused();
 	await page.keyboard.press('Escape');
@@ -293,17 +297,6 @@ test('a reply body with markup shows as literal text', async ({ page }) => {
 });
 
 // Step 4: the Comments panel.
-
-const panelToggle = (page: Page): Locator => page.getByRole('button', { name: /^Comments/ });
-
-const panel = (page: Page): Locator =>
-	page.getByRole('complementary', { name: 'Comments', exact: true });
-
-const panelItem = (page: Page, id: string): Locator =>
-	panel(page).locator(`[data-cd-comment-item="${id}"]`);
-
-const panelButton = (page: Page, id: string, name: string): Locator =>
-	panelItem(page, id).getByRole('button', { name, exact: true });
 
 const panelReplyBox = (page: Page, id: string): Locator =>
 	panelItem(page, id).getByRole('textbox', { name: 'Reply' });
@@ -357,12 +350,19 @@ test('the panel lists unresolved in file order, then resolved; the toggle counts
 	const resolved = comment({ id: 'c-done', body: 'Done', status: 'resolved' });
 	const open = comment({ id: 'c-late', body: 'Late' });
 	await openStage(page, [TITLE, resolved, SENT, open]);
-	await expect(panelToggle(page)).toHaveText('Comments (3)');
+	await expect(panelToggle(page)).toHaveAccessibleName('Comments, 3 unresolved');
+	// The icon button's only visible text is its count badge.
+	await expect(panelToggle(page)).toHaveText('3');
 	await openPanel(page);
 
 	const unresolvedGroup = panel(page).locator('ol').nth(0);
 	const resolvedGroup = panel(page).locator('ol').nth(1);
-	await expect(panel(page).getByRole('heading')).toHaveText(['Unresolved (3)', 'Resolved (1)']);
+	await expect(panel(page).getByRole('heading')).toHaveText(['Unresolved · 3', 'Resolved · 1']);
+	// The middle dot is aria-hidden: the headings read "Unresolved 3" / "Resolved 1".
+	await expect(
+		panel(page).getByRole('heading', { name: 'Unresolved 3', exact: true }),
+	).toBeVisible();
+	await expect(panel(page).getByRole('heading', { name: 'Resolved 1', exact: true })).toBeVisible();
 	expect(
 		await unresolvedGroup
 			.locator('[data-cd-comment-item]')
@@ -393,8 +393,15 @@ test('a panel item shows author, time, target chip, badge and an Agent reply', a
 	await expect(item).toContainText('You');
 	await expect(
 		item.getByRole('button', { name: 'Show on canvas: Pins · Pins', exact: true }),
-	).toHaveText('Pins · Pins');
-	await expect(item).toContainText('Stale: the element changed since this comment.');
+	).toHaveText('Pins Pins');
+	await expect(item).toContainText('Target changed');
+	// The flag's sentence is hidden text after its label, exposed to assistive tech, and its tooltip.
+	const sentence = item.getByText('The element changed since this comment.', { exact: true });
+	await expect(sentence).toHaveCount(1);
+	expect(await sentence.evaluate((element) => element.closest('[aria-hidden="true"]'))).toBeNull();
+	await expect(item.getByTitle('The element changed since this comment.')).toContainText(
+		'Target changed',
+	);
 	const reply = item.locator('ol li');
 	await expect(reply).toContainText('Agent');
 	await expect(reply).toContainText('Made it bolder.');
@@ -492,11 +499,24 @@ test('a comments:updated with error keeps the text of an open composer', async (
 		comments: [],
 		error: 'Could not read comments.',
 	});
-	await expect(panel(page)).toContainText('Comments are unavailable.');
+	await expect(panel(page)).toContainText('Comments are unavailable');
 	await expect(panelReplyBox(page, TITLE.id)).toHaveCount(0);
 
 	await postToChrome(page, { type: 'comments:updated', comments: [TITLE] });
 	await expect(panelReplyBox(page, TITLE.id)).toHaveValue('Keep me');
+});
+
+test('a pin and its panel card show the same number', async ({ page }) => {
+	await openStage(page, [TITLE, SENT]);
+	await openPanel(page);
+	for (const [id, number] of [
+		[TITLE.id, '1'],
+		[SENT.id, '2'],
+	] as const) {
+		await expect(pinOf(page, id)).toHaveText(number);
+		await expect(pinOf(page, id)).toHaveAccessibleName(new RegExp(`^\\w+ comment ${number}:`));
+		await expect(panelItem(page, id).locator('.pin-chip')).toHaveText(`Comment ${number}`);
+	}
 });
 
 test('with the panel open, the thread of a pin stays clear of the panel', async ({ page }) => {
@@ -540,11 +560,37 @@ test('a wheel over the open panel right after a frame wheel leaves the saved sta
 	expect((await savedRecord(page)).stageView).toEqual(before);
 });
 
+// F-94: the list scrolls under a header that is outside it, so the browser never scrolls a focused
+// control behind the header.
+test('Shift+Tab up a long list keeps every focused control below the panel header', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1000, height: 500 });
+	const comments = Array.from({ length: 8 }, (_, index) =>
+		comment({ id: `c-long-${String(index)}`, body: `Long ${String(index)}` }),
+	);
+	await openStage(page, comments);
+	await openPanel(page);
+	const head = await boxOf(panel(page).locator(':scope > .head'));
+	await panelButton(page, 'c-long-7', 'Copy for Agent').focus();
+	const inList = (): Promise<boolean> =>
+		page.evaluate(() => document.activeElement?.closest('[data-cd-comment-item]') != null);
+	let stops = 0;
+	while (await inList()) {
+		const focused = await boxOf(page.locator(':focus'));
+		expect(focused.y).toBeGreaterThanOrEqual(head.y + head.height);
+		stops += 1;
+		await page.keyboard.press('Shift+Tab');
+	}
+	// Every card's jump, Reply, Resolve and Copy for Agent.
+	expect(stops).toBe(32);
+});
+
 test('a comment whose frame is absent is listed without a jump', async ({ page }) => {
 	const orphan = comment({ id: 'c-orphan', frameId: 'gone', body: 'Orphan' });
 	await openStage(page, [TITLE, orphan]);
 	await openPanel(page);
-	await expect(panelItem(page, orphan.id)).toContainText('gone · Pins');
+	await expect(panelItem(page, orphan.id)).toContainText('gone Pins');
 	await expect(panelItem(page, orphan.id)).toContainText('Frame not shown.');
 	await expect(panelItem(page, orphan.id).locator('[data-cd-focus="jump"]')).toHaveCount(0);
 	await expect(panelItem(page, TITLE.id).locator('[data-cd-focus="jump"]')).toHaveCount(1);
@@ -553,17 +599,21 @@ test('a comment whose frame is absent is listed without a jump', async ({ page }
 test('the panel shows the empty state and the error state', async ({ page }) => {
 	await openHarness(page);
 	await postToChrome(page, { type: 'comments:updated', comments: [] });
-	await expect(panelToggle(page)).toHaveText('Comments');
+	await expect(panelToggle(page)).toHaveAccessibleName('Comments');
+	// No unresolved comments: no count badge.
+	await expect(panelToggle(page)).toHaveText('');
 	await openPanel(page);
-	await expect(panel(page)).toHaveText(
-		'No comments yet. Press C, then click an element to add one.',
-	);
+	// The header stays; the empty state is its title, then the sentence with the C key.
+	await expect(panel(page).getByText('Comments', { exact: true })).toBeVisible();
+	await expect(panel(page).getByText('No comments yet', { exact: true })).toBeVisible();
+	await expect(panel(page)).toContainText('Press C, then click an element to add one.');
 	await postToChrome(page, {
 		type: 'comments:updated',
 		comments: [],
 		error: 'Could not read comments.',
 	});
-	await expect(panel(page)).toHaveText('Comments are unavailable.');
+	await expect(panel(page).getByText('Comments are unavailable', { exact: true })).toBeVisible();
+	await expect(panel(page)).toContainText('The notice above the canvas says why.');
 });
 
 const JUMP_FRAME: PostedCanvasFrame = {
@@ -585,8 +635,6 @@ const JUMP_TARGET = comment({
 	rect: { x: 600, y: 700, width: 200, height: 60 },
 	body: 'Target',
 });
-
-const zoomReadout = (page: Page): Locator => page.locator('.bar .readout');
 
 const flashOutline = (page: Page): Locator => page.locator('[data-cd-flash]');
 
@@ -635,13 +683,6 @@ const elementRect = async (page: Page, selector: string): Promise<Box> =>
 		const box = document.querySelector(wanted)?.getBoundingClientRect();
 		return { x: box?.x ?? 0, y: box?.y ?? 0, width: box?.width ?? 0, height: box?.height ?? 0 };
 	}, selector);
-
-const expectBoxNear = (actual: Box, expected: Box): void => {
-	expect(Math.abs(actual.x - expected.x)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.y - expected.y)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.width - expected.width)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.height - expected.height)).toBeLessThanOrEqual(1);
-};
 
 test('jumping to a target that fits centers it, keeps the zoom and flashes its box', async ({
 	page,
@@ -725,28 +766,26 @@ test('jumping to a page comment flashes the whole frame and keeps the zoom', asy
 	expectBoxNear(await boxOf(flashOutline(page)), await frameBox(page, JUMP_FRAME.id));
 });
 
-// 8h: Copy prompt and Copy all open. The host side (clipboard, markCommentsSent) is unit-tested;
+// 8h: Copy for Agent (one comment) and the copy-open button. The host side (clipboard, markCommentsSent) is unit-tested;
 // here the chrome posts the requests, blocks a second copy and renders the answers.
 
 const OPEN_SECOND = comment({ id: 'c-second', body: 'Second' });
 const RESOLVED = comment({ id: 'c-done', body: 'Done', status: 'resolved' });
 
-const copyOpenButton = (page: Page): Locator => panel(page).locator('[data-cd-copy-open]');
-
-test('Copy prompt posts one copy, blocks every other copy, and shows the answer', async ({
+test('Copy for Agent posts one copy, blocks every other copy, and shows the answer', async ({
 	page,
 }) => {
 	await page.clock.install();
 	await openStage(page, [TITLE, OPEN_SECOND, SENT]);
 	await openPanel(page);
-	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	const copy = panelButton(page, TITLE.id, 'Copy for Agent');
 	await clickChrome(copy);
 	const request = await nthRequest(page, 'comment:copy', 1);
 	expect(request).toMatchObject({ type: 'comment:copy', id: TITLE.id });
 	await expect(copy).toHaveAttribute('aria-disabled', 'true');
 	// One copy at a time: the same button, another card and the batch all post nothing.
 	await clickChrome(copy);
-	await clickChrome(panelButton(page, OPEN_SECOND.id, 'Copy prompt'));
+	await clickChrome(panelButton(page, OPEN_SECOND.id, 'Copy for Agent'));
 	await clickChrome(copyOpenButton(page));
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:copy')).toHaveLength(1);
@@ -763,17 +802,17 @@ test('Copy prompt posts one copy, blocks every other copy, and shows the answer'
 	await expect(copied).not.toHaveAttribute('aria-disabled', 'true');
 	await expect(liveRegion(page)).toContainText('Prompt copied. Comment marked sent.');
 	await page.clock.fastForward(1500);
-	await expect(panelButton(page, TITLE.id, 'Copy prompt')).toBeVisible();
+	await expect(panelButton(page, TITLE.id, 'Copy for Agent')).toBeVisible();
 });
 
-test('a copy answer keeps an open reply draft; a matching ui:error is linked to Copy prompt', async ({
+test('a copy answer keeps an open reply draft; a matching ui:error is linked to Copy for Agent', async ({
 	page,
 }) => {
 	await openStage(page, [TITLE]);
 	await openPanel(page);
 	await clickChrome(panelButton(page, TITLE.id, 'Reply'));
 	await page.keyboard.type('Half a thought');
-	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	const copy = panelButton(page, TITLE.id, 'Copy for Agent');
 	await clickChrome(copy);
 	const first = await nthRequest(page, 'comment:copy', 1);
 	await postToChrome(page, { type: 'ui:copied', requestId: String(first.requestId), count: 0 });
@@ -788,39 +827,47 @@ test('a copy answer keeps an open reply draft; a matching ui:error is linked to 
 	await expect(page.getByText('Unrelated.')).toHaveCount(0);
 	const message = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
 	await postToChrome(page, { type: 'ui:error', message, requestId: String(second.requestId) });
-	await expect(panelItem(page, TITLE.id).locator('.error')).toHaveText(message);
-	await expect(panelButton(page, TITLE.id, 'Copy prompt')).toHaveAccessibleDescription(message);
+	await expect(panelItem(page, TITLE.id).getByText(message, { exact: true })).toHaveText(message);
+	await expect(panelButton(page, TITLE.id, 'Copy for Agent')).toHaveAccessibleDescription(message);
 	await expect(liveRegion(page)).toContainText(message);
 });
 
-test('Copy prompt shows in the pin thread and on sent and resolved cards', async ({ page }) => {
+test('Copy for Agent shows in the pin thread and on sent and resolved cards', async ({ page }) => {
 	await openStage(page, [TITLE, SENT, RESOLVED]);
 	await openThread(page, TITLE.id);
-	await expect(threadButton(page, 'Copy prompt')).toBeVisible();
+	await expect(threadButton(page, 'Copy for Agent')).toBeVisible();
 	await clickChrome(threadButton(page, 'Close'));
 	await openPanel(page);
-	await expect(panelButton(page, SENT.id, 'Copy prompt')).toBeVisible();
-	await expect(panelButton(page, RESOLVED.id, 'Copy prompt')).toBeVisible();
+	await expect(panelButton(page, SENT.id, 'Copy for Agent')).toBeVisible();
+	await expect(panelButton(page, RESOLVED.id, 'Copy for Agent')).toBeVisible();
 });
 
-test('Copy all open counts open comments only, posts once, and announces the marked count', async ({
+test('Copy open counts open comments only, posts once, and announces the marked count', async ({
 	page,
 }) => {
+	await page.clock.install();
 	await openStage(page, [TITLE, OPEN_SECOND, SENT, RESOLVED]);
 	await openPanel(page);
 	const button = copyOpenButton(page);
-	await expect(button).toHaveText('Copy all open (2)');
+	await expect(button).toHaveText('Copy 2 open comments for Agent');
 	await clickChrome(button);
 	const request = await nthRequest(page, 'comment:copy-open', 1);
 	expect(request).toMatchObject({ type: 'comment:copy-open' });
 	// The batch blocks card copies too.
-	await clickChrome(panelButton(page, TITLE.id, 'Copy prompt'));
+	await clickChrome(panelButton(page, TITLE.id, 'Copy for Agent'));
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:copy')).toHaveLength(0);
 
 	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 2 });
 	await expect(liveRegion(page)).toContainText('Prompt copied. 2 comments marked sent.');
-	await expect(button).toHaveText('Copied');
+	await expect(button).toHaveText('Copied 2 comments');
+	// The feedback is not drawn disabled, but a click on it copies nothing until it clears.
+	await expect(button).not.toHaveAttribute('aria-disabled', 'true');
+	await clickChrome(button);
+	await nextAnimationFrame(page);
+	expect(await requestsOf(page, 'comment:copy-open')).toHaveLength(1);
+	await page.clock.fastForward(1500);
+	await expect(button).toHaveText('Copy 2 open comments for Agent');
 
 	await clickChrome(button);
 	const retry = await nthRequest(page, 'comment:copy-open', 2);
@@ -829,23 +876,46 @@ test('Copy all open counts open comments only, posts once, and announces the mar
 	await expect(button).toHaveAccessibleDescription(message);
 });
 
-test('Copy all open is disabled with no open comments and posts nothing', async ({ page }) => {
+test('Copy open says nothing new to send with no open comments and posts nothing', async ({
+	page,
+}) => {
 	await openStage(page, [SENT, RESOLVED]);
 	await openPanel(page);
 	const button = copyOpenButton(page);
-	await expect(button).toHaveText('Copy all open (0)');
+	await expect(button).toHaveText('Nothing new to send');
+	await expect(panel(page)).toContainText('1 comment is with the Agent.');
 	await expect(button).toHaveAttribute('aria-disabled', 'true');
 	await clickChrome(button);
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:copy-open')).toHaveLength(0);
 });
 
-test('a list update that marks the comment sent keeps focus on its Copy prompt', async ({
+test('the panel header sums the comments and copies 3 open, then says what was copied', async ({
+	page,
+}) => {
+	await page.clock.install();
+	const third = comment({ id: 'c-third', body: 'Third' });
+	await openStage(page, [TITLE, OPEN_SECOND, third, SENT, RESOLVED]);
+	await openPanel(page);
+	await expect(panel(page).locator('.summary')).toHaveText('3 to send, 1 with Agent, 1 resolved');
+	const button = copyOpenButton(page);
+	await expect(button).toHaveText('Copy 3 open comments for Agent');
+	await expect(button).not.toHaveAttribute('aria-disabled', 'true');
+	await clickChrome(button);
+	const request = await nthRequest(page, 'comment:copy-open', 1);
+	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 3 });
+	await expect(button).toHaveText('Copied 3 comments');
+	await expect(panel(page)).toContainText('Now paste into Cursor Agent chat.');
+	await page.clock.fastForward(1500);
+	await expect(button).toHaveText('Copy 3 open comments for Agent');
+});
+
+test('a list update that marks the comment sent keeps focus on its Copy for Agent', async ({
 	page,
 }) => {
 	await openStage(page, [TITLE, SENT]);
 	await openPanel(page);
-	const copy = panelButton(page, TITLE.id, 'Copy prompt');
+	const copy = panelButton(page, TITLE.id, 'Copy for Agent');
 	await clickChrome(copy);
 	const request = await nthRequest(page, 'comment:copy', 1);
 	await copy.focus();

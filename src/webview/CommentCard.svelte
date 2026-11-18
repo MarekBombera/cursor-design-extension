@@ -1,25 +1,38 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { type Snippet, tick } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
-	import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
+	import Composer from './Composer.svelte';
+	import PinChip from './PinChip.svelte';
+	import TargetRef from './TargetRef.svelte';
 	import { popoverKeyAction, targetChipText } from './commentPopover';
 	import { type CommentAction, canSubmitReply, relativeTime } from './commentsPanel';
 	import type { PostedComment } from './hostMessages';
-	import { type PinBadge, THREAD_BADGE_COPY, THREAD_STATUS_COPY } from './pins';
+	import { flagBadge, type PinBadge, statusBadge } from './pins';
+	import Avatar from './ui/Avatar.svelte';
+	import Badge from './ui/Badge.svelte';
+	import Button from './ui/Button.svelte';
+	import Message from './ui/Message.svelte';
 
-	// One comment as a view, shared by the pin thread and the Comments panel. Every field is
-	// comments.json data, rendered as text only. The composer state lives in App's `actions`
-	// (keyed by comment id), so a composer open in the panel is open in the thread too.
+	// One comment as a view, shared by the Comments panel and the pin thread. Every field is
+	// comments.json data, rendered as text only. The composer state lives in App's `actions` (keyed
+	// by comment id), so a composer open in the panel is open in the thread too. Without `shell` it
+	// is the panel's framed article; with it, the caller places the parts (head, thread, footer):
+	// the thread puts them in its Widget.
 	type Props = {
+		shell?: Snippet<[{ head: Snippet; thread: Snippet; footer: Snippet }]>;
 		comment: PostedComment;
+		// The comment's number (commentNumber), shared with its pin.
+		number: number;
 		badge: PinBadge | undefined;
 		// Epoch ms, for the relative times.
 		now: number;
 		action: CommentAction | undefined;
-		surface: 'panel' | 'thread';
-		// Panel only: the drawn frame's label, and whether the stage can jump to it.
-		target: { frameLabel: string; canJump: boolean } | undefined;
+		// The frame's display name (frameLabel).
+		frameLabel: string;
+		// The frame is drawn (a live iframe); false says "Frame not shown" in the status badge's place.
+		frameShown: boolean;
+		// Show the target on the canvas: the panel's card for a shown frame only; never the thread.
 		onJump?: () => void;
 		onReplyOpen: () => void;
 		onReplyInput: (text: string) => void;
@@ -34,12 +47,14 @@
 	};
 
 	let {
+		shell,
 		comment,
+		number,
 		badge,
 		now,
 		action,
-		surface,
-		target,
+		frameLabel,
+		frameShown,
 		onJump,
 		onReplyOpen,
 		onReplyInput,
@@ -74,14 +89,13 @@
 	};
 
 	const chipText = $derived(targetChipText(comment));
-	const createdTime = $derived(relativeTime({ iso: comment.createdAt, now }));
 	const composerOpen = $derived(action?.reply !== undefined);
 	const replyPending = $derived(action?.pending?.kind === 'reply');
 	const anythingPending = $derived(action?.pending !== undefined);
 	const canSend = $derived(canSubmitReply(action));
 	const copyDisabled = $derived(copyBlocked || anythingPending);
-	const statusLabel = $derived(comment.status === 'resolved' ? 'Reopen' : 'Resolve');
-	const dimmed = $derived(surface === 'panel' && comment.status === 'resolved');
+	const resolved = $derived(comment.status === 'resolved');
+	const describedBy = $derived(action?.error === undefined ? undefined : errorId);
 
 	// Focus moves only on a user action, never on mount, so the panel and the thread never fight.
 	const openComposer = async (): Promise<void> => {
@@ -103,12 +117,6 @@
 	const handleCopy = (): void => {
 		if (!copyDisabled) {
 			onCopy();
-		}
-	};
-
-	const handleSend = (): void => {
-		if (canSend) {
-			onReplySubmit();
 		}
 	};
 
@@ -141,225 +149,251 @@
 		}
 	};
 
-	const handleInput = (event: Event & { currentTarget: HTMLTextAreaElement }): void => {
-		onReplyInput(event.currentTarget.value);
-	};
-
 	const timeTitle = (iso: string): string => new Date(iso).toLocaleString();
 </script>
 
-<div class={['card', { dimmed }]} data-cd-comment-card>
-	<div class="row">
-		{#if surface === 'panel' && target !== undefined}
-			{#if target.canJump}
-				<button
-					class="chip"
-					type="button"
-					title={comment.selector}
-					aria-label="Show on canvas: {target.frameLabel} · {chipText}"
-					data-cd-focus="jump"
-					onclick={onJump}>{target.frameLabel} · {chipText}</button
-				>
-			{:else}
-				<span class="chip" title={comment.selector}>{target.frameLabel} · {chipText}</span>
-				<span class="muted">Frame not shown.</span>
-			{/if}
+{#snippet head()}
+	<div class="head">
+		<PinChip {number} status={comment.status} />
+		<!-- No element icon: the pin number already identifies the target, so the text keeps room. -->
+		<TargetRef
+			frame={frameLabel}
+			element={chipText}
+			title={comment.selector}
+			jumpLabel="Show on canvas: {frameLabel} · {chipText}"
+			data-cd-focus={onJump === undefined ? undefined : 'jump'}
+			onjump={onJump}
+		/>
+		{#if frameShown}
+			<Badge {...statusBadge(comment.status)} />
 		{:else}
-			<span class="chip" title={comment.selector}>{chipText}</span>
+			<!-- In the status badge's place: the absent frame is what this card needs to say. -->
+			<span class="note">Frame not shown.</span>
 		{/if}
 	</div>
-	<p class="muted">
-		<span>You</span>
-		{#if createdTime !== undefined}
-			<time datetime={comment.createdAt} title={timeTitle(comment.createdAt)}>{createdTime}</time>
+{/snippet}
+
+{#snippet entryMeta(author: 'you' | 'agent', iso: string)}
+	{@const time = relativeTime({ iso, now })}
+	<span class="meta">
+		<span class="author">{author === 'agent' ? 'Agent' : 'You'}</span>
+		{#if time !== undefined}
+			<time datetime={iso} title={timeTitle(iso)}>{time}</time>
 		{/if}
-		<span class="status">{THREAD_STATUS_COPY[comment.status]}</span>
-	</p>
-	{#if badge !== undefined}
-		<p class={['badge', badge]}>{THREAD_BADGE_COPY[badge]}</p>
+	</span>
+{/snippet}
+
+<!-- The last failed request's host copy: under the reply box while the composer is open, else
+     after the thread. -->
+{#snippet error()}
+	{#if action?.error !== undefined}
+		<Message tone="error" id={errorId}>{action.error}</Message>
 	{/if}
-	<p class="body">{comment.body}</p>
-	{#if comment.replies.length > 0}
-		<ol class="replies">
-			{#each comment.replies as reply (reply.id)}
-				{@const replyTime = relativeTime({ iso: reply.createdAt, now })}
-				<li>
-					<span class="muted">
-						<span>{reply.author === 'agent' ? 'Agent' : 'You'}</span>
-						{#if replyTime !== undefined}
-							<time datetime={reply.createdAt} title={timeTitle(reply.createdAt)}>{replyTime}</time>
-						{/if}
-					</span>
-					<p class="body">{reply.body}</p>
-				</li>
-			{/each}
-		</ol>
-	{/if}
-	<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
-	<div class="row">
-		{#if !composerOpen}
-			<button
-				{@attach attachReplyButton}
-				class="action"
-				type="button"
-				data-cd-focus="reply"
-				onclick={openComposer}>Reply</button
-			>
-		{/if}
-		<button
-			class="action"
-			type="button"
-			aria-disabled={anythingPending}
-			aria-describedby={action?.error === undefined ? undefined : errorId}
-			data-cd-focus="status"
-			onclick={handleStatus}>{statusLabel}</button
-		>
-		<button
-			class="action"
-			type="button"
-			aria-disabled={copyDisabled}
-			aria-describedby={action?.error === undefined ? undefined : errorId}
-			data-cd-focus="copy"
-			onclick={handleCopy}>{copied ? 'Copied' : 'Copy prompt'}</button
-		>
-	</div>
-	{#if composerOpen}
-		<!-- Not interactive itself: it only catches keys bubbling from the textarea and buttons. -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="composer" onkeydown={handleComposerKeydown}>
-			<textarea
-				{@attach attachTextarea}
-				aria-label="Reply"
-				aria-describedby={action?.error === undefined ? undefined : errorId}
-				data-cd-focus="reply-text"
-				rows="2"
-				maxlength={MAX_COMMENT_BODY_CHARS}
-				readonly={replyPending}
-				value={action?.reply ?? ''}
-				oninput={handleInput}
-			></textarea>
-			<div class="row">
-				<button
-					class="primary"
-					type="button"
-					aria-disabled={!canSend}
-					data-cd-focus="reply-send"
-					onclick={handleSend}>Add reply</button
-				>
-				<button
-					class="action"
-					type="button"
-					aria-disabled={replyPending}
-					data-cd-focus="reply-cancel"
-					onclick={closeComposer}>Cancel</button
-				>
+{/snippet}
+
+<!-- The comment, then its replies: each entry but the last draws the line to the next avatar. -->
+{#snippet thread()}
+	<div class="thread">
+		<div class={['entry', { joined: comment.replies.length > 0 }]}>
+			<Avatar author="you" /><div class="content">
+				{@render entryMeta('you', comment.createdAt)}
+				<p class={['body', { resolved }]}>{comment.body}</p>
+				{#if badge !== undefined}
+					<div class="flags"><Badge {...flagBadge(badge)} /></div>
+				{/if}
 			</div>
 		</div>
+		{#if comment.replies.length > 0}
+			<ol class="replies">
+				{#each comment.replies as reply, index (reply.id)}
+					{@const author = reply.author === 'agent' ? 'agent' : 'you'}
+					<li
+						class={[
+							'entry',
+							{ agent: author === 'agent', joined: index < comment.replies.length - 1 },
+						]}
+					>
+						<!-- Touching, so the entry's text starts with its author. -->
+						<Avatar {author} /><div class="content">
+							{@render entryMeta(author, reply.createdAt)}
+							<p class={['body', { resolved }]}>{reply.body}</p>
+						</div>
+					</li>
+				{/each}
+			</ol>
+		{/if}
+	</div>
+	{#if !composerOpen}
+		{@render error()}
 	{/if}
-	{#if action?.error !== undefined}
-		<p class="error" id={errorId}>{action.error}</p>
+{/snippet}
+
+<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
+{#snippet footer()}
+	{#if composerOpen}
+		<!-- Its root catches the keys bubbling from the textarea and both buttons. -->
+		<Composer
+			value={action?.reply ?? ''}
+			label="Reply"
+			placeholder="Reply to the Agent…"
+			rows={2}
+			primaryLabel="Add reply"
+			pending={replyPending}
+			canSubmit={canSend}
+			focusKey="reply"
+			{describedBy}
+			textareaAttachment={attachTextarea}
+			message={error}
+			oninput={onReplyInput}
+			onsubmit={onReplySubmit}
+			oncancel={closeComposer}
+			onkeydown={handleComposerKeydown}
+		/>
 	{/if}
-</div>
+	<div class="actions">
+		{#if !composerOpen}
+			<Button
+				variant="ghost"
+				size="sm"
+				icon="reply"
+				{@attach attachReplyButton}
+				data-cd-focus="reply"
+				onclick={openComposer}>Reply</Button
+			>
+		{/if}
+		<Button
+			variant="ghost"
+			size="sm"
+			icon={resolved ? 'reopen' : 'check'}
+			aria-disabled={anythingPending}
+			aria-describedby={describedBy}
+			data-cd-focus="status"
+			onclick={handleStatus}>{resolved ? 'Reopen' : 'Resolve'}</Button
+		>
+		<!-- One element in both states, so focus stays on it when it reads "Copied". -->
+		<span class="end">
+			<Button
+				variant="ghost"
+				tone={copied ? undefined : 'agent'}
+				size="sm"
+				icon={copied ? 'check' : 'sparkle'}
+				aria-disabled={copyDisabled}
+				aria-describedby={describedBy}
+				data-cd-focus="copy"
+				onclick={handleCopy}>{copied ? 'Copied' : 'Copy for Agent'}</Button
+			>
+		</span>
+	</div>
+{/snippet}
+
+{#if shell === undefined}
+	<article class={['card', { resolved }]} data-cd-comment-card>
+		{@render head()}
+		{@render thread()}
+		{@render footer()}
+	</article>
+{:else}
+	{@render shell({ head, thread, footer })}
+{/if}
 
 <style>
+	/* In the panel the card draws its own edge; in the thread the Widget does. */
 	.card {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
+		display: grid;
+		gap: var(--cd-space-10);
 		min-width: 0;
+		padding: var(--cd-space-10) var(--cd-space-12) var(--cd-space-8);
+		border: 1px solid var(--cd-edge);
+		border-radius: var(--cd-radius-md);
+		background: var(--cd-bg-card);
 	}
-	.dimmed {
-		color: var(--vscode-descriptionForeground);
+	.card.resolved {
+		background: transparent;
 	}
-	.composer {
+	/* Fills the Widget's header row in the thread. */
+	.head {
 		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		align-items: center;
-	}
-	/* A long element text ellipsizes; the selector is the title. */
-	.chip {
 		flex: 1 1 auto;
+		align-items: center;
+		gap: var(--cd-space-8);
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	}
+	.note {
+		flex: none;
+		color: var(--cd-fg-2);
+		font-size: var(--cd-fs-xs);
 		white-space: nowrap;
-		padding: 0 0.375rem;
-		font: inherit;
-		font-family: var(--vscode-editor-font-family);
-		text-align: start;
-		color: var(--vscode-badge-foreground);
-		background: var(--vscode-badge-background);
-		border: 0;
 	}
-	button.chip {
-		cursor: pointer;
-	}
-	.muted {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		color: var(--vscode-descriptionForeground);
-	}
-	p {
-		margin: 0;
-	}
-	.body {
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-	}
-	.stale {
-		color: var(--vscode-editorWarning-foreground);
-	}
-	.missing {
-		color: var(--vscode-editorError-foreground);
-	}
-	.unchecked {
-		color: var(--vscode-descriptionForeground);
-	}
-	.error {
-		color: var(--vscode-errorForeground);
-	}
+	.thread,
 	.replies {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
+		display: grid;
+		gap: var(--cd-space-12);
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
-	textarea {
-		box-sizing: border-box;
-		width: 100%;
-		resize: vertical;
-		font: inherit;
-		color: var(--vscode-input-foreground);
-		background: var(--vscode-input-background);
-		border: 1px solid var(--vscode-input-border, transparent);
+	/* The avatar, then author and time with the body (and any flags) under them. */
+	.entry {
+		position: relative;
+		display: grid;
+		grid-template-columns: var(--cd-avatar) minmax(0, 1fr);
+		column-gap: var(--cd-space-8);
 	}
-	button {
-		font: inherit;
-		padding: 0.125rem 0.5rem;
-		border: 0;
+	.content {
+		display: grid;
+		row-gap: var(--cd-space-2);
+		min-width: 0;
 	}
-	.action {
-		color: var(--vscode-button-secondaryForeground);
-		background: var(--vscode-button-secondaryBackground);
+	/* The line from below this entry's avatar to the next one. */
+	.joined::before {
+		content: '';
+		position: absolute;
+		top: calc(var(--cd-avatar) + var(--cd-space-2));
+		bottom: calc(-1 * var(--cd-space-10));
+		left: calc(var(--cd-avatar) / 2 - 0.5px);
+		width: 1px;
+		background: var(--cd-edge);
 	}
-	.primary {
-		color: var(--vscode-button-foreground);
-		background: var(--vscode-button-background);
+	.meta {
+		display: flex;
+		align-items: baseline;
+		gap: var(--cd-space-6);
+		min-width: 0;
+		color: var(--cd-fg-2);
+		font-size: var(--cd-fs-sm);
+		line-height: var(--cd-lh-sm);
 	}
-	button[aria-disabled='true'] {
-		opacity: 0.5;
+	.author {
+		color: var(--cd-fg);
+		font-weight: var(--cd-weight-strong);
 	}
-	textarea:focus-visible,
-	button:focus-visible {
-		outline: 1px solid var(--vscode-focusBorder);
+	.body {
+		margin: 0;
+		overflow-wrap: anywhere;
+		white-space: pre-wrap;
+	}
+	.agent .body {
+		margin-top: var(--cd-space-2);
+		padding: var(--cd-space-6) var(--cd-space-8);
+		border-radius: var(--cd-radius-sm);
+		background: var(--cd-agent-bg);
+	}
+	.body.resolved {
+		color: var(--cd-fg-2);
+	}
+	.flags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--cd-space-6);
+		margin-top: var(--cd-space-4);
+	}
+	.actions {
+		display: flex;
+		align-items: center;
+		gap: var(--cd-space-2);
+		margin: 0 calc(-1 * var(--cd-space-6)) calc(-1 * var(--cd-space-4));
+	}
+	.end {
+		margin-left: auto;
 	}
 </style>

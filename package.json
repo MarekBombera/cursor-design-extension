@@ -37,6 +37,7 @@
 		"compile-electron-tests": "tsc -p tsconfig.test.json",
 		"test": "vscode-test",
 		"test:browser": "vp build -c vite.webview.config.ts && playwright test -c tests/browser",
+		"gallery": "CD_GALLERY=1 pnpm test:browser gallery",
 		"coverage": "vp test --coverage",
 		"knip": "knip"
 	},

@@ -17,12 +17,15 @@ import {
 	centerOf,
 	clickAt,
 	clickChrome,
+	commentButton,
+	expectBoxNear,
 	frameBox,
 	frameOf,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	popoverTarget,
 	type Point,
 	postToChrome,
 	readPickingFixture,
@@ -103,11 +106,7 @@ const reveal = async ({ stage, ...target }: FrameTarget & { stage: Box }): Promi
 	return screenBox(target);
 };
 
-const commentButton = (page: Page): Locator =>
-	page.getByRole('button', { name: 'Comment', exact: true });
-
 // The pick's target chip lives in the comment popover.
-const popoverChip = (page: Page): Locator => page.locator('[data-cd-comment-popover] .chip');
 
 const toggleComment = async (page: Page, pressed: boolean): Promise<void> => {
 	await clickChrome(commentButton(page));
@@ -173,13 +172,6 @@ const resolvesTo = async ({
 	);
 };
 
-const expectBoxNear = (actual: Box, expected: Box): void => {
-	expect(Math.abs(actual.x - expected.x)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.y - expected.y)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.width - expected.width)).toBeLessThanOrEqual(1);
-	expect(Math.abs(actual.height - expected.height)).toBeLessThanOrEqual(1);
-};
-
 const revealChangeButton = (page: Page, stage: Box): Promise<Box> =>
 	reveal({ page, stage, frameId: 'a', selector: '#change-button' });
 
@@ -229,7 +221,7 @@ test('Comment mode: clicks pick instead of acting', async ({ page }) => {
 	expect(pick.tagName).toBe('button');
 	expect(await statusText(page)).toBe('Nothing fired yet.');
 	await expect(page.locator('.overlay .outline.pick')).toBeVisible();
-	await expect(popoverChip(page)).toBeVisible();
+	await expect(popoverTarget(page)).toBeVisible();
 
 	// A default action, not a handler: only preventDefault keeps <details> shut (F-61). The
 	// Interact-mode test proves the same click opens it.
@@ -306,6 +298,39 @@ test('Comment mode off: outlines go and clicks act again', async ({ page }) => {
 	await expect.poll(() => statusText(page)).toBe('Button handler fired.');
 });
 
+const interactButton = (page: Page): Locator =>
+	page.getByRole('group', { name: 'Mode' }).getByRole('button', { name: 'Interact', exact: true });
+
+test('the mode group follows the mode, Interact is a no-op in Interact mode, and both disable with no frames', async ({
+	page,
+}) => {
+	await openPickingStage(page);
+	const interact = interactButton(page);
+	await expect(interact).toHaveAttribute('aria-pressed', 'true');
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
+
+	// Interact in Interact mode: nothing toggles.
+	await clickChrome(interact);
+	await expect(interact).toHaveAttribute('aria-pressed', 'true');
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.getByText('Click an element to comment')).toBeHidden();
+
+	await toggleComment(page, true);
+	await expect(interact).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.getByText('Click an element to comment')).toBeVisible();
+
+	// Interact leaves Comment mode.
+	await clickChrome(interact);
+	await expect(interact).toHaveAttribute('aria-pressed', 'true');
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.getByText('Click an element to comment')).toBeHidden();
+
+	await postToChrome(page, canvasUpdated([]));
+	await expect(interact).toBeDisabled();
+	await expect(commentButton(page)).toBeDisabled();
+	await expect(interact).toHaveAttribute('aria-pressed', 'true');
+});
+
 // F-65: the frame list changes under a pick.
 test('Comment mode: a picked frame leaving takes its pick; an empty stage ends Comment mode', async ({
 	page,
@@ -314,18 +339,18 @@ test('Comment mode: a picked frame leaving takes its pick; an empty stage ends C
 	await toggleComment(page, true);
 	const button = await revealChangeButton(page, stage);
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
-	await expect(popoverChip(page)).toBeVisible();
+	await expect(popoverTarget(page)).toBeVisible();
 
 	await postToChrome(page, canvasUpdated([FRAME_B]));
 	await expect(page.locator('[data-cd-frame-id="a"]')).toHaveCount(0);
 	await expect(page.locator('.overlay .outline')).toHaveCount(0);
-	await expect(popoverChip(page)).toBeHidden();
+	await expect(popoverTarget(page)).toBeHidden();
 	// Frame B is still live, so the mode stays on.
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 
 	await postToChrome(page, canvasUpdated([]));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.getByText('No artboard yet.')).toBeVisible();
+	await expect(page.getByText('No artboard yet', { exact: true })).toBeVisible();
 });
 
 test('Comment mode: an Agent edit reloads the picked frame once, drops the pick, and the reload picks again', async ({
@@ -401,7 +426,7 @@ test('Interact mode: a forged cd:hover and cd:pick from the design draw nothing'
 		.toBe(1);
 	await nextAnimationFrame(page);
 	await expect(page.locator('.overlay .outline')).toHaveCount(0);
-	await expect(popoverChip(page)).toBeHidden();
+	await expect(popoverTarget(page)).toBeHidden();
 });
 
 test('Comment mode: a forged cd:pick with a control character changes nothing', async ({
@@ -411,7 +436,7 @@ test('Comment mode: a forged cd:pick with a control character changes nothing', 
 	await toggleComment(page, true);
 	const button = await revealChangeButton(page, stage);
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
-	const chip = popoverChip(page);
+	const chip = popoverTarget(page);
 	const chipText = (await chip.textContent()) ?? '';
 	expect(chipText).not.toBe('');
 
@@ -542,7 +567,7 @@ test('Comment mode: a cd:anchors to a frame with a pick posts no cd:pick', async
 	const button = await revealChangeButton(page, stage);
 	await pickInFrame({ page, frameId: 'a', point: centerOf(button) });
 	const picks = (await picksOf(page, 'a')).length;
-	const chip = await popoverChip(page).textContent();
+	const chip = await popoverTarget(page).textContent();
 	const answers = async (): Promise<number> =>
 		(await messagesOfType({ page, frameId: 'a', type: FRAME_ANCHOR_RECTS_MESSAGE })).length;
 	const answered = await answers();
@@ -557,5 +582,5 @@ test('Comment mode: a cd:anchors to a frame with a pick posts no cd:pick', async
 	await expect.poll(answers).toBeGreaterThan(answered);
 	await nextAnimationFrame(page);
 	expect((await picksOf(page, 'a')).length).toBe(picks);
-	expect(await popoverChip(page).textContent()).toBe(chip);
+	expect(await popoverTarget(page).textContent()).toBe(chip);
 });

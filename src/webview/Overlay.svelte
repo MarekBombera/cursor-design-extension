@@ -45,14 +45,21 @@
 	.outline {
 		position: absolute;
 		box-sizing: border-box;
+		border-radius: 2px;
 	}
+	/* Drawn just outside the element, so its corners round with the outline and never cut into a
+	   rounded element's edge. */
 	.hover {
-		border: 1px dashed var(--vscode-focusBorder);
+		outline: 1.5px solid var(--cd-accent);
+		outline-offset: var(--cd-space-2);
+		background: var(--cd-hover-bg);
 	}
 	.pick {
-		border: 2px solid var(--vscode-focusBorder);
+		outline: 2px solid var(--cd-accent);
+		outline-offset: var(--cd-space-2);
+		background: var(--cd-pick-bg);
 	}
 	.flash {
-		border: 2px solid var(--vscode-editorInfo-foreground, var(--vscode-focusBorder));
+		border: 2px solid var(--cd-focus);
 	}
 </style>

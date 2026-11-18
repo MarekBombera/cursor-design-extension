@@ -20,7 +20,7 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 
 ## Chrome vs artboard
 
-- Chrome: `var(--vscode-*)` theme tokens, keyboard order, ARIA. Not React, not Tailwind-by-default, not shadcn.
+- Chrome: semantic `--cd-*` tokens from `src/webview/ui/theme.css` (the one place that maps the host's `var(--vscode-*)` theme values), shared primitives from `src/webview/ui/`, keyboard order, ARIA. Not React, not Tailwind-by-default, not shadcn.
 - Artboard HTML is user/Agent content. Do not theme it as chrome. Never `eval` it in the parent. Iframe `sandbox="allow-scripts"`.
 
 ## Testing

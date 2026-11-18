@@ -27,4 +27,5 @@ Product constraints are in `.claude/rules/00-cursor-design-core.md`; the MCP / w
 
 - Chrome = Svelte 5 + Vite (no Kit), see `08-svelte-chrome` (Svelte MCP docs before writing, `svelte-autofixer` after every edit, `svelte-check` in Verify). The chrome lives in `src/webview/` (from 0.3, 8b); `src/panel/artboardChromeHtml.ts` is only the shell (CSP, `chrome.css`, `chrome.js`, `#svelte-root`).
 - `?iife` imports (`scripts/iifeStringPlugin.ts`) inline a TS module as an IIFE string: the iframe runtime (`src/webview/frame/runtime.ts`) and the stage geometry for the exported `canvas.html`. The plugin is registered in the webview build, both `pack` entries and `vp test`.
+- Styling: one global `src/webview/ui/theme.css` (the only reader of `--vscode-*`), imported first in `main.ts` so it precedes every component style in `chrome.css`, typed by `src/types/css.d.ts`. `src/webview/ui/theme.test.ts` guards it in `vp test`; `pnpm test:browser` runs under Cursor's theme (`vscodeHost`), and `pnpm gallery` gives look and contrast evidence (local only). Rules 08 and 09.
 - Artboard = nested sandboxed iframe (`allow-scripts`), never chrome-themed, never `{@html}` in chrome.

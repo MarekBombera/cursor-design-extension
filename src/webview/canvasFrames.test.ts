@@ -7,6 +7,7 @@ import {
 	EMPTY_ARTBOARD_COPY,
 	type FrameRecord,
 	frameOutline,
+	frameSizeText,
 	liveIframeIds,
 	mergeCanvasFrames,
 	PROVISIONAL_FRAME_HEIGHT,
@@ -40,6 +41,7 @@ const measured = (id: string): FrameRecord => ({
 	...only(mergeCanvasFrames({ records: [], frames: [posted(id)] })),
 	height: 1200,
 	measuredHeight: 1200,
+	heightReported: true,
 	guard: { lastGrowth: 5, frozen: true },
 });
 
@@ -78,8 +80,22 @@ test('whitespace html is the empty tile; an error message wins over real html', 
 		records: [],
 		frames: [posted('a', { html: ' \n\t' }), posted('b', { errorMessage: 'Bad meta' })],
 	});
-	assert.deepEqual([empty?.kind, empty?.tileText], ['tile', EMPTY_ARTBOARD_COPY]);
-	assert.deepEqual([broken?.kind, broken?.tileText], ['tile', 'Bad meta']);
+	assert.deepEqual(
+		[empty?.kind, empty?.tileKind, empty?.tileText],
+		['tile', 'empty', EMPTY_ARTBOARD_COPY],
+	);
+	assert.deepEqual(
+		[broken?.kind, broken?.tileKind, broken?.tileText],
+		['tile', 'error', 'Bad meta'],
+	);
+});
+
+test('the tile kind follows the cause, never the copy: an error that reads like the empty copy', () => {
+	const [lookalike] = mergeCanvasFrames({
+		records: [],
+		frames: [posted('a', { errorMessage: EMPTY_ARTBOARD_COPY })],
+	});
+	assert.equal(lookalike?.tileKind, 'error');
 });
 
 test('a host reorder never moves existing records; new frames append; gone frames drop', () => {
@@ -132,8 +148,8 @@ test('a render error demotes to a tile but keeps the measured height for recover
 	const frame = Object.freeze({ ...measured('a'), kind: 'iframe' as const });
 	const tile = demoteToTile(frame);
 	assert.deepEqual(
-		[tile.kind, tile.tileText, tile.height, tile.measuredHeight],
-		['tile', RENDER_ERROR_COPY, TILE_HEIGHT, 1200],
+		[tile.kind, tile.tileKind, tile.tileText, tile.height, tile.measuredHeight],
+		['tile', 'error', RENDER_ERROR_COPY, TILE_HEIGHT, 1200],
 	);
 	assert.equal(frame.kind, 'iframe');
 });
@@ -195,4 +211,13 @@ test('each post carries the frame generation onto its record', () => {
 		mergeCanvasFrames({ records: [measured('a')], frames: [posted('a', { generation: 4 })] }),
 	);
 	assert.equal(next.generation, 4);
+});
+
+test('a frame label shows the width alone until the first height report, and a tile no size', () => {
+	const fresh = only(mergeCanvasFrames({ records: [], frames: [posted('a')] }));
+	assert.equal(frameSizeText(fresh), String(fresh.width));
+	const reported = applyFrameHeight({ record: fresh, reported: 900 });
+	assert.equal(frameSizeText(reported), `${fresh.width} × 900`);
+	// A tile has no size, and its stale measured height never shows.
+	assert.equal(frameSizeText(demoteToTile(reported)), '');
 });

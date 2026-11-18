@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -203,7 +203,7 @@ sequenceDiagram
   A->>C: cd:pick {selector|null, tagName, text, rect|null, point, box, styles, isPage, repost}
   U->>A: ↑ / ↓ (focus in frame)
   A->>C: cd:pick (parent / child)
-  U->>C: Parent / Child, or ↑/↓ with chrome focus
+  U->>C: parent / child icon buttons, or ↑/↓ with chrome focus
   C->>A: cd:pick-parent / cd:pick-child
   A->>C: cd:pick
   U->>B: click in frame B
@@ -264,7 +264,7 @@ sequenceDiagram
 - An answer whose `requestId` is not the pending one is ignored; Cancel is disabled while a save
   is pending. Toggling the mode drops the draft, so a late answer finds nothing.
 - An Agent edit reloads the frame and drops the pick; the popover keeps its text and greys out
-  Parent and Child, and the next Add gets "Pick it again" (`PICK_OUTDATED`).
+  the parent and child buttons, and the next Add gets "Pick it again" (`PICK_OUTDATED`).
 - A forged `cd:key` from a design script cannot discard a draft. A forged user `cd:pick` can
   retarget it; the text is kept and the chip changes.
 - After Add, the new comment's pin arrives with that `comments:updated` (8f2, next section).
@@ -395,7 +395,7 @@ sequenceDiagram
   outline for `JUMP_FLASH_MS` (1.5 s), following pan, zoom and later `cd:anchor-rects`. Nothing
   scrolls inside the frame.
 
-## Copy prompt (8h)
+## Copy for Agent (8h)
 
 ```mermaid
 sequenceDiagram
@@ -405,7 +405,7 @@ sequenceDiagram
   participant CB as vscode.env.clipboard
   participant D as Disk (comments.json)
   participant A as Agent chat
-  U->>C: Copy prompt (panel card or pin thread) / Copy all open (N)
+  U->>C: Copy for Agent (panel card or pin thread) / Copy N open comments for Agent
   alt any copy pending (copyPending), anything pending on that comment, or N = 0
     C->>C: nothing posted (button aria-disabled)
   else
@@ -429,7 +429,7 @@ sequenceDiagram
         D-->>H: watcher (only when a comment changed): ui:status + canvas:updated (identical) + comments:updated
       end
     end
-    C->>C: answerAction / answerCopyOpen: "Copied" for 1.5 s, announcement, or the error linked to its button
+    C->>C: answerAction / answerCopyOpen: "Copied" (or "Copied N comments") for 1.5 s, announcement, or the error linked to its button
   end
   U->>A: paste the prompt by hand
 ```
@@ -443,7 +443,7 @@ sequenceDiagram
   `count` is how many comments moved open → sent: 0 for a re-copy, or when the Agent resolved them
   first (they stay resolved). `markCommentsSent` writes nothing when nothing changed, so a re-copy
   fires no watcher.
-- Copy all open lists the open ids in `comments.json` (creation) order. Zero open answers
+- Copy N open comments for Agent lists the open ids in `comments.json` (creation) order. Zero open answers
   "There are no open comments to copy." with no clipboard write. Every copy answer, success or
   failure, is followed by a `comments:updated`, so a stale N corrects itself.
 - Chrome: one copy at a time across the panel and threads (`copyPending`), so the clipboard holds

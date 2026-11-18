@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Home</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				padding-bottom: 48px;
+				font-family:
+					system-ui,
+					-apple-system,
+					'Segoe UI',
+					sans-serif;
+				color: #0f172a;
+				background: #f8fafc;
+			}
+			nav {
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				padding: 14px 24px;
+				background: #fff;
+				border-bottom: 1px solid #e2e8f0;
+			}
+			.logo {
+				font-weight: 800;
+				font-size: 18px;
+				color: #4f46e5;
+				margin-right: auto;
+				letter-spacing: -0.02em;
+			}
+			.nav-link {
+				font-size: 13px;
+				color: #475569;
+				text-decoration: none;
+			}
+			#nav-cta {
+				background: #0f172a;
+				color: #fff;
+				padding: 8px 14px;
+				border-radius: 8px;
+				font: 600 13px system-ui;
+				border: 0;
+			}
+			.hero {
+				padding: 44px 24px 32px;
+				background: linear-gradient(160deg, #eef2ff 0%, #fdf2f8 100%);
+			}
+			.eyebrow {
+				display: inline-block;
+				font-size: 12px;
+				font-weight: 600;
+				color: #4f46e5;
+				background: #e0e7ff;
+				padding: 4px 10px;
+				border-radius: 999px;
+				margin-bottom: 14px;
+			}
+			#hero-title {
+				font-size: 38px;
+				line-height: 1.08;
+				margin: 0 0 14px;
+				letter-spacing: -0.025em;
+			}
+			#hero-sub {
+				font-size: 16px;
+				line-height: 1.5;
+				color: #475569;
+				margin: 0 0 24px;
+				max-width: 38ch;
+			}
+			.ctas {
+				display: flex;
+				gap: 10px;
+			}
+			#cta-primary {
+				background: #818cf8;
+				color: #fff;
+				padding: 12px 18px;
+				border-radius: 10px;
+				font: 600 15px system-ui;
+				border: 0;
+			}
+			#cta-secondary {
+				background: #fff;
+				color: #0f172a;
+				padding: 12px 18px;
+				border-radius: 10px;
+				font: 600 15px system-ui;
+				border: 1px solid #cbd5e1;
+			}
+			#hero-art {
+				margin-top: 28px;
+				height: 170px;
+				border-radius: 16px;
+				background: linear-gradient(120deg, #6366f1, #ec4899 60%, #f59e0b);
+				position: relative;
+				overflow: hidden;
+			}
+			#hero-art::after {
+				content: '';
+				position: absolute;
+				inset: 24px 40px;
+				border-radius: 10px;
+				background: rgba(255, 255, 255, 0.88);
+			}
+			main#content {
+				padding: 8px 24px 8px;
+			}
+			.features {
+				padding: 24px 0;
+			}
+			.features h2 {
+				font-size: 20px;
+				margin: 0 0 14px;
+				letter-spacing: -0.01em;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+				gap: 14px;
+			}
+			.card {
+				background: #fff;
+				border: 1px solid #e2e8f0;
+				border-radius: 12px;
+				padding: 16px;
+			}
+			.card .ico {
+				width: 32px;
+				height: 32px;
+				border-radius: 8px;
+				background: #e0e7ff;
+				margin-bottom: 10px;
+			}
+			.card h3 {
+				font-size: 15px;
+				margin: 0 0 6px;
+			}
+			.card-copy {
+				font-size: 13px;
+				line-height: 1.45;
+				color: #475569;
+				margin: 0;
+			}
+			.highlight {
+				color: #4f46e5;
+				font-weight: 600;
+			}
+			.logos {
+				display: flex;
+				gap: 18px;
+				justify-content: space-between;
+				padding: 20px 24px;
+				color: #94a3b8;
+				font-weight: 700;
+				font-size: 14px;
+				border-top: 1px solid #e2e8f0;
+				border-bottom: 1px solid #e2e8f0;
+				background: #fff;
+			}
+			footer {
+				padding: 24px;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px 20px;
+				font-size: 12px;
+				color: #64748b;
+			}
+			#footer-links a {
+				color: #64748b;
+				margin-right: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<nav class="top">
+			<a class="logo" href="#">Lumen</a><a class="nav-link" href="#">Product</a
+			><a class="nav-link" href="#">Pricing</a><button id="nav-cta" type="button">Sign in</button>
+		</nav>
+		<header class="hero">
+			<span class="eyebrow">New · Live design review</span>
+			<h1 id="hero-title">Ship designs your whole team can review</h1>
+			<p id="hero-sub">
+				Lumen turns every artboard into a shared canvas with comments, versions and handoff, so
+				feedback lands where the design lives.
+			</p>
+			<div class="ctas">
+				<button id="cta-primary" type="button">Create a board</button
+				><button id="cta-secondary" type="button">Watch demo</button>
+			</div>
+			<div id="hero-art"></div>
+		</header>
+		<div class="logos">
+			<span>ACME</span><span>Northwind</span><span>Globex</span><span>Initech</span>
+		</div>
+		<main id="content">
+			<section class="features">
+				<h2>Everything in one review</h2>
+				<div class="grid">
+					<article class="card" id="feature-1">
+						<div class="ico"></div>
+						<h3>Pin comments</h3>
+						<p class="card-copy">Drop a note on any element and keep the thread with it.</p>
+					</article>
+					<article class="card" id="feature-2">
+						<div class="ico"></div>
+						<h3>Versions</h3>
+						<p class="card-copy">Every change is a version you can compare and restore.</p>
+					</article>
+					<article class="card" id="feature-3">
+						<div class="ico"></div>
+						<h3>Handoff</h3>
+						<div class="card-body">
+							<p class="card-copy">
+								Export specs
+								<span class="highlight" id="deep-target">with tokens and measurements</span>
+								included.
+							</p>
+						</div>
+					</article>
+				</div>
+			</section>
+		</main>
+		<footer>
+			<span>© 2026 Lumen Labs</span
+			><span id="footer-links"
+				><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Status</a></span
+			>
+		</footer>
+	</body>
+</html>

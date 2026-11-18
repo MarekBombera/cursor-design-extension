@@ -10,7 +10,16 @@ import type {
 	PostedComment,
 	UiErrorMessage,
 } from './hostMessages';
-import { type AnchorState, liveAnchor, type PinBadge, pinBadge } from './pins';
+import {
+	type AnchorState,
+	commentNumber,
+	liveAnchor,
+	type PinBadge,
+	pinBadge,
+	statusBadge,
+} from './pins';
+import type { BadgeTone } from './ui/badge';
+import type { IconName } from './ui/icons';
 
 // Comments panel and comment-action rules (8g). Pure: App holds `actions` and posts the returned
 // messages; CommentCard and CommentsPanel render what these return.
@@ -36,13 +45,21 @@ export type CommentActions = ReadonlyMap<string, CommentAction>;
 
 export type PanelItem = {
 	comment: PostedComment;
+	// The comment's number (commentNumber), shared with its pin.
+	number: number;
 	badge: PinBadge | undefined;
-	// The drawn frame's label; the frame id when the frame is absent or its label is empty.
+	// frameLabel: the drawn frame's label, or the frame id.
 	frameLabel: string;
 	// The frame is a live iframe, so the stage can jump to it.
 	canJump: boolean;
 };
 
+// The one rule for a frame's display name: its label, or its id when the frame is absent or its
+// label is empty.
+export const frameLabel = (frames: readonly FrameRecord[], frameId: string): string =>
+	frames.find((frame) => frame.id === frameId)?.label || frameId;
+
+// `comments` is the full comments.json list: it numbers the items.
 export const panelItems = ({
 	comments,
 	anchors,
@@ -53,11 +70,11 @@ export const panelItems = ({
 	frames: readonly FrameRecord[];
 }): { unresolved: PanelItem[]; resolved: PanelItem[] } => {
 	const liveIds = liveIframeIds(frames);
-	const labels = new Map(frames.map((frame) => [frame.id, frame.label]));
-	const items = comments.map((comment): PanelItem => ({
+	const items = comments.map((comment, index): PanelItem => ({
 		comment,
+		number: commentNumber(index),
 		badge: pinBadge({ comment, live: liveAnchor({ anchors, comment }) }),
-		frameLabel: labels.get(comment.frameId) || comment.frameId,
+		frameLabel: frameLabel(frames, comment.frameId),
 		canJump: liveIds.has(comment.frameId),
 	}));
 	return {
@@ -66,8 +83,73 @@ export const panelItems = ({
 	};
 };
 
-export const unresolvedCount = (comments: readonly PostedComment[]): number =>
-	comments.filter((comment) => comment.status !== 'resolved').length;
+export type PanelSummary = Record<PostedComment['status'], number>;
+
+// The comments per status: the panel header's summary and the handoff button. The toolbar's
+// unresolved count is open + sent, added up in App.
+export const panelSummary = (comments: readonly PostedComment[]): PanelSummary => ({
+	open: comments.filter((comment) => comment.status === 'open').length,
+	sent: comments.filter((comment) => comment.status === 'sent').length,
+	resolved: comments.filter((comment) => comment.status === 'resolved').length,
+});
+
+const SUMMARY_WORDS: Record<PostedComment['status'], string> = {
+	open: 'to send',
+	sent: 'with Agent',
+	resolved: 'resolved',
+};
+
+// The panel header's summary line, open, sent, resolved: each count with its status icon and tone
+// (statusBadge). A zero count is left out, so all zero is an empty list and no line.
+export const summaryParts = (
+	summary: PanelSummary,
+): { text: string; icon: IconName; tone: BadgeTone }[] =>
+	(['open', 'sent', 'resolved'] as const)
+		.filter((status) => summary[status] > 0)
+		.map((status) => ({
+			text: `${String(summary[status])} ${SUMMARY_WORDS[status]}`,
+			icon: statusBadge(status).icon,
+			tone: statusBadge(status).tone,
+		}));
+
+const commentsText = (count: number): string =>
+	count === 1 ? '1 comment' : `${String(count)} comments`;
+
+// The panel's handoff block. `copied` is the count of the copy-open answer still showing
+// (undefined = no feedback). Feedback wins over everything, but "Copied 0 comments" never shows:
+// it reads as nothing to send. `disabled` only at zero open with no feedback showing: the feedback
+// is never drawn disabled, and submitCopyOpen ignores a click while it shows. A pending copy blocks
+// on top of it.
+export const handoffCopy = ({
+	open,
+	sent,
+	copied,
+}: {
+	open: number;
+	sent: number;
+	copied?: number;
+}): { label: string; hint: string | undefined; disabled: boolean; copied: boolean } => {
+	const disabled = copied === undefined && open === 0;
+	if (copied !== undefined && copied > 0) {
+		return {
+			label: `Copied ${commentsText(copied)}`,
+			hint: 'Now paste into Cursor Agent chat.',
+			disabled,
+			copied: true,
+		};
+	}
+	if (copied === undefined && open > 0) {
+		return {
+			label: `Copy ${open === 1 ? '1 open comment' : `${String(open)} open comments`} for Agent`,
+			hint: 'Then paste into Cursor Agent chat.',
+			disabled,
+			copied: false,
+		};
+	}
+	const hint =
+		sent === 0 ? undefined : `${commentsText(sent)} ${sent === 1 ? 'is' : 'are'} with the Agent.`;
+	return { label: 'Nothing new to send', hint, disabled, copied: false };
+};
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -230,8 +312,12 @@ export const submitStatus = ({
 	};
 };
 
-// Copy all open's one request in flight and its last failure (8h).
+// The panel's batch Copy for Agent: its one request in flight and its last failure (8h).
 export type CopyOpenState = { pending?: string; error?: string };
+
+// The Copy button that reads "Copied": one comment's card, or the copy-open button with the
+// count its answer marked sent.
+export type CopiedButton = { kind: 'comment'; id: string } | { kind: 'open'; count: number };
 
 // How long a Copy button reads "Copied" after its own success.
 export const COPY_FEEDBACK_MS = 1500;
@@ -260,9 +346,7 @@ export const copyAnnouncement = ({
 	if (kind === 'single') {
 		return 'Prompt copied. Comment marked sent.';
 	}
-	return count === 1
-		? 'Prompt copied. 1 comment marked sent.'
-		: `Prompt copied. ${String(count)} comments marked sent.`;
+	return `Prompt copied. ${commentsText(count)} marked sent.`;
 };
 
 export const submitCopy = ({
@@ -290,18 +374,21 @@ export const submitCopy = ({
 	};
 };
 
+// `copiedShowing`: the button's "Copied" feedback is still up; a click on it copies nothing.
 export const submitCopyOpen = ({
 	actions,
 	copyOpen,
 	openCount,
+	copiedShowing,
 	requestId,
 }: {
 	actions: CommentActions;
 	copyOpen: CopyOpenState;
 	openCount: number;
+	copiedShowing: boolean;
 	requestId: string;
 }): { copyOpen: CopyOpenState; message?: CommentCopyOpenMessage } => {
-	if (openCount === 0 || copyPending({ actions, copyOpen })) {
+	if (openCount === 0 || copiedShowing || copyPending({ actions, copyOpen })) {
 		return { copyOpen };
 	}
 	return {
@@ -310,24 +397,25 @@ export const submitCopyOpen = ({
 	};
 };
 
-// The host's answer to Copy all open. A non-matching answer returns the same state.
+// The host's answer to the batch Copy for Agent. A non-matching answer returns the same state. A success
+// names how many comments the host marked sent, for the button's "Copied N comments".
 export const answerCopyOpen = ({
 	state,
 	answer,
 }: {
 	state: CopyOpenState;
 	answer: CopiedMessage | UiErrorMessage;
-}): { state: CopyOpenState; announcement?: string; copied: boolean } => {
+}): { state: CopyOpenState; announcement?: string; copiedCount?: number } => {
 	if (state.pending === undefined || answer.requestId !== state.pending) {
-		return { state, copied: false };
+		return { state };
 	}
 	if (answer.type === 'ui:error') {
-		return { state: { error: answer.message }, announcement: answer.message, copied: false };
+		return { state: { error: answer.message }, announcement: answer.message };
 	}
 	return {
 		state: {},
 		announcement: copyAnnouncement({ kind: 'batch', count: answer.count }),
-		copied: true,
+		copiedCount: answer.count,
 	};
 };
 

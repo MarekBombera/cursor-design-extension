@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import { FRAME_ANCHOR_RECTS_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame, PostedComment } from '../../src/webview/hostMessages';
@@ -12,16 +12,22 @@ import {
 	centerOf,
 	clickAt,
 	clickChrome,
+	commentButton,
 	frameBox,
 	frameOf,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	pinOf,
+	popoverTarget,
 	type Point,
 	postToChrome,
 	stageBox,
+	thread,
 	untilHeightReported,
+	zoomReadout,
+	zoomSelect,
 } from './harness';
 
 const PINS_HTML = readFileSync(join(__dirname, '..', '..', 'fixtures', 'pins.html'), 'utf8');
@@ -99,8 +105,6 @@ const PAGE = comment({
 
 const ALL = [TITLE, IN_BOX, MOVER, SLIDER, DOOMED, PAGE];
 
-const pinOf = (page: Page, id: string): Locator => page.locator(`[data-cd-pin="${id}"]`);
-
 // The element's screen box from the frame locator. Playwright's boundingBox for an element in an
 // out-of-process iframe adds the frame's offset but ignores the stage layer's CSS scale, so the
 // frame-local offset and size are scaled by the frame wrapper's drawn scale (1 at 100%).
@@ -116,30 +120,31 @@ const elementBox = async (page: Page, selector: string): Promise<Box> => {
 	};
 };
 
+// A pin is a teardrop whose tip, the bottom-right corner of its box, sits on the comment's point.
+const tipOf = (box: Box): Point => ({ x: box.x + box.width, y: box.y + box.height });
+
+const pinTip = async (page: Page, id: string): Promise<Point> =>
+	tipOf(await boxOf(pinOf(page, id)));
+
 const withinOnePx = (actual: Point, expected: Point): boolean =>
 	Math.abs(actual.x - expected.x) <= 1 && Math.abs(actual.y - expected.y) <= 1;
 
-// "On its element": the pin's center is within 1px of the element's own screen box × the stored
-// fraction. Polled, since the frame answers asynchronously.
+// "On its element": the pin's tip is within 1px of the element's own screen box's top-left
+// corner (F-108: the body sits in the margin, off the element's words). Polled, since the frame
+// answers asynchronously.
 const expectPinOn = async ({
 	page,
 	id,
 	selector,
-	pin,
 }: {
 	page: Page;
 	id: string;
 	selector: string;
-	pin: Point;
 }): Promise<void> => {
 	await expect
 		.poll(async () => {
 			const element = await elementBox(page, selector);
-			const center = centerOf(await boxOf(pinOf(page, id)));
-			return withinOnePx(center, {
-				x: element.x + pin.x * element.width,
-				y: element.y + pin.y * element.height,
-			});
+			return withinOnePx(await pinTip(page, id), { x: element.x, y: element.y });
 		})
 		.toBe(true);
 };
@@ -160,16 +165,13 @@ const inFrame = async (page: Page, script: string): Promise<void> => {
 	await (await frameOf(page, 'a')).evaluate(script);
 };
 
-const commentButton = (page: Page): Locator =>
-	page.getByRole('button', { name: 'Comment', exact: true });
-
 test('a pin sits on its element, and a page pin at its fraction of the frame', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
-	await expectPinOn({ page, id: MOVER.id, selector: '#mover', pin: MOVER.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
+	await expectPinOn({ page, id: MOVER.id, selector: '#mover' });
 	const frame = await frameBox(page, 'a');
 	expect(
-		withinOnePx(centerOf(await boxOf(pinOf(page, PAGE.id))), {
+		withinOnePx(await pinTip(page, PAGE.id), {
 			x: frame.x + PAGE.pin.x * frame.width,
 			y: frame.y + PAGE.pin.y * frame.height,
 		}),
@@ -182,37 +184,59 @@ test('a pin sits on its element, and a page pin at its fraction of the frame', a
 	).toEqual(ALL.map((entry) => entry.id));
 });
 
+test('a target at the frame top-left puts the pin tip there and the pin inside the viewport', async ({
+	page,
+}) => {
+	const corner = comment({
+		id: 'c-corner',
+		selector: 'body',
+		tagName: 'body',
+		text: '',
+		rect: { x: 0, y: 0, width: 600, height: 400 },
+		pin: { x: 0, y: 0 },
+		body: 'Corner',
+	});
+	const stage = await openPinStage(page, [corner]);
+	await expectPinOn({ page, id: corner.id, selector: 'body' });
+	const frame = await frameBox(page, 'a');
+	expect(withinOnePx(await pinTip(page, corner.id), { x: frame.x, y: frame.y })).toBe(true);
+	// The body grows up and to the left of the tip, into the stage margin, not over the frame.
+	const box = await boxOf(pinOf(page, corner.id));
+	expect(box.x).toBeGreaterThanOrEqual(stage.x);
+	expect(box.y).toBeGreaterThanOrEqual(stage.y);
+	expect(box.x + box.width).toBeLessThanOrEqual(frame.x + 1);
+	expect(box.y + box.height).toBeLessThanOrEqual(frame.y + 1);
+});
+
 test('a pin follows a scroll inside a box and hides when the box scrolls it out', async ({
 	page,
 }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: IN_BOX.id, selector: '#in-box', pin: IN_BOX.pin });
-	const before = centerOf(await boxOf(pinOf(page, IN_BOX.id)));
+	await expectPinOn({ page, id: IN_BOX.id, selector: '#in-box' });
+	const before = await pinTip(page, IN_BOX.id);
 	await inFrame(page, `document.getElementById('box').scrollTop = 20`);
-	await expect
-		.poll(async () => centerOf(await boxOf(pinOf(page, IN_BOX.id))).y)
-		.toBeCloseTo(before.y - 20, 0);
-	await expectPinOn({ page, id: IN_BOX.id, selector: '#in-box', pin: IN_BOX.pin });
+	await expect.poll(async () => (await pinTip(page, IN_BOX.id)).y).toBeCloseTo(before.y - 20, 0);
+	await expectPinOn({ page, id: IN_BOX.id, selector: '#in-box' });
 	await inFrame(page, `document.getElementById('box').scrollTop = 300`);
 	await expect(pinOf(page, IN_BOX.id)).toHaveCount(0);
 });
 
 test('a pin follows zoom, pan, a frame drag preview and a frame width resize', async ({ page }) => {
 	const stage = await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 
-	await page.getByRole('combobox', { name: 'Zoom preset' }).selectOption('0.5');
-	await expect(page.locator('.bar .readout')).toHaveText('50%');
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
-	await page.getByRole('combobox', { name: 'Zoom preset' }).selectOption('1');
-	await expect(page.locator('.bar .readout')).toHaveText('100%');
+	await zoomSelect(page).selectOption('0.5');
+	await expect(zoomReadout(page)).toHaveText('50%');
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
+	await zoomSelect(page).selectOption('1');
+	await expect(zoomReadout(page)).toHaveText('100%');
 
 	// A wheel over the empty stage (right of the 600 px frame) pans.
 	const panned = await frameBox(page, 'a');
 	await page.mouse.move(stage.x + 900, stage.y + 300);
 	await page.mouse.wheel(0, 40);
 	await expect.poll(async () => (await frameBox(page, 'a')).y).toBeCloseTo(panned.y - 40, 0);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 
 	// Mid-drag: the preview moves the frame before any host answer.
 	const label = centerOf(await boxOf(page.locator('[data-cd-frame-label="a"]')));
@@ -220,60 +244,52 @@ test('a pin follows zoom, pan, a frame drag preview and a frame width resize', a
 	await page.mouse.down();
 	await page.mouse.move(label.x + 70, label.y + 30, { steps: 8 });
 	await expect.poll(async () => (await frameBox(page, 'a')).x).toBeCloseTo(panned.x + 70, 0);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await page.keyboard.press('Escape');
 	await page.mouse.up();
 	await expect.poll(async () => (await frameBox(page, 'a')).x).toBeCloseTo(panned.x, 0);
 
-	// A narrower frame reflows the title, so its quarter point moves left.
+	// A narrower frame reflows the title; the pin stays on its top-left corner.
 	const handle = centerOf(await boxOf(page.locator('[data-cd-frame-resize="a"]')));
-	const wide = centerOf(await boxOf(pinOf(page, TITLE.id)));
+	const wide = await frameBox(page, 'a');
 	await page.mouse.move(handle.x, handle.y);
 	await page.mouse.down();
 	await page.mouse.move(handle.x - 200, handle.y, { steps: 8 });
-	await expect
-		.poll(async () => centerOf(await boxOf(pinOf(page, TITLE.id))).x)
-		.toBeLessThan(wide.x - 20);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expect.poll(async () => (await frameBox(page, 'a')).width).toBeLessThan(wide.width - 20);
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await page.mouse.up();
 });
 
 test('a pin moves when a script changes only an absolute target style.left', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: MOVER.id, selector: '#mover', pin: MOVER.pin });
-	const before = centerOf(await boxOf(pinOf(page, MOVER.id)));
+	await expectPinOn({ page, id: MOVER.id, selector: '#mover' });
+	const before = await pinTip(page, MOVER.id);
 	await inFrame(page, `document.getElementById('mover').style.left = '200px'`);
-	await expect
-		.poll(async () => centerOf(await boxOf(pinOf(page, MOVER.id))).x)
-		.toBeCloseTo(before.x + 200, 0);
-	await expectPinOn({ page, id: MOVER.id, selector: '#mover', pin: MOVER.pin });
+	await expect.poll(async () => (await pinTip(page, MOVER.id)).x).toBeCloseTo(before.x + 200, 0);
+	await expectPinOn({ page, id: MOVER.id, selector: '#mover' });
 });
 
 test('a pin moves after a transform-only transition ends', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: SLIDER.id, selector: '#slider', pin: SLIDER.pin });
-	const before = centerOf(await boxOf(pinOf(page, SLIDER.id)));
+	await expectPinOn({ page, id: SLIDER.id, selector: '#slider' });
+	const before = await pinTip(page, SLIDER.id);
 	await inFrame(page, `document.getElementById('slider').classList.add('moved')`);
-	await expect
-		.poll(async () => centerOf(await boxOf(pinOf(page, SLIDER.id))).x)
-		.toBeCloseTo(before.x + 160, 0);
-	await expectPinOn({ page, id: SLIDER.id, selector: '#slider', pin: SLIDER.pin });
+	await expect.poll(async () => (await pinTip(page, SLIDER.id)).x).toBeCloseTo(before.x + 160, 0);
+	await expectPinOn({ page, id: SLIDER.id, selector: '#slider' });
 });
 
 test('a removed target shows the missing badge at its stored rect', async ({ page }) => {
 	await openPinStage(page);
-	await expect(page.getByRole('button', { name: 'Open comment: Doomed' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Open comment 5: Doomed' })).toBeVisible();
 	await inFrame(page, `document.getElementById('doomed').remove()`);
 	await expect(
-		page.getByRole('button', { name: 'Open comment, target missing: Doomed' }),
+		page.getByRole('button', { name: 'Open comment 5, target missing: Doomed' }),
 	).toBeVisible();
+	await expect(pinOf(page, DOOMED.id)).toHaveClass(/missing/);
 	const frame = await frameBox(page, 'a');
 	const rect = DOOMED.rect ?? { x: 0, y: 0, width: 0, height: 0 };
 	expect(
-		withinOnePx(centerOf(await boxOf(pinOf(page, DOOMED.id))), {
-			x: frame.x + rect.x + DOOMED.pin.x * rect.width,
-			y: frame.y + rect.y + DOOMED.pin.y * rect.height,
-		}),
+		withinOnePx(await pinTip(page, DOOMED.id), { x: frame.x + rect.x, y: frame.y + rect.y }),
 	).toBe(true);
 });
 
@@ -286,20 +302,24 @@ test('stale, unchecked and resolved looks come from the comments:updated flags',
 		{ ...SLIDER, status: 'resolved', stale: true },
 		{ ...IN_BOX, status: 'sent' },
 	]);
-	await expect(page.getByRole('button', { name: 'Open comment, stale: Title' })).toBeVisible();
-	await expect(pinOf(page, TITLE.id).locator('.badge.stale')).toHaveText('!');
-	await expect(page.getByRole('button', { name: 'Open comment, unchecked: Mover' })).toBeVisible();
-	await expect(pinOf(page, MOVER.id).locator('.badge.unchecked')).toHaveText('?');
-	await expect(page.getByRole('button', { name: 'Resolved comment: Slider' })).toBeVisible();
+	await expect(
+		page.getByRole('button', { name: 'Open comment 1, target changed: Title' }),
+	).toBeVisible();
+	await expect(pinOf(page, TITLE.id).locator('.badge.stale svg')).toHaveCount(1);
+	await expect(
+		page.getByRole('button', { name: 'Open comment 2, not checked: Mover' }),
+	).toBeVisible();
+	await expect(pinOf(page, MOVER.id).locator('.badge.unchecked svg')).toHaveCount(1);
+	await expect(page.getByRole('button', { name: 'Resolved comment 3: Slider' })).toBeVisible();
 	await expect(pinOf(page, SLIDER.id)).toHaveClass(/resolved/);
 	await expect(pinOf(page, SLIDER.id).locator('.badge')).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Sent comment: In the box' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sent comment 4: In the box' })).toBeVisible();
 	await expect(pinOf(page, IN_BOX.id)).toHaveClass(/sent/);
 });
 
 test('after a frame reload the frame answers again and the pin returns', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	const answers = await anchorAnswers(page);
 	await postToChrome(
 		page,
@@ -307,12 +327,12 @@ test('after a frame reload the frame answers again and the pin returns', async (
 	);
 	await expect.poll(() => loadsOf(page, 'a')).toBe(2);
 	await expect.poll(() => anchorAnswers(page)).toBeGreaterThan(answers);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 });
 
 test('a static page goes quiet after its forced answer', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	// Count every measurement the runtime schedules from here (Interact mode: picking schedules
 	// none): a static page triggers nothing. Chromium makes re-observing an observed element a
 	// no-op, so this cannot catch a missing observed-set diff (the observer test below does); it
@@ -391,7 +411,7 @@ test('the pin observer watches only current targets and stops on empty anchors',
 
 test('a pointer drag starting on a pin does not pan', async ({ page }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	const before = await frameBox(page, 'a');
 	const start = centerOf(await boxOf(pinOf(page, TITLE.id)));
 	await page.mouse.move(start.x, start.y);
@@ -408,21 +428,21 @@ test('with a draft open, a click at a pin retargets the draft and keeps its text
 	page,
 }) => {
 	await openPinStage(page);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await clickChrome(commentButton(page));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
-	// Left of the doomed pin, which sits on the element's center.
+	// Inside the doomed element, clear of its pin (above-left of its corner).
 	const doomed = await elementBox(page, '#doomed');
 	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
-	const chip = page.locator('[data-cd-comment-popover] .chip');
+	const chip = popoverTarget(page);
 	await expect(chip).toHaveText('Doomed');
 	await page.getByRole('textbox', { name: 'Comment' }).fill('Kept text');
+	// The title pin sits in the body's margin above-left of the title (F-108), so the click there
+	// picks what is under it: the page.
 	await clickAt(page, centerOf(await boxOf(pinOf(page, TITLE.id))));
-	await expect(chip).toHaveText('Pins');
+	await expect(chip).toHaveText('Whole frame');
 	await expect(page.getByRole('textbox', { name: 'Comment' })).toHaveValue('Kept text');
 });
-
-const thread = (page: Page): Locator => page.getByRole('dialog', { name: 'Comment', exact: true });
 
 const THREADED = {
 	...TITLE,
@@ -446,7 +466,7 @@ const openThread = async (page: Page, id: string): Promise<void> => {
 
 test('a pin click opens its thread with the body, reply authors and actions', async ({ page }) => {
 	await openPinStage(page, [THREADED, MOVER]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
 	await expect(thread(page)).toContainText('Make the title bolder');
 	await expect(thread(page)).toContainText('Open');
@@ -455,17 +475,17 @@ test('a pin click opens its thread with the body, reply authors and actions', as
 		/^You\b[\s\S]*And darker$/,
 		/^Agent\b[\s\S]*Done$/,
 	]);
-	await expect(thread(page).getByRole('button')).toHaveText([
-		'Reply',
-		'Resolve',
-		'Copy prompt',
-		'Close',
-	]);
+	// By name: Close is an icon button in the head, named by its label.
+	const buttons = thread(page).getByRole('button');
+	await expect(buttons).toHaveCount(4);
+	for (const [index, name] of ['Close', 'Reply', 'Resolve', 'Copy for Agent'].entries()) {
+		await expect(buttons.nth(index)).toHaveAccessibleName(name);
+	}
 });
 
 test('Escape closes the thread and focuses its pin', async ({ page }) => {
 	await openPinStage(page, [THREADED, MOVER]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await expect(pinOf(page, TITLE.id)).toHaveAttribute('aria-haspopup', 'dialog');
 	await expect(pinOf(page, TITLE.id)).toHaveAttribute('aria-expanded', 'false');
 	await openThread(page, TITLE.id);
@@ -484,7 +504,7 @@ test('a comments:updated without the open comment closes it and focuses the stag
 	page,
 }) => {
 	await openPinStage(page, [THREADED, MOVER]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
 	await postToChrome(page, { type: 'comments:updated', comments: [MOVER] });
 	await expect(thread(page)).toHaveCount(0);
@@ -493,7 +513,7 @@ test('a comments:updated without the open comment closes it and focuses the stag
 
 test('a pick in Comment mode closes the thread and opens the draft', async ({ page }) => {
 	await openPinStage(page, [THREADED, MOVER]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
 	await clickChrome(commentButton(page));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
@@ -501,7 +521,7 @@ test('a pick in Comment mode closes the thread and opens the draft', async ({ pa
 	await expect(thread(page)).toBeVisible();
 	const doomed = await elementBox(page, '#doomed');
 	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
-	await expect(page.locator('[data-cd-comment-popover] .chip')).toHaveText('Doomed');
+	await expect(popoverTarget(page)).toHaveText('Doomed');
 	await expect(thread(page)).toHaveCount(0);
 });
 
@@ -511,7 +531,7 @@ test('a reload that unplaces the open pin closes its thread, and it does not com
 	// The stored rect lies right of the 600 px frame: between cd:ready and the new answer the pin
 	// falls back to it and is unplaced; the answer then places it on #title again.
 	await openPinStage(page, [{ ...THREADED, rect: { x: 700, y: 24, width: 50, height: 29 } }]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
 	const answers = await anchorAnswers(page);
 	await postToChrome(
@@ -520,7 +540,7 @@ test('a reload that unplaces the open pin closes its thread, and it does not com
 	);
 	await expect.poll(() => loadsOf(page, 'a')).toBe(2);
 	await expect.poll(() => anchorAnswers(page)).toBeGreaterThan(answers);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await expect(thread(page)).toHaveCount(0);
 	await expect(page.locator('.viewport')).toBeFocused();
 });
@@ -529,7 +549,7 @@ test('a page shrink that unplaces the open pin closes its thread, and it does no
 	page,
 }) => {
 	await openPinStage(page, [DOOMED]);
-	await expectPinOn({ page, id: DOOMED.id, selector: '#doomed', pin: DOOMED.pin });
+	await expectPinOn({ page, id: DOOMED.id, selector: '#doomed' });
 	await openThread(page, DOOMED.id);
 	// The target goes (box: null, so the pin falls back to the stored rect at y 200), then the page
 	// shrinks to its padding. Only cd:frame-height reports the shrink; the frame's answer is unchanged.
@@ -539,7 +559,7 @@ test('a page shrink that unplaces the open pin closes its thread, and it does no
 	await expect(page.locator('.viewport')).toBeFocused();
 	await inFrame(page, `document.body.style.height = '400px'`);
 	await expect(
-		page.getByRole('button', { name: 'Open comment, target missing: Doomed' }),
+		page.getByRole('button', { name: 'Open comment 1, target missing: Doomed' }),
 	).toBeVisible();
 	await expect(thread(page)).toHaveCount(0);
 });
@@ -547,7 +567,7 @@ test('a page shrink that unplaces the open pin closes its thread, and it does no
 test('a body with markup shows as literal text', async ({ page }) => {
 	const body = '<img src=x onerror="document.title=1">';
 	await openPinStage(page, [{ ...TITLE, body }]);
-	await expectPinOn({ page, id: TITLE.id, selector: '#title', pin: TITLE.pin });
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
 	await expect(thread(page).locator('.body')).toHaveText(body);
 	await expect(thread(page).locator('img')).toHaveCount(0);

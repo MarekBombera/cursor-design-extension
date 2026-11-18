@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Pricing</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				padding: 32px 24px 40px;
+				font-family:
+					system-ui,
+					-apple-system,
+					'Segoe UI',
+					sans-serif;
+				color: #0f172a;
+				background: #fff;
+			}
+			h1 {
+				font-size: 30px;
+				margin: 0 0 8px;
+				letter-spacing: -0.02em;
+			}
+			.lede {
+				color: #475569;
+				font-size: 15px;
+				line-height: 1.5;
+				margin: 0 0 20px;
+			}
+			.toggle {
+				display: inline-flex;
+				background: #f1f5f9;
+				border-radius: 999px;
+				padding: 3px;
+				margin-bottom: 22px;
+			}
+			.toggle span {
+				padding: 6px 14px;
+				border-radius: 999px;
+				font-size: 13px;
+				font-weight: 600;
+				color: #475569;
+			}
+			.toggle .on {
+				background: #fff;
+				color: #0f172a;
+				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+			}
+			.plan {
+				border: 1px solid #e2e8f0;
+				border-radius: 14px;
+				padding: 18px;
+				margin-bottom: 14px;
+				background: #fff;
+			}
+			.plan h2 {
+				font-size: 16px;
+				margin: 0 0 4px;
+			}
+			.plan .price {
+				font-size: 30px;
+				font-weight: 800;
+				letter-spacing: -0.02em;
+				margin: 8px 0;
+			}
+			.plan .price small {
+				font-size: 13px;
+				font-weight: 500;
+				color: #64748b;
+			}
+			.plan ul {
+				margin: 0 0 14px;
+				padding: 0 0 0 18px;
+				font-size: 13px;
+				color: #475569;
+				line-height: 1.7;
+			}
+			.plan button {
+				width: 100%;
+				padding: 11px;
+				border-radius: 10px;
+				font: 600 14px system-ui;
+				border: 1px solid #cbd5e1;
+				background: #fff;
+				color: #0f172a;
+			}
+			#plan-pro {
+				border: 2px solid #6366f1;
+				background: #f5f3ff;
+			}
+			#plan-pro button {
+				background: #6366f1;
+				color: #fff;
+				border: 0;
+			}
+			.badge {
+				display: inline-block;
+				font-size: 11px;
+				font-weight: 700;
+				color: #4f46e5;
+				background: #e0e7ff;
+				padding: 2px 8px;
+				border-radius: 999px;
+				margin-left: 6px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1 id="pricing-title">Simple pricing</h1>
+		<p class="lede">
+			Start free. Upgrade when your team needs shared libraries and review history.
+		</p>
+		<div class="toggle"><span class="on">Monthly</span><span>Yearly (−20%)</span></div>
+		<section class="plan" id="plan-free">
+			<h2>Free</h2>
+			<div class="price">$0<small> /editor</small></div>
+			<ul>
+				<li>3 boards</li>
+				<li>Comments</li>
+			</ul>
+			<button type="button">Get started</button>
+		</section>
+		<section class="plan" id="plan-pro">
+			<h2>Pro<span class="badge">Popular</span></h2>
+			<div class="price" id="pro-price">$12<small> /editor /mo</small></div>
+			<ul>
+				<li>Unlimited boards</li>
+				<li>Version history</li>
+				<li>Handoff exports</li>
+			</ul>
+			<button id="pro-cta" type="button">Start 14-day trial</button>
+		</section>
+		<section class="plan" id="plan-team">
+			<h2>Team</h2>
+			<div class="price">$24<small> /editor /mo</small></div>
+			<ul>
+				<li>Shared libraries</li>
+				<li>SSO</li>
+				<li>Priority support</li>
+			</ul>
+			<button type="button">Contact sales</button>
+		</section>
+	</body>
+</html>

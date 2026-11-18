@@ -5,6 +5,7 @@
 	import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 	import Frame from './Frame.svelte';
 	import Overlay from './Overlay.svelte';
+	import Icon from './ui/Icon.svelte';
 	import type { StageFrame } from './canvasFrames';
 	import {
 		arrowNudge,
@@ -21,7 +22,8 @@
 
 	type Props = {
 		frames: StageFrame[];
-		labels: Array<FrameLabelBox & { text: string }>;
+		// `size` is the label's width × height text (frameSizeText; empty on a tile).
+		labels: Array<FrameLabelBox & { text: string; size: string }>;
 		headings: GroupHeadingBox[];
 		activeId: string;
 		nonce: string;
@@ -29,6 +31,7 @@
 		transform: string | undefined;
 		zoom: number;
 		hidden: boolean;
+		commentMode: boolean;
 		hoverOutline: StageRect | undefined;
 		pickOutline: StageRect | undefined;
 		flashOutline: StageRect | undefined;
@@ -52,6 +55,7 @@
 		transform,
 		zoom,
 		hidden,
+		commentMode,
 		hoverOutline,
 		pickOutline,
 		flashOutline,
@@ -80,6 +84,38 @@
 	// pointercancel commits the last preview.
 	let captured: (GestureTarget & { pointerId: number; element: Element }) | undefined =
 		$state();
+	// The artboard iframe holding focus. An out-of-process frame's iframe element (Cursor's blob
+	// frames are) never matches :focus or :focus-visible and gets no focus events; the chrome window
+	// blurs with that iframe as its activeElement, and refocuses when focus comes back.
+	// ponytail: focus leaving the webview from inside a frame reaches no chrome event, so the ring
+	// stays until the chrome is focused again.
+	let focusedFrameId: string | undefined = $state();
+	// Frame to frame (a click or Tab from one iframe into another) fires no chrome event at all.
+	const FRAME_FOCUS_POLL_MS = 200;
+
+	const trackFrameFocus = (): void => {
+		const active = document.activeElement;
+		focusedFrameId =
+			active instanceof HTMLIFrameElement
+				? (active.closest('[data-cd-frame-id]')?.getAttribute('data-cd-frame-id') ?? undefined)
+				: undefined;
+	};
+
+	// While a frame holds focus the chrome window stays blurred, so re-read activeElement until focus
+	// comes back to the chrome (trackFrameFocus clears the id) or the stage unmounts.
+	// ponytail: a 200ms poll, so the ring can trail a frame-to-frame move by one tick, and it keeps
+	// polling while focus sits in a frame and the user is in another app. Upgrade path: a cd:focus
+	// message from the frame runtime.
+	$effect(() => {
+		if (focusedFrameId === undefined) {
+			return;
+		}
+		const timer = setInterval(trackFrameFocus, FRAME_FOCUS_POLL_MS);
+		return () => {
+			clearInterval(timer);
+		};
+	});
+
 	// Arrow keys held on the focused label or handle; blur clears them.
 	const heldArrows = new Set<string>();
 
@@ -314,6 +350,8 @@
 	};
 </script>
 
+<svelte:window onblur={trackFrameFocus} onfocus={trackFrameFocus} />
+
 <div
 	class={[
 		'viewport',
@@ -335,7 +373,7 @@
 	onpointercancel={endDrag}
 	onlostpointercapture={endDrag}
 >
-	<div class="layer" style:transform style:--stage-zoom={zoom}>
+	<div class="layer" style:transform style:--cd-stage-zoom={zoom}>
 		<!-- Frames keep first-seen order and are never moved: moving an iframe reloads it. -->
 		{#each frames as frame (frame.id)}
 			<Frame
@@ -346,11 +384,13 @@
 				width={frame.width}
 				height={frame.height}
 				kind={frame.kind}
+				tileKind={frame.tileKind}
 				tileText={frame.tileText}
 				html={frame.html}
 				{nonce}
 				{runtimeSource}
-				active={frame.id === activeId}
+				lifted={captured?.id === frame.id}
+				focused={focusedFrameId === frame.id}
 				{onIframe}
 				{onRenderError}
 			/>
@@ -390,7 +430,7 @@
 			{@const target = { id: label.id, kind: 'move' as const }}
 			<button
 				type="button"
-				class="label"
+				class={['label', { active: label.id === activeId }]}
 				data-cd-frame-label={label.id}
 				{@attach releaseOnRemove}
 				aria-label="Move frame {label.text}"
@@ -408,7 +448,15 @@
 				onfocus={revealFocused}
 				onblur={() => handleFrameBlur(target)}
 			>
-				{label.text}
+				<span class="label-chip">
+					<!-- The frame icon turns into a gripper on hover: the label is a drag handle. -->
+					<span class="label-icon"><Icon name="frame" size={12} /></span>
+					<span class="label-grip"><Icon name="gripper" size={12} /></span>
+					<span class="label-name">{label.text}</span>
+					{#if label.size !== ''}
+						<span class="label-size">{label.size}</span>
+					{/if}
+				</span>
 			</button>
 		{/each}
 		{#each headings as heading (heading.group)}
@@ -420,11 +468,18 @@
 				style:width="{heading.width}px"
 				style:height="{heading.height}px"
 			>
-				{heading.group}
+				<span class="heading-text">{heading.group}</span>
 			</div>
 		{/each}
 	</div>
 	<Overlay hover={hoverOutline} pick={pickOutline} flash={flashOutline} />
+	<!-- The toolbar's live region already announces the mode; this is the visible reminder. -->
+	{#if commentMode}
+		<div class="mode-hint" aria-hidden="true">
+			<span class="hint-icon"><Icon name="comment" size={14} /></span>
+			Click an element to comment <span class="separator">·</span> <kbd>Esc</kbd> to leave
+		</div>
+	{/if}
 	{@render children?.()}
 </div>
 
@@ -434,14 +489,11 @@
 		flex: 1 1 auto;
 		position: relative;
 		overflow: clip;
-		background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+		background: var(--cd-bg-stage);
 		min-height: 0;
 		min-width: 0;
 		touch-action: none;
 		cursor: grab;
-	}
-	.viewport[hidden] {
-		display: none;
 	}
 	/* Focused by script only (focusViewport), as a fallback; it is not a control. */
 	.viewport:focus {
@@ -462,20 +514,75 @@
 		pointer-events: none;
 		white-space: nowrap;
 		overflow: hidden;
-		text-overflow: ellipsis;
 		box-sizing: border-box;
 	}
+	/* The button keeps the whole band above its frame as the drag target; the chip inside hugs the
+	   text, so the hover fill matches what the label shows. */
 	.label {
-		display: block;
-		margin: 0;
-		padding: 0;
-		border: 0;
-		background: none;
-		color: inherit;
-		font: inherit;
+		display: flex;
+		align-items: center;
+		color: var(--cd-fg-2);
+		font-size: var(--cd-fs-sm);
 		text-align: left;
 		pointer-events: auto;
-		cursor: move;
+		cursor: grab;
+	}
+	.label-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--cd-space-6);
+		box-sizing: border-box;
+		max-width: 100%;
+		height: var(--cd-control-h-sm);
+		padding: 0 var(--cd-space-6);
+		border-radius: var(--cd-radius-sm);
+		transition: background-color var(--cd-dur) var(--cd-ease);
+	}
+	.label:hover .label-chip {
+		background: var(--cd-bg-hover);
+		color: var(--cd-fg);
+	}
+	.label-icon,
+	.label-grip {
+		display: flex;
+		flex: none;
+		color: var(--cd-fg-3);
+	}
+	.label-grip,
+	.label:hover .label-icon {
+		display: none;
+	}
+	.label:hover .label-grip {
+		display: flex;
+	}
+	.label-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.label-size {
+		flex: none;
+		color: var(--cd-fg-2);
+		font-variant-numeric: tabular-nums;
+	}
+	/* The active artboard reads through its label, not an outline on the frame. */
+	.active {
+		color: var(--cd-fg);
+		font-weight: var(--cd-weight-strong);
+	}
+	.active .label-icon {
+		color: var(--cd-accent);
+	}
+	.heading {
+		display: flex;
+		align-items: center;
+		color: var(--cd-fg-2);
+		font: var(--cd-weight-strong) var(--cd-fs-xs) / var(--cd-lh-sm) var(--cd-font);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.heading-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.resize-handle {
 		position: absolute;
@@ -483,11 +590,54 @@
 		pointer-events: auto;
 		cursor: ew-resize;
 	}
+	/* The bar shows on hover and focus; the handle stays a fixed 4 × 36 screen px at any zoom. */
+	.resize-handle::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: calc(4px / var(--cd-stage-zoom));
+		height: calc(36px / var(--cd-stage-zoom));
+		border-radius: var(--cd-radius-pill);
+		background: var(--cd-fg-3);
+		transform: translate(-50%, -50%);
+		opacity: 0;
+		transition: opacity var(--cd-dur) var(--cd-ease);
+	}
+	.resize-handle:hover::after,
+	.resize-handle:focus-visible::after {
+		opacity: 1;
+	}
 	/* The layer is scaled, so divide by zoom to keep the ring 2 screen px at any zoom. */
 	.label:focus-visible,
 	.resize-handle:focus-visible {
-		outline: calc(2px / var(--stage-zoom, 1)) solid var(--vscode-focusBorder);
+		outline: calc(2px / var(--cd-stage-zoom)) solid var(--cd-focus);
 		outline-offset: 0;
+	}
+	.mode-hint {
+		position: absolute;
+		top: var(--cd-space-12);
+		left: 50%;
+		display: inline-flex;
+		align-items: center;
+		gap: var(--cd-space-8);
+		padding: var(--cd-space-4) var(--cd-space-8) var(--cd-space-4) var(--cd-space-10);
+		border-radius: var(--cd-radius-pill);
+		background: var(--cd-bg-widget);
+		box-shadow: var(--cd-shadow-widget);
+		color: var(--cd-fg);
+		font-size: var(--cd-fs-sm);
+		white-space: nowrap;
+		transform: translateX(-50%);
+		pointer-events: none;
+	}
+	/* Only the icon takes the mode colour. */
+	.hint-icon {
+		display: flex;
+		color: var(--cd-accent);
+	}
+	.separator {
+		color: var(--cd-fg-2);
 	}
 	/* Backs up pointer capture: sandboxed iframes must not swallow a drag that crosses them. */
 	.frame-gesture-move :global(iframe),
@@ -495,7 +645,7 @@
 		pointer-events: none;
 	}
 	.frame-gesture-move {
-		cursor: move;
+		cursor: grabbing;
 	}
 	.frame-gesture-resize {
 		cursor: ew-resize;

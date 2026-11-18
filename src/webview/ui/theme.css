@@ -1,0 +1,329 @@
+/*
+ * The chrome's one global stylesheet (rule 08). It is the only file that reads the host's
+ * --vscode-* values; every component reads the --cd-* tokens below.
+ *
+ * No cascade layers: Cursor prepends its own unlayered _defaultStyles to every webview, and a
+ * layered rule loses to any unlayered one. This file is unlayered and loads after it (first import
+ * in main.ts, bundled into chrome.css), so its plain selectors win by source order.
+ */
+
+/* 1. Tokens. On body, not :root: VS Code puts its theme classes on body, and a derived token
+   re-resolves against an overridden base token only when both are declared on the same element. */
+body {
+	/* Surfaces: chrome (toolbar, panel), stage (behind artboards), card (panel cards), widget
+	   (popover, thread). */
+	--cd-bg-chrome: var(--vscode-sideBar-background, var(--vscode-editor-background));
+	--cd-bg-stage: color-mix(in srgb, var(--vscode-editor-background) 93%, var(--vscode-foreground));
+	--cd-bg-card: var(--vscode-editor-background);
+	--cd-bg-widget: var(--vscode-editorWidget-background);
+	--cd-bg-hover: var(
+		--vscode-toolbar-hoverBackground,
+		color-mix(in srgb, var(--vscode-foreground) 10%, transparent)
+	);
+	--cd-bg-active: var(
+		--vscode-toolbar-activeBackground,
+		color-mix(in srgb, var(--vscode-foreground) 16%, transparent)
+	);
+
+	/* Edges */
+	--cd-divider: var(--vscode-panel-border);
+	--cd-edge: var(--vscode-widget-border, var(--vscode-editorWidget-border));
+	--cd-frame-edge: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+	--cd-shadow: var(--vscode-widget-shadow, rgb(0 0 0 / 0.25));
+
+	/* Text: three levels built from the body colour, so secondary is secondary in every theme
+	   (Light Modern sets descriptionForeground equal to foreground). 78% keeps --cd-fg-2 at or above
+	   4.5:1 on every chrome surface and hover fill in Default Dark/Light Modern (pnpm gallery
+	   measures it). --cd-fg-3 is never text: icons, dividers, the resize bar (58% = 3:1 on the
+	   light stage). */
+	--cd-fg: var(--vscode-foreground);
+	--cd-fg-2: color-mix(in srgb, var(--vscode-foreground) 78%, transparent);
+	--cd-fg-3: color-mix(in srgb, var(--vscode-foreground) 58%, transparent);
+	--cd-fg-disabled: var(--vscode-disabledForeground);
+	--cd-link: var(--vscode-textLink-foreground);
+	--cd-focus: var(--vscode-focusBorder);
+
+	/* Buttons */
+	--cd-primary-bg: var(--vscode-button-background);
+	--cd-primary-fg: var(--vscode-button-foreground);
+	--cd-primary-hover: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+	--cd-secondary-bg: var(--vscode-button-secondaryBackground);
+	--cd-secondary-fg: var(--vscode-button-secondaryForeground);
+	--cd-secondary-hover: var(
+		--vscode-button-secondaryHoverBackground,
+		var(--vscode-button-secondaryBackground)
+	);
+	--cd-button-edge: var(--vscode-button-border, transparent);
+
+	/* Toggles: VS Code's own option style (match case), not the primary blue */
+	--cd-toggle-on-bg: var(--vscode-inputOption-activeBackground);
+	--cd-toggle-on-edge: var(--vscode-inputOption-activeBorder, transparent);
+	--cd-toggle-on-fg: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+
+	/* Inputs and dropdowns */
+	--cd-input-bg: var(--vscode-input-background);
+	--cd-input-fg: var(--vscode-input-foreground);
+	--cd-input-edge: var(--vscode-input-border, var(--cd-edge));
+	--cd-placeholder: var(--vscode-input-placeholderForeground, var(--cd-fg-3));
+	--cd-dropdown-bg: var(--vscode-dropdown-background, var(--cd-input-bg));
+	--cd-dropdown-fg: var(--vscode-dropdown-foreground, var(--cd-input-fg));
+	--cd-dropdown-edge: var(--vscode-dropdown-border, var(--cd-input-edge));
+
+	/* Keybinding hint */
+	--cd-kbd-bg: var(
+		--vscode-keybindingLabel-background,
+		color-mix(in srgb, var(--vscode-foreground) 12%, transparent)
+	);
+	--cd-kbd-edge: var(--vscode-keybindingLabel-border, transparent);
+	--cd-kbd-fg: var(--vscode-keybindingLabel-foreground, var(--vscode-foreground));
+
+	/* Count badge */
+	--cd-count-bg: var(--vscode-activityBarBadge-background, var(--vscode-badge-background));
+	--cd-count-fg: var(--vscode-activityBarBadge-foreground, var(--vscode-badge-foreground));
+
+	/* The accent: the primary fill, also the hover / pick outlines and the active marks. Never text. */
+	--cd-accent: var(--vscode-button-background);
+
+	/* Meaning colours: icons, fills and tints. Text stays --cd-fg so it always reads. */
+	--cd-open: var(--cd-accent);
+	--cd-agent: var(--vscode-charts-purple);
+	--cd-resolved: var(--vscode-charts-green);
+	--cd-info: var(--vscode-editorInfo-foreground);
+	--cd-warning: var(--vscode-editorWarning-foreground);
+	--cd-error: var(--vscode-editorError-foreground);
+	--cd-info-bg: var(--vscode-inputValidation-infoBackground);
+	--cd-warning-bg: var(--vscode-inputValidation-warningBackground);
+	--cd-error-bg: var(--vscode-inputValidation-errorBackground);
+	--cd-agent-bg: color-mix(in srgb, var(--vscode-charts-purple) 12%, transparent);
+
+	/* Tints. Every component tint is a token here, so high contrast drops them all in one place. */
+	--cd-badge-bg-neutral: color-mix(in srgb, var(--cd-fg-2) 15%, transparent);
+	--cd-badge-bg-accent: color-mix(in srgb, var(--cd-accent) 15%, transparent);
+	--cd-badge-bg-agent: color-mix(in srgb, var(--cd-agent) 15%, transparent);
+	--cd-badge-bg-success: color-mix(in srgb, var(--cd-resolved) 15%, transparent);
+	--cd-badge-bg-warning: color-mix(in srgb, var(--cd-warning) 15%, transparent);
+	--cd-hover-bg: color-mix(in srgb, var(--cd-accent) 10%, transparent);
+	--cd-pick-bg: color-mix(in srgb, var(--cd-accent) 16%, transparent);
+	--cd-avatar-bg: color-mix(in srgb, var(--cd-fg) 18%, var(--cd-bg-card));
+	--cd-tile-error-edge: color-mix(in srgb, var(--cd-error) 45%, transparent);
+
+	/* Ink on filled marks (pins, avatars). Light ink by default; dark themes flip below. */
+	--cd-on-open: var(--vscode-button-foreground);
+	--cd-on-agent: var(--vscode-button-foreground);
+	/* A neutral fill that keeps 3:1 against the pin ring and 4.5:1 for the number on a resolved card
+	   chip in both themes (badge.background was 1.6:1 on white). */
+	--cd-pin-resolved-bg: color-mix(
+		in srgb,
+		var(--vscode-foreground) 70%,
+		var(--vscode-editor-background)
+	);
+	--cd-pin-resolved-fg: var(--vscode-editor-background);
+	--cd-pin-ring: var(--vscode-editor-background);
+
+	/* Type: the editor's UI font. */
+	--cd-font: var(--vscode-font-family, system-ui, sans-serif);
+	--cd-fs-xs: 11px;
+	--cd-fs-sm: 12px;
+	--cd-fs-md: var(--vscode-font-size, 13px);
+	--cd-lh-sm: 16px;
+	--cd-lh-md: 18px;
+	--cd-weight-strong: 600;
+
+	/* Space: named by value in px. Every padding, margin and gap in the chrome uses one. */
+	--cd-space-2: 2px;
+	--cd-space-4: 4px;
+	--cd-space-6: 6px;
+	--cd-space-8: 8px;
+	--cd-space-10: 10px;
+	--cd-space-12: 12px;
+	--cd-space-16: 16px;
+	--cd-space-24: 24px;
+
+	/* Shape */
+	--cd-radius-sm: 4px;
+	--cd-radius-md: 6px;
+	--cd-radius-pill: 999px;
+	--cd-kbd-radius: 3px;
+
+	/* Sizes */
+	--cd-toolbar-h: 36px;
+	--cd-control-h: 26px;
+	--cd-control-h-sm: 22px;
+	--cd-chip-h: 18px;
+	--cd-icon-btn: 24px;
+	--cd-avatar: 20px;
+	--cd-pin: 24px;
+	--cd-pin-sm: 18px;
+	--cd-kbd-lh: 14px;
+	--cd-panel-w: 320px;
+	--cd-widget-w: 340px;
+	--cd-widget-max-h: 440px;
+
+	/* The stage zoom. Stage sets it on its scaled layer, so anything drawn inside divides by it to
+	   stay a fixed number of screen px. */
+	--cd-stage-zoom: 1;
+
+	/* Elevation */
+	--cd-shadow-widget: 0 4px 16px var(--cd-shadow), 0 0 0 1px var(--cd-edge);
+	--cd-shadow-frame: 0 1px 3px var(--cd-shadow), 0 0 0 1px var(--cd-frame-edge);
+	--cd-shadow-lifted: 0 12px 32px var(--cd-shadow), 0 0 0 1px var(--cd-frame-edge);
+
+	/* Focus: one ring everywhere, offset so it reads on any fill (focusBorder equals the primary
+	   fill in Dark and Light Modern, so a ring drawn on the edge would vanish). */
+	--cd-focus-ring: 2px solid var(--cd-focus);
+	--cd-focus-offset: 2px;
+
+	/* Motion */
+	--cd-ease: cubic-bezier(0.2, 0, 0, 1);
+	--cd-dur: 120ms;
+	--cd-spin: cd-spin 0.9s linear infinite;
+}
+
+/* 2. Theme overrides. Dark themes: purple is light, so marks on it take dark ink. */
+body.vscode-dark,
+body.vscode-high-contrast:not(.vscode-high-contrast-light) {
+	--cd-on-agent: var(--vscode-editor-background);
+}
+
+/* High contrast: edges come from contrastBorder, tints drop out. The derived tokens (input edge,
+   shadows) live on the same body element, so they re-resolve against these on their own. */
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+	--cd-edge: var(--vscode-contrastBorder);
+	--cd-frame-edge: var(--vscode-contrastBorder);
+	--cd-divider: var(--vscode-contrastBorder);
+	--cd-tile-error-edge: var(--vscode-contrastBorder);
+	--cd-agent-bg: transparent;
+	--cd-badge-bg-neutral: transparent;
+	--cd-badge-bg-accent: transparent;
+	--cd-badge-bg-agent: transparent;
+	--cd-badge-bg-success: transparent;
+	--cd-badge-bg-warning: transparent;
+	--cd-hover-bg: transparent;
+	--cd-pick-bg: transparent;
+	--cd-avatar-bg: transparent;
+}
+
+/* 3. Reduced motion, from the OS or from Cursor's workbench.reduceMotion setting (a body class
+   that leaves prefers-reduced-motion alone). The spinner stops; a pending control still says
+   "Adding…" in words. */
+@media (prefers-reduced-motion: reduce) {
+	body {
+		--cd-dur: 0ms;
+		--cd-spin: none;
+	}
+}
+body.vscode-reduce-motion {
+	--cd-dur: 0ms;
+	--cd-spin: none;
+}
+
+/* 4. Host-competing element rules: plain selectors, so they beat _defaultStyles by order. */
+/* hidden always hides, even on an element whose own rule sets display. */
+[hidden] {
+	display: none !important;
+}
+/* Every button starts bare; the primitives (Button, IconButton) and the stage's own controls build
+   on it. Element specificity, so any class rule wins. */
+button {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+}
+html,
+body {
+	height: 100%;
+	margin: 0;
+}
+/* The root is the stage's scroll sink (frameGesture.ts): App sizes the body with
+   SCROLL_SINK_ROOM of hidden scroll room, while the fixed chrome never moves when it scrolls. */
+html {
+	scrollbar-width: none;
+	overscroll-behavior: none;
+}
+/* The host sets a transparent background and 20px side padding. */
+body {
+	padding: 0;
+	background: var(--cd-bg-card);
+	color: var(--cd-fg);
+	font-family: var(--cd-font);
+	font-size: var(--cd-fs-md);
+}
+#svelte-root {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+}
+kbd {
+	display: inline-block;
+	min-width: 16px;
+	padding: 0 var(--cd-space-4);
+	border: 1px solid var(--cd-kbd-edge);
+	border-bottom-width: 2px;
+	border-radius: var(--cd-kbd-radius);
+	box-shadow: none;
+	background: var(--cd-kbd-bg);
+	color: var(--cd-kbd-fg);
+	font: var(--cd-fs-xs) / var(--cd-kbd-lh) var(--cd-font);
+	text-align: center;
+	vertical-align: baseline;
+}
+textarea {
+	box-sizing: border-box;
+	display: block;
+	width: 100%;
+	padding: var(--cd-space-6) var(--cd-space-8);
+	border: 1px solid var(--cd-input-edge);
+	border-radius: var(--cd-radius-sm);
+	background: var(--cd-input-bg);
+	color: var(--cd-input-fg);
+	font: inherit;
+	resize: vertical;
+}
+textarea::placeholder {
+	color: var(--cd-placeholder);
+}
+select {
+	border: 1px solid var(--cd-dropdown-edge);
+	border-radius: var(--cd-radius-sm);
+	background: var(--cd-dropdown-bg);
+	color: var(--cd-dropdown-fg);
+	font: inherit;
+}
+/* The global select colour would otherwise hide the browser's disabled look. */
+select:disabled {
+	color: var(--cd-fg-disabled);
+}
+/* Text fields keep VS Code's inset ring, on mouse focus too (as VS Code's inputs do). :focus, not
+   :focus-visible: the host's equally specific textarea:focus / select:focus ring would otherwise
+   win on a mouse focus. */
+textarea:focus,
+select:focus {
+	outline: 1px solid var(--cd-focus);
+	outline-offset: -1px;
+}
+
+/* 5. The one focus ring. A component that needs another offset changes only outline-offset. */
+:focus-visible {
+	outline: var(--cd-focus-ring);
+	outline-offset: var(--cd-focus-offset);
+}
+
+/* 6. Utilities */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+@keyframes cd-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}

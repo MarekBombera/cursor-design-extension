@@ -15,13 +15,16 @@ import {
 	keepLiveActions,
 	liveRegionText,
 	openReply,
+	frameLabel,
+	handoffCopy,
 	panelItems,
+	panelSummary,
 	relativeTime,
 	submitCopy,
 	submitCopyOpen,
 	submitReply,
 	submitStatus,
-	unresolvedCount,
+	summaryParts,
 } from './commentsPanel';
 import type { PostedComment } from './hostMessages';
 import { applyAnchorRects } from './pins';
@@ -53,10 +56,12 @@ const frame = (overrides: Partial<FrameRecord> = {}): FrameRecord => ({
 	height: 300,
 	generation: 1,
 	kind: 'iframe',
+	tileKind: 'empty',
 	tileText: '',
 	html: '<p>a</p>',
 	group: undefined,
 	measuredHeight: 300,
+	heightReported: true,
 	guard: { lastGrowth: 0, frozen: false },
 	...overrides,
 });
@@ -64,7 +69,7 @@ const frame = (overrides: Partial<FrameRecord> = {}): FrameRecord => ({
 const actionsOf = (entries: Record<string, CommentAction>): CommentActions =>
 	new Map(Object.entries(entries));
 
-test('panelItems groups open and sent before resolved, each in file order', () => {
+test('panelItems groups open and sent before resolved, each in file order, numbered over every status', () => {
 	const comments = [
 		comment({ id: 'r1', status: 'resolved' }),
 		comment({ id: 's1', status: 'sent' }),
@@ -73,14 +78,19 @@ test('panelItems groups open and sent before resolved, each in file order', () =
 	];
 	const items = panelItems({ comments, anchors: new Map(), frames: [frame()] });
 	assert.deepEqual(
-		items.unresolved.map((item) => item.comment.id),
-		['s1', 'o1'],
+		items.unresolved.map((item) => [item.comment.id, item.number]),
+		[
+			['s1', 2],
+			['o1', 3],
+		],
 	);
 	assert.deepEqual(
-		items.resolved.map((item) => item.comment.id),
-		['r1', 'r2'],
+		items.resolved.map((item) => [item.comment.id, item.number]),
+		[
+			['r1', 1],
+			['r2', 4],
+		],
 	);
-	assert.equal(unresolvedCount(comments), 2);
 });
 
 test('panelItems: a live box: null beats clean disk flags', () => {
@@ -89,7 +99,11 @@ test('panelItems: a live box: null beats clean disk flags', () => {
 		frameId: 'a',
 		anchors: [{ id: 'c1', box: null, visible: null }],
 	});
-	const [item] = panelItems({ comments: [comment()], anchors, frames: [frame()] }).unresolved;
+	const [item] = panelItems({
+		comments: [comment()],
+		anchors,
+		frames: [frame()],
+	}).unresolved;
 	assert.equal(item?.badge, 'missing');
 	assert.equal(item?.frameLabel, 'Home');
 	assert.equal(item?.canJump, true);
@@ -277,6 +291,7 @@ test('one copy at a time: a pending card copy or batch blocks every other copy',
 		actions: cardPending,
 		copyOpen: {},
 		openCount: 2,
+		copiedShowing: false,
 		requestId: 'r2',
 	});
 	assert.equal(batch.message, undefined);
@@ -290,10 +305,25 @@ test('one copy at a time: a pending card copy or batch blocks every other copy',
 			actions: new Map(),
 			copyOpen: { pending: 'r0' },
 			openCount: 2,
+			copiedShowing: false,
 			requestId: 'r2',
 		}).message,
 		undefined,
 	);
+});
+
+test('a click on the Copied feedback copies nothing; the same click after it sends', () => {
+	const click = (copiedShowing: boolean) =>
+		submitCopyOpen({
+			actions: new Map(),
+			copyOpen: {},
+			openCount: 2,
+			copiedShowing,
+			requestId: 'r1',
+		});
+	assert.equal(click(true).message, undefined);
+	assert.deepEqual(click(true).copyOpen, {});
+	assert.deepEqual(click(false).message, { type: 'comment:copy-open', requestId: 'r1' });
 });
 
 test('copy waits for a status request on the same comment; batch sends nothing with zero open', () => {
@@ -305,7 +335,13 @@ test('copy waits for a status request on the same comment; batch sends nothing w
 		undefined,
 	);
 	assert.equal(
-		submitCopyOpen({ actions: new Map(), copyOpen: {}, openCount: 0, requestId: 'r2' }).message,
+		submitCopyOpen({
+			actions: new Map(),
+			copyOpen: {},
+			openCount: 0,
+			copiedShowing: false,
+			requestId: 'r2',
+		}).message,
 		undefined,
 	);
 });
@@ -326,6 +362,7 @@ test('a new copy clears the previous error and keeps the composer text', () => {
 		actions: new Map(),
 		copyOpen: { error: 'Old failure' },
 		openCount: 1,
+		copiedShowing: false,
 		requestId: 'r2',
 	});
 	assert.deepEqual(batch.copyOpen, { pending: 'r2' });
@@ -356,7 +393,7 @@ test('an answer of the wrong kind returns the same object', () => {
 	assert.equal(misfit.copiedId, undefined);
 });
 
-test('answerCopyOpen: success copies, an error is kept and announced, a stranger changes nothing', () => {
+test('answerCopyOpen: success copies with its count, an error is kept and announced, a stranger changes nothing', () => {
 	const state = { pending: 'r1' };
 	const copied = answerCopyOpen({
 		state,
@@ -365,19 +402,19 @@ test('answerCopyOpen: success copies, an error is kept and announced, a stranger
 	assert.deepEqual(copied, {
 		state: {},
 		announcement: 'Prompt copied. 3 comments marked sent.',
-		copied: true,
+		copiedCount: 3,
 	});
 	const failed = answerCopyOpen({
 		state,
 		answer: { type: 'ui:error', requestId: 'r1', message: 'Busy' },
 	});
-	assert.deepEqual(failed, { state: { error: 'Busy' }, announcement: 'Busy', copied: false });
+	assert.deepEqual(failed, { state: { error: 'Busy' }, announcement: 'Busy' });
 	const stranger = answerCopyOpen({
 		state,
 		answer: { type: 'ui:copied', requestId: 'r9', count: 1 },
 	});
 	assert.equal(stranger.state, state);
-	assert.equal(stranger.copied, false);
+	assert.equal(stranger.copiedCount, undefined);
 });
 
 test('copyAnnouncement for single 0 and 1, batch 0, 1 and 3', () => {
@@ -395,4 +432,73 @@ test('copyAnnouncement for single 0 and 1, batch 0, 1 and 3', () => {
 		copyAnnouncement({ kind: 'batch', count: 3 }),
 		'Prompt copied. 3 comments marked sent.',
 	);
+});
+
+test('frameLabel: the label, or the id for an unknown frame or an empty label', () => {
+	const frames = [frame(), frame({ id: 'blank', label: '' })];
+	assert.equal(frameLabel(frames, 'a'), 'Home');
+	assert.equal(frameLabel(frames, 'gone'), 'gone');
+	assert.equal(frameLabel(frames, 'blank'), 'blank');
+});
+
+test('panelSummary counts open, sent and resolved', () => {
+	assert.deepEqual(panelSummary([]), { open: 0, sent: 0, resolved: 0 });
+	assert.deepEqual(
+		panelSummary([
+			comment({ id: 'o', status: 'open' }),
+			comment({ id: 's', status: 'sent' }),
+			comment({ id: 'r', status: 'resolved' }),
+		]),
+		{ open: 1, sent: 1, resolved: 1 },
+	);
+});
+
+test('summaryParts: open, sent, resolved with their status icons, zero counts left out', () => {
+	assert.deepEqual(summaryParts({ open: 0, sent: 0, resolved: 0 }), []);
+	assert.deepEqual(summaryParts({ open: 3, sent: 0, resolved: 2 }), [
+		{ text: '3 to send', icon: 'dot', tone: 'accent' },
+		{ text: '2 resolved', icon: 'check', tone: 'success' },
+	]);
+	assert.deepEqual(summaryParts({ open: 0, sent: 1, resolved: 0 }), [
+		{ text: '1 with Agent', icon: 'send', tone: 'agent' },
+	]);
+});
+
+test('handoffCopy: plural and singular, nothing to send with and without a hint, and copy feedback', () => {
+	assert.deepEqual(handoffCopy({ open: 3, sent: 0 }), {
+		label: 'Copy 3 open comments for Agent',
+		hint: 'Then paste into Cursor Agent chat.',
+		disabled: false,
+		copied: false,
+	});
+	assert.equal(handoffCopy({ open: 1, sent: 5 }).label, 'Copy 1 open comment for Agent');
+	assert.deepEqual(handoffCopy({ open: 0, sent: 2 }), {
+		label: 'Nothing new to send',
+		hint: '2 comments are with the Agent.',
+		disabled: true,
+		copied: false,
+	});
+	assert.equal(handoffCopy({ open: 0, sent: 1 }).hint, '1 comment is with the Agent.');
+	assert.deepEqual(handoffCopy({ open: 0, sent: 0 }), {
+		label: 'Nothing new to send',
+		hint: undefined,
+		disabled: true,
+		copied: false,
+	});
+	// Feedback wins over the open count and is never drawn disabled (submitCopyOpen ignores it).
+	assert.deepEqual(handoffCopy({ open: 2, sent: 3, copied: 3 }), {
+		label: 'Copied 3 comments',
+		hint: 'Now paste into Cursor Agent chat.',
+		disabled: false,
+		copied: true,
+	});
+	assert.equal(handoffCopy({ open: 0, sent: 1, copied: 1 }).label, 'Copied 1 comment');
+	assert.equal(handoffCopy({ open: 0, sent: 1, copied: 1 }).disabled, false);
+	// "Copied 0 comments" never shows, even with comments still open.
+	assert.deepEqual(handoffCopy({ open: 2, sent: 2, copied: 0 }), {
+		label: 'Nothing new to send',
+		hint: '2 comments are with the Agent.',
+		disabled: false,
+		copied: false,
+	});
 });
