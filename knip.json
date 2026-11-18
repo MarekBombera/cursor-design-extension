@@ -12,7 +12,7 @@
 		"src/**/*.ts",
 		"src/webview/**/*.{ts,svelte}",
 		"scripts/iifeStringPlugin.ts",
-		"tests/browser/*.ts"
+		"tests/browser/**/*.ts"
 	],
 	"include": ["files", "dependencies", "unlisted", "binaries", "unresolved", "exports", "types"]
 }
