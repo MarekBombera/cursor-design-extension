@@ -20,7 +20,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 <div class="cd-heading" style="left:48px;top:1048px;width:400px;height:32px">Mobile</div>
 <div class="cd-label" style="left:48px;top:80px;width:400px;height:24px">a</div>
 <iframe data-cd-frame="a" sandbox="allow-scripts" scrolling="no" title="a" style="left:48px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/a/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
-	//#region src/disk/layout.ts
+	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
@@ -39,8 +39,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;gap&quot;
 	];
 	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-	//#endregion
-	//#region src/webview/frame/frameMessages.ts
+	// src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
@@ -100,8 +99,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			default: return;
 		}
 	};
-	//#endregion
-	//#region src/webview/frame/pickPath.ts
+	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
 		const current = path.at(-1);
 		if (current === void 0 || isRoot(current)) return path;
@@ -109,11 +107,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	//#endregion
-	//#region src/webview/stageGeometry.ts
+	// src/webview/stageGeometry.ts
 	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	//#endregion
-	//#region src/webview/frame/pickTarget.ts
+	// src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
 		const resolved = stack.map(resolve);
 		for (const [index, candidate] of resolved.entries()) {
@@ -190,8 +186,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			[style.borderLeftWidth, style.borderLeftColor]
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
-	//#endregion
-	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
 		&quot;role&quot;,
 		&quot;name&quot;,
@@ -416,8 +411,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 		}
 	}
-	//#endregion
-	//#region src/webview/frame/selector.ts
+	// src/webview/frame/selector.ts
 	var FINDER_TIMEOUT_MS = 200;
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
@@ -504,8 +498,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
-	//#endregion
-	//#region src/webview/frame/commentPicking.ts
+	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
 		x: box.x,
@@ -755,8 +748,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/anchorRects.ts
+	// src/webview/frame/anchorRects.ts
 	var MOVE_THRESHOLD_PX = .5;
 	var rectMoved = (last, next) =&gt; {
 		if (last === null || next === null) return last !== next;
@@ -791,8 +783,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			max: MAX_FRAME_COORDINATE
 		})
 	});
-	//#endregion
-	//#region src/webview/frame/pinAnchors.ts
+	// src/webview/frame/pinAnchors.ts
 	var CAPTURED_TRIGGERS = [
 		&quot;scroll&quot;,
 		&quot;transitionend&quot;,
@@ -892,8 +883,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			schedule();
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/runtime.ts
+	// src/webview/frame/runtime.ts
 	var host = window.parent;
 	var lastSentHeight;
 	var heightTimer;
@@ -981,12 +971,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	installCommentPicking(host);
 	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
-	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:548px;top:80px;width:400px;height:24px">b</div>
 <iframe data-cd-frame="b" sandbox="allow-scripts" scrolling="no" title="b" style="left:548px;top:104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;desktop/b/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
-	//#region src/disk/layout.ts
+	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
@@ -1005,8 +994,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;gap&quot;
 	];
 	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-	//#endregion
-	//#region src/webview/frame/frameMessages.ts
+	// src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
@@ -1066,8 +1054,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			default: return;
 		}
 	};
-	//#endregion
-	//#region src/webview/frame/pickPath.ts
+	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
 		const current = path.at(-1);
 		if (current === void 0 || isRoot(current)) return path;
@@ -1075,11 +1062,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	//#endregion
-	//#region src/webview/stageGeometry.ts
+	// src/webview/stageGeometry.ts
 	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	//#endregion
-	//#region src/webview/frame/pickTarget.ts
+	// src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
 		const resolved = stack.map(resolve);
 		for (const [index, candidate] of resolved.entries()) {
@@ -1156,8 +1141,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			[style.borderLeftWidth, style.borderLeftColor]
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
-	//#endregion
-	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
 		&quot;role&quot;,
 		&quot;name&quot;,
@@ -1382,8 +1366,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 		}
 	}
-	//#endregion
-	//#region src/webview/frame/selector.ts
+	// src/webview/frame/selector.ts
 	var FINDER_TIMEOUT_MS = 200;
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
@@ -1470,8 +1453,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
-	//#endregion
-	//#region src/webview/frame/commentPicking.ts
+	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
 		x: box.x,
@@ -1721,8 +1703,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/anchorRects.ts
+	// src/webview/frame/anchorRects.ts
 	var MOVE_THRESHOLD_PX = .5;
 	var rectMoved = (last, next) =&gt; {
 		if (last === null || next === null) return last !== next;
@@ -1757,8 +1738,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			max: MAX_FRAME_COORDINATE
 		})
 	});
-	//#endregion
-	//#region src/webview/frame/pinAnchors.ts
+	// src/webview/frame/pinAnchors.ts
 	var CAPTURED_TRIGGERS = [
 		&quot;scroll&quot;,
 		&quot;transitionend&quot;,
@@ -1858,8 +1838,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			schedule();
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/runtime.ts
+	// src/webview/frame/runtime.ts
 	var host = window.parent;
 	var lastSentHeight;
 	var heightTimer;
@@ -1947,12 +1926,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	installCommentPicking(host);
 	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
-	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:1080px;width:400px;height:24px">c</div>
 <iframe data-cd-frame="c" sandbox="allow-scripts" scrolling="no" title="c" style="left:48px;top:1104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;mobile/c/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
-	//#region src/disk/layout.ts
+	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
@@ -1971,8 +1949,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;gap&quot;
 	];
 	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-	//#endregion
-	//#region src/webview/frame/frameMessages.ts
+	// src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
@@ -2032,8 +2009,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			default: return;
 		}
 	};
-	//#endregion
-	//#region src/webview/frame/pickPath.ts
+	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
 		const current = path.at(-1);
 		if (current === void 0 || isRoot(current)) return path;
@@ -2041,11 +2017,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	//#endregion
-	//#region src/webview/stageGeometry.ts
+	// src/webview/stageGeometry.ts
 	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	//#endregion
-	//#region src/webview/frame/pickTarget.ts
+	// src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
 		const resolved = stack.map(resolve);
 		for (const [index, candidate] of resolved.entries()) {
@@ -2122,8 +2096,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			[style.borderLeftWidth, style.borderLeftColor]
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
-	//#endregion
-	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
 		&quot;role&quot;,
 		&quot;name&quot;,
@@ -2348,8 +2321,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 		}
 	}
-	//#endregion
-	//#region src/webview/frame/selector.ts
+	// src/webview/frame/selector.ts
 	var FINDER_TIMEOUT_MS = 200;
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
@@ -2436,8 +2408,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
-	//#endregion
-	//#region src/webview/frame/commentPicking.ts
+	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
 		x: box.x,
@@ -2687,8 +2658,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/anchorRects.ts
+	// src/webview/frame/anchorRects.ts
 	var MOVE_THRESHOLD_PX = .5;
 	var rectMoved = (last, next) =&gt; {
 		if (last === null || next === null) return last !== next;
@@ -2723,8 +2693,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			max: MAX_FRAME_COORDINATE
 		})
 	});
-	//#endregion
-	//#region src/webview/frame/pinAnchors.ts
+	// src/webview/frame/pinAnchors.ts
 	var CAPTURED_TRIGGERS = [
 		&quot;scroll&quot;,
 		&quot;transitionend&quot;,
@@ -2824,8 +2793,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			schedule();
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/runtime.ts
+	// src/webview/frame/runtime.ts
 	var host = window.parent;
 	var lastSentHeight;
 	var heightTimer;
@@ -2913,12 +2881,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	installCommentPicking(host);
 	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
-	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:2080px;width:400px;height:24px">d</div>
 <iframe data-cd-frame="d" sandbox="allow-scripts" scrolling="no" title="d" style="left:48px;top:2104px;width:400px;height:800px" srcdoc="&lt;base href=&quot;ungrouped/d/&quot;&gt;&lt;script data-cd-canvas-runtime&gt;(function() {
-	//#region src/disk/layout.ts
+	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	var COMMENT_STYLE_KEYS = [
@@ -2937,8 +2904,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;gap&quot;
 	];
 	var COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-	//#endregion
-	//#region src/webview/frame/frameMessages.ts
+	// src/webview/frame/frameMessages.ts
 	var FRAME_WHEEL_MESSAGE = &quot;cd:frame-wheel&quot;;
 	var FRAME_HEIGHT_MESSAGE = &quot;cd:frame-height&quot;;
 	var FRAME_READY_MESSAGE = &quot;cd:ready&quot;;
@@ -2998,8 +2964,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			default: return;
 		}
 	};
-	//#endregion
-	//#region src/webview/frame/pickPath.ts
+	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
 		const current = path.at(-1);
 		if (current === void 0 || isRoot(current)) return path;
@@ -3007,11 +2972,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return parent === null ? path : [...path, parent];
 	};
 	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	//#endregion
-	//#region src/webview/stageGeometry.ts
+	// src/webview/stageGeometry.ts
 	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	//#endregion
-	//#region src/webview/frame/pickTarget.ts
+	// src/webview/frame/pickTarget.ts
 	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
 		const resolved = stack.map(resolve);
 		for (const [index, candidate] of resolved.entries()) {
@@ -3088,8 +3051,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			[style.borderLeftWidth, style.borderLeftColor]
 		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
-	//#endregion
-	//#region node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
+	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
 		&quot;role&quot;,
 		&quot;name&quot;,
@@ -3314,8 +3276,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 		}
 	}
-	//#endregion
-	//#region src/webview/frame/selector.ts
+	// src/webview/frame/selector.ts
 	var FINDER_TIMEOUT_MS = 200;
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
@@ -3402,8 +3363,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
-	//#endregion
-	//#region src/webview/frame/commentPicking.ts
+	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
 		x: box.x,
@@ -3653,8 +3613,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/anchorRects.ts
+	// src/webview/frame/anchorRects.ts
 	var MOVE_THRESHOLD_PX = .5;
 	var rectMoved = (last, next) =&gt; {
 		if (last === null || next === null) return last !== next;
@@ -3689,8 +3648,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			max: MAX_FRAME_COORDINATE
 		})
 	});
-	//#endregion
-	//#region src/webview/frame/pinAnchors.ts
+	// src/webview/frame/pinAnchors.ts
 	var CAPTURED_TRIGGERS = [
 		&quot;scroll&quot;,
 		&quot;transitionend&quot;,
@@ -3790,8 +3748,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			schedule();
 		});
 	};
-	//#endregion
-	//#region src/webview/frame/runtime.ts
+	// src/webview/frame/runtime.ts
 	var host = window.parent;
 	var lastSentHeight;
 	var heightTimer;
@@ -3879,19 +3836,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	installCommentPicking(host);
 	installPinAnchors(host);
 	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
-	//#endregion
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <script>
 (() => {
 var stageGeometry = (function(exports) {
 	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-	//#region src/disk/layout.ts
+	// src/disk/layout.ts
 	var MAX_FRAME_WIDTH = 3840;
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
-	//#endregion
-	//#region src/webview/stageGeometry.ts
+	// src/webview/stageGeometry.ts
 	var MIN_STAGE_ZOOM = .05;
 	var MAX_STAGE_ZOOM = 10;
 	var ZOOM_STEP_CAP = .2;
@@ -4145,7 +4100,6 @@ var stageGeometry = (function(exports) {
 	});
 	var passedGestureThreshold = ({ startScreen, screen }) => Math.abs(screen.x - startScreen.x) >= GESTURE_THRESHOLD_PX || Math.abs(screen.y - startScreen.y) >= GESTURE_THRESHOLD_PX;
 	var placementChanged = ({ base, next }) => base.x !== next.x || base.y !== next.y || base.width !== next.width;
-	//#endregion
 	exports.FIT_PADDING = FIT_PADDING;
 	exports.MAX_STAGE_ZOOM = MAX_STAGE_ZOOM;
 	exports.MIN_STAGE_ZOOM = MIN_STAGE_ZOOM;

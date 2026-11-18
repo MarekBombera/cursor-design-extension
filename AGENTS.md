@@ -137,7 +137,7 @@ protection is a separate remote setting.
 - Watch: `pnpm watch` (`pnpm run --parallel "/^watch:/"` — `watch:pack` and `watch:webview`)
 - Debug: **F5** (Run Extension): Extension Development Host opens `fixtures/dev-workspace`
 - Package: `pnpm package` (`vp check --no-fmt && vp pack --minify --no-sourcemap && vp build -c vite.webview.config.ts --sourcemap false`)
-- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint / type-aware check still run on TS 7 via tsgolint
+- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint / type-aware check still run on TS 7 via tsrs (bundled with vite-plus)
 - Package `.vsix`: `pnpm vsix`
 - Knip: `pnpm knip` (unused files/deps; not Verify)
 
