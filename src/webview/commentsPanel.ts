@@ -129,16 +129,17 @@ export const handoffCopy = ({
 	sent: number;
 	copied?: number;
 }): { label: string; hint: string | undefined; disabled: boolean; copied: boolean } => {
-	const disabled = copied === undefined && open === 0;
 	if (copied !== undefined && copied > 0) {
 		return {
 			label: `Copied ${commentsText(copied)}`,
 			hint: 'Now paste into Cursor Agent chat.',
-			disabled,
+			disabled: false,
 			copied: true,
 		};
 	}
-	if (copied === undefined && open > 0) {
+	// A copied count of 0 is no feedback: it never draws an enabled "Nothing new to send".
+	const disabled = open === 0;
+	if (open > 0) {
 		return {
 			label: `Copy ${open === 1 ? '1 open comment' : `${String(open)} open comments`} for Agent`,
 			hint: 'Then paste into Cursor Agent chat.',
@@ -412,11 +413,11 @@ export const answerCopyOpen = ({
 	if (answer.type === 'ui:error') {
 		return { state: { error: answer.message }, announcement: answer.message };
 	}
-	return {
-		state: {},
-		announcement: copyAnnouncement({ kind: 'batch', count: answer.count }),
-		copiedCount: answer.count,
-	};
+	const announcement = copyAnnouncement({ kind: 'batch', count: answer.count });
+	// Nothing marked sent shows no Copied feedback: the button keeps its "Nothing new to send" look.
+	return answer.count > 0
+		? { state: {}, announcement, copiedCount: answer.count }
+		: { state: {}, announcement };
 };
 
 // The host's answer to one request. An answer to no pending request, or of the wrong kind

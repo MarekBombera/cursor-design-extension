@@ -211,6 +211,10 @@ export const pinLabel = ({
 	return `${statusBadge(comment.status).label} comment ${number}${state}: ${excerpt}`;
 };
 
+// Screen px between pins whose tips coincide: the 24px pin (--cd-pin), its 2px ring on both sides
+// and a 2px gap. Pins keep their size at any zoom, so this is screen space, not stage space.
+const PIN_STACK_STEP_PX = 30;
+
 // The pins to draw, in comments.json order. `frames` are the drawn frames (drag preview included)
 // and `view` the committed view, the same inputs that place the frame wrappers. A comment is
 // placed only on a live iframe frame, and hidden when its target is clipped out or its point
@@ -234,6 +238,11 @@ export const layoutPins = ({
 	const liveFrames = new Map(
 		frames.filter((frame) => liveIds.has(frame.id)).map((frame) => [frame.id, frame]),
 	);
+	// Pins already placed per rounded tip, so comments on one element (or nested elements that
+	// share a corner) line up to the left instead of covering each other. ponytail: exact-pixel
+	// match only; tips a few px apart (a border, padding) still overlap. Upgrade: step any pin whose
+	// tip is within one pin width of an earlier one.
+	const pinsAtTip = new Map<string, number>();
 	return comments.flatMap((comment, index) => {
 		const frame = liveFrames.get(comment.frameId);
 		if (frame === undefined) {
@@ -252,12 +261,15 @@ export const layoutPins = ({
 			return [];
 		}
 		const screen = stageToScreen({ view, stageX: frame.x + point.x, stageY: frame.y + point.y });
+		const tip = `${String(Math.round(screen.x))},${String(Math.round(screen.y))}`;
+		const before = pinsAtTip.get(tip) ?? 0;
+		pinsAtTip.set(tip, before + 1);
 		const badge = pinBadge({ comment, live });
 		const number = commentNumber(index);
 		return [
 			{
 				id: comment.id,
-				x: screen.x,
+				x: screen.x - before * PIN_STACK_STEP_PX,
 				y: screen.y,
 				number,
 				status: comment.status,

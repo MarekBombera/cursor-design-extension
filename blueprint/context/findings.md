@@ -145,16 +145,6 @@
 **Resolution:**
 2026-11-17 fix/share-the-copy-type-check: `isCopyType` exported from `chromeMessages.ts`, `refuse` in `panelComments.ts` calls it, rule 05 lists it. `pnpm verify` green (512 tests); the copy-failure tests in `panelComments.test.ts` still assert the refresh. Awaits `/audit` to close.
 
-### F-108 [P2] fixed - Pins still cover the words they point at
-
-**File:** src/webview/pins.ts (`pinPoint`)
-**Found:** 2026-11-17 by critical review (design fidelity)
-**Why it matters:** The tip sits on the stored click point and the body grows up-left over the text ("d●signs", "boa●d"). The approved mockup puts the tip on the element's top-left corner with the body in the margin.
-**Suggested fix:** Element comments anchor the tip at the target box's top-left corner; page comments keep the stored fraction.
-**Resolution:**
-2026-11-17 Batch A: `pinPoint` puts an element pin's tip on its target box's top-left corner (page comments keep the stored fraction); `pins.test.ts` and the `pins.spec.ts` tip assertions updated on purpose.
-2026-11-18 /audit current (fresh reviewer, all lenses): left `fixed`. The original defect is gone (`pinPoint` returns the box top-left for element comments; `pins.spec.ts` covers the frame-corner case), but the repair makes pins on one element, or on nested elements sharing a top-left corner, stack on the identical point: see F-115. Close together with F-115 (or on Bombic's explicit acceptance of it).
-
 ### F-112 [P3] open - Accessibility polish from the critical review
 
 **File:** several (src/webview/ui/Badge.svelte:22, CommentsPanel.svelte:215, CommentCard.svelte:270, :185, zoomChoices.ts, tests/browser/pins.spec.ts)
@@ -225,18 +215,11 @@
 2026-11-17 Batch B part: TargetRef's button reset removed; the card's widget props gone (F-100); no `?? 0` numbers (`commentNumber` from the full list in `layoutPins` / `panelItems`, the thread takes its pin's number); `pinLabel` takes its status word from `statusBadge` (labels unchanged).
 2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for one part: the layout numbers coupled to other components (`CommentCard.svelte` `.actions` negative margins mirror the ghost `Button` padding; `.joined::before` mirrors the entry gap). Confirmed done: one `[hidden]` rule and one `button` reset, `--cd-stage-zoom`, no `--cd-lh-xs`, lifted-shadow and kbd tokens, `segment` `size?: never`, IconButton label contract, no `?? 0` comment numbers, `frameSizeText` iframe-only, exemptions list their properties, meaning colours caught through local custom properties, shared locators in `harness.ts`, pin label words from `statusBadge`.
 
-### F-115 [P2] open - Pins on one element, or on nested elements sharing a corner, now stack on one point
+### F-117 [P3] fixed - Pin stacking only catches tips that round to the same pixel, with no ponytail note
 
-**File:** src/webview/pins.ts:186 (`pinPoint`), src/webview/Pins.svelte:42
-**Found:** 2026-11-18 by /audit (scope: current; lens: quality, tests)
-**Why it matters:** F-108 anchors every element pin's tip at its target box's top-left corner. Before, each pin sat at its own click fraction, so two pins rarely coincided. Now two comments on the same element always draw at the identical tip. So do comments on a container and its first child when the container has no padding (a `section` and its heading, a `header` and its `nav`). The later pin fully covers the earlier one: pointer users cannot open the earlier thread from the canvas (Tab and the panel's jump still reach it). "Grouping overlapping pins" was ruled out of scope when overlaps were incidental; this change makes them deterministic. No test covers two comments on one target.
-**Suggested fix:** In `layoutPins`, step a pin whose tip equals an earlier placed pin's tip left by one pin width plus a gap. That is one pass over the placed list, with a `ponytail:` note for the O(n²) check. Add one `pins.test.ts` case with two comments on one target. Or Bombic explicitly accepts the overlap as a known ceiling. Either way, F-108 closes with this.
+**File:** src/webview/pins.ts:262 (`layoutPins`, the `tip` key)
+**Found:** 2026-11-18 by /audit (scope: current; lens: quality)
+**Why it matters:** The stack key is the tip rounded to whole screen px. Two tips 0.2 px apart that straddle a .5 boundary (10.45 and 10.55) get different keys and still draw one pin over the other; so do nested targets whose corners differ by a 1 px border or a few px of padding (the later 24 px pin covers almost all of the earlier one, at any zoom above 1 more so). Same-element comments (the reported case) always share a key, so F-115 holds; this is the near-coincident remainder. It is a deliberate heuristic with a known ceiling, and rule 03 asks for a `ponytail:` comment naming it and the upgrade path; there is none.
+**Suggested fix:** Add a `ponytail:` note on `pinsAtTip` naming the ceiling (exact-pixel match; near-coincident tips still overlap) and the upgrade path (step a pin whose tip is within one pin width of an earlier placed tip). No behavior change needed unless Bombic wants the wider rule.
 **Resolution:**
-
-### F-116 [P3] open - A copy-open answer of 0 draws an enabled primary "Nothing new to send"
-
-**File:** src/webview/commentsPanel.ts:132 (`handoffCopy`), src/webview/App.svelte:586 (`handleCopyOpenAnswer`)
-**Found:** 2026-11-18 by /audit (scope: current; lens: quality, tests)
-**Why it matters:** `ui:copied` can carry `count: 0` when nothing was open on disk at copy time (for example, the Agent or another window sent them first). App still shows the feedback, so `handoffCopy` gets `copied = 0`. That returns "Nothing new to send" with `disabled: false` (`disabled = copied === undefined && open === 0`), drawn as the primary button with the sparkle. For `COPY_FEEDBACK_MS`, `submitCopyOpen` silently ignores clicks on it (`copiedShowing`). The spec's contract says the button is disabled at zero open. `commentsPanel.test.ts` pins the odd state (`open: 2, copied: 0` gives `disabled: false`).
-**Suggested fix:** Show the copy-open feedback only for a count above zero (`answerCopyOpen` returns `copiedCount` only when `count > 0`; the announcement stays). Then delete `handoffCopy`'s zero branch and its test case. Nothing current is lost.
-**Resolution:**
+2026-11-18 fix/pin-stacking-and-zero-copy: `ponytail:` note on `pinsAtTip` in `layoutPins` names the exact-pixel ceiling and the upgrade path (step any pin within one pin width of an earlier tip). Comment only; awaits a later `/audit` to close.

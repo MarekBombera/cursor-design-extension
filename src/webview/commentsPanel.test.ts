@@ -415,6 +415,11 @@ test('answerCopyOpen: success copies with its count, an error is kept and announ
 	});
 	assert.equal(stranger.state, state);
 	assert.equal(stranger.copiedCount, undefined);
+	// Nothing marked sent: announced, but no Copied feedback.
+	assert.deepEqual(
+		answerCopyOpen({ state, answer: { type: 'ui:copied', requestId: 'r1', count: 0 } }),
+		{ state: {}, announcement: 'Prompt copied.' },
+	);
 });
 
 test('copyAnnouncement for single 0 and 1, batch 0, 1 and 3', () => {
@@ -494,11 +499,17 @@ test('handoffCopy: plural and singular, nothing to send with and without a hint,
 	});
 	assert.equal(handoffCopy({ open: 0, sent: 1, copied: 1 }).label, 'Copied 1 comment');
 	assert.equal(handoffCopy({ open: 0, sent: 1, copied: 1 }).disabled, false);
-	// "Copied 0 comments" never shows, even with comments still open.
+	// A copied count of 0 is no feedback: never "Copied 0 comments", never an enabled empty button.
 	assert.deepEqual(handoffCopy({ open: 2, sent: 2, copied: 0 }), {
+		label: 'Copy 2 open comments for Agent',
+		hint: 'Then paste into Cursor Agent chat.',
+		disabled: false,
+		copied: false,
+	});
+	assert.deepEqual(handoffCopy({ open: 0, sent: 2, copied: 0 }), {
 		label: 'Nothing new to send',
 		hint: '2 comments are with the Agent.',
-		disabled: false,
+		disabled: true,
 		copied: false,
 	});
 });

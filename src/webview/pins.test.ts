@@ -196,6 +196,31 @@ test('layoutPins: screen point on the drawn frame at the committed view, numbere
 	);
 });
 
+test('layoutPins lines up pins whose tips coincide to the left, in file order', () => {
+	const sameTarget = (id: string): PostedComment => comment({ id, selector: 'h1' });
+	const pins = layoutPins({
+		comments: [
+			sameTarget('c1'),
+			sameTarget('c2'),
+			comment({ id: 'other', rect: box }),
+			sameTarget('c3'),
+		],
+		anchors: new Map(),
+		frames: [frame()],
+		view,
+	});
+	const at = (id: string): { x: number; y: number } => {
+		const pin = pins.find((placed) => placed.id === id);
+		assert.ok(pin);
+		return { x: pin.x, y: pin.y };
+	};
+	// The first keeps the corner; each later one at the same tip steps 30 screen px left.
+	assert.deepEqual(at('c2'), { x: at('c1').x - 30, y: at('c1').y });
+	assert.deepEqual(at('c3'), { x: at('c1').x - 60, y: at('c1').y });
+	// A pin at another tip is not shifted.
+	assert.deepEqual(at('other'), { x: 1000 + box.x, y: 500 + box.y });
+});
+
 test('layoutPins hides a pin outside visible, fully clipped, or outside the frame', () => {
 	const place = (anchors: AnchorState, comments = [comment()]): number =>
 		layoutPins({ comments, anchors, frames: [frame()], view }).length;

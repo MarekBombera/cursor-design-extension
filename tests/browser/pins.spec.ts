@@ -87,8 +87,9 @@ const DOOMED = comment({
 	selector: '#doomed',
 	tagName: 'div',
 	text: 'Doomed',
-	// The pick-time rect the missing pin falls back to.
-	rect: { x: 24, y: 200, width: 80, height: 24 },
+	// The pick-time rect the missing pin falls back to: a corner no live pin shares (the mover's
+	// pin tip is at 24,200, and coinciding tips line up side by side, F-115).
+	rect: { x: 104, y: 200, width: 80, height: 24 },
 	pin: { x: 0.5, y: 0.5 },
 	body: 'Doomed',
 });
@@ -481,6 +482,25 @@ test('a pin click opens its thread with the body, reply authors and actions', as
 	for (const [index, name] of ['Close', 'Reply', 'Resolve', 'Copy for Agent'].entries()) {
 		await expect(buttons.nth(index)).toHaveAccessibleName(name);
 	}
+});
+
+test('two comments on one element get two pins side by side, each opening its own thread', async ({
+	page,
+}) => {
+	const second = comment({ id: 'c-title-2', body: 'Second note' });
+	await openPinStage(page, [TITLE, second]);
+	// The first keeps the element corner (F-115: the second lines up to its left).
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
+	const first = await boxOf(pinOf(page, TITLE.id));
+	const next = await boxOf(pinOf(page, second.id));
+	expect(next.x + next.width).toBeLessThanOrEqual(first.x);
+	expect(Math.abs(next.y - first.y)).toBeLessThanOrEqual(1);
+	await openThread(page, TITLE.id);
+	await expect(thread(page)).toContainText('Title');
+	await page.keyboard.press('Escape');
+	await expect(thread(page)).toBeHidden();
+	await openThread(page, second.id);
+	await expect(thread(page)).toContainText('Second note');
 });
 
 test('Escape closes the thread and focuses its pin', async ({ page }) => {
