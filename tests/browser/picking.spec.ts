@@ -270,6 +270,33 @@ test('Comment mode: Parent, and ↑/↓ with focus in the popover, step the pick
 	).toBe(true);
 });
 
+test('Comment mode: Alt+click picks the parent, and ↓ returns to the child', async ({ page }) => {
+	const stage = await openPickingStage(page);
+	await toggleComment(page, true);
+	const point = centerOf(await revealChangeButton(page, stage));
+	const count = (await picksOf(page, 'a')).length;
+
+	await page.mouse.move(point.x, point.y);
+	await page.keyboard.down('Alt');
+	await page.mouse.click(point.x, point.y);
+	await page.keyboard.up('Alt');
+	expect(
+		await resolvesTo({ page, selector: await nextPickSelector(page, count), expected: 'parent' }),
+	).toBe(true);
+
+	await page.keyboard.press('ArrowDown');
+	expect(
+		await resolvesTo({
+			page,
+			selector: await nextPickSelector(page, count + 1),
+			expected: '#change-button',
+		}),
+	).toBe(true);
+
+	// Control: the same point without Alt picks the button itself.
+	expect((await pickInFrame({ page, frameId: 'a', point })).tagName).toBe('button');
+});
+
 test('Comment mode: a pick in another frame moves the one pick outline', async ({ page }) => {
 	const stage = await openPickingStage(page);
 	await toggleComment(page, true);

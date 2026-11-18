@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -56,7 +56,7 @@ flowchart LR
   end
   Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
   Home[("~/.cursor/skills/cursor-design/SKILL.md")]
-  State[("webview state<br/>stageView, commentsPanelOpen")]
+  State[("webview state<br/>stageView, commentsPanelOpen,<br/>commentMode, commentDraft, openThreadId, replyDrafts")]
   Clip[("system clipboard")]
 
   Agent -->|MCP tool calls| Tools
@@ -70,7 +70,7 @@ flowchart LR
   Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status, comment:copy, comment:copy-open| Panel
   Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent under the lock;<br/>readComments, getComment, listComments| Disk
   Panel -->|vscode.env.clipboard.writeText: the locked Agent prompt (8h)| Clip
-  Chrome -->|getState on load, setState: each save keeps the other key| State
+  Chrome -->|getState on load (parseSavedCommentUi), setState: each save keeps the other keys| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
   Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key,<br/>cd:anchor-rects| Chrome
   Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child, cd:anchors| Frames
@@ -386,8 +386,15 @@ sequenceDiagram
   mounted and renders its list only while open. When an update rebuilds the focused item and focus
   fell to body, it goes back to the same control, but only while the webview has focus.
 - Panel state: the toolbar toggle saves `commentsPanelOpen` (`saveCommentsPanelOpen`) in the one
-  webview state record beside `stageView`; each save keeps the other key. A missing or
+  webview state record beside `stageView`; each save keeps the other keys. A missing or
   non-boolean value reads as closed. Nothing new on disk.
+- Comment UI across a tab switch (fix, chrome-only): one `$effect` saves `commentMode`,
+  `commentDraft` (with its `body`; never a pending one), `openThreadId` and `replyDrafts` through
+  `saveCommentUi`, omitting default keys. On load `parseSavedCommentUi` drops bad keys one by one.
+  Comment mode and reply text come back at once; the draft is held until the first
+  `canvas:updated` (`resolveHeldDraft`: back on a live iframe frame, else dropped), the thread
+  until its pin is placed (`resolveHeldThread`). A restored item takes focus only when nothing else
+  has it. No message to the host.
 - Click to jump is chrome-only, with no message to the host or a frame. The target chip of a
   comment on a live iframe frame runs `jumpTarget` from the frame's latest `cd:anchor-rects` (else
   the stored rect), then `jumpStageView` (keeps the zoom, zooms out only to fit) through

@@ -7,13 +7,16 @@ import {
 	canSubmit,
 	type CommentDraft,
 	draftFromPick,
+	editDraftBody,
 	keepLiveDraft,
 	placePopover,
 	popoverAnchor,
 	popoverKeyAction,
+	resolveHeldDraft,
 	submitDraft,
 	targetChipText,
 } from './commentPopover';
+import type { FrameRecord } from './canvasFrames';
 import type { FramePickMessage } from './frame/frameMessages';
 
 const userPick = (overrides: Partial<FramePickMessage> = {}): FramePickMessage => ({
@@ -160,6 +163,39 @@ test('the draft closes when the mode ends or its frame is no longer a live ifram
 	assert.equal(
 		keepLiveDraft({ draft, commentMode: false, liveFrameIds: new Set(['a']) }),
 		undefined,
+	);
+});
+
+test('a retarget keeps the body, a new draft starts empty, and a pending draft ignores edits', () => {
+	assert.equal(draftOf().body, '');
+	const typed = editDraftBody(draftOf(), 'Bolder');
+	assert.equal(typed.body, 'Bolder');
+	const retargeted = draftFromPick({
+		draft: typed,
+		frameId: 'b',
+		pick: userPick({ selector: 'p', tagName: 'p' }),
+		generation: 5,
+	});
+	assert.equal(retargeted?.body, 'Bolder');
+	const pending = { ...typed, pendingRequestId: 'r1' };
+	assert.equal(editDraftBody(pending, 'Other'), pending);
+});
+
+const iframeRecord = (id: string, kind: FrameRecord['kind']): FrameRecord =>
+	({ id, kind }) as FrameRecord;
+
+test('a held draft comes back only in Comment mode on a live iframe frame', () => {
+	const held = editDraftBody(draftOf(), 'Bolder');
+	const live = [iframeRecord('a', 'iframe')];
+	assert.deepEqual(resolveHeldDraft({ held, commentMode: true, frames: live }), { draft: held });
+	assert.deepEqual(resolveHeldDraft({ held, commentMode: false, frames: live }), {});
+	assert.deepEqual(
+		resolveHeldDraft({ held, commentMode: true, frames: [iframeRecord('b', 'iframe')] }),
+		{},
+	);
+	assert.deepEqual(
+		resolveHeldDraft({ held, commentMode: true, frames: [iframeRecord('a', 'tile')] }),
+		{},
 	);
 });
 

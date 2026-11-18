@@ -15,6 +15,7 @@ import {
 	pinBadge,
 	pinLabel,
 	pinPoint,
+	resolveHeldThread,
 } from './pins';
 
 const comment = (overrides: Partial<PostedComment> = {}): PostedComment => ({
@@ -367,4 +368,32 @@ test('jumpTarget: a box partly outside the frame fits only its inside part', () 
 		jumpTarget({ comment: comment(), live: { box: partial, visible: null }, frame: jumpFrame }).fit,
 		{ width: 100, height: 50 },
 	);
+});
+
+test('resolveHeldThread: open on its pin, drop once it cannot come back, hold otherwise', () => {
+	const pins = layoutPins({ comments: [comment()], anchors: new Map(), frames: [frame()], view });
+	const known = { comments: [comment()], liveFrameIds: new Set(['a']), anchorAnswered: false };
+	assert.equal(resolveHeldThread({ held: 'c1', pins, ...known }), 'open');
+	// Nothing known yet.
+	assert.equal(
+		resolveHeldThread({
+			held: 'c1',
+			pins: [],
+			comments: undefined,
+			liveFrameIds: undefined,
+			anchorAnswered: false,
+		}),
+		'hold',
+	);
+	// Known, placed later (the frame has not answered yet).
+	assert.equal(resolveHeldThread({ held: 'c1', pins: [], ...known }), 'hold');
+	// Comments known without it.
+	assert.equal(resolveHeldThread({ held: 'c2', pins, ...known }), 'drop');
+	// Its frame is gone or a tile.
+	assert.equal(
+		resolveHeldThread({ held: 'c1', pins: [], ...known, liveFrameIds: new Set(['b']) }),
+		'drop',
+	);
+	// The frame answered and no pin was placed.
+	assert.equal(resolveHeldThread({ held: 'c1', pins: [], ...known, anchorAnswered: true }), 'drop');
 });

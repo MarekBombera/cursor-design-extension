@@ -236,7 +236,7 @@
 			value={action?.reply ?? ''}
 			label="Reply"
 			placeholder="Reply to the Agent…"
-			rows={2}
+			rows={4}
 			primaryLabel="Add reply"
 			pending={replyPending}
 			canSubmit={canSend}

@@ -249,8 +249,12 @@ const parseStyles = (value: unknown): CommentStyles | undefined => {
 	return styles;
 };
 
-const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {
-	const { tagName, text, isPage, repost } = record;
+// The pick's own fields, without `type` and `repost`: cd:pick and a saved comment draft (the
+// chrome's webview state) share these guards.
+export const parsePickFields = (
+	record: Record<string, unknown>,
+): Omit<FramePickMessage, 'type' | 'repost'> | undefined => {
+	const { tagName, text, isPage } = record;
 	const rect = parseNullableRect(record.rect);
 	const selector = parseSelector(record.selector);
 	const point = parsePoint(record.point);
@@ -259,7 +263,7 @@ const parseFramePick = (record: Record<string, unknown>): FramePickMessage | und
 	if (!isTagName(tagName) || rect === undefined || typeof isPage !== 'boolean') {
 		return undefined;
 	}
-	if (box === undefined || typeof repost !== 'boolean') {
+	if (box === undefined) {
 		return undefined;
 	}
 	if (selector === undefined || !isPickText(text) || point === undefined || styles === undefined) {
@@ -269,18 +273,15 @@ const parseFramePick = (record: Record<string, unknown>): FramePickMessage | und
 	if (isPage && (selector !== 'body' || tagName !== 'body')) {
 		return undefined;
 	}
-	return {
-		type: FRAME_PICK_MESSAGE,
-		selector,
-		tagName,
-		text,
-		rect,
-		point,
-		box,
-		styles,
-		isPage,
-		repost,
-	};
+	return { selector, tagName, text, rect, point, box, styles, isPage };
+};
+
+const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {
+	const fields = parsePickFields(record);
+	if (fields === undefined || typeof record.repost !== 'boolean') {
+		return undefined;
+	}
+	return { type: FRAME_PICK_MESSAGE, ...fields, repost: record.repost };
 };
 
 // At most MAX_COMMENTS entries; one bad entry rejects the whole list. Entries are rebuilt, so

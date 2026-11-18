@@ -18,6 +18,8 @@
 
 	type Props = {
 		draft: CommentDraft;
+		// The draft's typed text; App owns it, so it lives and dies with the draft.
+		body: string;
 		// The draft frame's display name (frameLabel).
 		frameLabel: string;
 		// Viewport-local screen px of the pick point.
@@ -26,6 +28,7 @@
 		viewportHeight: number;
 		// A live pick exists for the draft's frame; false after that frame reloaded.
 		canStep: boolean;
+		oninput: (body: string) => void;
 		onAdd: (body: string) => void;
 		onCancel: () => void;
 		onParent: () => void;
@@ -34,20 +37,19 @@
 
 	let {
 		draft,
+		body,
 		frameLabel,
 		anchor,
 		viewportWidth,
 		viewportHeight,
 		canStep,
+		oninput,
 		onAdd,
 		onCancel,
 		onParent,
 		onChild,
 	}: Props = $props();
 
-	// The typed text lives here and survives a retarget, a host error and a frame reload: the
-	// popover stays mounted while the draft exists.
-	let body = $state('');
 	let width = $state(0);
 	let height = $state(0);
 	// Read by handlers only, so not reactive.
@@ -70,9 +72,13 @@
 		};
 	};
 
-	// App calls this after the pick that opened or retargeted the draft.
-	export const focusBody = (): void => {
+	// App calls this after the pick that opened or retargeted the draft, and after a restore (the
+	// caret then goes to the end of the restored text).
+	export const focusBody = (caretAtEnd = false): void => {
 		textarea?.focus();
+		if (caretAtEnd) {
+			textarea?.setSelectionRange(body.length, body.length);
+		}
 	};
 
 	const handleKeydown = (event: KeyboardEvent): void => {
@@ -143,13 +149,13 @@
 		value={body}
 		label="Comment"
 		placeholder="Comment for the Agent…"
-		rows={3}
+		rows={4}
 		primaryLabel="Add comment"
 		{pending}
 		canSubmit={canSubmit(draft, body)}
 		stepHint
 		textareaAttachment={attachTextarea}
-		oninput={(text) => (body = text)}
+		{oninput}
 		onsubmit={() => onAdd(body)}
 		oncancel={onCancel}
 	>

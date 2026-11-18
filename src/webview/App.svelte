@@ -21,14 +21,17 @@
 		answerDraft,
 		type CommentDraft,
 		draftFromPick,
+		editDraftBody,
 		keepLiveDraft,
 		popoverAnchor,
+		resolveHeldDraft,
 		submitDraft,
 	} from './commentPopover';
 	import {
 		answerAction,
 		answerCopyOpen,
 		closeReply,
+		type CommentAction,
 		type CommentActions,
 		COPY_FEEDBACK_MS,
 		type CopiedButton,
@@ -41,6 +44,7 @@
 		openReply,
 		panelItems,
 		panelSummary,
+		replyPending,
 		submitCopy,
 		submitCopyOpen,
 		submitReply,
@@ -53,8 +57,10 @@
 		postCommentRequest,
 		postFramePlace,
 		postToFrame,
+		readSavedCommentUi,
 		readSavedCommentsPanelOpen,
 		readSavedStageView,
+		saveCommentUi,
 		saveCommentsPanelOpen,
 		saveStageView,
 	} from './hostBridge.svelte';
@@ -100,6 +106,7 @@
 		keepOpenThread,
 		layoutPins,
 		liveAnchor,
+		resolveHeldThread,
 	} from './pins';
 	import Stage from './Stage.svelte';
 	import {
@@ -126,19 +133,39 @@
 	let handoffStale = $state(false);
 	let committedView: StageView | undefined = $state();
 	let gesture: FrameGesture | undefined = $state();
+	// The comment UI saved before this webview reloaded (a tab switch). Comment mode and reply text
+	// come back at once; the draft and the open thread are held until what they point at exists.
+	const savedCommentUi = readSavedCommentUi();
 	// Comment mode, hover and pick; the rules live in commentPick.ts.
-	let picking: CommentPickState = $state(INITIAL_COMMENT_PICK);
+	let picking: CommentPickState = $state({
+		...INITIAL_COMMENT_PICK,
+		commentMode: savedCommentUi.commentMode,
+	});
 	// comments.json as the host last read it, pins drawn from it; its own banner on failure.
 	let comments: PostedComment[] = $state([]);
 	// Where each live frame last said its comments' targets are (cd:anchor-rects); rules in pins.ts.
 	let anchors: AnchorState = $state.raw(new Map());
 	// The comment whose read-only thread is open; it closes when its pin is no longer placed.
 	let openThreadId: string | undefined = $state();
+	// False only for a restored thread that found focus elsewhere (canTakeFocus).
+	let threadFocusOnOpen = $state(true);
+	// Held restores (resolveHeldDraft, resolveHeldThread), apart from the live state so the live
+	// rules never see them. The draft waits for the first canvas:updated; the thread for its pin.
+	let heldDraft: CommentDraft | undefined = $state.raw(savedCommentUi.commentDraft);
+	let heldThreadId: string | undefined = $state(savedCommentUi.openThreadId);
+	// A comments:updated without `error` arrived / a canvas:updated arrived (resolveHeldThread).
+	let commentsKnown = $state(false);
+	let framesKnown = $state(false);
 	let pinsView: ReturnType<typeof Pins> | undefined = $state();
 	let stage: ReturnType<typeof Stage> | undefined = $state();
 	let commentsError: string | undefined = $state();
 	// Reply composers and status requests by comment id; the rules live in commentsPanel.ts.
-	let actions: CommentActions = $state.raw(new Map());
+	// Restored reply text opens its composer; keepLiveActions drops ids no longer listed.
+	let actions: CommentActions = $state.raw(
+		new Map<string, CommentAction>(
+			Object.entries(savedCommentUi.replyDrafts).map(([id, reply]) => [id, { reply }]),
+		),
+	);
 	// The copy-open button's request state; the rules live in commentsPanel.ts.
 	let copyOpen: CopyOpenState = $state({});
 	// The Copy button that reads "Copied". The sequence restarts the timer on a repeat; cleared after
@@ -153,6 +180,9 @@
 	// The open comment popover's target and request state; the rules live in commentPopover.ts.
 	let draft: CommentDraft | undefined = $state();
 	let popover: ReturnType<typeof CommentPopover> | undefined = $state();
+	// A restored draft's popover takes focus when it mounts (canTakeFocus). Read by an effect that
+	// reruns on `popover`, so not reactive.
+	let focusRestoredDraft = false;
 	// The comment whose target flashes after a jump; cleared after JUMP_FLASH_MS.
 	let flash: { commentId: string; sequence: number } | undefined = $state.raw();
 	// The popover places itself inside the viewport.
@@ -269,6 +299,8 @@
 		// Frame unmounts and revokes its blob URL.
 		frames = mergeCanvasFrames({ records: frames, frames: message.frames });
 		keepLiveCommentState();
+		framesKnown = true;
+		restoreHeldDraft();
 		gesture = settleFrameGesture({ gesture, diskPlacement });
 		errorMessage = undefined;
 		if (frames.length === 0) {
@@ -293,6 +325,7 @@
 		if (message.type === 'comments:updated') {
 			comments = message.comments;
 			commentsError = message.error;
+			commentsKnown = message.error === undefined;
 			actions = keepLiveActions({ actions, comments: message.comments, error: message.error });
 			sendAnchors(liveIframeIds(frames));
 			return;
@@ -361,8 +394,46 @@
 		}
 	});
 
-	// A pin opens its thread, swaps to it from another, or closes it when it is the open one.
+	// A restored item takes focus only when nothing else has it, so it never steals focus from
+	// something the user is already typing in.
+	const canTakeFocus = (): boolean =>
+		document.hasFocus() &&
+		(document.activeElement === null || document.activeElement === document.body);
+
+	// A held thread opens once its pin is placed, or is dropped once it cannot be.
+	$effect.pre(() => {
+		if (heldThreadId === undefined) {
+			return;
+		}
+		const held = heldThreadId;
+		const comment = comments.find((entry) => entry.id === held);
+		const resolved = resolveHeldThread({
+			held,
+			pins,
+			comments: commentsKnown ? comments : undefined,
+			liveFrameIds: framesKnown ? liveIframeIds(frames) : undefined,
+			// Before the first committed view no pin is placed at all, so an answer says nothing yet.
+			anchorAnswered:
+				committedView !== undefined &&
+				comment !== undefined &&
+				liveAnchor({ anchors, comment }) !== undefined,
+		});
+		if (resolved === 'hold') {
+			return;
+		}
+		heldThreadId = undefined;
+		if (resolved === 'open') {
+			threadFocusOnOpen = canTakeFocus();
+			openThreadId = held;
+		}
+	});
+
+	// A pin opens its thread, swaps to it from another, or closes it when it is the open one. A
+	// user open ends any restore still held.
 	const handlePinOpen = (id: string): void => {
+		heldDraft = undefined;
+		heldThreadId = undefined;
+		threadFocusOnOpen = true;
 		openThreadId = openThreadId === id ? undefined : id;
 	};
 
@@ -398,6 +469,7 @@
 	// Entering or leaving the mode discards any draft, pending or not; a late answer is ignored.
 	const handleToggleComment = (): void => {
 		draft = undefined;
+		heldDraft = undefined;
 		applyPickStep(toggleCommentMode({ state: picking, frameIds: iframes.keys() }));
 	};
 
@@ -422,6 +494,62 @@
 			closeDraft(true);
 		}
 	};
+
+	const handleDraftInput = (body: string): void => {
+		if (draft !== undefined) {
+			draft = editDraftBody(draft, body);
+		}
+	};
+
+	// The first canvas:updated after a reload ends the draft hold: the draft comes back on its live
+	// frame or is dropped.
+	const restoreHeldDraft = (): void => {
+		if (heldDraft === undefined) {
+			return;
+		}
+		draft = resolveHeldDraft({ held: heldDraft, commentMode: picking.commentMode, frames }).draft;
+		heldDraft = undefined;
+		focusRestoredDraft = draft !== undefined;
+	};
+
+	// The restored popover mounts only once the stage has committed a view, so its focus waits for
+	// the popover itself.
+	$effect(() => {
+		if (popover === undefined || !focusRestoredDraft) {
+			return;
+		}
+		focusRestoredDraft = false;
+		if (canTakeFocus()) {
+			popover.focusBody(true);
+		}
+	});
+
+	// Saved draft: never a pending one (the host never replays its answer) and never its error.
+	const savedDraft = (live: CommentDraft | undefined): CommentDraft | undefined => {
+		if (live === undefined || live.pendingRequestId !== undefined) {
+			return undefined;
+		}
+		const { error: _error, ...saved } = live;
+		return saved;
+	};
+
+	// The one comment-UI save, on every change (no debounce: setState is cheap, and a debounce would
+	// race the tab hide). Each key is the live value, or the held one while it waits.
+	// ponytail: text whose add or reply was in flight when the tab hid is not restored, because the
+	// host never replays an answer (postAnswer). If that request failed, the text is gone; if it
+	// succeeded, the comment or reply arrives via comments:updated.
+	$effect(() => {
+		saveCommentUi({
+			commentMode: picking.commentMode,
+			commentDraft: heldDraft ?? savedDraft(draft),
+			openThreadId: openThreadId ?? heldThreadId,
+			replyDrafts: Object.fromEntries(
+				[...actions].flatMap(([id, action]): [string, string][] =>
+					action.reply === undefined || replyPending(action) ? [] : [[id, action.reply]],
+				),
+			),
+		});
+	});
 
 	const handleAdd = (body: string): void => {
 		if (draft === undefined) {
@@ -605,6 +733,10 @@
 	// the textarea on open, or on a retarget whose click moved focus into the frame, after the
 	// frame's own window.focus() settled. A re-post never moves focus.
 	const applyPickToDraft = (frame: FrameRecord, pick: FramePickMessage): void => {
+		if (!pick.repost) {
+			heldDraft = undefined;
+			heldThreadId = undefined;
+		}
 		const opened = draft === undefined;
 		draft = draftFromPick({ draft, frameId: frame.id, pick, generation: frame.generation });
 		if (draft !== undefined) {
@@ -918,6 +1050,7 @@
 					{now}
 					action={actions.get(openComment.id)}
 					onClose={handleThreadClose}
+					focusOnOpen={threadFocusOnOpen}
 					onReplyOpen={() => handleReplyOpen(openComment.id)}
 					onReplyInput={(text) => handleReplyInput(openComment.id, text)}
 					onReplyCancel={() => handleReplyCancel(openComment.id)}
@@ -933,6 +1066,8 @@
 			<CommentPopover
 				bind:this={popover}
 				{draft}
+				body={draft.body}
+				oninput={handleDraftInput}
 				frameLabel={frameLabel(frames, draft.frameId)}
 				anchor={draftAnchor}
 				{viewportWidth}

@@ -27,6 +27,7 @@ import {
 	pinOf,
 	posted,
 	postToChrome,
+	savedRecord,
 	savedState,
 	stageBox,
 	thread,
@@ -307,11 +308,6 @@ const openPanel = async (page: Page): Promise<void> => {
 	await expect(panel(page)).toBeVisible();
 };
 
-const savedRecord = async (page: Page): Promise<Record<string, unknown>> => {
-	const state = await savedState(page);
-	return typeof state === 'object' && state !== null ? { ...state } : {};
-};
-
 const activeElementTag = (page: Page): Promise<string | undefined> =>
 	page.evaluate(() => document.activeElement?.tagName);
 
@@ -342,6 +338,86 @@ test('the panel toggle keeps the saved view, narrows the stage, and both keys su
 	await expect(panelToggle(page)).toHaveAttribute('aria-expanded', 'true');
 	await expect(panel(page)).toBeVisible();
 	expect(await savedRecord(page)).toMatchObject({ stageView: expect.any(Object) });
+});
+
+// A tab switch: Cursor rebuilds the webview, which starts again from the saved state.
+const reload = async (page: Page): Promise<void> => {
+	await openHarness(page, { state: await savedState(page) });
+};
+
+test('a tab switch reopens the open pin thread', async ({ page }) => {
+	await openStage(page, [TITLE, SENT]);
+	await openThread(page, TITLE.id);
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
+
+	await reload(page);
+	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await postToChrome(page, canvasUpdated([FRAME]));
+	await expect(thread(page)).toBeVisible();
+	await expect(thread(page)).toContainText(TITLE.body);
+	await expect(threadButton(page, 'Close')).toBeFocused();
+});
+
+test('a tab switch keeps reply text typed in a panel card and in a pin thread', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE, SENT]);
+	await openPanel(page);
+	await clickChrome(panelButton(page, SENT.id, 'Reply'));
+	await page.keyboard.type('From the panel');
+	await openThread(page, TITLE.id);
+	await openComposer(page);
+	await page.keyboard.type('From the thread');
+	await expect
+		.poll(async () => (await savedRecord(page)).replyDrafts)
+		.toEqual({ [SENT.id]: 'From the panel', [TITLE.id]: 'From the thread' });
+
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME]));
+	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await expect(panelReplyBox(page, SENT.id)).toHaveValue('From the panel');
+	await expect(replyBox(page)).toHaveValue('From the thread');
+});
+
+test('a restored thread whose comment is gone does not open, even when it comes back', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE, SENT]);
+	await openThread(page, TITLE.id);
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
+
+	await reload(page);
+	await postToChrome(page, { type: 'comments:updated', comments: [SENT] });
+	await postToChrome(page, canvasUpdated([FRAME]));
+	await expect(pinOf(page, SENT.id)).toBeVisible();
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBeUndefined();
+	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await expect(pinOf(page, TITLE.id)).toBeVisible();
+	await nextAnimationFrame(page);
+	await expect(thread(page)).toHaveCount(0);
+});
+
+test('with the comment UI closed again, the saved record holds only the view and the panel', async ({
+	page,
+}) => {
+	await openStage(page, [TITLE]);
+	await openPanel(page);
+	await clickChrome(commentButton(page));
+	await clickChrome(commentButton(page));
+	await openThread(page, TITLE.id);
+	await openComposer(page);
+	await page.keyboard.type('x');
+	await expect
+		.poll(async () => Object.keys(await savedRecord(page)).sort())
+		.toEqual(['commentsPanelOpen', 'openThreadId', 'replyDrafts', 'stageView']);
+
+	// The first Escape closes the composer (dropping its text), the second the thread.
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Escape');
+	await expect(thread(page)).toHaveCount(0);
+	await expect
+		.poll(async () => savedRecord(page))
+		.toEqual({ stageView: expect.any(Object), commentsPanelOpen: true });
 });
 
 test('the panel lists unresolved in file order, then resolved; the toggle counts them', async ({

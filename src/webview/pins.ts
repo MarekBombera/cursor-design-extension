@@ -344,3 +344,34 @@ export const keepOpenThread = ({
 	openThreadId !== undefined && pins.some((pin) => pin.id === openThreadId)
 		? openThreadId
 		: undefined;
+
+// A thread restored from webview state opens once its pin is placed. It is dropped once it cannot
+// be: the comments are known (a comments:updated without `error`) and lack it, the frames are
+// known and its frame is not a live iframe, or that frame already answered for it and no pin was
+// placed (its target is missing or scrolled out). Until then it holds. `comments` and
+// `liveFrameIds` are undefined until known. Only the held id: live threads keep keepOpenThread.
+export const resolveHeldThread = ({
+	held,
+	pins,
+	comments,
+	liveFrameIds,
+	anchorAnswered,
+}: {
+	held: string;
+	pins: readonly PlacedPin[];
+	comments: readonly PostedComment[] | undefined;
+	liveFrameIds: ReadonlySet<string> | undefined;
+	anchorAnswered: boolean;
+}): 'open' | 'hold' | 'drop' => {
+	if (pins.some((pin) => pin.id === held)) {
+		return 'open';
+	}
+	const comment = comments?.find((entry) => entry.id === held);
+	if (comments !== undefined && comment === undefined) {
+		return 'drop';
+	}
+	if (comment !== undefined && liveFrameIds !== undefined && !liveFrameIds.has(comment.frameId)) {
+		return 'drop';
+	}
+	return anchorAnswered ? 'drop' : 'hold';
+};

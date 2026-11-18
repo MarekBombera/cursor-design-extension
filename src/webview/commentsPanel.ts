@@ -183,7 +183,8 @@ export const relativeTime = ({ iso, now }: { iso: string; now: number }): string
 	return relativeFormat.format(-Math.floor(days / 365), 'year');
 };
 
-const replyPending = (action: CommentAction | undefined): boolean =>
+// Also App's reply-text save: a reply in flight is not saved.
+export const replyPending = (action: CommentAction | undefined): boolean =>
 	action?.pending?.kind === 'reply';
 
 const anythingPending = (action: CommentAction | undefined): boolean =>

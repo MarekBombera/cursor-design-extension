@@ -20,6 +20,7 @@ import {
 	isSafeStyleValue,
 	parseChromeFrameMessage,
 	parseFrameMessage,
+	parsePickFields,
 	toOneLine,
 } from './frameMessages';
 
@@ -192,6 +193,13 @@ test('cd:pick needs repost and a finite, non-negative box', () => {
 	]) {
 		assert.equal(parseFrameMessage(broken), undefined, JSON.stringify(broken));
 	}
+});
+
+test('parsePickFields keeps the pick fields without type and repost, with the same guards', () => {
+	const { type: _type, repost: _repost, ...fields } = pick;
+	assert.deepEqual(parsePickFields({ ...fields, extra: 1 }), fields);
+	assert.equal(parsePickFields({ ...fields, selector: '.a\n' }), undefined);
+	assert.equal(parsePickFields({ ...fields, isPage: true }), undefined);
 });
 
 test('cd:key accepts exactly c and Escape', () => {

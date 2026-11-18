@@ -1,10 +1,11 @@
 import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
+import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { CommentStyles, FramePickMessage, FrameRect } from './frame/frameMessages';
 import type { CommentAddedMessage, CommentCreateMessage, UiErrorMessage } from './hostMessages';
 import { clampNumber, stageToScreen, type StagePoint, type StageView } from './stageGeometry';
 
-// Comment popover rules. Pure: App holds the draft, CommentPopover holds the typed text, and both
-// call these.
+// Comment popover rules. Pure: App holds the draft (its typed text included), CommentPopover
+// renders it, and both call these.
 
 export type DraftTarget = {
 	selector: string | null;
@@ -22,6 +23,8 @@ export type CommentDraft = {
 	// The frame record's generation when the pick arrived.
 	generation: number;
 	target: DraftTarget;
+	// The typed text: it lives and dies with the draft, and survives a retarget.
+	body: string;
 	pendingRequestId?: string;
 	// The host's ui:error answer, shown until the next user pick.
 	error?: string;
@@ -104,7 +107,12 @@ export const draftFromPick = ({
 	generation: number;
 }): CommentDraft | undefined => {
 	if (!pick.repost) {
-		const opened: CommentDraft = { frameId, generation, target: toTarget(pick) };
+		const opened: CommentDraft = {
+			frameId,
+			generation,
+			target: toTarget(pick),
+			body: draft?.body ?? '',
+		};
 		return draft?.pendingRequestId === undefined
 			? opened
 			: { ...opened, pendingRequestId: draft.pendingRequestId };
@@ -117,6 +125,10 @@ export const draftFromPick = ({
 		target: { ...draft.target, rect: pick.rect, point: pick.point, box: pick.box },
 	};
 };
+
+// Typing in the popover. A pending draft is read-only, like its composer.
+export const editDraftBody = (draft: CommentDraft, body: string): CommentDraft =>
+	draft.pendingRequestId === undefined ? { ...draft, body } : draft;
 
 // Why the current target cannot be commented, or undefined when it can.
 export const blockedTargetCopy = (draft: CommentDraft): string | undefined => {
@@ -203,6 +215,22 @@ export const keepLiveDraft = ({
 	liveFrameIds: ReadonlySet<string>;
 }): CommentDraft | undefined =>
 	draft !== undefined && commentMode && liveFrameIds.has(draft.frameId) ? draft : undefined;
+
+// A draft restored from webview state comes back on the first canvas:updated after a reload only
+// while Comment mode is on and its frame is a live iframe again, like keepLiveDraft. Either way
+// the caller ends the hold there.
+export const resolveHeldDraft = ({
+	held,
+	commentMode,
+	frames,
+}: {
+	held: CommentDraft | undefined;
+	commentMode: boolean;
+	frames: readonly FrameRecord[];
+}): { draft?: CommentDraft } => {
+	const draft = keepLiveDraft({ draft: held, commentMode, liveFrameIds: liveIframeIds(frames) });
+	return draft === undefined ? {} : { draft };
+};
 
 // Frame data, rendered as text only.
 export const targetChipText = (

@@ -24,8 +24,11 @@ import {
 	openHarness,
 	type Point,
 	popover,
+	popoverTarget,
 	posted,
 	postToChrome,
+	savedRecord,
+	savedState,
 	stageBox,
 	untilHeightReported,
 } from './harness';
@@ -553,4 +556,111 @@ test('a forged cd:key from the design never discards the open draft', async ({ p
 	await nextAnimationFrame(page);
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(commentBox(page)).toHaveValue('Draft');
+});
+
+// A tab switch: Cursor rebuilds the webview, which starts again from the saved state.
+const reload = async (page: Page): Promise<void> => {
+	await openHarness(page, { state: await savedState(page) });
+};
+
+const savedDraftBody = async (page: Page): Promise<unknown> => {
+	const draft = (await savedRecord(page)).commentDraft;
+	return typeof draft === 'object' && draft !== null && 'body' in draft ? draft.body : undefined;
+};
+
+const typeDraft = async (page: Page, text: string): Promise<void> => {
+	await openTwoFrames(page);
+	await openPopoverOn({ page, selector: '#a-title' });
+	await page.keyboard.type(text);
+	await expect.poll(() => savedDraftBody(page)).toBe(text);
+};
+
+test('a tab switch keeps Comment mode and the typed draft on its target, focused at the end', async ({
+	page,
+}) => {
+	await typeDraft(page, 'Make it bolder');
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
+	await postToChrome(page, { type: 'comments:updated', comments: [] });
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
+	await expect(popover(page)).toBeVisible();
+	await expect(popoverTarget(page)).toHaveText('Title A');
+	await expect(commentBox(page)).toHaveValue('Make it bolder');
+	await expect(commentBox(page)).toBeFocused();
+	expect(
+		await commentBox(page).evaluate((element) =>
+			element instanceof HTMLTextAreaElement
+				? [element.selectionStart, element.selectionEnd]
+				: undefined,
+		),
+	).toEqual([14, 14]);
+
+	await page.keyboard.press('Enter');
+	await expect.poll(async () => (await creates(page)).length).toBe(1);
+	expect((await creates(page))[0]).toMatchObject({ frameId: 'a', body: 'Make it bolder' });
+});
+
+test('a pending draft is not saved: after a tab switch the mode is on and no popover opens', async ({
+	page,
+}) => {
+	await typeDraft(page, 'Bolder');
+	await page.keyboard.press('Enter');
+	await expect.poll(async () => (await creates(page)).length).toBe(1);
+	await expect.poll(async () => (await savedRecord(page)).commentDraft).toBeUndefined();
+
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
+	await untilHeightReported(page, 'a');
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
+	await nextAnimationFrame(page);
+	await expect(popover(page)).toHaveCount(0);
+});
+
+test('a restored draft whose frame is gone is dropped quietly', async ({ page }) => {
+	await typeDraft(page, 'Bolder');
+	let pageErrors = 0;
+	page.on('pageerror', () => {
+		pageErrors += 1;
+	});
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME_B]));
+	await untilHeightReported(page, 'b');
+	await nextAnimationFrame(page);
+	await expect(popover(page)).toHaveCount(0);
+	await expect.poll(async () => (await savedRecord(page)).commentDraft).toBeUndefined();
+	expect(pageErrors).toBe(0);
+	expect(
+		(await posted(page)).filter(
+			(message) =>
+				typeof message === 'object' &&
+				message !== null &&
+				'type' in message &&
+				typeof message.type === 'string' &&
+				(message.type.startsWith('comment:') || message.type === 'ui:error'),
+		),
+	).toEqual([]);
+});
+
+test('a draft survives two tab switches with no canvas in between', async ({ page }) => {
+	await typeDraft(page, 'Still here');
+	await reload(page);
+	await nextAnimationFrame(page);
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
+	await expect(popover(page)).toBeVisible();
+	await expect(commentBox(page)).toHaveValue('Still here');
+});
+
+test('a draft cancelled with Escape is not saved and does not come back', async ({ page }) => {
+	await typeDraft(page, 'Never mind');
+	await page.keyboard.press('Escape');
+	await expect(popover(page)).toHaveCount(0);
+	await expect.poll(async () => (await savedRecord(page)).commentDraft).toBeUndefined();
+
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
+	await untilHeightReported(page, 'a');
+	await nextAnimationFrame(page);
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
+	await expect(popover(page)).toHaveCount(0);
 });

@@ -88,8 +88,9 @@ const harnessPage = ({
 		window.__cdHarness = record;
 		window.acquireVsCodeApi = () => ({
 			postMessage: (message) => { record.posted.push(structuredClone(message)); },
-			getState: () => structuredClone(record.state),
-			setState: (state) => { record.state = structuredClone(state); },
+			// VS Code serializes webview state as JSON, so a Map, undefined or proxy bug shows here too.
+			getState: () => (record.state === undefined ? undefined : JSON.parse(JSON.stringify(record.state))),
+			setState: (state) => { record.state = JSON.parse(JSON.stringify(state)); },
 		});
 		window.addEventListener('message', (event) => {
 			for (const wrapper of document.querySelectorAll('[data-cd-frame-id]')) {
@@ -192,6 +193,12 @@ export const postToChrome = async (page: Page, message: HostMessage): Promise<vo
 
 export const savedState = (page: Page): Promise<unknown> =>
 	page.evaluate(() => window.__cdHarness.state);
+
+// The saved state as a record ({} when nothing or a non-object was saved).
+export const savedRecord = async (page: Page): Promise<Record<string, unknown>> => {
+	const state = await savedState(page);
+	return typeof state === 'object' && state !== null ? { ...state } : {};
+};
 
 // Raw captured frame → chrome messages of one type, in order (not run through parseFrameMessage).
 export const messagesOfType = async ({

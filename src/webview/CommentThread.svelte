@@ -17,9 +17,18 @@
 		viewportWidth: number;
 		viewportHeight: number;
 		onClose: () => void;
+		// False for a thread restored after a reload while focus is elsewhere: it never steals focus.
+		focusOnOpen?: boolean;
 	};
 
-	let { anchor, viewportWidth, viewportHeight, onClose, ...cardProps }: Props = $props();
+	let {
+		anchor,
+		viewportWidth,
+		viewportHeight,
+		onClose,
+		focusOnOpen = true,
+		...cardProps
+	}: Props = $props();
 
 	let width = $state(0);
 	let height = $state(0);
@@ -29,7 +38,7 @@
 	);
 
 	// App keys this component by the open thread, so each open lands focus on Close.
-	const focusOnOpen: Attachment<HTMLButtonElement> = (element) => {
+	const focusClose: Attachment<HTMLButtonElement> = (element) => {
 		element.focus({ preventScroll: true });
 	};
 
@@ -60,7 +69,7 @@
 		>
 			{#snippet header()}
 				{@render head()}
-				<IconButton icon="close" label="Close" {@attach focusOnOpen} onclick={onClose} />
+				<IconButton icon="close" label="Close" {@attach focusOnOpen && focusClose} onclick={onClose} />
 			{/snippet}
 			{@render thread()}
 		</Widget>
