@@ -130,7 +130,7 @@ protection is a separate remote setting.
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`: format, lint, type check; then the agent rules layout check)
 - Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && tsc -p tsconfig.webview-tests.json && vp test && vp pack && vp build -c vite.webview.config.ts`)
-- Test: `vp test` (unit suite via Vite+ / Vitest; not `pnpm test`)
+- Test: `pnpm test` (`vp test`: unit suite via Vite+ / Vitest, runs once)
 - Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
 - Fix: `pnpm exec vp check --fix`
 - Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack && vp build -c vite.webview.config.ts`; writes `dist/extension.js`, `dist/mcp.js`, and `dist/webview/chrome.js` + `chrome.css`)
@@ -147,7 +147,7 @@ only in host code). Fix the code, not the rule.
 
 Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Extension Development Host.
 
-The unit Test command is `vp test` (Vite+ / Vitest; `src/**/*.test.ts` excluding `src/test/**`). It is not `pnpm test` (`vscode-test`, Electron). Build Electron with `pnpm compile-electron-tests` (writes `out/test/**/*.test.js`), then `pnpm test`; that suite needs a display and is not Verify.
+The unit Test command is `pnpm test` (`vp test`, Vite+ / Vitest over `src/**/*.test.ts`). There is no Electron suite: plain VS Code lacks the Cursor API, so browser tests cover chrome and frames and F5 covers Cursor-only checks.
 
 Browser tests: `pnpm test:browser` (builds the chrome bundle, then runs Playwright
 Chromium over `tests/browser/`; the first run needs `pnpm exec playwright install chromium`;

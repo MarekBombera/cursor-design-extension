@@ -124,122 +124,66 @@ test('2+ matches is targetMissing', () => {
 	});
 });
 
-const SMALL_DOCUMENT = parseArtboardDocument('<div id="a" class="b"><p>x</p></div>');
-
-test('selectors outside the finder grammar are never run', () => {
-	for (const selector of [
-		'div:has(p)',
-		'div:not(p)',
-		':is(div) p',
-		':where(div) p',
-		':matches(div) p',
-		'p:nth-child(1 of .b)',
-		'div + p',
-		'div ~ p',
-		'div>p',
-		'div  p',
-		'*',
-		'[id]',
-		'p::before',
-	]) {
-		assert.deepEqual(
-			matchCommentTarget({ document: SMALL_DOCUMENT, selector }),
-			{
-				checkable: false,
-			},
-			selector,
-		);
-	}
-});
-
-test('every finder form is checkable', () => {
-	for (const selector of [
-		'p',
-		'#a > p',
-		'.b p',
-		'div#a.b > p:nth-child(1)',
-		'div:nth-of-type(1) > p:nth-of-type(1)',
-		'[id="a"] > p',
-		'#\\31 23 p',
-	]) {
-		assert.equal(
-			matchCommentTarget({ document: SMALL_DOCUMENT, selector }).checkable,
-			true,
-			selector,
-		);
-	}
-});
-
-// Without the guard this selector backtracks for seconds on this page, then matches nothing
-// (checkable: true, matches: 0); the guard must refuse it before css-select runs.
-test('more than 2 descendant combinators are not checkable on a deep page', () => {
-	const depth = 40;
-	const html = `${'<div>'.repeat(depth)}leaf${'</div>'.repeat(depth)}`;
-	const document = parseArtboardDocument(html);
-	assert.equal(matchCommentTarget({ document, selector: 'p div div' }).checkable, true);
-	assert.deepEqual(matchCommentTarget({ document, selector: 'p div div div' }), {
-		checkable: false,
-	});
-	assert.deepEqual(matchCommentTarget({ document, selector: 'p div div div div div div div' }), {
-		checkable: false,
-	});
-});
-
-// The old IDENT split each hex escape 6 ways: 12 of these took 67 s, and 140 never finished.
-test('a hostile run of escapes fails the grammar without backtracking', () => {
-	const selector = `${'\\aaaaaa'.repeat(140)}!`;
-	assert.deepEqual(matchCommentTarget({ document: SMALL_DOCUMENT, selector }), {
-		checkable: false,
-	});
-});
-
-// Allowed selectors still cost about depth^3 in css-select, times the number of deep stacks.
-test('a page deeper than 64 elements is not checkable, even for an allowed selector', () => {
+// The old matcher's caps refused these pages (64 deep, 20,000 elements, 5,000 siblings) and any
+// selector with more than 2 descendant steps; the linear matcher answers them.
+test('deep, wide and large pages and longer descendant chains are checkable', () => {
 	const deep = parseArtboardDocument(`${'<div>'.repeat(100)}leaf${'</div>'.repeat(100)}`);
-	assert.deepEqual(matchCommentTarget({ document: deep, selector: 'p div div' }), {
-		checkable: false,
+	assert.deepEqual(matchCommentTarget({ document: deep, selector: 'p div div div' }), {
+		checkable: true,
+		matches: 0,
 	});
-	const shallow = parseArtboardDocument(`${'<div>'.repeat(60)}leaf${'</div>'.repeat(60)}`);
-	assert.equal(matchCommentTarget({ document: shallow, selector: 'p div div' }).checkable, true);
-});
-
-// Forms buildSelector can emit that a tightened grammar must keep accepting.
-test('escaped, non-ASCII, custom-element and fallback-path selectors stay checkable', () => {
-	const document = parseArtboardDocument(
-		'<my-card class="a:b café"><p data-x=\'a"b\'>x</p></my-card>',
-	);
-	for (const selector of [
-		'my-card > p',
-		'.a\\:b > p',
-		'.café p',
-		'[data-x="a\\"b"]',
-		'html > body:nth-of-type(1) > my-card:nth-of-type(1) > p:nth-of-type(1)',
-		'#\\#x',
-		'.\\31 23',
-	]) {
-		assert.equal(matchCommentTarget({ document, selector }).checkable, true, selector);
-	}
-});
-
-// :nth-child is quadratic in sibling count (li:nth-child(3): 2.2 s at 20k siblings).
-test('a page wider than 5,000 siblings or larger than 20,000 elements is not checkable', () => {
+	assert.deepEqual(matchCommentTarget({ document: deep, selector: 'div div div div div' }), {
+		checkable: true,
+		matches: 96,
+	});
 	const list = (count: number): string => `<ul>${'<li>x</li>'.repeat(count)}</ul>`;
-	assert.equal(
-		matchCommentTarget({ document: parseArtboardDocument(list(4000)), selector: 'li:nth-child(3)' })
-			.checkable,
-		true,
-	);
+	const wide = matchCommentTarget({
+		document: parseArtboardDocument(list(6000)),
+		selector: 'li:nth-child(3)',
+	});
+	assert.equal(wide.checkable && wide.matches, 1);
+	const large = matchCommentTarget({
+		document: parseArtboardDocument(list(4000).repeat(6)),
+		selector: 'ul:nth-child(1) > li:nth-child(2)',
+	});
+	assert.equal(large.checkable && large.matches, 1);
+	const chained = matchCommentTarget({
+		document: parseArtboardDocument(`${'<div>'.repeat(60)}leaf${'</div>'.repeat(60)}`),
+		selector: Array.from({ length: 60 }, () => 'div').join(' > '),
+	});
+	assert.equal(chained.checkable && chained.matches, 1);
+});
+
+test('a selector outside the grammar or past MAX_MATCH_WORK reads unchecked', () => {
+	const html = `${'<div>'.repeat(50_000)}leaf${'</div>'.repeat(50_000)}`;
+	const selector = `${'div '.repeat(249)}div`;
+	const target = { isPage: false, selector, targetFingerprint: 'sha256:x' };
+	assert.deepEqual(commentFlags({ target, document: parseArtboardDocument(html) }), {
+		stale: null,
+		targetMissing: null,
+		hint: HINT_UNCHECKED,
+	});
 	assert.deepEqual(
-		matchCommentTarget({
-			document: parseArtboardDocument(list(6000)),
-			selector: 'li:nth-child(3)',
-		}),
+		matchCommentTarget({ document: parseArtboardDocument('<p>x</p>'), selector: '[' }),
 		{ checkable: false },
 	);
-	const large = parseArtboardDocument(list(4000).repeat(6));
-	assert.deepEqual(matchCommentTarget({ document: large, selector: 'ul:nth-child(1) > li' }), {
-		checkable: false,
-	});
+});
+
+// The old tree format keyed attributes by local name, so an element with both xlink:href and
+// href serialized only one of them and an edit to the other never changed the fingerprint.
+// Spreading 130,000 children into one push() overflowed the call stack (RangeError).
+test('a target with a very wide subtree is read without throwing', () => {
+	const html = `<div id="w"><ul>${'<li>x</li>'.repeat(200_000)}</ul></div>`;
+	const match = matchCommentTarget({ document: parseArtboardDocument(html), selector: '#w' });
+	assert.equal(match.checkable && match.matches, 1);
+	assert.equal(match.checkable && match.text?.length, 200_000);
+});
+
+test('editing a namespaced SVG attribute inside the target changes the fingerprint', () => {
+	assert.notEqual(
+		fingerprintOf('<svg><a xlink:href="#x" href="#y">l</a></svg>', 'svg'),
+		fingerprintOf('<svg><a xlink:href="#z" href="#y">l</a></svg>', 'svg'),
+	);
 });
 
 test('match results are cached per document and selector, never shared across documents', () => {
@@ -251,23 +195,6 @@ test('match results are cached per document and selector, never shared across do
 	assert.equal(secondMatch.checkable && secondMatch.text, 'two');
 	assert.equal(matchCommentTarget({ document: first, selector: 'p' }), firstMatch);
 	assert.notEqual(matchCommentTarget({ document: first, selector: 'body > p' }), firstMatch);
-});
-
-test('a 60-step child chain stays checkable (linear in css-select)', () => {
-	const depth = 60;
-	const html = `${'<div>'.repeat(depth)}leaf${'</div>'.repeat(depth)}`;
-	const selector = Array.from({ length: depth }, () => 'div').join(' > ');
-	assert.equal(
-		matchCommentTarget({ document: parseArtboardDocument(html), selector }).checkable,
-		true,
-	);
-});
-
-test('a selector css-select throws on is not checkable', () => {
-	assert.deepEqual(
-		matchCommentTarget({ document: parseArtboardDocument('<p>x</p>'), selector: '[' }),
-		{ checkable: false },
-	);
 });
 
 test('page comment with a missing frame is targetMissing and not stale', () => {

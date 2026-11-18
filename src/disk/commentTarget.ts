@@ -1,18 +1,15 @@
-import { selectAll } from 'css-select';
-import { parse, serializeOuter } from 'parse5';
-import { adapter, type Htmlparser2TreeAdapterMap } from 'parse5-htmlparser2-tree-adapter';
+import { type DefaultTreeAdapterMap, defaultTreeAdapter, parse, serializeOuter } from 'parse5';
 
 import { hashHtml } from './hash';
+import { selectMatches } from './selectorMatch';
 
-export const parseArtboardDocument = (
-	html: string,
-): ReturnType<typeof parse<Htmlparser2TreeAdapterMap>> => parse(html, { treeAdapter: adapter });
+export const parseArtboardDocument = (html: string): DefaultTreeAdapterMap['document'] =>
+	parse(html);
 
 export type ArtboardDocument = ReturnType<typeof parseArtboardDocument>;
 
-type ArtboardNode = Parameters<typeof adapter.isElementNode>[0];
-type ArtboardParent = Parameters<typeof adapter.getChildNodes>[0];
-type ArtboardElement = Parameters<typeof adapter.getTagName>[0];
+type ArtboardNode = DefaultTreeAdapterMap['childNode'];
+type ArtboardElement = DefaultTreeAdapterMap['element'];
 
 export type CommentMatch =
 	| { checkable: false }
@@ -56,111 +53,37 @@ export const HINT_CHECK_BUDGET =
 export const HINT_CONTAINER =
 	'The target contains other elements; edits inside it (including fixes for nested comments) mark it stale.';
 
-// Only what buildSelector (@medv/finder, or its nth-of-type fallback) emits is matched: compounds of
-// a tag, #id, .class, [attr="value"] (CSS.escape'd idents), :nth-child(n) and :nth-of-type(n),
-// joined by " > " or one space. Anything else is unchecked, never run. The selector comes from a
-// hand-editable comments.json today and a forgeable cd:pick from 8f1, and both this regex and
-// css-select run synchronously in the MCP queue, so both must stay bounded:
-// - IDENT's alternatives start with disjoint characters (word, backslash, non-ASCII), so the
-//   regex is linear. A CSS hex escape's optional trailing space reads as a descendant step, which
-//   only makes the cap below stricter.
-// - css-select backtracks once per descendant combinator per ancestor: cost grows like
-//   depth^(descendants + 1) per deep element (p div div div: 87 ms at depth 100, 14 s at 400).
-//   Child chains stay linear. So at most MAX_DESCENDANT_COMBINATORS descendant steps, on
-//   documents at most MAX_CHECKED_DEPTH deep, MAX_CHECKED_ELEMENTS large and MAX_CHECKED_SIBLINGS
-//   wide. Measured worst cases at the caps: p div div with every element 64 deep, 207 ms on
-//   19,200 elements; li:nth-child(3) on 5,000 siblings, 54 ms.
-// ponytail: a longer finder path, or a deeper, larger or wider page, reads as unchecked (null
-// flags) rather than checked; at the caps one distinct selector still costs up to ~0.2 s.
-// Upgrade path: a match budget inside css-select.
-const IDENT = String.raw`(?:[\w-]|\\.|[^\x00-\x7F])+`;
-const SIMPLE = String.raw`(?:#${IDENT}|\.${IDENT}|\[${IDENT}="(?:[^"\\]|\\.)*"\]|:nth-(?:child|of-type)\(\d+\))`;
-const COMPOUND = String.raw`(?:${IDENT}${SIMPLE}*|${SIMPLE}+)`;
-const FINDER_SELECTOR = new RegExp(String.raw`^${COMPOUND}(?:(?: > | )${COMPOUND})*$`);
-const COMBINATOR_STEP = new RegExp(String.raw`${COMPOUND}( > | )?`, 'g');
-
-const MAX_DESCENDANT_COMBINATORS = 2;
-
-const MAX_CHECKED_DEPTH = 64;
-
-// :nth-child / :nth-of-type rescan the siblings of every candidate, so css-select is quadratic in
-// sibling count (li:nth-child(3): 54 ms at 5k siblings, 2.2 s at 20k); total size bounds the rest.
-const MAX_CHECKED_ELEMENTS = 20_000;
-
-const MAX_CHECKED_SIBLINGS = 5000;
-
-const isCheckableSelector = (selector: string): boolean => {
-	if (!FINDER_SELECTOR.test(selector)) {
-		return false;
-	}
-	let descendants = 0;
-	for (const [, combinator] of selector.matchAll(COMBINATOR_STEP)) {
-		if (combinator === ' ') {
-			descendants += 1;
-		}
-	}
-	return descendants <= MAX_DESCENDANT_COMBINATORS;
-};
-
-// One walk per parsed document (iterative: deep pages are the point), cached by document.
-type DocumentShape = { depth: number; elements: number; widest: number };
-
-const shapeByDocument = new WeakMap<ArtboardDocument, DocumentShape>();
-
-const documentShape = (document: ArtboardDocument): DocumentShape => {
-	const cached = shapeByDocument.get(document);
-	if (cached !== undefined) {
-		return cached;
-	}
-	const shape: DocumentShape = { depth: 0, elements: 0, widest: 0 };
-	const stack: { node: ArtboardParent; depth: number }[] = [{ node: document, depth: 0 }];
-	for (let entry = stack.pop(); entry !== undefined; entry = stack.pop()) {
-		shape.depth = Math.max(shape.depth, entry.depth);
-		let children = 0;
-		for (const child of adapter.getChildNodes(entry.node)) {
-			if (adapter.isElementNode(child)) {
-				children += 1;
-				stack.push({ node: child, depth: entry.depth + 1 });
-			}
-		}
-		shape.elements += children;
-		shape.widest = Math.max(shape.widest, children);
-	}
-	shapeByDocument.set(document, shape);
-	return shape;
-};
-
-const isCheckableDocument = (document: ArtboardDocument): boolean => {
-	const { depth, elements, widest } = documentShape(document);
-	return (
-		depth <= MAX_CHECKED_DEPTH && elements <= MAX_CHECKED_ELEMENTS && widest <= MAX_CHECKED_SIBLINGS
-	);
-};
-
-const collectedText = (node: ArtboardParent): string => {
+// Text in document order, walked with an explicit stack and pushed one child at a time: a deep
+// or very wide target can overflow neither the call stack nor a spread's argument limit. A
+// template's content is not among its childNodes, so it never counts (as in the browser).
+const collectedText = (element: ArtboardElement): string => {
 	let text = '';
-	for (const child of adapter.getChildNodes(node)) {
-		if (adapter.isTextNode(child)) {
-			text += adapter.getTextNodeContent(child);
-			continue;
-		}
-		if (adapter.isElementNode(child)) {
-			text += collectedText(child);
+	const stack: ArtboardNode[] = [element];
+	for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+		if (defaultTreeAdapter.isTextNode(node)) {
+			text += node.value;
+		} else if (defaultTreeAdapter.isElementNode(node)) {
+			for (let index = node.childNodes.length - 1; index >= 0; index -= 1) {
+				const child = node.childNodes[index];
+				if (child !== undefined) {
+					stack.push(child);
+				}
+			}
 		}
 	}
 	return text;
 };
 
-const hasElementChild = (node: ArtboardParent): boolean =>
-	adapter.getChildNodes(node).some((child: ArtboardNode) => adapter.isElementNode(child));
+const hasElementChild = (element: ArtboardElement): boolean =>
+	element.childNodes.some((child) => defaultTreeAdapter.isElementNode(child));
 
 const normalizeOuterHtml = (html: string): string =>
 	html.replace(/\s+/g, ' ').replace(/> /g, '>').replace(/ </g, '<').trim();
 
 const fingerprintOf = (element: ArtboardElement): string =>
-	hashHtml(normalizeOuterHtml(serializeOuter(element, { treeAdapter: adapter })));
+	hashHtml(normalizeOuterHtml(serializeOuter(element)));
 
-// One css-select pass per distinct selector per parsed document: comments that share a target
+// One match per distinct selector per parsed document: comments that share a target
 // (list_comments over many comments on one frame) reuse the first match.
 const matchesByDocument = new WeakMap<ArtboardDocument, Map<string, CommentMatch>>();
 
@@ -185,27 +108,21 @@ export const matchCommentTarget = ({
 	return match;
 };
 
+// selectMatches never throws (property-tested), so there is no catch here: a throw is a bug and
+// fails the read loudly (rule 06). null = outside the finder grammar or past MAX_MATCH_WORK.
 const runCommentMatch = (document: ArtboardDocument, selector: string): CommentMatch => {
-	if (!isCheckableSelector(selector) || !isCheckableDocument(document)) {
+	const matches = selectMatches(document, selector);
+	if (matches === null) {
 		return { checkable: false };
-	}
-	let matches: ArtboardElement[];
-	try {
-		matches = selectAll<ArtboardNode, ArtboardElement>(selector, document);
-	} catch {
-		return { checkable: false };
-	}
-	if (matches.length !== 1) {
-		return { checkable: true, matches: matches.length };
 	}
 	const [match] = matches;
-	if (match === undefined) {
-		return { checkable: true, matches: 0 };
+	if (matches.length !== 1 || match === undefined) {
+		return { checkable: true, matches: matches.length };
 	}
 	return {
 		checkable: true,
 		matches: 1,
-		tagName: adapter.getTagName(match).toLowerCase(),
+		tagName: match.tagName.toLowerCase(),
 		text: collectedText(match),
 		fingerprint: fingerprintOf(match),
 		hasElementChildren: hasElementChild(match),

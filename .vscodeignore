@@ -1,6 +1,4 @@
 .vscode/**
-.vscode-test/**
-out/**
 coverage/**
 node_modules/**
 src/**
@@ -10,14 +8,12 @@ test-results/**
 .yarnrc
 vsc-extension-quickstart.md
 **/tsconfig.json
-tsconfig.test.json
 tsconfig.*.json
 svelte.config.js
 scripts/**
 knip.json
 **/*.map
 **/*.ts
-**/.vscode-test.*
 .cursor/**
 .agents/**
 .claude/**

@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		// Bundler resolution: vp pack emits CJS; parse5/css-select are ESM-only.
+		// Bundler resolution: vp pack emits CJS; parse5 is ESM-only.
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"target": "ES2022",
@@ -16,5 +16,5 @@
 		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
 	},
 	"include": ["src"],
-	"exclude": ["src/test", "src/webview"]
+	"exclude": ["src/webview"]
 }

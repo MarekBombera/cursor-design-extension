@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -104,8 +104,9 @@ sequenceDiagram
 ```
 
 - `stale` and `targetMissing` come from disk only (`commentTarget.ts`): the stored selector runs
-  through css-select only when it has buildSelector's shape (at most 2 descendant steps) and the
-  page is at most 64 deep, 20,000 elements and 5,000 siblings wide; otherwise flags are `null`.
+  through the in-house `selectMatches` (`selectorMatch.ts`: finder grammar only, one linear walk
+  with Chromium's matching rules); a selector outside that grammar, or a match past
+  `MAX_MATCH_WORK` element-steps, leaves both flags `null`.
 - Every flag read (MCP and panel) shares one path: a parse cached per workspace and frame while
   the HTML text is identical (32 frames at most, oldest evicted), and a 200 ms target-check budget
   timed after the parse. Past the budget, a comment that needs a match reports `null` flags and a
@@ -279,7 +280,7 @@ sequenceDiagram
   participant F as Frame runtime (pinAnchors)
   Note over D,H: watcher refresh, comment:create success, panel opened or shown
   H->>D: readComments (comments.json + artboards/id.html)
-  Note over H: parse cached by HTML text, css-select within 200 ms, then null flags
+  Note over H: parse cached by HTML text, matches within 200 ms, then null flags
   H->>C: comments:updated {comments[ + stale|null, targetMissing|null ], error?}
   C->>F: cd:anchors {anchors[{id, selector}]} (every live frame, [] with no element comments)
   alt from a sender other than the captured parent, or any bad entry

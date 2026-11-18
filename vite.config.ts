@@ -22,13 +22,7 @@ const shared = {
 } as const;
 
 // Regexes so subpath imports (`zod/mini`, `@modelcontextprotocol/server/stdio`) are bundled too.
-const alwaysBundle = [
-	/^@modelcontextprotocol\/server(\/|$)/,
-	/^zod(\/|$)/,
-	/^parse5(\/|$)/,
-	/^parse5-htmlparser2-tree-adapter(\/|$)/,
-	/^css-select(\/|$)/,
-];
+const alwaysBundle = [/^@modelcontextprotocol\/server(\/|$)/, /^zod(\/|$)/, /^parse5(\/|$)/];
 
 // Libraries the rules say not to add (.claude/rules/00-cursor-design-core.md, 02, 06).
 const bannedLibraries = [
@@ -154,12 +148,9 @@ export default defineConfig({
 		],
 		ignorePatterns: [
 			'dist',
-			'out',
 			'coverage',
 			'node_modules',
-			'.vscode-test',
 			'test-results',
-			'src/test',
 			// Vendored Blueprint scripts follow upstream style.
 			'.cursor',
 			'.claude',
@@ -174,10 +165,8 @@ export default defineConfig({
 		printWidth: 100,
 		ignorePatterns: [
 			'**/dist/**',
-			'**/out/**',
 			'**/coverage/**',
 			'**/node_modules/**',
-			'**/.vscode-test/**',
 			'**/test-results/**',
 			'**/.agents/**',
 			'**/.cursor/**',
@@ -202,7 +191,6 @@ export default defineConfig({
 	],
 	test: {
 		include: ['src/**/*.test.ts'],
-		exclude: ['src/test/**'],
 		pool: 'forks',
 		passWithNoTests: false,
 		coverage: {

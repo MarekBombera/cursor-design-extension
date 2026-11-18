@@ -124,7 +124,7 @@ Height is never stored; it comes from the rendered content (`cd:frame-height`). 
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
 - **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
-- **Tooling** - Vite+ from 0.2.1 (`vp check` lint/fmt/types, `vp test` on Vitest, `vp pack` on tsdown), plus `svelte-check` for the webview. One Verify command (`pnpm verify`) runs locally and in GitHub CI on push/PR; the `@vscode/test-electron` suite stays out of CI. UI verify = F5 (`fixtures/dev-workspace`).
+- **Tooling** - Vite+ from 0.2.1 (`vp check` lint/fmt/types, `vp test` on Vitest, `vp pack` on tsdown), plus `svelte-check` for the webview. One Verify command (`pnpm verify`) runs locally and in GitHub CI on push/PR. UI verify = F5 (`fixtures/dev-workspace`).
 
 Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.claude/rules/02-mcp-webview.md` lock v2 `@modelcontextprotocol/server`. Follow the repo.
 

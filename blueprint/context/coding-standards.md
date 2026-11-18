@@ -25,7 +25,7 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 
 ## Testing
 
-The Blueprint test gate is on via `vp test` (declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `package.json`'s `vscode-test` script (`pnpm test`) does not count as this gate. `/ci` still owns a `Verify` command. The Electron sample is compiled with `pnpm compile-electron-tests` and run with `pnpm test`; it is not this gate and stays out of Verify. A coverage script (`pnpm coverage`) exists for a local report; it has no thresholds and is not part of Verify.
+The Blueprint test gate is on via `pnpm test` (`vp test`, declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `/ci` still owns a `Verify` command. There is no Electron suite (plain VS Code lacks the Cursor API). A coverage script (`pnpm coverage`) exists for a local report; it has no thresholds and is not part of Verify.
 
 Do not run `/tests` to add or replace the runner; Vitest via `vp test` is it. Test-writing details: `.claude/rules/09-tests.md`.
 

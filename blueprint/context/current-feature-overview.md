@@ -1,51 +1,57 @@
-# Keep comment drafts across a tab switch - Overview for review
+# Drop the Electron test suite and css-select - Overview for review
 
-Source of truth: `blueprint/history/fixes/keep-comment-drafts-across-a-tab-switch.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/fixes/drop-the-electron-test-suite-and-css-select.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Switching to another editor tab and back no longer loses what you were doing in the cursor-design panel. An open comment bubble, Comment mode, a half-typed new comment and half-typed replies all come back. The comment boxes also start at a usable 4-line height, and Alt+click picking the parent now has a permanent browser test.
+Two dependency cuts, shipped 2026-11-18.
 
-## Key loop
+- **Electron test suite removed.** It only ever held the scaffold's sample test and cannot run Cursor's API. That took 99 packages out of the install, and `pnpm test` now runs the real unit suite.
+- **css-select replaced.** An in-house matcher, `src/disk/selectorMatch.ts`, now checks comment targets on disk in one linear walk with one honest work limit, using matching rules proven in real Chromium. The extension ships 5 runtime packages instead of 14.
+- **Reviewed hard.** Two fresh reviewers (Opus 5.5, Fable 5.2) found a hang, a crash and an unbounded-cost path. All are fixed and closed.
+
+## Flow
 
 ```mermaid
-sequenceDiagram
-  participant User
-  participant Chrome as Chrome (App)
-  participant State as webview state (JSON)
-  participant Host as Extension host
-  User->>Chrome: type a comment / reply, open a thread
-  Chrome->>State: setState (live value, or the held one while waiting; defaults and pending sends left out)
-  Note over Chrome: tab hidden → webview destroyed → tab shown → rebuilt
-  Chrome->>State: getState → parseSavedCommentUi
-  Chrome->>Host: artboard:ready
-  Host->>Chrome: canvas:updated → draft back if its frame is live
-  Host->>Chrome: comments:updated → thread opens once its pin is placed
+flowchart LR
+  Sel["Stored selector<br/>(≤ 1000 chars, finder grammar)"] --> Parse["Sticky-regex tokens<br/>one reading per character<br/>null = unchecked"]
+  File["Artboard HTML on disk"] --> Tree["parse5 tree"]
+  Parse --> Walk["One top-down walk<br/>parent array + ancestor counters<br/>per-element attribute map and class set"]
+  Tree --> Walk
+  Walk -->|"work > 10M units"| Unchecked["null → unchecked"]
+  Walk --> Flags["Matches → tag, text, fingerprint<br/>→ stale / targetMissing"]
 ```
 
 ## What you will see
 
-- An open pin thread is open again after a tab switch.
-- Comment mode stays on, and the new-comment popover is back on the same element with your text, cursor at the end.
-- Half-typed replies (in the Comments list or a bubble) are back.
-- A comment already sending isn't restored, so there are no duplicates.
-- Comment boxes start 4 lines tall.
+- **Normal comments:** nothing changes. All 110 real picks gave the same match and fingerprint as css-select.
+- **Comments the old caps refused:** on very deep or very wide pages, or with longer selectors, they now get a real fresh or stale answer instead of "unchecked".
+- **One-time stale:** a comment whose target contains an element with both a namespaced and a plain attribute of one name (SVG `xlink:href` + `href`), or integer-like attribute names, reads stale once. The old tree format dropped or reordered those attributes in the fingerprint.
+- **`pnpm test`** runs Vitest.
 
 ## Decisions locked
 
-- Draft text lives on the draft itself, so it can't leak into the next comment.
-- Saved state is parsed like any wire value, and a broken key is dropped alone.
-- Restores wait for their frame or pin, and are dropped if it never comes.
-- A restore never steals focus from something you're typing in.
-- The test harness copies state as JSON, like Cursor.
+- **Chromium is the authority.** One case table runs through the matcher (in Verify) and through Chromium (in the browser tests).
+- **Work limit:** 10 million units per match. A unit is one compound or simple-selector check, one attribute read, or one folded value character. The worst case measured about 0.3-0.7 s; past the limit the comment reads "unchecked".
+- **The matcher never throws.** It returns `null` for anything outside the grammar or past 1000 characters, and a throw from it is treated as a bug.
+- **No new dependencies.** Tests use fast-check, happy-dom and Playwright.
+
+## Out of scope
+
+- F-125 (unverified): parse5's tree can differ from Chromium's on rare markup (no doctype, declarative shadow DOM, `<select>` content). This predates the change and is tracked.
+- `@vitest/coverage-v8` and knip stay.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Webview state | The small record VS Code keeps for the panel while its tab is hidden; the panel is rebuilt from it |
-| Held restore | A saved draft or thread waiting for its frame or pin to exist again before it reopens |
+| Finder grammar | The selector shapes our picker emits: tags, `#id`, `.class`, `[attr="v"]`, `:nth-child(n)`, `:nth-of-type(n)`, joined by `" > "` or `" "` |
+| Case table | One list of pages, selectors and expected matches, checked against both our matcher and Chromium |
+| Work limit (`MAX_MATCH_WORK`) | The most one match may cost before it gives up as "unchecked", so a hostile page cannot freeze the extension |
+| Oracle | A random cross-check against happy-dom on simple trees, with selectors built from true facts about the page |
 
 ## Done means
 
-`pnpm verify` (565), `pnpm test:browser` (134, 10 new reload tests incl. Alt+click) and `pnpm knip` are green. The three main restore tests fail with their restore code removed.
+- `pnpm verify` passes (574 tests), `pnpm test:browser` passes (135), and `pnpm knip` is clean.
+- The `.vsix` file list is unchanged.
+- Findings F-118 to F-124 and F-126 to F-129 are closed and archived with the fix.

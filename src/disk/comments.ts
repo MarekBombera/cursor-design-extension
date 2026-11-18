@@ -453,12 +453,12 @@ const logTargetReadError = (error: unknown): void => {
 	);
 };
 
-// The flag read's time budget: past it, a comment that needs a css-select match reports unchecked.
+// The flag read's time budget: past it, a comment that needs a target match reports unchecked.
 const CHECK_BUDGET_MS = 200;
 
 // One parse per workspace and frame, reused only while the HTML text is identical. An unchanged
 // document also keeps matchCommentTarget's per-document match cache, so a re-read of an unchanged
-// frame runs no css-select at all.
+// frame runs no match at all.
 // ponytail: capped at MAX_PARSED_DOCUMENTS, oldest insert evicted first (FIFO, not LRU), so a
 // deleted frame or a previous workspace stops holding its tree once newer frames arrive; past the
 // cap a read that needs every frame reparses them all. Upgrade path: LRU (re-insert on hit).
@@ -527,10 +527,10 @@ const loadFramePresence = async (
 
 // Parse only frames a fingerprinted element comment needs; every other comment needs only to know
 // whether its frame file still exists.
-// ponytail: parse5 parses the whole file before commentTarget's 64-deep / 20,000-element caps
-// apply, so parse time grows with HTML size (no byte cap exists). It runs on the extension host
-// thread once per HTML change per frame; css-select is bounded by the read budget. Upgrade path:
-// a worker thread for the host read.
+// ponytail: parse5 parses the whole file, so parse time grows with HTML size (no byte cap exists).
+// It runs on the extension host thread once per HTML change per frame; each match is bounded by
+// MAX_MATCH_WORK (selectorMatch.ts) and the read by its budget. Upgrade path: a worker thread for
+// the host read.
 const documentsFor = async (
 	workspaceRoot: string,
 	comments: readonly Comment[],
@@ -561,11 +561,11 @@ const withCommentViews = async (
 	comments: Comment[],
 ): Promise<CommentView[]> => {
 	const documents = await documentsFor(workspaceRoot, comments);
-	// After the parse: the budget bounds css-select only, so a slow parse never skips a match.
+	// After the parse: the budget bounds matching only, so a slow parse never skips a match.
 	const started = performance.now();
 	return comments.map((comment) => {
 		const document = documents.get(comment.frameId) ?? 'missing';
-		// Page and presence-only comments cost no css-select, so the budget never skips them.
+		// Page and presence-only comments cost no match, so the budget never skips them.
 		const needsMatch =
 			typeof document === 'object' && !comment.isPage && comment.targetFingerprint !== undefined;
 		if (needsMatch && performance.now() - started > CHECK_BUDGET_MS) {

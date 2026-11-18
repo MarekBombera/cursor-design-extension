@@ -223,3 +223,11 @@
 **Suggested fix:** Add a `ponytail:` note on `pinsAtTip` naming the ceiling (exact-pixel match; near-coincident tips still overlap) and the upgrade path (step a pin whose tip is within one pin width of an earlier placed tip). No behavior change needed unless Bombic wants the wider rule.
 **Resolution:**
 2026-11-18 fix/pin-stacking-and-zero-copy: `ponytail:` note on `pinsAtTip` in `layoutPins` names the exact-pixel ceiling and the upgrade path (step any pin within one pin width of an earlier tip). Comment only; awaits a later `/audit` to close.
+
+### F-125 [P3] unverified - parse5's tree can differ from the frame's Chromium tree on rare markup
+
+**File:** src/disk/commentTarget.ts (`parseArtboardDocument`)
+**Found:** 2026-11-18 by /audit (scope: current; both fresh reviewers; predates this change, same under css-select)
+**Why it matters:** A file without a doctype parses in quirks mode on disk (`<p>a<table>`: `p > table`) but the frame copy is re-serialized with `<!DOCTYPE html>`; `<template shadowrootmode>` is removed by Chromium but kept by parse5; Chromium keeps a `div` inside `<select>` that parse5 8.1.1 drops. Comments on such pages can read missing or shift by one. Not traced against real artboards.
+**Suggested fix:** None in this fix. Track; a later fix could parse the disk file the way the frame copy is built.
+**Resolution:**

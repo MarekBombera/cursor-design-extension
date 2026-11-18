@@ -54,7 +54,7 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 - **Artboard:** nested sandboxed HTML iframe (`sandbox="allow-scripts"`). Scripts allowed; parent never `eval`s artboard HTML.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
 - **Brain:** Cursor Agent only. Disk is SoT. Brand: `cursor-design`.
-- **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR; the `@vscode/test-electron` suite stays out of CI.
+- **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR.
 - **Coding SoT:** `.claude/rules/` (00, 02-09), skills `cursor-design-build` (repo) and the shipped Agent skill `cursor-design` (`skills/cursor-design/SKILL.md`).
 
 ## 6. Monetize - How will this make money?
