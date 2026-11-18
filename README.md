@@ -10,6 +10,8 @@ Agent-driven live HTML artboard for **Cursor** - Claude Design–style canvas wi
 
 v0.1.0: installable `.vsix` with an artboard panel, seven MCP tools, export handoff + stale badge, and documented v1 limits.
 
+0.3: Svelte chrome, frame drag and resize, and comments for the Agent (Comment mode, pins, Comments panel, Copy for Agent). 11 MCP tools.
+
 ![Artboard panel](media/artboard-panel.png)
 
 Spec (source of truth): [Notion - Cursor Design](https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4)
@@ -26,6 +28,9 @@ Server name: `cursor-design`. Tools:
 - `place_frame` - set one frame's `x`, `y`, `width`, `label`, or `group` in `canvas.json`; returns every frame
 - `export_artboard` - write `.cursor-design/handoff/<exportId>/` and record `lastExport` (call before implementing)
 - `handoff_status` - `{ stale, activeArtboardId, activeHash, lastExport? }`; re-export when `stale` is true
+- `list_comments` - comments from `.cursor-design/comments.json` with `stale` / `targetMissing` flags (`null` = unchecked) and `replyCount`; `status` optional (`open`, `sent`, `resolved`), omitted = every unresolved comment
+- `get_comment` - one comment with its replies and those flags checked against the artboard on disk; call it before acting on a comment
+- `resolve_comment` - resolve after changing the target; the one-line `note` shows as the Agent's reply in the thread
 
 **Allowlist** the server if Cursor prompts. If MCP is denied, edit `.cursor-design/**` on disk and tell the user to allowlist the tools.
 
@@ -37,6 +42,14 @@ Server name: `cursor-design`. Tools:
 4. Settings → MCP: allowlist `cursor-design` (toggle off/on if the tool count stays 0; see Limits).
 
 Smoke-tested 2026-09-13, Cursor 3.20.17.
+
+## Comments for the Agent
+
+1. In the panel press `C` (or pick **Comment** in the toolbar's mode switch). The hover outline shows what a click will target; Alt+click or ↑ picks the parent, ↓ the child. Clicking empty space in a frame comments on the whole frame. Links and buttons in the design don't fire in Comment mode.
+2. Type in the popover and press Enter (**Add comment**). Shift+Enter adds a newline, Esc cancels. The comment is saved to `.cursor-design/comments.json` and its pin follows the element.
+3. **Comments** in the toolbar opens the panel: Reply, Resolve, Reopen, and click a comment's target to jump to its pin.
+4. **Copy for Agent** copies the prompt for one comment; **Copy N open comments for Agent** copies one prompt with every open id. Paste it into Cursor Agent chat. Copied comments are marked `sent`.
+5. The Agent calls `get_comment`, changes the target with `update_artboard`, then `resolve_comment` with a one-line note that shows as a reply.
 
 ## Develop
 
@@ -85,22 +98,24 @@ Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace &&
 
 **0.2 canvas trial:** 2026-10-18 (6f dogfood: four frames exported clean, responsive sample-app built from the handoff).
 
+**0.3 verification:** 2026-11-18 (8i, agent-run: a headless Agent loop over real stdio MCP processes covering comments, sent, fresh process, resolve, stale, target missing, unchecked and a byte-equal export, plus a `.vsix` smoke; no manual Cursor run, earlier per-feature F5 passes cited or waived).
+
 ## Limits (v1)
 
 Facts, not a roadmap. Drift vs the rules or overview is labeled.
 
 - Cursor only: MCP registration uses `vscode.cursor.mcp.registerServer`. In plain VS Code the server is not registered (warning in Output → Cursor Design); the panel still renders `.cursor-design/` from disk, with no Agent loop.
-- First workspace folder only; multi-root beyond the first folder is ignored (`revealDesignFolder.ts`, `handleOpenArtboard.ts` ponytail).
+- The panel uses the first workspace folder only (`hostFs.ts`). MCP tools see every open folder and take an optional `rootPath` when more than one is open.
 - Untrusted workspaces unsupported (`capabilities.untrustedWorkspaces.supported: false`); artboard HTML is executable workspace content.
 - One canvas per workspace folder; every artboard file is a frame on it. `set_active_artboard` still picks the frame that `read_artboard` and `handoff_status` default to.
-- Writes: one process-wide MCP queue (recorded drift vs rule 02 "Serialize writes per artboard id"; documented as-is, queue unchanged); host-vs-MCP manifest writes are last-writer-wins; no cross-window lock (`mcpQueue.ts`, `watchArtboardDisk.ts`, `artboardFs.ts` ponytails). Failed multi-file writes leave partial files (no journal/rollback); orphan handoff dirs are never deleted.
+- Writes: one process-wide MCP queue (recorded drift vs rule 02 "Serialize writes per artboard id"; documented as-is, queue unchanged). `canvas.json` and `comments.json` read-modify-writes run under a cross-process lock (`.cursor-design/.lock`, `workspaceLock.ts`); artboard HTML and `manifest.json` writes are still last-writer-wins across windows (`mcpQueue.ts`, `watchArtboardDisk.ts`, `artboardFs.ts` ponytails). Failed multi-file writes leave partial files (no journal/rollback); orphan handoff dirs are never deleted.
 - Artboard iframe: `sandbox="allow-scripts"`. CSP blocks inline event handlers, `style=""` attributes, and external subresources in the artboard (`artboardChromeHtml.ts` v1 limit). Each frame also gets a second, inline-only policy (`FRAME_CSP` in `stampArtboardHtml.ts`), so even a `<script src>` that carries the stamped nonce, or one artboard JS adds at runtime, never loads. Chromium's CSP does not govern WebRTC or DNS prefetch hints. The exported `canvas.html` preview is opened in your own browser and is not restricted.
 - Agent skill: on start in Cursor the extension copies `skills/cursor-design/SKILL.md` to `~/.cursor/skills/cursor-design/` when it differs. In a remote window that is the remote home, which Cursor may not read. Two extension versions running at once (F5 host plus an installed `.vsix`) overwrite each other's copy; the last window started wins. Uninstalling leaves the file; it tells Agents to ignore it when the tools are missing.
 - Each frame's `index.html` carries its whole document (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.cursor-design/assets/` is copied manually; `tokens.json` is passed through without validation.
 - Brain is Cursor Agent only: no in-panel chat, no model API keys, no `vscode.lm`.
 - Not on the Marketplace; install from `.vsix` (**Extensions: Install from VSIX…**).
 - Cursor MCP settings may show **0 tools** until the server is toggled off/on.
-- Chrome is vanilla nonce'd script, not the Svelte 5 + Vite chrome named in the overview (recorded drift, not fixed here).
+- Comment flags are checked against the static artboard HTML on disk. A target that the artboard's own script creates at runtime reads as unchecked (`null`), never guessed (`commentTarget.ts`).
 
 ## License
 

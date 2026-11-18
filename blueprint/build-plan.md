@@ -42,7 +42,7 @@ Rule: no product features and no behavior changes. Plan review findings (read be
 From the Notion 0.3 page (scope changed 2026-10-21: comments only, no editing): https://app.notion.com/p/3fd500344e088171925dd51bc542c00c
 Plan, library choices, decisions D1-D4 (Bombic 2026-10-21), error and status tables, gotchas and edge-case tests (read before each `/feature`; adversarial review applied 2026-10-21): `blueprint/reference/0.3-comments-plan.md`. Order: 8a, 8b, 8c, 8d1, 8d2, 8d3, 8e, 8f1, 8f2, 8g, 8h, 8i.
 
-- [ ] 8. **0.3 Comments for Agent** - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with copy-prompt handoff; disk and export HTML stay pristine
+- [x] 8. **0.3 Comments for Agent** - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with copy-prompt handoff; disk and export HTML stay pristine
   - [x] 8a. **Svelte toolchain** - Svelte 5 + vite-plugin-svelte bundle in `dist/webview/` under the existing CSP (one Vite instance); frame runtime bundled to an IIFE string; `svelte-check` on TS 6 (lint stays TS 7 via tsgolint) and the webview build in Verify and CI; `src/webview/**` lint override; chrome behavior unchanged
   - [x] 8b. **Svelte port** - template-string chrome replaced by Svelte components with one host bridge; stage geometry and frame runtime become real TS modules; every 0.2 behavior passes the F5 parity checklist; rules 04/05 updated
   - [x] 8c. **Frame drag/resize** - drag by label, resize width by right handle, whole-px snap (8px arrow nudge), width 120-3840, one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins
@@ -54,4 +54,4 @@ Plan, library choices, decisions D1-D4 (Bombic 2026-10-21), error and status tab
   - [x] 8f2. **Pins** - pins follow elements (resize, scroll, DOM changes, transition/animation end), show open/sent/resolved/stale/missing/unchecked; page comments
   - [x] 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump
   - [x] 8h. **Copy prompt** - locked template word for word (literal test), Copy all open, marks sent only after the clipboard write, host clipboard
-  - [ ] 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code
+  - [x] 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code (agent-run verification; F5 waived by Bombic 2026-11-18, then four Cursor-only checks run by hand, all pass)
