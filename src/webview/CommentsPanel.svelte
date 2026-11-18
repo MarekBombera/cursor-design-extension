@@ -2,15 +2,8 @@
 	import type { Attachment } from 'svelte/attachments';
 
 	import CommentCard from './CommentCard.svelte';
-	import {
-		type CommentActions,
-		type CopiedButton,
-		type CopyOpenState,
-		handoffCopy,
-		type PanelItem,
-		type PanelSummary,
-		summaryParts,
-	} from './commentsPanel';
+	import { type CommentActions, type CopiedButton, type CopyOpenState } from './commentActions';
+	import { handoffCopy, type PanelItem, type PanelSummary, summaryParts } from './commentsPanel';
 	import Button from './ui/Button.svelte';
 	import EmptyState from './ui/EmptyState.svelte';
 	import Icon from './ui/Icon.svelte';

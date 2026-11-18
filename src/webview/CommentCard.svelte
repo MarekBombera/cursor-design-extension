@@ -6,7 +6,8 @@
 	import PinChip from './PinChip.svelte';
 	import TargetRef from './TargetRef.svelte';
 	import { popoverKeyAction, targetChipText } from './commentPopover';
-	import { type CommentAction, canSubmitReply, relativeTime } from './commentsPanel';
+	import { type CommentAction, canSubmitReply } from './commentActions';
+	import { relativeTime } from './commentsPanel';
 	import type { PostedComment } from './hostMessages';
 	import { flagBadge, type PinBadge, statusBadge } from './pins';
 	import Avatar from './ui/Avatar.svelte';

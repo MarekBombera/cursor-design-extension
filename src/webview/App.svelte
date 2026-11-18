@@ -27,29 +27,8 @@
 		resolveHeldDraft,
 		submitDraft,
 	} from './commentPopover';
-	import {
-		answerAction,
-		answerCopyOpen,
-		closeReply,
-		type CommentAction,
-		type CommentActions,
-		COPY_FEEDBACK_MS,
-		type CopiedButton,
-		copyPending,
-		type CopyOpenState,
-		editReply,
-		frameLabel,
-		keepLiveActions,
-		liveRegionText,
-		openReply,
-		panelItems,
-		panelSummary,
-		replyPending,
-		submitCopy,
-		submitCopyOpen,
-		submitReply,
-		submitStatus,
-	} from './commentsPanel';
+	import { answerAction, answerCopyOpen, closeReply, type CommentAction, type CommentActions, COPY_FEEDBACK_MS, type CopiedButton, copyPending, type CopyOpenState, editReply, keepLiveActions, openReply, replyPending, submitCopy, submitCopyOpen, submitReply, submitStatus } from './commentActions';
+	import { frameLabel, liveRegionText, panelItems, panelSummary } from './commentsPanel';
 	import type { ChromeFrameMessage, FrameMessage, FramePickMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
 	import {
