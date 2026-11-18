@@ -1,13 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import { MAX_COMMENTS } from '../disk/layout';
-import {
-	parseHostMessage,
-	parseSavedCommentUi,
-	parseSavedStageView,
-	routeMessage,
-} from './hostMessages';
+import { parseHostMessage, routeMessage } from './hostMessages';
 
 const validFrame = {
 	id: 'a',
@@ -113,26 +107,6 @@ test('ui:status needs a boolean mcpAvailable; handoffStale is true only when tru
 		parseHostMessage({ type: 'ui:status', mcpAvailable: true, handoffStale: true }),
 		{ type: 'ui:status', mcpAvailable: true, handoffStale: true },
 	);
-});
-
-test('saved stage view needs finite x, y and a positive finite zoom', () => {
-	assert.deepEqual(parseSavedStageView({ x: -5, y: 2, zoom: 0.5, extra: 1 }), {
-		x: -5,
-		y: 2,
-		zoom: 0.5,
-	});
-	for (const value of [
-		null,
-		undefined,
-		'view',
-		{ x: 0, y: 0, zoom: 0 },
-		{ x: 0, y: 0, zoom: -1 },
-		{ x: Number.NaN, y: 0, zoom: 1 },
-		{ x: 0, y: 0, zoom: Number.POSITIVE_INFINITY },
-		{ x: 0, zoom: 1 },
-	]) {
-		assert.equal(parseSavedStageView(value), undefined, JSON.stringify(value));
-	}
 });
 
 test('routeMessage: the registered window decides, never the payload or a null source', () => {
@@ -244,108 +218,4 @@ test('comment:added needs a string requestId; ui:error a string message and opti
 		type: 'ui:error',
 		message: 'Copy failed.',
 	});
-});
-
-const savedTarget = {
-	selector: 'h1',
-	tagName: 'h1',
-	text: 'Hello',
-	rect: { x: 10, y: 20, width: 100, height: 40 },
-	point: { x: 5, y: 6 },
-	box: { width: 100, height: 40 },
-	styles: {},
-	isPage: false,
-};
-const savedDraft = { frameId: 'a', generation: 2, target: savedTarget, body: 'Bolder' };
-const savedUi = {
-	commentMode: true,
-	commentDraft: savedDraft,
-	replyDrafts: { c1: 'Thanks', c2: '' },
-};
-
-test('saved comment UI round-trips through JSON', () => {
-	assert.deepEqual(parseSavedCommentUi(JSON.parse(JSON.stringify(savedUi))), savedUi);
-	assert.deepEqual(parseSavedCommentUi({ openThreadId: 'c1', stageView: {} }), {
-		commentMode: false,
-		openThreadId: 'c1',
-		replyDrafts: {},
-	});
-});
-
-test('saved comment UI: a non-object state or wrong types read as the defaults', () => {
-	const empty = { commentMode: false, replyDrafts: {} };
-	for (const state of [undefined, null, 'x', 7, []]) {
-		assert.deepEqual(parseSavedCommentUi(state), empty, JSON.stringify(state));
-	}
-	assert.deepEqual(
-		parseSavedCommentUi({
-			commentMode: 'true',
-			commentDraft: 'x',
-			openThreadId: 7,
-			replyDrafts: 'x',
-		}),
-		empty,
-	);
-});
-
-test('saved comment UI: a malformed draft is dropped alone', () => {
-	for (const broken of [
-		{ frameId: '' },
-		{ frameId: 7 },
-		{ generation: -1 },
-		{ generation: 1.5 },
-		{ generation: '2' },
-		{ generation: Number.MAX_SAFE_INTEGER + 1 },
-		{ body: 7 },
-		{ body: 'a'.repeat(2001) },
-		{ target: { ...savedTarget, selector: 'h1\nh2' } },
-		{ target: { ...savedTarget, isPage: true } },
-		{ target: { ...savedTarget, point: undefined } },
-		{ target: null },
-	]) {
-		assert.deepEqual(
-			parseSavedCommentUi({ ...savedUi, commentDraft: { ...savedDraft, ...broken } }),
-			{ commentMode: true, replyDrafts: savedUi.replyDrafts },
-			JSON.stringify(broken),
-		);
-	}
-	// At the body cap it is kept; pendingRequestId and error are never restored.
-	const atCap = { ...savedDraft, body: 'a'.repeat(2000) };
-	assert.deepEqual(
-		parseSavedCommentUi({
-			commentDraft: { ...atCap, pendingRequestId: 'r1', error: 'Pick it again.' },
-		}).commentDraft,
-		atCap,
-	);
-});
-
-test('saved comment UI: a bad thread id is dropped, and a draft wins over a thread', () => {
-	for (const openThreadId of ['', 'c 1', 'a'.repeat(65), 7]) {
-		assert.equal(parseSavedCommentUi({ openThreadId }).openThreadId, undefined);
-	}
-	const both = parseSavedCommentUi({ commentDraft: savedDraft, openThreadId: 'c1' });
-	assert.deepEqual(both.commentDraft, savedDraft);
-	assert.equal(both.openThreadId, undefined);
-});
-
-test('saved reply drafts drop bad entries one by one and keep at most MAX_COMMENTS', () => {
-	assert.deepEqual(
-		parseSavedCommentUi({
-			replyDrafts: { c1: 'ok', 'bad id': 'x', c2: 7, c3: 'a'.repeat(2001), c4: '' },
-		}).replyDrafts,
-		{ c1: 'ok', c4: '' },
-	);
-	const many = Object.fromEntries(
-		Array.from({ length: MAX_COMMENTS + 1 }, (_, index) => [`c${String(index)}`, 'x']),
-	);
-	const kept = parseSavedCommentUi({ replyDrafts: many }).replyDrafts;
-	assert.equal(Object.keys(kept).length, MAX_COMMENTS);
-	assert.equal(kept[`c${String(MAX_COMMENTS)}`], undefined);
-	for (const replyDrafts of [
-		new Map([['c1', 'x']]),
-		['x'],
-		Object.create({ c1: 'x' }) as unknown,
-	]) {
-		assert.deepEqual(parseSavedCommentUi({ replyDrafts }).replyDrafts, {});
-	}
 });

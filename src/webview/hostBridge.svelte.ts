@@ -8,11 +8,9 @@ import {
 	type FramePlaceMessage,
 	type HostMessage,
 	parseHostMessage,
-	parseSavedCommentUi,
-	parseSavedStageView,
 	routeMessage,
-	type SavedCommentUi,
 } from './hostMessages';
+import { parseSavedCommentUi, parseSavedStageView, type SavedCommentUi } from './savedState';
 import type { StageView } from './stageGeometry';
 
 // The one place that talks to the host: acquireVsCodeApi once, one message listener, webview

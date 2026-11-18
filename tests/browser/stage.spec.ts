@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { MIN_FRAME_WIDTH } from '../../src/disk/layout';
 import { FRAME_WHEEL_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
-import { parseSavedStageView } from '../../src/webview/hostMessages';
+import { parseSavedStageView } from '../../src/webview/savedState';
 import { NUDGE_STEP, type StageView } from '../../src/webview/stageGeometry';
 import { ZOOM_PRESETS } from '../../src/webview/zoomChoices';
 import {
