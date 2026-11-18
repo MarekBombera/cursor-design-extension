@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import type { CommentView } from '../disk/comments';
+import type { CommentView } from '../disk/commentViews';
 import { CommentNotFoundError, InvalidArgsError, LockTimeoutError } from '../disk/errors';
 import {
 	CHANGE_FALLBACK_MESSAGE,

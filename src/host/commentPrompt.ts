@@ -1,4 +1,4 @@
-import type { Comment } from '../disk/comments';
+import type { Comment } from '../disk/commentsFile';
 import { COMMENT_STYLE_KEYS, MAX_PICK_TEXT_CHARS, MAX_SELECTOR_CHARS } from '../disk/layout';
 import { isSafeStyleValue, toOneLine } from '../webview/frame/frameMessages';
 

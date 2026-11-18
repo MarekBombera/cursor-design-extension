@@ -1,6 +1,7 @@
 import { type McpServer } from '@modelcontextprotocol/server';
 
-import { type CommentView, getComment, listComments, resolveComment } from '../disk/comments';
+import { getComment, listComments, resolveComment } from '../disk/comments';
+import type { CommentView } from '../disk/commentViews';
 import {
 	READ_ONLY_ANNOTATIONS,
 	ROOT_PATH_DESCRIPTION,

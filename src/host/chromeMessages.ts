@@ -1,6 +1,7 @@
 import * as z from 'zod/mini';
 
-import type { CommentView, NewComment } from '../disk/comments';
+import type { CommentView } from '../disk/commentViews';
+import type { NewComment } from '../disk/commentsFile';
 import { CommentNotFoundError, toSafeArtboardErrorMessage } from '../disk/errors';
 import {
 	COMMENT_ID_PATTERN,

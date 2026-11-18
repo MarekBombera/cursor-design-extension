@@ -10,7 +10,7 @@ import {
 	NOTHING_OPEN_MESSAGE,
 } from './chromeMessages';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import type { CommentView } from '../disk/comments';
+import type { CommentView } from '../disk/commentViews';
 import { CommentNotFoundError, LockTimeoutError } from '../disk/errors';
 import { answerCommentRequest } from './panelComments';
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import type { Comment } from '../disk/comments';
+import type { Comment } from '../disk/commentsFile';
 import { MAX_PICK_TEXT_CHARS } from '../disk/layout';
 import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
 

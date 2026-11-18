@@ -17,20 +17,17 @@ import { afterEach, test, vi } from 'vite-plus/test';
 
 import { createArtboard } from './artboardFs';
 import {
-	MAX_PARSED_DOCUMENTS,
 	addComment,
 	getComment,
 	listComments,
 	markCommentsSent,
-	parseCommentsFile,
 	readComments,
-	readCommentsFile,
 	replyToComment,
 	resolveComment,
-	serializeCommentsFile,
 	setCommentStatus,
-	type NewComment,
 } from './comments';
+import { MAX_PARSED_DOCUMENTS } from './commentViews';
+import type { NewComment } from './commentsFile';
 import {
 	HINT_CHECK_BUDGET,
 	HINT_FRAME_MISSING,
@@ -42,11 +39,9 @@ import {
 	ArtboardNotFoundError,
 	CommentNotFoundError,
 	CommentResolvedError,
-	CorruptCommentsError,
 	DiskError,
 	InvalidArgsError,
 	PickOutdatedError,
-	UnsupportedCommentsVersionError,
 } from './errors';
 import {
 	COMMENTS_SCHEMA_VERSION,
@@ -143,179 +138,6 @@ const writeComments = async (workspaceRoot: string, text: string): Promise<strin
 	await writeFile(filePath, text, 'utf8');
 	return filePath;
 };
-
-test('a missing comments file reads as an empty list', async () => {
-	const workspaceRoot = await makeTempRoot();
-	assert.deepEqual(await readCommentsFile(workspaceRoot), { version: 1, comments: [] });
-});
-
-test('empty file, {}, string version, 1.5 and a non-array comments are corrupt', () => {
-	assert.throws(() => parseCommentsFile(JSON.parse('{}') as unknown), CorruptCommentsError);
-	assert.throws(() => parseCommentsFile({ version: '1' }), CorruptCommentsError);
-	assert.throws(() => parseCommentsFile({ version: 1.5, comments: [] }), CorruptCommentsError);
-	assert.throws(() => parseCommentsFile({ version: 1, comments: {} }), CorruptCommentsError);
-});
-
-test('an empty comments file on disk is corrupt', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await writeComments(workspaceRoot, '');
-	await assert.rejects(readCommentsFile(workspaceRoot), CorruptCommentsError);
-});
-
-test('version 2 is unsupported', () => {
-	assert.throws(
-		() => parseCommentsFile({ version: 2, comments: [] }),
-		UnsupportedCommentsVersionError,
-	);
-});
-
-test('duplicate comment ids and duplicate reply ids are corrupt', () => {
-	assert.throws(
-		() =>
-			parseCommentsFile({
-				version: 1,
-				comments: [validComment(), validComment({ id: 'c1', selector: 'p' })],
-			}),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() =>
-			parseCommentsFile({
-				version: 1,
-				comments: [
-					validComment({
-						replies: [
-							{ id: 'r1', author: 'user', body: 'one', createdAt: CREATED_AT },
-							{ id: 'r1', author: 'user', body: 'two', createdAt: CREATED_AT },
-						],
-					}),
-				],
-			}),
-		CorruptCommentsError,
-	);
-});
-
-test('oversized, empty, and empty-reply bodies are corrupt', () => {
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ body: 'x'.repeat(2001) })] }),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ body: '' })] }),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() =>
-			parseCommentsFile({
-				version: 1,
-				comments: [
-					validComment({
-						replies: [{ id: 'r1', author: 'user', body: '', createdAt: CREATED_AT }],
-					}),
-				],
-			}),
-		CorruptCommentsError,
-	);
-});
-
-test('over the comment count or reply cap is corrupt', () => {
-	const comments = Array.from({ length: MAX_COMMENTS + 1 }, (_, index) =>
-		validComment({ id: `c${index}` }),
-	);
-	assert.throws(() => parseCommentsFile({ version: 1, comments }), CorruptCommentsError);
-	const replies = Array.from({ length: MAX_COMMENT_REPLIES + 1 }, (_, index) => ({
-		id: `r${index}`,
-		author: 'user',
-		body: 'note',
-		createdAt: CREATED_AT,
-	}));
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ replies })] }),
-		CorruptCommentsError,
-	);
-});
-
-test('a non-hash fingerprint, newline selector, and upper-case tagName are corrupt', () => {
-	assert.throws(
-		() =>
-			parseCommentsFile({ version: 1, comments: [validComment({ targetFingerprint: 'nope' })] }),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ selector: 'h1\n' })] }),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ tagName: 'H1' })] }),
-		CorruptCommentsError,
-	);
-});
-
-test('an element comment with null rect and a page comment that is not body are corrupt', () => {
-	assert.throws(
-		() => parseCommentsFile({ version: 1, comments: [validComment({ rect: null })] }),
-		CorruptCommentsError,
-	);
-	assert.throws(
-		() =>
-			parseCommentsFile({
-				version: 1,
-				comments: [
-					validComment({
-						isPage: true,
-						selector: 'main',
-						tagName: 'body',
-						rect: null,
-						targetFingerprint: undefined,
-					}),
-				],
-			}),
-		CorruptCommentsError,
-	);
-});
-
-test('unknown fields, bad styles, oversize pin and upper-case hashes load', () => {
-	const parsed = parseCommentsFile({
-		version: 1,
-		extra: true,
-		comments: [
-			validComment({
-				unknown: 1,
-				pin: { x: 1.0000001, y: -0.2 },
-				styles: { color: 'rgb(0, 0, 0)', 'font-size': '12px;evil', nope: '1px' },
-				targetFingerprint: `sha256:${'A'.repeat(64)}`,
-			}),
-		],
-	});
-	assert.equal('extra' in parsed, false);
-	assert.equal('unknown' in parsed.comments[0], false);
-	assert.deepEqual(parsed.comments[0]?.pin, { x: 1, y: 0 });
-	assert.deepEqual(parsed.comments[0]?.styles, { color: 'rgb(0, 0, 0)' });
-	assert.equal(parsed.comments[0]?.targetFingerprint, `sha256:${'a'.repeat(64)}`);
-});
-
-test('serialize then parse keeps the documented key order', () => {
-	const file = parseCommentsFile({ version: 1, comments: [validComment()] });
-	const roundTrip = parseCommentsFile(JSON.parse(serializeCommentsFile(file)) as unknown);
-	assert.deepEqual(Object.keys(roundTrip.comments[0] ?? {}), [
-		'id',
-		'frameId',
-		'artboard',
-		'version',
-		'selector',
-		'tagName',
-		'text',
-		'rect',
-		'pin',
-		'styles',
-		'body',
-		'isPage',
-		'targetFingerprint',
-		'status',
-		'createdAt',
-		'replies',
-	]);
-});
 
 test('an agreeing element pick stores a fingerprint', async () => {
 	const workspaceRoot = await makeTempRoot();
