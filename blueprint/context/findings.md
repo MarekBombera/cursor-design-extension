@@ -241,7 +241,7 @@
 - parse5 parses `<noscript>` with scripting on, `stampArtboardHtml`'s DOMParser with scripting off; neither numbers its content, so it matters only if a later step reads numbers from the stamped DOM.
 - The size cap and tagging now live only in `panelFrames`, called only by `snapshotFromCanvasView`; `postedFrameFromSnapshot` is pinned "no cap". A new snapshot producer in 9c-9f that skips `panelFrames` would post uncapped, untagged HTML with nothing failing.
 **Suggested fix:** 9b maps N only through the host's own offset list; 9d's duplicate check scans every live element, not only numbered ones; any new snapshot producer goes through `panelFrames` (or a test ties `artboardDisk` to it).
-**Resolution:**
+**Resolution:** 2026-11-19 /audit (9b): the 9b lead is done: `editArtboardHtml` maps N only through `numberedElements` of its own disk parse, never a number read from the frame copy. The 9d and snapshot-producer leads stay open as leads.
 
 ### F-134 [P3] open - The memo reset comment says "this root" but panelFrames prunes every root
 

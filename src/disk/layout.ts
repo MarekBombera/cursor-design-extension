@@ -51,6 +51,9 @@ export const MAX_PICK_TEXT_CHARS = 200;
 
 export const MAX_STYLE_VALUE_CHARS = 200;
 
+// Edit-mode text (0.4): the new text and the frame's live text of an edited element.
+export const MAX_EDIT_TEXT_CHARS = 5000;
+
 export const COMMENT_STYLE_KEYS = [
 	'font-family',
 	'font-size',

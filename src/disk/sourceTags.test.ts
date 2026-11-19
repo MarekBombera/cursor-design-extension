@@ -5,7 +5,7 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter } from 'parse5';
 import { test } from 'vite-plus/test';
 
 import { parseArtboardDocument } from './commentTarget';
-import { SOURCE_TAG_ATTRIBUTE, sourceTaggedHtml } from './sourceTags';
+import { SOURCE_TAG_ATTRIBUTE, numberedElements, sourceTaggedHtml } from './sourceTags';
 
 const tagged = (html: string): string =>
 	sourceTaggedHtml({ html, document: parseArtboardDocument(html) });
@@ -61,6 +61,17 @@ test('a reconstructed formatting element shares one insertion and one number', (
 		[19, '1'],
 		[19, '1'],
 	]);
+});
+
+test('numberedElements shares one entry between a reconstructed element and its source', () => {
+	const html = '<p><b>x</p><p>y</p>';
+	const entries = numberedElements(parseArtboardDocument(html));
+	assert.deepEqual(
+		entries.map((entry) => entry.map((element) => element.tagName)),
+		[['p'], ['b', 'b'], ['p']],
+	);
+	assert.equal(entries[1]?.[0]?.sourceCodeLocation?.startTag?.startOffset, 3);
+	assert.equal(tagged(html), '<p data-cd-src="0"><b data-cd-src="1">x</p><p data-cd-src="2">y</p>');
 });
 
 test('script, style, textarea and title, and markup in their raw text, stay untouched', () => {

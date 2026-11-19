@@ -14,7 +14,7 @@ export const parseArtboardDocument = (html: string): DefaultTreeAdapterMap['docu
 export type ArtboardDocument = ReturnType<typeof parseArtboardDocument>;
 
 type ArtboardNode = DefaultTreeAdapterMap['childNode'];
-type ArtboardElement = DefaultTreeAdapterMap['element'];
+export type ArtboardElement = DefaultTreeAdapterMap['element'];
 
 export type CommentMatch =
 	| { checkable: false }

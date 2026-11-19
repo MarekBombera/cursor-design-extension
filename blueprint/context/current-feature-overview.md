@@ -1,86 +1,87 @@
-# 9a Source tags + inline-style CSP - Overview for review
+# Edit core (9b) - Overview for review
 
-Source of truth: `blueprint/history/features/09a-source-tags-inline-style-csp.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09b-edit-core.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The first slice of 0.4 Edit-lite. Nothing to click yet; it lays two foundations:
+The engine behind Edit mode now exists, but nothing calls it yet. Give it an artboard's HTML from
+disk, an element's source number (the `data-cd-src` number from 9a), a field and a value. It
+returns the new HTML with only that one spot changed, every other byte the same, or a typed
+reason it refused. 9c connects it to the panel and the disk write.
 
-- **Source tags.** Every element written in an artboard file now carries `data-cd-src="N"` in the copy the panel shows. Later edits (9b-9e) name an element by N, and the extension finds its exact characters on disk. Disk files, exports and comment selectors never see the tags.
-- **Inline styles render.** `style="…"` attributes now work in frames. Both the Agent skill and the MCP `html` description tell the Agent to keep the user's style attributes.
-
-Zero new dependencies. Independent review passed (fresh Opus 5.5, all four lenses).
-
-## System map
+## Flow
 
 ```mermaid
 flowchart LR
-  Disk[("artboards/id.html<br/>(never tagged)")] --> Host
-  subgraph Host["Extension host"]
-    Cap["size cap on disk HTML"] --> Memo{"same HTML<br/>as last post?"}
-    Memo -- yes --> Reuse["reuse tagged copy"]
-    Memo -- no --> Parse["shared parse<br/>(also used by comment flags)"] --> Tag["sourceTaggedHtml<br/>data-cd-src=N"]
-  end
-  Reuse --> Chrome["Chrome<br/>canvas:updated"]
-  Tag --> Chrome
-  Chrome --> Frame["Frame iframe<br/>style attributes render"]
-  Disk --> Export["export, read_artboard,<br/>comment flags"]
-```
-
-## Key loop
-
-```mermaid
-sequenceDiagram
-  participant A as Agent
-  participant D as Disk
-  participant H as Host
-  participant C as Chrome
-  participant F as Frame
-  A->>D: update_artboard (html description: style attributes work, keep the user's)
-  D-->>H: watcher
-  H->>H: panelFrames: cap, tag changed frames (memo for unchanged)
-  H->>C: canvas:updated (tagged html)
-  C->>F: blob frame (chrome CSP + style-src-attr, FRAME_CSP)
+  In["9b: disk HTML + parse<br/>N, field, value"] --> Guard{"field allowed,<br/>N names one element?"}
+  Guard -- no --> R1["refuse: invalid-value /<br/>unknown-number / shared-number"]
+  Guard -- yes --> Kind{field}
+  Kind -- text --> T["plain text only, live text = source text<br/>encode & < > nbsp, keep edge whitespace<br/>splice the text span"]
+  T --> RP{"re-parse: same numbering,<br/>text inside the element?"}
+  RP -- no --> R2["refuse: not-plain-text"]
+  RP -- yes --> Out
+  Kind -- "font-size / color /<br/>padding / margin" --> S["check value, bare number = px<br/>find or add style attribute<br/>set or remove the declaration"]
+  S --> Out["new HTML, byte-exact elsewhere"]
 ```
 
 ## What you will see
 
-- Frames look the same; an artboard with `style="…"` now renders it.
-- Frame devtools show `data-cd-src="0"`, `"1"`, … on elements (39 on the dev-workspace canvas).
-- Disk files and exports have no tags.
+Nothing in the panel yet. You get 26 new unit tests that pin exact output strings, so a test
+fails if any byte outside the edited spot moves. Examples:
+
+- `<p>\n  Old\n</p>` with text `New` becomes `<p>\n  New\n</p>`.
+- `<p style="color: red">` with padding `8 16` becomes `style="color: red; padding: 8px 16px"`.
+- `<head></head>` with text is refused, because the text would move into an implied `<body>` and
+  renumber the page.
+
+## System map
+
+No cross-process flow changed. The module sits in `src/disk/` next to 9a's source tags and
+shares their one numbering walk, so a number means the same element in the frame and on disk.
 
 ## Decisions locked
 
-- Numbers follow start-tag order in the file, from 0. Not numbered: implied tags, parser-inserted fakes, `script`/`style`/`title`/`textarea`, template content, SVG `text`.
-- A misnested formatting element (`<p><b>x</p><p>y`) shares its original's number; 9b refuses a duplicated number.
-- A tagging failure never blanks the stage: that frame posts untagged and logs once.
-- Only the chrome CSP changed (`style-src-attr 'unsafe-inline'`); `FRAME_CSP` is unchanged, so `url()` in a style and inline `on*` handlers stay blocked.
+- **String splices only.** Edits use parse5 source offsets and never re-serialize the file.
+- **Text** only on elements holding nothing but text. After the splice the core re-parses and
+  refuses if the numbering moved or the text landed outside the element. `&`, `<`, `>` and the
+  no-break space are encoded, a newline becomes a space, and the source's edge whitespace stays.
+  Cap: 5,000 characters.
+- **Styles:** a set changes the last occurrence in place or appends one declaration; clearing
+  removes it. `padding` / `margin` drop their ten longhands on set and clear. A later `font`
+  makes a new `font-size` move to the end.
+- **Safe values:** colour only as `#rrggbb`; sizes and spacing only letters, digits,
+  `. % + - * / ( ) ,` and spaces, balanced, no comments, at most 200 characters after `px`.
+- **Refusals** are a typed result in a fixed order: `unknown-number`, `shared-number`,
+  `not-plain-text`, `text-changed`, `invalid-value`, `unsupported-style`.
+
+## Audit
+
+A fresh Opus reviewer found one P1, two P2s and three P3s, all fixed and closed on re-review:
+
+- An `<image>` tag (parse5 calls it `img`) made the guard throw.
+- An append after `A&copy` merged into the previous declaration.
+- `<pre>\n  Old` text was refused.
+- A duplicate helper, untested guards and a redundant check.
 
 ## Out of scope
 
-Reading the numbers back (9b-9e), undo (9f), frame-runtime changes, the chrome's own no-`style=` convention.
+Host wiring, lock, hash and messages (9c). Frame-side checks and live text (9d). Live preview,
+save and undo (9e, 9f). Classes, style blocks, border, per-side spacing.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Source tag (`data-cd-src`) | Names one element by its position in the file, so an edit lands on exactly that element |
-| Frame copy | The HTML the panel renders; tagged and stamped, never written back to disk |
-| Tagged-copy memo | Keeps unchanged frames from being re-parsed on every file event |
-| `style-src-attr` | The CSP switch that lets `style="…"` attributes apply |
-
-## Verification
-
-- `pnpm verify` 596 unit tests; `pnpm test:browser` 136 passed (182 gallery skipped).
-- Audit: 7 P3 findings fixed and closed by re-review; independent review passed at `4f899d9`.
-- F5 in Cursor (Bombic, 2026-11-19):
-  - tags in devtools: pass (39);
-  - a hand-added style attribute renders: pass;
-  - disk untouched: pass;
-  - export clean: pass.
-  - Agent sees the new `html` description: the live server serves it (direct `tools/list` probe), but Cursor's Agent still quoted the old text after a server restart and a fresh chat. Tracked as F-135 for 9g.
+| Source number (`data-cd-src`) | Names an element by its start-tag order in the file, so the edit finds its exact characters |
+| Re-parse check | Proves a text edit didn't change the page structure before it is written |
+| Longhand | `padding-left` and friends: dropped when the shorthand is set, or the edit would look ignored |
+| `ponytail:` note | A deliberate, documented limit with its upgrade path |
 
 ## Your actions
 
-- F-135: check what makes Cursor's Agent pick up changed MCP tool descriptions (full quit?).
-- Notion 0.4 page: fix the sentence that says an edit sends the generation (the plan uses the content hash).
+Settle the Notion 0.4 "Element mapping" wording (generation vs content hash) before `/feature 9c`.
+
+## Done means
+
+`pnpm verify` passes (624 tests); every edit's output is pinned byte for byte; findings
+F-136 to F-141 are closed.
