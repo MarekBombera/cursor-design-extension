@@ -32,8 +32,9 @@ const ERROR_CODES = new Set(
 	),
 );
 
-// Raised only by the panel (host), never returned to the Agent by an MCP tool.
-const HOST_ONLY_CODES = new Set(['FRAME_MOVED', 'PICK_OUTDATED']);
+// Raised only by the panel (host), never returned to the Agent by an MCP tool (EDIT_REFUSED: the
+// panel's artboard:edit, 9c).
+const HOST_ONLY_CODES = new Set(['FRAME_MOVED', 'PICK_OUTDATED', 'EDIT_REFUSED']);
 
 test('frontmatter names the skill and says when to use it', () => {
 	const frontmatter = /^---\nname: cursor-design\ndescription: (.+)\n---\n/.exec(skill);

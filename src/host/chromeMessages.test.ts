@@ -2,7 +2,18 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/commentViews';
-import { CommentNotFoundError, InvalidArgsError, LockTimeoutError } from '../disk/errors';
+import {
+	ArtboardNotFoundError,
+	CommentNotFoundError,
+	ConflictError,
+	CorruptMetaError,
+	DiskError,
+	EditRefusedError,
+	InvalidArgsError,
+	InvalidArtboardIdError,
+	LockTimeoutError,
+} from '../disk/errors';
+import { MAX_EDIT_TEXT_CHARS } from '../disk/layout';
 import {
 	CHANGE_FALLBACK_MESSAGE,
 	COMMENT_GONE_MESSAGE,
@@ -10,8 +21,15 @@ import {
 	CREATE_FALLBACK_MESSAGE,
 	MALFORMED_CHANGE_MESSAGE,
 	MALFORMED_CREATE_MESSAGE,
+	EDIT_CONFLICT_MESSAGE,
+	EDIT_FALLBACK_MESSAGE,
+	EDIT_FRAME_GONE_MESSAGE,
+	MALFORMED_EDIT_MESSAGE,
+	claimedRequestId,
 	commentRequestErrorMessage,
 	commentRequestId,
+	editRequestErrorMessage,
+	isArtboardEditAttempt,
 	commentRequestType,
 	isFramePlaceAttempt,
 	malformedRequestMessage,
@@ -291,4 +309,82 @@ test('toPostedComment emits exactly the posted fields, flags included, never the
 	assert.equal(posted.stale, null);
 	assert.equal(posted.targetMissing, false);
 	assert.deepEqual(posted.replies, comment.replies);
+});
+
+const HASH = `sha256:${'a'.repeat(64)}`;
+
+const textEdit = {
+	type: 'artboard:edit',
+	requestId: 'edit-1',
+	frameId: 'hero',
+	sourceNumber: 3,
+	hash: HASH,
+	field: 'text',
+	value: 'New',
+	liveText: 'Old',
+};
+
+const styleEdit = {
+	type: 'artboard:edit',
+	requestId: 'edit-2',
+	frameId: 'hero',
+	sourceNumber: 0,
+	hash: HASH,
+	field: 'padding',
+	value: '8',
+};
+
+test('artboard:edit parses a text and a style edit', () => {
+	assert.deepEqual(parseChromeMessage(textEdit), textEdit);
+	assert.deepEqual(parseChromeMessage(styleEdit), styleEdit);
+});
+
+test('artboard:edit rejects bad fields, sizes, numbers, hashes and request ids', () => {
+	const over = 'x'.repeat(MAX_EDIT_TEXT_CHARS + 1);
+	for (const broken of [
+		{ ...styleEdit, field: 'border' },
+		{ ...textEdit, liveText: undefined },
+		{ ...styleEdit, liveText: 'Old' },
+		{ ...styleEdit, value: over },
+		{ ...textEdit, liveText: over },
+		{ ...styleEdit, sourceNumber: -1 },
+		{ ...styleEdit, sourceNumber: 1.5 },
+		{ ...styleEdit, sourceNumber: Number.MAX_SAFE_INTEGER + 2 },
+		{ ...styleEdit, hash: 'sha256:xyz' },
+		{ ...styleEdit, hash: 'a'.repeat(64) },
+		{ ...styleEdit, requestId: 'bad id' },
+	]) {
+		assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken).slice(0, 120));
+	}
+});
+
+test('a malformed artboard:edit is still an attempt with an answerable requestId', () => {
+	const broken = { ...styleEdit, field: 'border' };
+	assert.equal(isArtboardEditAttempt(broken), true);
+	assert.equal(isArtboardEditAttempt({ type: 'comment:copy-open', requestId: 'x' }), false);
+	assert.equal(claimedRequestId(broken), 'edit-2');
+	assert.equal(claimedRequestId({ ...styleEdit, requestId: 'bad id' }), undefined);
+	assert.equal(commentRequestId(styleEdit), undefined);
+	assert.equal(commentRequestType(styleEdit), undefined);
+});
+
+test('editRequestErrorMessage is an allowlist: Agent copy never reaches the panel', () => {
+	const refused = new EditRefusedError('not-plain-text');
+	const busy = new LockTimeoutError();
+	const disk = new DiskError();
+	const rows: [unknown, string][] = [
+		[new ConflictError('hero', {}), EDIT_CONFLICT_MESSAGE],
+		[new ArtboardNotFoundError('hero'), EDIT_FRAME_GONE_MESSAGE],
+		[new InvalidArgsError('x'), MALFORMED_EDIT_MESSAGE],
+		[new InvalidArtboardIdError('Bad id'), MALFORMED_EDIT_MESSAGE],
+		[refused, refused.message],
+		[busy, busy.message],
+		[disk, disk.message],
+		[new CorruptMetaError('hero'), EDIT_FALLBACK_MESSAGE],
+		[new Error('/Users/someone/secret'), EDIT_FALLBACK_MESSAGE],
+	];
+	for (const [error, expected] of rows) {
+		assert.equal(editRequestErrorMessage(error), expected);
+	}
+	assert.match(refused.message, /Ask the Agent/);
 });

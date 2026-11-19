@@ -81,6 +81,10 @@
 			comments.handleCopyOpenAnswer(message);
 			return;
 		}
+		// 9c: typed but never parsed (no sender until 9e, which adopts the answer here).
+		if (message.type === 'artboard:edited') {
+			return;
+		}
 		canvas.mcpUnavailable = !message.mcpAvailable;
 		canvas.handoffStale = message.handoffStale;
 	};

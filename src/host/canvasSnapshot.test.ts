@@ -5,13 +5,15 @@ import { FRAME_READ_ERROR_MESSAGE, type CanvasViewFrame } from '../disk/artboard
 import { parseArtboardDocument } from '../disk/commentTarget';
 import { cachedArtboardDocument } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
+import { hashHtml } from '../disk/hash';
+import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
 import {
 	ARTBOARD_HTML_TOO_LARGE_MESSAGE,
-	MAX_POSTED_ARTBOARD_HTML_CHARS,
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
+	panelFrameHtml,
 	panelFrames,
 	postedFrameFromSnapshot,
 	type CanvasSnapshot,
@@ -41,6 +43,7 @@ const viewFrame = (
 		y: overrides.y ?? 0,
 		width: overrides.width ?? 1280,
 		html: overrides.html ?? '<p>ok</p>',
+		hash: overrides.hash ?? hashHtml(overrides.html ?? '<p>ok</p>'),
 		generation: overrides.generation ?? 1,
 	};
 	if (overrides.group !== undefined) {
@@ -83,7 +86,7 @@ const postFrames = (frames: CanvasViewFrame[]): CanvasViewFrame[] =>
 	panelFrames({ workspaceRoot: ROOT, frames, onTagError });
 
 beforeEach(() => {
-	// An empty list prunes every memo entry of this root.
+	// An empty list prunes every memo entry (every root's: the prune keeps only the keys posted).
 	postFrames([]);
 	vi.clearAllMocks();
 });
@@ -111,6 +114,25 @@ test('the size cap is on the disk HTML: exactly MAX is tagged past it, MAX + 1 i
 	assert.equal(postedHuge?.html, '');
 	assert.equal(postedHuge?.errorMessage, ARTBOARD_HTML_TOO_LARGE_MESSAGE);
 	assert.equal(parseCalls(), 1);
+});
+
+test('the posted hash is the disk html hash, not the tagged copy hash', () => {
+	const html = '<p>ok</p>';
+	const [panel] = postFrames([viewFrame({ id: 'hero', html })]);
+	assert.ok(panel !== undefined);
+	const posted = postedFrameFromSnapshot(panel);
+	assert.notEqual(posted.html, html);
+	assert.equal(posted.hash, hashHtml(html));
+	assert.notEqual(posted.hash, hashHtml(posted.html));
+});
+
+test('panelFrameHtml returns the identical string for the same disk html', () => {
+	const args = { workspaceRoot: ROOT, frameId: 'hero', html: '<p>ok</p>', onTagError };
+	const first = panelFrameHtml(args);
+	const before = tagCalls();
+	assert.equal(panelFrameHtml(args).html, first.html);
+	assert.equal(tagCalls(), before);
+	assert.equal(first.errorMessage, undefined);
 });
 
 test('a frame with errorMessage or empty html is copied unchanged and never parsed', () => {

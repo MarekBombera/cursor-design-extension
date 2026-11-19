@@ -243,18 +243,18 @@
 **Suggested fix:** 9b maps N only through the host's own offset list; 9d's duplicate check scans every live element, not only numbered ones; any new snapshot producer goes through `panelFrames` (or a test ties `artboardDisk` to it).
 **Resolution:** 2026-11-19 /audit (9b): the 9b lead is done: `editArtboardHtml` maps N only through `numberedElements` of its own disk parse, never a number read from the frame copy. The 9d and snapshot-producer leads stay open as leads.
 
-### F-134 [P3] open - The memo reset comment says "this root" but panelFrames prunes every root
-
-**File:** src/host/canvasSnapshot.test.ts
-**Found:** 2026-11-19 by /audit re-review (scope: current; lens: quality)
-**Why it matters:** The `beforeEach` comment says `panelFrames` with no frames "prunes every memo entry of this root", but the prune deletes every key not in the call, across all roots. Harmless (one workspace folder in practice), but the comment and the spec's "previous workspace" wording describe the semantics loosely. Also noted, not separate defects: the untrusted-path prune in `artboardDisk.ts` has no test (the file imports `vscode`; the semantics are covered by `panelFrames([])`), and the shared parse cache is not cleared on the untrusted path (bounded, stated in F-127's comment).
-**Suggested fix:** Reword the comment to "prunes every memo entry".
-**Resolution:**
-
 ### F-135 [P3] unverified - Cursor's Agent keeps old MCP tool descriptions after the server restarts
 
 **File:** src/mcp/registerCursorDesignMcp.ts:67
 **Found:** 2026-11-19 by /check F5 (scope: current; lens: quality)
 **Why it matters:** In the 9a F5 run, the live `cursor-design` server (PID 90248, `dist/mcp.js`, started by Cursor's mcp-process after a manual restart) answered `tools/list` with the new `update_artboard` `html` description, confirmed by a direct stdio `tools/list` probe of the same binary. A fresh Cursor Agent chat still quoted the old "style="" attributes … do not work" text. Before that, a window reload left the Nov 16 server process running. If Cursor keeps old tool descriptions, an extension update (new `.vsix`) can leave the Agent with stale instructions (here: stripping the user's style attributes) until something Cursor-side refreshes them.
 **Suggested fix:** In 9g, install the `.vsix`, update it, and find what refreshes the Agent's tool list (full Cursor quit, MCP settings refresh). If only a full restart works, say so in README and the Agent skill, or bump the server name/version so Cursor sees a new tool list.
+**Resolution:**
+
+### F-137 [P3] unverified - A text edit parses the new HTML twice, synchronously, on the extension host
+
+**File:** src/disk/artboardEdit.ts:179
+**Found:** 2026-11-19 by /audit (scope: current; lens: performance; fresh reviewer claude-opus-5-5)
+**Why it matters:** For a text edit, `editArtboardHtml` re-parses the spliced HTML to prove the numbering survived (`parseArtboardDocument(splice.html)`), then throws that parse away. `answerEditRequest` then calls `panelFrameHtml`, whose `cachedArtboardDocument` misses for the new bytes and parses them again. Both parses run on the extension host thread, for files up to `MAX_POSTED_ARTBOARD_HTML_CHARS` (1.5M chars). Rule 07 says no sync CPU on the host thread, and the existing `panelFrames` ponytail already names a worker thread as the upgrade path. Style edits parse once. The cost is not measured.
+**Suggested fix:** Measure one text edit on a file near the cap during 9e's live check. If it is noticeable, return the core's verification document with the result and seed `cachedArtboardDocument` with it (one parse saved), or accept the cost under the existing `panelFrames` ponytail.
 **Resolution:**

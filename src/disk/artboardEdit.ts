@@ -12,15 +12,13 @@ import {
 	setStyleProperty,
 	trailingWhitespaceLength,
 } from './inlineStyle';
-import { MAX_EDIT_TEXT_CHARS, MAX_STYLE_VALUE_CHARS } from './layout';
+import { EDIT_FIELDS, MAX_EDIT_TEXT_CHARS, MAX_STYLE_VALUE_CHARS } from './layout';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 // Edit core (0.4): one Edit-mode change to an artboard's disk HTML. The element is named by its
 // source number (sourceTags.ts); the result changes only its text or its inline declarations of
 // one property, through string splices at parse5 source offsets, byte for byte the same
 // elsewhere. Pure: 9c's checked write calls it under the lock.
-
-export const EDIT_FIELDS = ['text', 'font-size', 'color', 'padding', 'margin'] as const;
 
 type EditField = (typeof EDIT_FIELDS)[number];
 

@@ -3,17 +3,12 @@ import * as vscode from 'vscode';
 import type { CanvasSnapshot } from '../host/canvasSnapshot';
 import {
 	commentRequestType,
+	isArtboardEditAttempt,
 	isFramePlaceAttempt,
 	parseChromeMessage,
 } from '../host/chromeMessages';
-import { createPanelOutbox } from '../host/panelOutbox';
-import type {
-	CommentAddedMessage,
-	CommentSavedMessage,
-	CommentsUpdatedMessage,
-	CopiedMessage,
-	UiErrorMessage,
-} from '../webview/hostMessages';
+import { type PanelAnswer, createPanelOutbox } from '../host/panelOutbox';
+import type { CommentsUpdatedMessage } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
 const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
@@ -22,6 +17,7 @@ let currentPanel: vscode.WebviewPanel | undefined;
 let onPanelBecameVisible: (() => void) | undefined;
 let onFramePlace: ((value: unknown) => void) | undefined;
 let onCommentRequest: ((value: unknown) => void) | undefined;
+let onEditRequest: ((value: unknown) => void) | undefined;
 let chromeCspNonce = '';
 
 const outbox = createPanelOutbox({
@@ -47,6 +43,11 @@ export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => vo
 	onCommentRequest = handler;
 };
 
+// Gets every artboard:edit attempt raw, valid or not; the handler owns the one answer (9c).
+export const setArtboardPanelOnEditRequest = (handler: (value: unknown) => void): void => {
+	onEditRequest = handler;
+};
+
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
 	outbox.postSnapshot(snapshot);
 };
@@ -62,9 +63,7 @@ export const postCommentsToPanel = (comments: Omit<CommentsUpdatedMessage, 'type
 	outbox.postComments(comments);
 };
 
-export const postAnswerToPanel = (
-	answer: CommentAddedMessage | CommentSavedMessage | CopiedMessage | UiErrorMessage,
-): void => {
+export const postAnswerToPanel = (answer: PanelAnswer): void => {
 	outbox.postAnswer(answer);
 };
 
@@ -99,6 +98,10 @@ export const openArtboardPanel = ({
 	panel.webview.onDidReceiveMessage((message: unknown) => {
 		if (isFramePlaceAttempt(message)) {
 			onFramePlace?.(message);
+			return;
+		}
+		if (isArtboardEditAttempt(message)) {
+			onEditRequest?.(message);
 			return;
 		}
 		if (commentRequestType(message) !== undefined) {

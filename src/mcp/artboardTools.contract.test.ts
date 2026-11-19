@@ -3,13 +3,19 @@
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import { registerArtboardTools } from './artboardTools';
-import { canvasPathSegments } from '../disk/layout';
+import {
+	CURSOR_DESIGN_DIR,
+	LOCK_FILE,
+	artboardHtmlPathSegments,
+	artboardMetaPathSegments,
+	canvasPathSegments,
+} from '../disk/layout';
 import {
 	CURSOR_DESIGN_MCP_SERVER_NAME,
 	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
@@ -452,6 +458,27 @@ test('wrong-typed html, baseGeneration, and rootPath are observed at the client'
 			rootPath: { path: workspaceRoot },
 		});
 		requireErrorCode(rootPathResult, 'INVALID_ARGS');
+	});
+});
+
+// 9c: update_artboard's read-compare-write runs under the cross-process lock, like the panel's.
+test('update_artboard under a fresh foreign lock returns WORKSPACE_BUSY and writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>v1</p>');
+		const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+		const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+		const metaBefore = await readFile(metaPath, 'utf8');
+		await writeFile(join(workspaceRoot, CURSOR_DESIGN_DIR, LOCK_FILE), '1 live-holder', 'utf8');
+		const result = await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
+			artboardId: 'hero',
+			html: '<p>v2</p>',
+			baseGeneration: 1,
+		});
+		requireErrorCode(result, 'WORKSPACE_BUSY');
+		assert.equal(await readFile(htmlPath, 'utf8'), '<p>v1</p>');
+		assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
 	});
 });
 

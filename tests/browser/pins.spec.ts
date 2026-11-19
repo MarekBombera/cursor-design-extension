@@ -39,6 +39,7 @@ const FRAME: PostedCanvasFrame = {
 	y: 0,
 	width: 600,
 	generation: 1,
+	hash: 'sha256:test',
 	html: PINS_HTML,
 };
 

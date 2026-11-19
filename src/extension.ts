@@ -12,12 +12,14 @@ import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
 import { logDiskError } from './host/hostFs';
 import { answerCommentRequest } from './host/panelComments';
+import { answerEditRequest } from './host/panelEdit';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
 import {
 	postArtboardSnapshotToPanel,
 	postUiStatusToPanel,
 	setArtboardPanelOnCommentRequest,
+	setArtboardPanelOnEditRequest,
 	setArtboardPanelOnFramePlace,
 	setArtboardPanelOnVisible,
 } from './panel/openArtboardPanel';
@@ -53,6 +55,11 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	setArtboardPanelOnCommentRequest((value) => {
 		// Never rejects: every failure is logged and answered inside.
 		void answerCommentRequest({ value, outputChannel });
+	});
+
+	setArtboardPanelOnEditRequest((value) => {
+		// Never rejects: every failure is logged and answered inside.
+		void answerEditRequest({ value, outputChannel });
 	});
 
 	if (vscode.workspace.isTrusted) {

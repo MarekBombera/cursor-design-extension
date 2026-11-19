@@ -298,50 +298,63 @@ export const updateArtboard = async ({
 
 	await assertLayoutDirsOwned(workspaceRoot);
 	const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(resolvedId));
+	// Before the lock: a missing artboard must not create .cursor-design/ through the lock's mkdir,
+	// and a case variant (`HERO` for hero.html on a case-insensitive disk) must never rename it.
 	await requireHtmlFile(htmlLayout.filePath, resolvedId);
-	const currentHtml = await readUtf8IfExists(htmlLayout);
-	if (currentHtml === undefined) {
-		throw new ArtboardNotFoundError(resolvedId);
-	}
-	const currentMeta = effectiveArtboardMeta({
-		html: currentHtml,
-		meta: await readStoredMeta(workspaceRoot, resolvedId),
-		artboardId: resolvedId,
-	});
-	const compared = conflictFields({
-		baseGeneration,
-		baseHash,
-		actualGeneration: currentMeta.generation,
-		actualHash: currentMeta.hash,
-	});
-	if (compared !== undefined) {
-		throw new ConflictError(resolvedId, compared);
-	}
+	await requireExactHtmlFileName(workspaceRoot, resolvedId);
 
-	const htmlHash = hashHtml(resolvedHtml);
-	const nextMeta: ArtboardMeta = {
-		id: resolvedId,
-		title: validatedTitle ?? currentMeta.title,
-		generation:
-			htmlHash === normalizeHash(currentMeta.hash)
-				? currentMeta.generation
-				: currentMeta.generation + 1,
-		hash: htmlHash,
-		viewport: validatedViewport ?? currentMeta.viewport,
-		updatedAt: new Date().toISOString(),
-	};
-	await writeUtf8({ ...htmlLayout, contents: resolvedHtml });
-	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
-		contents: serializeMeta(nextMeta),
+	// ponytail: one global lock, a 2 s wait then WORKSPACE_BUSY. MCP and the panel both write
+	// through here; a write that skips the lock (the Agent's direct file edit, an editor save) can
+	// still land between the compare and the rename and be overwritten. Upgrade path: none
+	// planned; such writers are outside the extension.
+	return withWorkspaceLock({
+		workspaceRoot,
+		operation: async () => {
+			const currentHtml = await readUtf8IfExists(htmlLayout);
+			if (currentHtml === undefined) {
+				throw new ArtboardNotFoundError(resolvedId);
+			}
+			const currentMeta = effectiveArtboardMeta({
+				html: currentHtml,
+				meta: await readStoredMeta(workspaceRoot, resolvedId),
+				artboardId: resolvedId,
+			});
+			const compared = conflictFields({
+				baseGeneration,
+				baseHash,
+				actualGeneration: currentMeta.generation,
+				actualHash: currentMeta.hash,
+			});
+			if (compared !== undefined) {
+				throw new ConflictError(resolvedId, compared);
+			}
+
+			const htmlHash = hashHtml(resolvedHtml);
+			const nextMeta: ArtboardMeta = {
+				id: resolvedId,
+				title: validatedTitle ?? currentMeta.title,
+				generation:
+					htmlHash === normalizeHash(currentMeta.hash)
+						? currentMeta.generation
+						: currentMeta.generation + 1,
+				hash: htmlHash,
+				viewport: validatedViewport ?? currentMeta.viewport,
+				updatedAt: new Date().toISOString(),
+			};
+			await writeUtf8({ ...htmlLayout, contents: resolvedHtml });
+			await writeUtf8({
+				...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
+				contents: serializeMeta(nextMeta),
+			});
+			return {
+				artboardId: resolvedId,
+				generation: nextMeta.generation,
+				hash: nextMeta.hash,
+				title: nextMeta.title,
+				viewport: nextMeta.viewport,
+			};
+		},
 	});
-	return {
-		artboardId: resolvedId,
-		generation: nextMeta.generation,
-		hash: nextMeta.hash,
-		title: nextMeta.title,
-		viewport: nextMeta.viewport,
-	};
 };
 
 export const readArtboard = async ({

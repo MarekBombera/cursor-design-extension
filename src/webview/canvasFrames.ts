@@ -23,6 +23,8 @@ export type StageFrame = {
 	height: number;
 	// The artboard generation the host last posted for this frame (comment:create's pick check).
 	generation: number;
+	// The disk HTML's hash the host last posted (the base of an Edit-mode change, 9c).
+	hash: string;
 	kind: 'tile' | 'iframe';
 	// Why a tile shows: an empty file or a failure. Read only while kind is 'tile'.
 	tileKind: 'empty' | 'error';
@@ -54,6 +56,7 @@ const newRecord = (entry: PostedCanvasFrame): FrameRecord => ({
 	width: entry.width,
 	group: entry.group,
 	generation: entry.generation,
+	hash: '',
 	height: TILE_HEIGHT,
 	measuredHeight: PROVISIONAL_FRAME_HEIGHT,
 	heightReported: false,
@@ -73,6 +76,7 @@ const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord
 		width: entry.width,
 		group: entry.group,
 		generation: entry.generation,
+		hash: entry.hash,
 		html: entry.html,
 	};
 	if (entry.errorMessage !== undefined || entry.html.trim() === '') {

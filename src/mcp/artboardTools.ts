@@ -180,7 +180,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Update artboard',
 			description:
-				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML.',
+				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML. WORKSPACE_BUSY when another Cursor Design write holds the lock: retry; after a crashed write it can last up to 30 s.',
 			inputSchema: updateArtboardInputSchema,
 			annotations: { destructiveHint: true, openWorldHint: false },
 		},

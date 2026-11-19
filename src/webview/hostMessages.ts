@@ -1,3 +1,4 @@
+import type { EDIT_FIELDS } from '../disk/layout';
 import {
 	type CommentStyles,
 	type FrameRect,
@@ -20,6 +21,9 @@ export type PostedCanvasFrame = {
 	group?: string;
 	// This frame's artboard meta generation (0 when meta is absent).
 	generation: number;
+	// hashHtml of the disk HTML (never the tagged copy); '' when the file was not readable. The
+	// base an Edit-mode change is checked against (9c).
+	hash: string;
 	html: string;
 	errorMessage?: string;
 };
@@ -88,6 +92,17 @@ export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: st
 // from open to sent (0 for a re-copy, or when the Agent resolved them first).
 export type CopiedMessage = { type: 'ui:copied'; requestId: string; count: number };
 
+// 9c: the success answer to one artboard:edit. `html` is the new frame copy (tagged), the exact
+// string the watcher echo's canvas:updated will carry for this frame.
+export type ArtboardEditedMessage = {
+	type: 'artboard:edited';
+	requestId: string;
+	frameId: string;
+	hash: string;
+	generation: number;
+	html: string;
+};
+
 export type HostMessage =
 	| CanvasUpdatedMessage
 	| ArtboardErrorMessage
@@ -96,6 +111,7 @@ export type HostMessage =
 	| CommentAddedMessage
 	| CommentSavedMessage
 	| CopiedMessage
+	| ArtboardEditedMessage
 	| UiErrorMessage;
 
 export type FramePlacement = { x: number; y: number; width: number };
@@ -156,7 +172,25 @@ export type CommentRequestMessage =
 	| CommentCopyMessage
 	| CommentCopyOpenMessage;
 
-export type ChromeMessage = { type: 'artboard:ready' } | FramePlaceMessage | CommentRequestMessage;
+// 9c: one Edit-mode change to the element numbered `sourceNumber` (9a data-cd-src) in the frame
+// whose disk HTML had `hash`. Answered once: artboard:edited or ui:error { requestId }.
+export type ArtboardEditMessage = {
+	type: 'artboard:edit';
+	requestId: string;
+	frameId: string;
+	sourceNumber: number;
+	hash: string;
+	field: (typeof EDIT_FIELDS)[number];
+	value: string;
+	// Present iff field is 'text': the element's full live text (never the pick excerpt).
+	liveText?: string;
+};
+
+export type ChromeMessage =
+	| { type: 'artboard:ready' }
+	| FramePlaceMessage
+	| CommentRequestMessage
+	| ArtboardEditMessage;
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
@@ -178,6 +212,7 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		!isFiniteNumber(entry.y) ||
 		!isFiniteNumber(entry.width) ||
 		!isFiniteNumber(entry.generation) ||
+		typeof entry.hash !== 'string' ||
 		!isOptionalString(entry.group) ||
 		!isOptionalString(entry.errorMessage)
 	) {
@@ -190,6 +225,7 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		y: entry.y,
 		width: entry.width,
 		generation: entry.generation,
+		hash: entry.hash,
 		html: entry.html,
 	};
 	if (entry.group !== undefined) {

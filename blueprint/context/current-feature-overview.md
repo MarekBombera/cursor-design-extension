@@ -1,87 +1,96 @@
-# Edit core (9b) - Overview for review
+# 9c Checked write + edit message - Overview for review
 
-Source of truth: `blueprint/history/features/09b-edit-core.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09c-checked-write-edit-message.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The engine behind Edit mode now exists, but nothing calls it yet. Give it an artboard's HTML from
-disk, an element's source number (the `data-cd-src` number from 9a), a field and a value. It
-returns the new HTML with only that one spot changed, every other byte the same, or a typed
-reason it refused. 9c connects it to the panel and the disk write.
-
-## Flow
-
-```mermaid
-flowchart LR
-  In["9b: disk HTML + parse<br/>N, field, value"] --> Guard{"field allowed,<br/>N names one element?"}
-  Guard -- no --> R1["refuse: invalid-value /<br/>unknown-number / shared-number"]
-  Guard -- yes --> Kind{field}
-  Kind -- text --> T["plain text only, live text = source text<br/>encode & < > nbsp, keep edge whitespace<br/>splice the text span"]
-  T --> RP{"re-parse: same numbering,<br/>text inside the element?"}
-  RP -- no --> R2["refuse: not-plain-text"]
-  RP -- yes --> Out
-  Kind -- "font-size / color /<br/>padding / margin" --> S["check value, bare number = px<br/>find or add style attribute<br/>set or remove the declaration"]
-  S --> Out["new HTML, byte-exact elsewhere"]
-```
+The artboard HTML now has two safe writers. The Agent's `update_artboard` reads, compares and
+writes under the workspace lock, and the panel got a typed "change this one spot" message
+(`artboard:edit`) that runs the 9b edit core against the file's exact content hash and gets
+exactly one answer. Nothing in the panel sends it yet: Edit mode and the inspector come in 9d
+and 9e.
 
 ## What you will see
 
-Nothing in the panel yet. You get 26 new unit tests that pin exact output strings, so a test
-fails if any byte outside the edited spot moves. Examples:
-
-- `<p>\n  Old\n</p>` with text `New` becomes `<p>\n  New\n</p>`.
-- `<p style="color: red">` with padding `8 16` becomes `style="color: red; padding: 8px 16px"`.
-- `<head></head>` with text is refused, because the text would move into an implied `<body>` and
-  renumber the page.
+- No new panel UI.
+- The Agent can get `WORKSPACE_BUSY` from `update_artboard` while another write holds the lock
+  (retry; up to 30 s after a crashed write). Its skill says so.
+- `update_artboard` with the wrong letter case (`HERO` for `hero.html`) is now "not found"
+  instead of renaming the file on macOS / Windows.
 
 ## System map
 
-No cross-process flow changed. The module sits in `src/disk/` next to 9a's source tags and
-shares their one numbering walk, so a number means the same element in the frame and on disk.
+```mermaid
+flowchart LR
+  Agent -->|update_artboard| MCP
+  Chrome -->|artboard:edit 9e+| Host
+  MCP -->|updateArtboard| Lock
+  Host -->|editArtboard then updateArtboard| Lock
+  Lock[".cursor-design/.lock<br/>read, compare hash, write html + meta"] --> Disk[(artboards/id.html + meta)]
+  Disk -->|watcher| Host
+  Host -->|canvas:updated frames carry hash| Chrome
+  Host -->|artboard:edited or ui:error, once| Chrome
+```
+
+## Key loop
+
+```mermaid
+sequenceDiagram
+  participant C as Chrome (9e)
+  participant H as Host
+  participant D as Disk
+  H->>C: canvas:updated {frames[{..., generation, hash, html}]}
+  C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, field, value, liveText?}
+  H->>D: editArtboard: read, exact-case name, size cap, hash check, edit core
+  H->>D: updateArtboard {baseHash}: lock, re-check hash, write
+  H->>C: artboard:edited {hash, generation, html} or ui:error
+  D-->>H: watcher echo (200 ms later)
+  H->>C: canvas:updated (identical for that frame)
+```
+
+## Architecture decisions
+
+- **Exact content hash, not generation,** is the edit base. The frame's `hash` is computed from
+  the disk bytes (never the tagged copy, never the stored meta hash).
+- **One lock owner: `updateArtboard`.** `editArtboard` parses before the lock and lets
+  `updateArtboard` re-check the same hash under it: equal hash means equal bytes.
+- **The answer's `html` is the echo's exact string** (`panelFrameHtml` seeds the tagged-copy
+  memo), so 9e can adopt it without reloading the frame.
+- **Panel copy is an allowlist:** Agent wording (`call read_artboard`, `set_artboard a new id`)
+  never reaches the panel; refusals carry their own copy.
+- **Edits over the 1.5M-char preview cap are refused** before anything is written.
+- **One hash rule** (`scannedHashes`) feeds both the frame `hash` and the handoff badge; each
+  frame is hashed once per refresh.
 
 ## Decisions locked
 
-- **String splices only.** Edits use parse5 source offsets and never re-serialize the file.
-- **Text** only on elements holding nothing but text. After the splice the core re-parses and
-  refuses if the numbering moved or the text landed outside the element. `&`, `<`, `>` and the
-  no-break space are encoded, a newline becomes a space, and the source's edge whitespace stays.
-  Cap: 5,000 characters.
-- **Styles:** a set changes the last occurrence in place or appends one declaration; clearing
-  removes it. `padding` / `margin` drop their ten longhands on set and clear. A later `font`
-  makes a new `font-size` move to the end.
-- **Safe values:** colour only as `#rrggbb`; sizes and spacing only letters, digits,
-  `. % + - * / ( ) ,` and spaces, balanced, no comments, at most 200 characters after `px`.
-- **Refusals** are a typed result in a fixed order: `unknown-number`, `shared-number`,
-  `not-plain-text`, `text-changed`, `invalid-value`, `unsupported-style`.
-
-## Audit
-
-A fresh Opus reviewer found one P1, two P2s and three P3s, all fixed and closed on re-review:
-
-- An `<image>` tag (parse5 calls it `img`) made the guard throw.
-- An append after `A&copy` merged into the previous declaration.
-- `<pre>\n  Old` text was refused.
-- A duplicate helper, untested guards and a redundant check.
+- A frame without `hash` is dropped by the chrome (no silent default).
+- `liveText` is required for text edits and forbidden for style edits.
+- Independent review was not run: Bombic directed completion after the fresh Opus audit, a
+  re-review that closed F-134 / F-136, and an Opus + Sonnet refactoring review whose agreed
+  fixes are in (spec step 7).
 
 ## Out of scope
 
-Host wiring, lock, hash and messages (9c). Frame-side checks and live text (9d). Live preview,
-save and undo (9e, 9f). Classes, style blocks, border, per-side spacing.
+Any chrome sender, Edit mode, inspector, live preview, adopting the answer (9d, 9e); undo/redo
+(9f); locking `set_artboard` / `set_active_artboard`.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Source number (`data-cd-src`) | Names an element by its start-tag order in the file, so the edit finds its exact characters |
-| Re-parse check | Proves a text edit didn't change the page structure before it is written |
-| Longhand | `padding-left` and friends: dropped when the shorthand is set, or the edit would look ignored |
-| `ponytail:` note | A deliberate, documented limit with its upgrade path |
+| Content hash | SHA-256 of the file bytes; an edit made against an older file is refused instead of overwriting newer work |
+| Workspace lock | `.cursor-design/.lock`, shared by the MCP process and the extension, so two writers never interleave |
+| Source number | The `data-cd-src="N"` the host adds to the frame copy (9a); names the element to edit |
+| Watcher echo | The panel refresh the file watcher triggers after any write, including the panel's own |
 
 ## Your actions
 
-Settle the Notion 0.4 "Element mapping" wording (generation vs content hash) before `/feature 9c`.
+- Optional, skipped this time: F5 smoke of two Agent edits, and a fake `.lock` to see
+  `WORKSPACE_BUSY` live (see the 9c chat; no blocker).
 
 ## Done means
 
-`pnpm verify` passes (624 tests); every edit's output is pinned byte for byte; findings
-F-136 to F-141 are closed.
+- `pnpm verify` green (652 unit tests), `pnpm test:browser` green (136 passed).
+- Audit: no P0-P2; F-134, F-136 closed; F-137 (double parse on text edits) stays unverified for
+  9e; F-135 for 9g.

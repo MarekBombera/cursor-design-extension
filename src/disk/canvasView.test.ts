@@ -260,6 +260,32 @@ test('unreadable meta maps generation to 0', async () => {
 	assert.equal(view.frames[0]?.html, html);
 });
 
+test('the frame hash is hashHtml of the disk html even when the stored meta hash is upper-case', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const html = '<p>hero</p>';
+	await createArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html,
+		writeEnsurePanelMarker: false,
+	});
+	const lower = hashHtml(html);
+	await writeFile(
+		join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		serializeMeta({
+			id: 'hero',
+			title: 'hero',
+			generation: 1,
+			hash: `sha256:${lower.slice('sha256:'.length).toUpperCase()}`,
+			viewport: '1280x800',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+		}),
+	);
+
+	const view = await readCanvasView({ workspaceRoot });
+	assert.equal(view.frames[0]?.hash, lower);
+});
+
 test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async (context) => {
 	if (process.getuid?.() === 0) {
 		context.skip('root ignores chmod');
@@ -296,6 +322,8 @@ test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async 
 		);
 		assert.equal(broken?.html, '');
 		assert.equal(broken?.errorMessage, FRAME_READ_ERROR_MESSAGE);
+		assert.equal(broken?.hash, '');
+		assert.equal(view.frames.find((frame) => frame.id === 'hero')?.hash, hashHtml('<p>hero</p>'));
 		assert.ok(readError?.error instanceof DiskError);
 		assert.notEqual(readError?.error.message, FRAME_READ_ERROR_MESSAGE);
 		assert.equal(view.frames.find((frame) => frame.id === 'hero')?.html, '<p>hero</p>');

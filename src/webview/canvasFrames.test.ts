@@ -26,6 +26,7 @@ const posted = (id: string, overrides: Partial<PostedCanvasFrame> = {}): PostedC
 	y: 0,
 	width: 400,
 	generation: 1,
+	hash: `sha256:${id}`,
 	html: `<p>${id}</p>`,
 	...overrides,
 });
@@ -121,6 +122,22 @@ test('placement and group follow every post; a missing group clears it', () => {
 		[next.x, next.y, next.width, next.label, next.group],
 		[40, -8, 390, 'Mobile', undefined],
 	);
+});
+
+test('the disk hash follows every post, a tile that keeps the real hash included', () => {
+	const first = only(mergeCanvasFrames({ records: [], frames: [posted('a')] }));
+	assert.equal(first.hash, 'sha256:a');
+	const next = only(
+		mergeCanvasFrames({ records: [first], frames: [posted('a', { hash: 'sha256:edited' })] }),
+	);
+	assert.equal(next.hash, 'sha256:edited');
+	const tile = only(
+		mergeCanvasFrames({
+			records: [],
+			frames: [posted('t', { html: '', errorMessage: 'Too large', hash: 'sha256:real' })],
+		}),
+	);
+	assert.deepEqual([tile.kind, tile.hash], ['tile', 'sha256:real']);
 });
 
 test('only iframe frames can hold a pick', () => {

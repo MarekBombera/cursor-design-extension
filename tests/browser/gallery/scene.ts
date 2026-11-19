@@ -33,6 +33,7 @@ export const FRAMES: PostedCanvasFrame[] = [
 		width: 480,
 		group: 'Web',
 		generation: 3,
+		hash: 'sha256:test',
 		html: HOME_HTML,
 	},
 	{
@@ -43,6 +44,7 @@ export const FRAMES: PostedCanvasFrame[] = [
 		width: 420,
 		group: 'Web',
 		generation: 2,
+		hash: 'sha256:test',
 		html: artboard('pricing'),
 	},
 	{
@@ -53,6 +55,7 @@ export const FRAMES: PostedCanvasFrame[] = [
 		width: 320,
 		group: 'Mobile',
 		generation: 1,
+		hash: 'sha256:test',
 		html: MOBILE_HTML,
 	},
 ];

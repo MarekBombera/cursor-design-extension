@@ -56,7 +56,16 @@ test('an artboard runs its inline code but cannot load remote scripts, static, i
 	await postToChrome(
 		page,
 		canvasUpdated([
-			{ id: 'a', label: 'A', x: 0, y: 0, width: 400, generation: 1, html: PROBE_PAGE },
+			{
+				id: 'a',
+				label: 'A',
+				x: 0,
+				y: 0,
+				width: 400,
+				generation: 1,
+				hash: 'sha256:test',
+				html: PROBE_PAGE,
+			},
 		]),
 	);
 	await untilHeightReported(page, 'a');
@@ -87,6 +96,7 @@ test('parsing an artboard loads nothing from the chrome document', async ({ page
 				y: 0,
 				width: 400,
 				generation: 1,
+				hash: 'sha256:test',
 				html: `<!doctype html><body><img src="${REMOTE}/chrome.png" alt=""></body>`,
 			},
 		]),
@@ -111,7 +121,16 @@ test('under the chrome CSP, a styled frame and its pin log no violation', async 
 	await postToChrome(
 		page,
 		canvasUpdated([
-			{ id: 'a', label: 'A', x: 0, y: 0, width: 400, generation: 1, html: STYLED_PAGE },
+			{
+				id: 'a',
+				label: 'A',
+				x: 0,
+				y: 0,
+				width: 400,
+				generation: 1,
+				hash: 'sha256:test',
+				html: STYLED_PAGE,
+			},
 		]),
 	);
 	await untilHeightReported(page, 'a');
@@ -186,7 +205,16 @@ test('under the chrome CSP, style attributes render, inline handlers and style u
 	await postToChrome(
 		page,
 		canvasUpdated([
-			{ id: 'a', label: 'A', x: 0, y: 0, width: 400, generation: 1, html: STYLE_ATTRIBUTE_PAGE },
+			{
+				id: 'a',
+				label: 'A',
+				x: 0,
+				y: 0,
+				width: 400,
+				generation: 1,
+				hash: 'sha256:test',
+				html: STYLE_ATTRIBUTE_PAGE,
+			},
 		]),
 	);
 	await untilHeightReported(page, 'a');

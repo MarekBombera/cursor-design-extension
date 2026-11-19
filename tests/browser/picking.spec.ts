@@ -40,6 +40,7 @@ const PICKING_FRAME: PostedCanvasFrame = {
 	y: 0,
 	width: 800,
 	generation: 1,
+	hash: 'sha256:test',
 	html: readPickingFixture(),
 };
 
@@ -50,6 +51,7 @@ const FRAME_B: PostedCanvasFrame = {
 	y: 0,
 	width: 400,
 	generation: 1,
+	hash: 'sha256:test',
 	html: `<!doctype html><html><body><button id="b-target">B</button></body></html>`,
 };
 

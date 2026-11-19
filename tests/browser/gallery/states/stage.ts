@@ -162,6 +162,7 @@ stageState(
 			width: 320,
 			group: 'Mobile',
 			generation: 1,
+			hash: 'sha256:test',
 			html: MOBILE_HTML,
 		}));
 		await open({ frames: [...FRAMES, ...extra] });

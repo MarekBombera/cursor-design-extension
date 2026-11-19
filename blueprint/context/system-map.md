@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -60,15 +60,15 @@ flowchart LR
   Clip[("system clipboard")]
 
   Agent -->|MCP tool calls| Tools
-  Tools -->|disk lib, withWorkspaceLock for canvas.json and comments.json| Disk
+  Tools -->|disk lib, withWorkspaceLock for canvas.json, comments.json<br/>and update_artboard's html + meta| Disk
   Skill -->|copy shipped skills/cursor-design/SKILL.md when bytes differ; never through a symlink| Home
   Disk -->|fs events| Watcher
   Watcher --> Panel
   Cmds --> Panel
   Cmds -->|exportHandoff via disk lib| Disk
-  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:copied, ui:error| Chrome
-  Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status, comment:copy, comment:copy-open| Panel
-  Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent under the lock;<br/>readComments, getComment, listComments| Disk
+  Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:copied,<br/>artboard:edited, ui:error| Chrome
+  Chrome -->|artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status, comment:copy, comment:copy-open,<br/>artboard:edit (9c: no sender until 9e)| Panel
+  Panel -->|placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent, editArtboard → updateArtboard under the lock;<br/>readComments, getComment, listComments| Disk
   Panel -->|vscode.env.clipboard.writeText: the locked Agent prompt (8h)| Clip
   Chrome -->|getState on load (parseSavedCommentUi), setState: each save keeps the other keys| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
@@ -132,7 +132,7 @@ sequenceDiagram
   H->>D: delete .ensure-panel
   C->>H: artboard:ready (after the message listener exists)
   H->>H: panelFrames (9a): cap on disk HTML, tag changed frames with data-cd-src (memo)
-  H->>C: canvas:updated {activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, html}]}
+  H->>C: canvas:updated {activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, hash, html}]}
   opt snapshot has an error
     H->>C: artboard:error {message}
   end
@@ -162,13 +162,18 @@ sequenceDiagram
   participant C as Chrome
   participant F as Frame iframe
   A->>M: update_artboard {baseGeneration|baseHash}
-  alt base matches
-    M->>D: write html + meta (generation + 1)
-  else stale base
+  M->>D: requireHtmlFile + exact-case name (no lock yet)
+  alt missing or case variant
+    M-->>A: isError: ARTBOARD_NOT_FOUND
+  else lock held past 2 s
+    M-->>A: isError: WORKSPACE_BUSY (nothing written)
+  else base matches (under withWorkspaceLock)
+    M->>D: read, compare, write html + meta (generation + 1)
+  else stale base (under withWorkspaceLock)
     M-->>A: isError: conflict, read_artboard and retry
   end
   D-->>H: watcher (debounced)
-  H->>D: readCanvasView (disk HTML)
+  H->>D: readCanvasView (disk HTML; frame hash = hashHtml, hashed once with the handoff compare)
   alt disk HTML over 1.5M chars
     H->>H: html '' + too-large message (tile)
   else memo hit (same frame id, same disk HTML)
@@ -201,6 +206,46 @@ latches a trackpad gesture to the out-of-process frame it started over and, once
 out from under the pointer, hands the rest to the chrome as native root scroll. The chrome is
 `position: fixed` over a body with hidden scroll room, so `CanvasState` turns each root scroll into a pan and
 scrolls back (`scrollSinkStep`), but only within a second of a frame wheel or an earlier sink pan.
+
+## Panel edit message (9c)
+
+No chrome sender yet (Edit mode and the inspector land in 9d / 9e); the host side is shipped.
+
+```mermaid
+sequenceDiagram
+  participant C as Chrome
+  participant H as Host
+  participant D as Disk
+  C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, field, value, liveText?}
+  alt no valid requestId
+    H->>H: log panelEdit.answer, no answer
+  else untrusted / no folder / malformed
+    H->>C: ui:error {requestId, message}
+  else valid (parseChromeMessage: shape and size only)
+    H->>D: editArtboard: read file, exact-case name, size cap, hash check, cached parse, editArtboardHtml
+    alt missing / too large / hash differs / refusal
+      H->>C: ui:error {requestId, message} (panel copy allowlist)
+    else same bytes
+      H->>C: artboard:edited {requestId, frameId, hash, generation, html} (no write)
+    else changed
+      H->>D: updateArtboard {html, baseHash}: pre-checks, lock, re-check hash, write html + meta
+      alt changed meanwhile / busy
+        H->>C: ui:error {requestId, message}
+      else written
+        H->>H: panelFrameHtml: tag the new HTML, seed the memo (no await before the post)
+        H->>C: artboard:edited {requestId, frameId, hash, generation, html}
+        D-->>H: watcher echo (200 ms debounce)
+        H->>C: canvas:updated (that frame: the same html, hash, generation)
+      end
+    end
+  end
+```
+
+- The answer is posted with no awaited I/O after the write, so it beats the 200 ms echo; a
+  write-plus-lock-release over 200 ms, or a refresh that read disk before the write, can still
+  post the old frame after it (`ponytail:` in `panelEdit.ts`; 9e handles both).
+- Panel copy comes from `editRequestErrorMessage`, an allowlist: Agent copy (`ConflictError`,
+  `CorruptMetaError`) never reaches the panel; refusals carry their own copy (`EditRefusedError`).
 
 ## Comment-mode picking (8d1)
 
@@ -523,13 +568,15 @@ settles the gesture to disk (the Agent wins).
 | chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
 | chrome → host | `comment:copy` | `{requestId, id}` (8h) |
 | chrome → host | `comment:copy-open` | `{requestId}` (8h) |
-| host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` (each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a) |
+| chrome → host | `artboard:edit` | `{requestId, frameId, sourceNumber, hash, field: 'text' \| 'font-size' \| 'color' \| 'padding' \| 'margin', value, liveText?}` (9c; `liveText` iff text; no chrome sender until 9e) |
+| host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` (each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a; each frame's `hash` is `hashHtml` of the disk HTML, `''` when unreadable, 9c) |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
 | host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
 | host → chrome | `comment:added` | `{requestId}` |
 | host → chrome | `comment:saved` | `{requestId}` (answer to `comment:reply` / `comment:set-status`, posted before the `comments:updated` it causes) |
 | host → chrome | `ui:copied` | `{requestId, count}` (answer to `comment:copy` / `comment:copy-open`; `count` = comments moved open → sent; posted before the `comments:updated` it causes) |
+| host → chrome | `artboard:edited` | `{requestId, frameId, hash, generation, html}` (9c answer to `artboard:edit`; `html` = the tagged copy the echo will post; the chrome does not parse it until 9e) |
 | host → chrome | `ui:error` | `{message, requestId?}` (safe copy) |
 | frame → chrome | `cd:frame-height` | `{height}` |
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |

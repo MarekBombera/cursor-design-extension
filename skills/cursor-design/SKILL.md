@@ -20,7 +20,7 @@ Argument names differ between tools. Use these exact shapes:
 - `list_artboards()`: every artboard id with its `generation`, and the canvas `frames` (`x`, `y`, `width`, `label`, `group`). Call it first in a new chat. An empty workspace returns empty lists, not an error.
 - `set_artboard({ artboardId, html, title })`: creates a new artboard and returns its `generation`. Fails if the id exists. Ids: letters, digits, `.`, `_`, `-` (max 64).
 - `read_artboard({ artboardId })`: returns `html` and `generation`. It defaults to the active artboard.
-- `update_artboard({ artboardId, html, baseGeneration })`: replaces the whole document and returns the new `generation`.
+- `update_artboard({ artboardId, html, baseGeneration })`: replaces the whole document and returns the new `generation`. It waits for the workspace lock; `WORKSPACE_BUSY` means another Cursor Design write holds it.
 - `place_frame({ id, x, y, width, label, group })`: positions one frame. It takes `id`, not `artboardId`. Omitted fields keep their value. Width is clamped to 120–3840. `group: ""` clears the group. Height is never stored. It returns every frame.
 - `set_active_artboard({ artboardId })`: picks the default artboard for `read_artboard` and `handoff_status`.
 - `export_artboard()`: exports every frame and returns `exportId` and `handoffPath`. It takes no arguments.
@@ -69,7 +69,7 @@ Size and layout:
 1. Get the current `html` and `generation` from `read_artboard`. You can skip the read when you wrote the artboard yourself in this chat and still have the `generation` that `set_artboard` or `update_artboard` returned.
 2. Change only what was asked, and keep the rest of the document byte-for-byte. Comments on other elements stay valid only while their markup is unchanged.
 3. `update_artboard({ artboardId, html, baseGeneration })`.
-4. On `conflict`, the user or another Agent changed the artboard since your read. Read it again, re-apply your change to the new HTML, and retry once. Never send your old copy over theirs.
+4. On `conflict`, the user or another Agent changed the artboard since your read. Read it again, re-apply your change to the new HTML, and retry once. Never send your old copy over theirs. On `WORKSPACE_BUSY`, retry the same call; after a crashed write it can last up to 30 s.
 
 For a small change in a very large document, you may edit `.cursor-design/artboards/<id>.html` directly with your file edit tool; the panel picks it up. Call `read_artboard` before the next `update_artboard`, because the generation changed.
 
@@ -112,7 +112,7 @@ A failed call returns `isError: true` with JSON `{ code, message, ... }`. The me
 - `INVALID_ARGS`: fix the arguments as the message says.
 - `INVALID_ROOT`: retry with `rootPath` set to one of the returned `roots`.
 - `NO_WORKSPACE`: ask the user to open a folder.
-- `WORKSPACE_BUSY`: another write holds the lock. Retry in a moment.
+- `WORKSPACE_BUSY`: another write holds the lock. Retry in a moment; after a crashed write it can last up to 30 s.
 - `COMMENT_NOT_FOUND`: call `list_comments` for current ids.
 - `COMMENT_RESOLVED`: already done. Skip it.
 - `CORRUPT_MANIFEST`, `UNSUPPORTED_SCHEMA_VERSION`, `CORRUPT_META`, `CORRUPT_CANVAS`, `UNSUPPORTED_CANVAS_VERSION`, `CORRUPT_COMMENTS`, `UNSUPPORTED_COMMENTS_VERSION`: a `.cursor-design/` file is broken or from a newer version. Do not overwrite it. Tell the user which file the message names, and fix it only with their agreement.

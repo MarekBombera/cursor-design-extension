@@ -44,6 +44,8 @@ export type ListArtboardsResult = {
 
 export type CanvasViewFrame = CanvasFrame & {
 	generation: number;
+	// hashHtml of the disk HTML as read (9c: the panel's edit base); '' when it was not readable.
+	hash: string;
 	html: string;
 	errorMessage?: string;
 };
@@ -248,14 +250,27 @@ export const scanArtboardFiles = async ({
 	return scanned;
 };
 
+// The one hash rule per scanned artboard: hashHtml of the disk HTML as read, never the stored meta
+// hash (its hex case is as written); undefined when the file was not readable.
+const scannedHashes = (scanned: ScannedArtboards): Map<string, string | undefined> =>
+	new Map(
+		scanned.artboards.map(({ artboardId, html, errorMessage }) => [
+			artboardId,
+			errorMessage === undefined ? hashHtml(html) : undefined,
+		]),
+	);
+
 // One compare for handoff_status and the panel badge. An unreadable frame has no hash, so it
-// counts as changed (fail closed).
-export const compareScannedHandoff = (scanned: ScannedArtboards): HandoffCompare =>
+// counts as changed (fail closed). readCanvasView passes the hashes it already computed.
+export const compareScannedHandoff = (
+	scanned: ScannedArtboards,
+	hashes: ReadonlyMap<string, string | undefined> = scannedHashes(scanned),
+): HandoffCompare =>
 	compareCanvasHandoff({
 		lastExport: scanned.manifest?.lastExport,
-		frames: scanned.artboards.map(({ artboardId, html, errorMessage }) => ({
+		frames: scanned.artboards.map(({ artboardId }) => ({
 			artboardId,
-			hash: errorMessage === undefined ? hashHtml(html) : undefined,
+			hash: hashes.get(artboardId),
 		})),
 	});
 
@@ -299,6 +314,7 @@ export const readCanvasView = async ({
 	}
 	const { stored, layoutErrorMessage } = await resolveLayoutOrEmpty(workspaceRoot);
 	const byId = new Map(scanned.artboards.map((entry) => [entry.artboardId, entry]));
+	const hashes = scannedHashes(scanned);
 	const htmlReadErrors: CanvasViewHtmlReadError[] = [];
 	const frames = resolveCanvasFrames({
 		stored,
@@ -308,6 +324,7 @@ export const readCanvasView = async ({
 		const viewFrame: CanvasViewFrame = {
 			...frame,
 			generation: scannedFrame?.generation ?? 0,
+			hash: hashes.get(frame.id) ?? '',
 			html: scannedFrame?.html ?? '',
 		};
 		if (scannedFrame?.errorMessage !== undefined) {
@@ -322,7 +339,7 @@ export const readCanvasView = async ({
 		activeArtboardId: scanned.activeArtboardId,
 		frames,
 		// Never exported compares as not stale; an emptied canvas keeps the badge off.
-		handoffStale: frames.length > 0 && compareScannedHandoff(scanned).stale,
+		handoffStale: frames.length > 0 && compareScannedHandoff(scanned, hashes).stale,
 	};
 	if (layoutErrorMessage !== undefined) {
 		view.layoutErrorMessage = layoutErrorMessage;

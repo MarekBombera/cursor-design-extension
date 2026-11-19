@@ -526,6 +526,67 @@ test('setActiveArtboard requires an exact html file name', async () => {
 	assert.equal(manifest.activeArtboardId, 'hero');
 });
 
+// 9c: without the lock both calls read generation 1 before either writes, and both succeed.
+test('two unqueued updateArtboard calls on one base: one wins, the other conflicts', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html: '<p>v1</p>',
+		writeEnsurePanelMarker: false,
+	});
+	const results = await Promise.allSettled(
+		['<p>first</p>', '<p>second</p>'].map((html) =>
+			updateArtboard({ workspaceRoot, artboardId: 'hero', html, baseGeneration: 1 }),
+		),
+	);
+	const fulfilled = results.flatMap((result, index) =>
+		result.status === 'fulfilled' ? [index] : [],
+	);
+	const rejected = results.flatMap((result) =>
+		result.status === 'rejected' ? [result.reason as unknown] : [],
+	);
+	assert.equal(fulfilled.length, 1);
+	assert.equal(rejected.length, 1);
+	assert.ok(rejected[0] instanceof ConflictError);
+	const winner = fulfilled[0] === 0 ? '<p>first</p>' : '<p>second</p>';
+	assert.equal(
+		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8'),
+		winner,
+	);
+});
+
+// Guards requireExactHtmlFileName only on a case-insensitive disk (macOS, Windows), where the bug
+// lives: on Linux (CI) `HERO.html` does not exist, so requireHtmlFile refuses it first.
+test('updateArtboard with a case variant id is ARTBOARD_NOT_FOUND and renames nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const metaBefore = await readFile(metaPath, 'utf8');
+	await assert.rejects(
+		updateArtboard({
+			workspaceRoot,
+			artboardId: 'HERO',
+			html: '<p>changed</p>',
+			baseHash: hashHtml('<p>hero</p>'),
+		}),
+		ArtboardNotFoundError,
+	);
+	const names = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR));
+	assert.ok(names.includes('hero.html'));
+	assert.ok(!names.includes('HERO.html'));
+	assert.equal(
+		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8'),
+		'<p>hero</p>',
+	);
+	assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
+});
+
 test('empty viewport is InvalidArgsError on create and update', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await assert.rejects(

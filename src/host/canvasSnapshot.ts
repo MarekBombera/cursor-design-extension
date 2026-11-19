@@ -1,16 +1,13 @@
 import { type CanvasView, type CanvasViewFrame } from '../disk/artboardFs';
 import { cachedArtboardDocument } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
+import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
 import type { PostedCanvasFrame } from '../webview/hostMessages';
 
 export const UNTRUSTED_WORKSPACE_MESSAGE =
 	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
 
-// ponytail: 1.5M char ceiling per frame on the disk HTML; the posted copy is larger, since source
-// tags add about 17 or more chars per element: up to about 8x for a file of bare tiny tags
-// (1.5M chars of `<p>` posts about 12M). No total payload cap across frames.
-export const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
 export const ARTBOARD_HTML_TOO_LARGE_MESSAGE =
 	'Artboard HTML is too large to preview in the panel.';
 
@@ -37,8 +34,45 @@ export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => 
 // parse and tag in a worker thread.
 const taggedFrames = new Map<string, { html: string; posted: string }>();
 
-// What the panel gets for each frame: the size cap on the disk HTML, then source tags. A tagging
-// failure is reported once per HTML and posts the untagged copy; the stage keeps every frame.
+const memoKey = (workspaceRoot: string, frameId: string): string => `${workspaceRoot}\0${frameId}`;
+
+// The posted copy of one frame's disk HTML: the size cap, then source tags. Seeds the memo, so the
+// next panelFrames call with the same disk HTML (9c: the watcher echo after an edit) posts this
+// exact string. A tagging failure is reported once per HTML and returns the untagged copy.
+export const panelFrameHtml = ({
+	workspaceRoot,
+	frameId,
+	html,
+	onTagError,
+}: {
+	workspaceRoot: string;
+	frameId: string;
+	html: string;
+	onTagError: (frameId: string, error: unknown) => void;
+}): { html: string; errorMessage?: string } => {
+	if (html.length > MAX_POSTED_ARTBOARD_HTML_CHARS) {
+		return { html: '', errorMessage: ARTBOARD_HTML_TOO_LARGE_MESSAGE };
+	}
+	const key = memoKey(workspaceRoot, frameId);
+	const memo = taggedFrames.get(key);
+	if (memo?.html === html) {
+		return { html: memo.posted };
+	}
+	let posted = html;
+	try {
+		posted = sourceTaggedHtml({
+			html,
+			document: cachedArtboardDocument({ workspaceRoot, frameId, html }),
+		});
+	} catch (error: unknown) {
+		onTagError(frameId, error);
+	}
+	taggedFrames.set(key, { html, posted });
+	return { html: posted };
+};
+
+// What the panel gets for each frame (panelFrameHtml over every readable frame); the stage keeps
+// every frame. Memo entries of frames no longer posted are dropped.
 export const panelFrames = ({
 	workspaceRoot,
 	frames,
@@ -50,29 +84,19 @@ export const panelFrames = ({
 }): CanvasViewFrame[] => {
 	const keys = new Set<string>();
 	const posted = frames.map((frame) => {
-		const key = `${workspaceRoot}\0${frame.id}`;
-		keys.add(key);
-		if (frame.html.length > MAX_POSTED_ARTBOARD_HTML_CHARS) {
-			return { ...frame, html: '', errorMessage: ARTBOARD_HTML_TOO_LARGE_MESSAGE };
-		}
-		if (frame.errorMessage !== undefined || frame.html === '') {
+		keys.add(memoKey(workspaceRoot, frame.id));
+		// The size cap comes first, as before the panelFrameHtml split: an over-cap frame is the
+		// too-large tile whatever else it carries.
+		if (
+			frame.html.length <= MAX_POSTED_ARTBOARD_HTML_CHARS &&
+			(frame.errorMessage !== undefined || frame.html === '')
+		) {
 			return { ...frame };
 		}
-		const memo = taggedFrames.get(key);
-		if (memo?.html === frame.html) {
-			return { ...frame, html: memo.posted };
-		}
-		let html = frame.html;
-		try {
-			html = sourceTaggedHtml({
-				html: frame.html,
-				document: cachedArtboardDocument({ workspaceRoot, frameId: frame.id, html: frame.html }),
-			});
-		} catch (error: unknown) {
-			onTagError(frame.id, error);
-		}
-		taggedFrames.set(key, { html: frame.html, posted: html });
-		return { ...frame, html };
+		return {
+			...frame,
+			...panelFrameHtml({ workspaceRoot, frameId: frame.id, html: frame.html, onTagError }),
+		};
 	});
 	for (const key of taggedFrames.keys()) {
 		if (!keys.has(key)) {
@@ -91,6 +115,7 @@ export const postedFrameFromSnapshot = (frame: CanvasViewFrame): PostedCanvasFra
 		y: frame.y,
 		width: frame.width,
 		generation: frame.generation,
+		hash: frame.hash,
 		html: frame.html,
 	};
 	if (frame.group !== undefined) {

@@ -1,4 +1,5 @@
 import type {
+	ArtboardEditedMessage,
 	CommentAddedMessage,
 	CommentSavedMessage,
 	CommentsUpdatedMessage,
@@ -20,13 +21,19 @@ type CanvasHostView = {
 
 type UiStatusPartial = { mcpAvailable?: boolean; handoffStale?: boolean };
 
+// Every answer to one chrome request: posted only while ready, never held or replayed.
+export type PanelAnswer =
+	| CommentAddedMessage
+	| CommentSavedMessage
+	| CopiedMessage
+	| ArtboardEditedMessage
+	| UiErrorMessage;
+
 type PanelOutbox = {
 	postSnapshot: (snapshot: CanvasSnapshot) => void;
 	postUiStatus: (partial: UiStatusPartial) => void;
 	postComments: (comments: Omit<CommentsUpdatedMessage, 'type'>) => void;
-	postAnswer: (
-		answer: CommentAddedMessage | CommentSavedMessage | CopiedMessage | UiErrorMessage,
-	) => void;
+	postAnswer: (answer: PanelAnswer) => void;
 	markReady: () => void;
 	reset: () => void;
 };

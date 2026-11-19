@@ -72,7 +72,8 @@ const unlinkIfPresent = async (path: string): Promise<void> => {
 };
 
 // ponytail: stale = mtime older than staleMs, no PID liveness or heartbeat. A hold is one small
-// JSON read-modify-write, far below 30s. Upgrade path: heartbeat the mtime during long holds.
+// JSON read-modify-write or one artboard HTML + meta write, far below 30s.
+// Upgrade path: heartbeat the mtime during long holds.
 // Only the holder of `.lock.break` (wx) may remove a stale lock, and it re-checks staleness
 // under it. Nothing else removes a lock it does not own, so the re-check cannot race: a fresh
 // lock a waiter just created is never broken. True when the next attempt should run at once.

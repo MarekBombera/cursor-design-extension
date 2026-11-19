@@ -51,8 +51,17 @@ export const MAX_PICK_TEXT_CHARS = 200;
 
 export const MAX_STYLE_VALUE_CHARS = 200;
 
+// Edit-mode fields (0.4): the edit core's allowlist, shared with the panel's artboard:edit type.
+export const EDIT_FIELDS = ['text', 'font-size', 'color', 'padding', 'margin'] as const;
+
 // Edit-mode text (0.4): the new text and the frame's live text of an edited element.
 export const MAX_EDIT_TEXT_CHARS = 5000;
+
+// ponytail: 1.5M char ceiling per frame on the disk HTML; the posted copy is larger, since source
+// tags add about 17 or more chars per element: up to about 8x for a file of bare tiny tags
+// (1.5M chars of `<p>` posts about 12M). No total payload cap across frames. An Edit-mode change
+// on a file over it, or one that would push it over, is refused (9c).
+export const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
 
 export const COMMENT_STYLE_KEYS = [
 	'font-family',

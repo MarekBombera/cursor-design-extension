@@ -2,9 +2,22 @@ import * as z from 'zod/mini';
 
 import type { CommentView } from '../disk/commentViews';
 import type { NewComment } from '../disk/commentsFile';
-import { CommentNotFoundError, toSafeArtboardErrorMessage } from '../disk/errors';
+import {
+	ArtboardNotFoundError,
+	CommentNotFoundError,
+	ConflictError,
+	DiskError,
+	EditRefusedError,
+	InvalidArgsError,
+	InvalidArtboardIdError,
+	LockTimeoutError,
+	toSafeArtboardErrorMessage,
+} from '../disk/errors';
+import { isArtboardHash } from '../disk/hash';
 import {
 	COMMENT_ID_PATTERN,
+	EDIT_FIELDS,
+	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
@@ -78,6 +91,22 @@ const commentCopyOpenSchema = z.object({
 	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
 });
 
+// 9c. Shape and size only: text encoding, control characters, style value safety and the live
+// text compare are the edit core's (editArtboardHtml). The frame id charset and exact file name are
+// the disk lib's. liveText is present iff the field is text.
+const artboardEditSchema = z
+	.object({
+		type: z.literal('artboard:edit'),
+		requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+		frameId: z.string(),
+		sourceNumber: z.int().check(z.gte(0), z.lte(Number.MAX_SAFE_INTEGER)),
+		hash: z.string().check(z.refine(isArtboardHash)),
+		field: z.enum(EDIT_FIELDS),
+		value: z.string().check(z.maxLength(MAX_EDIT_TEXT_CHARS)),
+		liveText: z.optional(z.string().check(z.maxLength(MAX_EDIT_TEXT_CHARS))),
+	})
+	.check(z.refine((message) => (message.field === 'text') === (message.liveText !== undefined)));
+
 // The artboard id charset is enforced by placeFrame's parseArtboardId.
 const chromeMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('artboard:ready') }),
@@ -92,6 +121,7 @@ const chromeMessageSchema = z.discriminatedUnion('type', [
 	commentSetStatusSchema,
 	commentCopySchema,
 	commentCopyOpenSchema,
+	artboardEditSchema,
 ]);
 
 // Unknown `type`, a non-object, or any failing field returns undefined; never throws.
@@ -109,6 +139,22 @@ const claimsType = (value: unknown, type: string): value is Record<string, unkno
 // True for anything that claims to be frame:place, valid or not, so every attempt gets an answer.
 export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value, 'frame:place');
 
+// True for anything that claims to be artboard:edit, valid or not, so every attempt gets an answer.
+export const isArtboardEditAttempt = (value: unknown): boolean =>
+	claimsType(value, 'artboard:edit');
+
+// The request id to answer, read before any parse: a string matching REQUEST_ID_PATTERN, or
+// undefined (nothing to answer to). Shared by comment requests and artboard:edit.
+export const claimedRequestId = (value: unknown): string | undefined => {
+	const requestId =
+		value !== null && typeof value === 'object' && 'requestId' in value
+			? (value as { requestId: unknown }).requestId
+			: undefined;
+	return typeof requestId === 'string' && REQUEST_ID_PATTERN.test(requestId)
+		? requestId
+		: undefined;
+};
+
 const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
 	'comment:create',
 	'comment:reply',
@@ -123,15 +169,8 @@ export const commentRequestType = (value: unknown): CommentRequestMessage['type'
 	COMMENT_REQUEST_TYPES.find((type) => claimsType(value, type));
 
 // The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
-export const commentRequestId = (value: unknown): string | undefined => {
-	const requestId =
-		commentRequestType(value) === undefined
-			? undefined
-			: (value as { requestId?: unknown }).requestId;
-	return typeof requestId === 'string' && REQUEST_ID_PATTERN.test(requestId)
-		? requestId
-		: undefined;
-};
+export const commentRequestId = (value: unknown): string | undefined =>
+	commentRequestType(value) === undefined ? undefined : claimedRequestId(value);
 
 export const CREATE_FALLBACK_MESSAGE =
 	'Could not add the comment. Check the Output panel: Cursor Design.';
@@ -185,6 +224,38 @@ export const commentRequestErrorMessage = ({
 	error instanceof CommentNotFoundError
 		? COMMENT_GONE_MESSAGE
 		: toSafeArtboardErrorMessage(error, fallbackMessage(type));
+
+export const MALFORMED_EDIT_MESSAGE = 'Could not save the edit. Try again.';
+
+export const EDIT_FALLBACK_MESSAGE =
+	'Could not save the edit. Check the Output panel: Cursor Design.';
+
+export const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
+
+export const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
+
+// Panel copy for a failed artboard:edit, an allowlist in this order: every other domain error's
+// own message is Agent copy (ConflictError says to call read_artboard, CorruptMetaError to
+// set_artboard), so it gets the fallback.
+export const editRequestErrorMessage = (error: unknown): string => {
+	if (error instanceof ConflictError) {
+		return EDIT_CONFLICT_MESSAGE;
+	}
+	if (error instanceof ArtboardNotFoundError) {
+		return EDIT_FRAME_GONE_MESSAGE;
+	}
+	if (error instanceof InvalidArgsError || error instanceof InvalidArtboardIdError) {
+		return MALFORMED_EDIT_MESSAGE;
+	}
+	if (
+		error instanceof EditRefusedError ||
+		error instanceof LockTimeoutError ||
+		error instanceof DiskError
+	) {
+		return error.message;
+	}
+	return EDIT_FALLBACK_MESSAGE;
+};
 
 // The pin is the point as a fraction of the unclipped box, never of the (maybe clipped or null)
 // rect. A zero-size box pins at 0 instead of NaN (addComment clamps the pin to 0..1 but leaves

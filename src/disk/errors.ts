@@ -1,3 +1,4 @@
+import type { EditRefusal } from './artboardEdit';
 import {
 	CANVAS_SCHEMA_VERSION,
 	COMMENTS_SCHEMA_VERSION,
@@ -296,6 +297,33 @@ export class PickOutdatedError extends CursorDesignError {
 	) {
 		super('This artboard changed since the element was picked. Pick it again.', options);
 		this.name = 'PickOutdatedError';
+	}
+}
+
+// Why an Edit-mode change was refused: the edit core's refusal, or the file is (or the edit would
+// make it) larger than the panel previews.
+export type EditRefusedReason = EditRefusal | 'too-large';
+
+// Panel copy only (the Agent never edits through the panel); the one home of these strings.
+const EDIT_REFUSED_MESSAGES: Record<EditRefusedReason, string> = {
+	'unknown-number': 'This element cannot be edited here. Ask the Agent to change it.',
+	'shared-number': 'This element cannot be edited here. Ask the Agent to change it.',
+	'not-plain-text': 'This element contains other elements. Ask the Agent to change its text.',
+	'text-changed': 'A script on the page changed this text. Ask the Agent to change it.',
+	'invalid-value': 'That value cannot be saved. Check it and try again.',
+	'unsupported-style': "This element's style cannot be edited here. Ask the Agent to change it.",
+	'too-large': 'This artboard is too large to edit here. Ask the Agent to change it.',
+};
+
+export class EditRefusedError extends CursorDesignError {
+	readonly code = 'EDIT_REFUSED' as const;
+
+	constructor(
+		readonly reason: EditRefusedReason,
+		options?: { cause?: unknown },
+	) {
+		super(EDIT_REFUSED_MESSAGES[reason], options);
+		this.name = 'EditRefusedError';
 	}
 }
 

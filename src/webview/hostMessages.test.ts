@@ -10,6 +10,7 @@ const validFrame = {
 	y: 10,
 	width: 400,
 	generation: 2,
+	hash: 'sha256:aa',
 	html: '<p>a</p>',
 };
 const validUpdate = {
@@ -64,6 +65,8 @@ test('invalid frame entries are dropped and the valid ones kept in order', () =>
 			{ ...validFrame, generation: '2' },
 			{ ...validFrame, group: 1 },
 			{ ...validFrame, errorMessage: false },
+			{ ...validFrame, hash: undefined },
+			{ ...validFrame, hash: 5 },
 			second,
 			validFrame,
 		],

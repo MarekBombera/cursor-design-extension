@@ -45,6 +45,7 @@ const FRAME: PostedCanvasFrame = {
 	y: 0,
 	width: 600,
 	generation: 1,
+	hash: 'sha256:test',
 	html: PINS_HTML,
 };
 
@@ -699,6 +700,7 @@ const JUMP_FRAME: PostedCanvasFrame = {
 	y: 0,
 	width: 1400,
 	generation: 1,
+	hash: 'sha256:test',
 	html: readFileSync(join(__dirname, '..', '..', 'fixtures', 'jump.html'), 'utf8'),
 };
 

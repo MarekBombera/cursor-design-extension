@@ -40,6 +40,7 @@ const FRAME_A: PostedCanvasFrame = {
 	y: 0,
 	width: 400,
 	generation: 1,
+	hash: 'sha256:test',
 	html: `<!doctype html><html><head><style>
 		body { margin: 0; }
 		#a-scroll { height: 80px; overflow: auto; }
@@ -64,6 +65,7 @@ const FRAME_B: PostedCanvasFrame = {
 	y: 0,
 	width: 700,
 	generation: 1,
+	hash: 'sha256:test',
 	// A target in the frame's far corner, so its pick lands near the stage's right and bottom edges.
 	html: `<!doctype html><html><head><style>
 		body { margin: 0; height: 2000px; position: relative; }
