@@ -3,8 +3,13 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter, parse, serializeOuter }
 import { hashHtml } from './hash';
 import { selectMatches } from './selectorMatch';
 
+// With source locations: the panel's source tags (sourceTags.ts) share this parse through the
+// commentViews cache. serializeOuter ignores locations, so fingerprints are unchanged.
+// ponytail: one parse config for every caller, so the MCP process and addComment's uncached check
+// pay about 1.7x parse time and 1.8x memory for offsets only the host's tagging reads. Upgrade
+// path: a locations flag passed only by cachedArtboardDocument's host callers.
 export const parseArtboardDocument = (html: string): DefaultTreeAdapterMap['document'] =>
-	parse(html);
+	parse(html, { sourceCodeLocationInfo: true });
 
 export type ArtboardDocument = ReturnType<typeof parseArtboardDocument>;
 

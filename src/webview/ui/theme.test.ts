@@ -352,8 +352,9 @@ const meaningTextColours = ({ css, exempt }: { css: string; exempt: Exemptions }
 		.map((rule) => rule.selector);
 };
 
-// 7. A style attribute (a CSP violation in Cursor) or a colour literal in a style: directive,
-// quoted ("…" or '…', expressions dropped) or a string literal in braces ({'…'}).
+// 7. A style attribute (chrome convention: dynamic values go through style: directives) or a
+// colour literal in a style: directive, quoted ("…" or '…', expressions dropped) or a string
+// literal in braces ({'…'}).
 const inlineStyles = (svelteText: string): string[] => [
 	...(svelteText.match(/(?<![\w.:-])style\s*=/g) ?? []),
 	...[

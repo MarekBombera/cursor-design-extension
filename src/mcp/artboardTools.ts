@@ -50,7 +50,7 @@ type ToolArgs = {
 // Shown to the Agent on set_artboard / update_artboard. Mirrors skills/cursor-design/SKILL.md
 // § Writing artboard HTML; both change with the frame CSPs (artboardChromeHtml.ts, FRAME_CSP).
 const ARTBOARD_HTML_RULES =
-	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes, inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
+	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes work: keep any already in the file (the user may have set them in the panel) and prefer classes for your own CSS. Inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
 
 const toolSchema = (properties: Record<string, { description: string }>) =>
 	toolInputSchema<ToolArgs>(properties);

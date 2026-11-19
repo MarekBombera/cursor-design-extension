@@ -1,17 +1,35 @@
 import assert from 'node:assert/strict';
-import { test } from 'vite-plus/test';
+import { beforeEach, test, vi } from 'vite-plus/test';
 
 import { FRAME_READ_ERROR_MESSAGE, type CanvasViewFrame } from '../disk/artboardFs';
+import { parseArtboardDocument } from '../disk/commentTarget';
+import { cachedArtboardDocument } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
+import { sourceTaggedHtml } from '../disk/sourceTags';
 import {
 	ARTBOARD_HTML_TOO_LARGE_MESSAGE,
 	MAX_POSTED_ARTBOARD_HTML_CHARS,
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
+	panelFrames,
 	postedFrameFromSnapshot,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
+
+// The real implementations behind counters; a case overrides one call with mockImplementationOnce.
+vi.mock('../disk/sourceTags', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../disk/sourceTags')>();
+	return { ...actual, sourceTaggedHtml: vi.fn(actual.sourceTaggedHtml) };
+});
+vi.mock('../disk/commentTarget', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../disk/commentTarget')>();
+	return { ...actual, parseArtboardDocument: vi.fn(actual.parseArtboardDocument) };
+});
+vi.mock('../disk/commentViews', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../disk/commentViews')>();
+	return { ...actual, cachedArtboardDocument: vi.fn(actual.cachedArtboardDocument) };
+});
 
 const viewFrame = (
 	overrides: Partial<CanvasViewFrame> & Pick<CanvasViewFrame, 'id'>,
@@ -41,24 +59,127 @@ const snapshotWithFrames = (frames: CanvasViewFrame[]): CanvasSnapshot => ({
 	handoffStale: false,
 });
 
-test('postedFrameFromSnapshot caps each frame at 1.5M without a global banner', () => {
+test('postedFrameFromSnapshot maps fields only: no cap, errorMessage and group passed through', () => {
+	const huge = 'x'.repeat(MAX_POSTED_ARTBOARD_HTML_CHARS + 1);
+	const posted = postedFrameFromSnapshot(
+		viewFrame({ id: 'huge', html: huge, errorMessage: FRAME_READ_ERROR_MESSAGE, group: 'Desktop' }),
+	);
+	assert.equal(posted.html, huge);
+	assert.equal(posted.errorMessage, FRAME_READ_ERROR_MESSAGE);
+	assert.equal(posted.group, 'Desktop');
+	const sibling = postedFrameFromSnapshot(viewFrame({ id: 'hero' }));
+	assert.equal('errorMessage' in sibling, false);
+	assert.equal('group' in sibling, false);
+	assert.equal(snapshotWithFrames([]).errorMessage, undefined);
+	assert.equal(emptyArtboardSnapshot().errorMessage, undefined);
+});
+
+const ROOT = '/workspace';
+const onTagError = vi.fn<(frameId: string, error: unknown) => void>();
+const tagCalls = (): number => vi.mocked(sourceTaggedHtml).mock.calls.length;
+const parseCalls = (): number => vi.mocked(parseArtboardDocument).mock.calls.length;
+
+const postFrames = (frames: CanvasViewFrame[]): CanvasViewFrame[] =>
+	panelFrames({ workspaceRoot: ROOT, frames, onTagError });
+
+beforeEach(() => {
+	// An empty list prunes every memo entry of this root.
+	postFrames([]);
+	vi.clearAllMocks();
+});
+
+test('panelFrames tags a normal frame', () => {
+	const [posted] = postFrames([viewFrame({ id: 'hero', html: '<p>ok</p>' })]);
+	assert.equal(posted?.html, '<p data-cd-src="0">ok</p>');
+	assert.equal(onTagError.mock.calls.length, 0);
+	// The comment flags' cache key: one parse per workspace and frame while the html is identical.
+	assert.deepEqual(vi.mocked(cachedArtboardDocument).mock.calls, [
+		[{ workspaceRoot: ROOT, frameId: 'hero', html: '<p>ok</p>' }],
+	]);
+});
+
+test('the size cap is on the disk HTML: exactly MAX is tagged past it, MAX + 1 is not parsed', () => {
+	const atCap = `<p>${'x'.repeat(MAX_POSTED_ARTBOARD_HTML_CHARS - 3)}`;
 	const tooLarge = viewFrame({
 		id: 'huge',
-		html: 'x'.repeat(MAX_POSTED_ARTBOARD_HTML_CHARS + 1),
+		html: `${atCap}x`,
 		errorMessage: FRAME_READ_ERROR_MESSAGE,
 	});
-	const sibling = viewFrame({ id: 'hero', html: '<p>ok</p>', group: 'Desktop' });
-	const snapshot = snapshotWithFrames([tooLarge, sibling]);
-	const postedHuge = postedFrameFromSnapshot(tooLarge);
-	const postedSibling = postedFrameFromSnapshot(sibling);
+	const [postedAtCap, postedHuge] = postFrames([viewFrame({ id: 'cap', html: atCap }), tooLarge]);
+	assert.ok(postedAtCap?.html.startsWith('<p data-cd-src="0">'));
+	assert.ok((postedAtCap?.html.length ?? 0) > MAX_POSTED_ARTBOARD_HTML_CHARS);
+	assert.equal(postedHuge?.html, '');
+	assert.equal(postedHuge?.errorMessage, ARTBOARD_HTML_TOO_LARGE_MESSAGE);
+	assert.equal(parseCalls(), 1);
+});
 
-	assert.equal(postedHuge.html, '');
-	assert.equal(postedHuge.errorMessage, ARTBOARD_HTML_TOO_LARGE_MESSAGE);
-	assert.equal(postedSibling.html, '<p>ok</p>');
-	assert.equal(postedSibling.group, 'Desktop');
-	assert.equal('errorMessage' in postedSibling, false);
-	assert.equal(snapshot.errorMessage, undefined);
-	assert.equal(emptyArtboardSnapshot().errorMessage, undefined);
+test('a frame with errorMessage or empty html is copied unchanged and never parsed', () => {
+	const broken = viewFrame({
+		id: 'broken',
+		html: '<p>x</p>',
+		errorMessage: FRAME_READ_ERROR_MESSAGE,
+	});
+	const empty = viewFrame({ id: 'empty', html: '' });
+	assert.deepEqual(postFrames([broken, empty]), [broken, empty]);
+	assert.equal(parseCalls(), 0);
+	assert.equal(tagCalls(), 0);
+});
+
+test('an unchanged frame comes from the memo; changed html is tagged again', () => {
+	const first = postFrames([viewFrame({ id: 'hero', html: '<p>ok</p>' })]);
+	const [tagCount, parseCount] = [tagCalls(), parseCalls()];
+	const second = postFrames([viewFrame({ id: 'hero', html: '<p>ok</p>' })]);
+	assert.equal(tagCalls() - tagCount, 0);
+	assert.equal(parseCalls() - parseCount, 0);
+	assert.equal(second[0]?.html, first[0]?.html);
+	const changed = postFrames([viewFrame({ id: 'hero', html: '<p>new</p>' })]);
+	assert.equal(changed[0]?.html, '<p data-cd-src="0">new</p>');
+	assert.equal(tagCalls() - tagCount, 1);
+});
+
+test('a frame dropped and re-added with the same html is tagged again', () => {
+	const hero = viewFrame({ id: 'hero', html: '<p>ok</p>' });
+	postFrames([hero]);
+	postFrames([viewFrame({ id: 'other', html: '<p>x</p>' })]);
+	const before = tagCalls();
+	postFrames([hero]);
+	assert.equal(tagCalls() - before, 1);
+});
+
+test('a tag failure posts the untagged html, reports once and is not retried', () => {
+	const failure = new Error('boom');
+	vi.mocked(sourceTaggedHtml).mockImplementationOnce(() => {
+		throw failure;
+	});
+	const hero = viewFrame({ id: 'hero', html: '<p>ok</p>' });
+	assert.equal(postFrames([hero])[0]?.html, '<p>ok</p>');
+	assert.deepEqual(onTagError.mock.calls, [['hero', failure]]);
+	const before = tagCalls();
+	assert.equal(postFrames([hero])[0]?.html, '<p>ok</p>');
+	assert.equal(tagCalls() - before, 0);
+	assert.equal(onTagError.mock.calls.length, 1);
+});
+
+test('a document parsed from other html takes the untagged path', () => {
+	vi.mocked(cachedArtboardDocument).mockImplementationOnce(() =>
+		parseArtboardDocument('ab<p>x</p>'),
+	);
+	const [posted] = postFrames([viewFrame({ id: 'hero', html: '<p>abcdef</p>' })]);
+	assert.equal(posted?.html, '<p>abcdef</p>');
+	assert.equal(onTagError.mock.calls.length, 1);
+	assert.equal(onTagError.mock.calls[0]?.[0], 'hero');
+});
+
+test('panelFrames never mutates the input frames', () => {
+	const frames = [
+		viewFrame({ id: 'hero', html: '<p>ok</p>' }),
+		viewFrame({ id: 'huge', html: 'x'.repeat(MAX_POSTED_ARTBOARD_HTML_CHARS + 1) }),
+	];
+	const copy = structuredClone(frames);
+	const posted = postFrames(frames);
+	assert.deepEqual(frames, copy);
+	assert.notEqual(posted[0], frames[0]);
+	assert.notEqual(posted, frames);
 });
 
 test('canvasSnapshotErrorMessage prefers a missing active artboard over layoutError', () => {

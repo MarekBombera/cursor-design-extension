@@ -39,6 +39,7 @@ const HARNESS_NONCE = 'harness-nonce';
 const CHROME_CSP = [
 	"default-src 'none'",
 	`style-src 'nonce-${HARNESS_NONCE}' ${HARNESS_ORIGIN}`,
+	"style-src-attr 'unsafe-inline'",
 	`script-src 'nonce-${HARNESS_NONCE}' ${HARNESS_ORIGIN}`,
 	'frame-src blob:',
 ].join('; ');
@@ -267,6 +268,37 @@ export const frameBox = (page: Page, frameId: string): Promise<Box> =>
 	boxOf(page.locator(`[data-cd-frame-id="${frameId}"]`));
 
 export const stageBox = (page: Page): Promise<Box> => boxOf(page.locator('.viewport'));
+
+// An element's screen box inside a frame, from its frame-local rect. The stage layer's CSS scale
+// is the frame wrapper's drawn width over the frame's CSS width (1 at 100%).
+export const frameElementBox = async ({
+	page,
+	frameId,
+	selector,
+}: {
+	page: Page;
+	frameId: string;
+	selector: string;
+}): Promise<Box> => {
+	const box = await frameBox(page, frameId);
+	const element = await (
+		await frameOf(page, frameId)
+	).evaluate((wanted) => {
+		const target = document.querySelector(wanted);
+		if (target === null) {
+			throw new Error(`No element matches ${wanted}.`);
+		}
+		const { x, y, width, height } = target.getBoundingClientRect();
+		return { x, y, width, height, frameWidth: window.innerWidth };
+	}, selector);
+	const scale = box.width / element.frameWidth;
+	return {
+		x: box.x + element.x * scale,
+		y: box.y + element.y * scale,
+		width: element.width * scale,
+		height: element.height * scale,
+	};
+};
 
 export const centerOf = (box: Box): Point => ({
 	x: box.x + box.width / 2,

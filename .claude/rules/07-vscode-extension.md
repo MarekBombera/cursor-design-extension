@@ -51,7 +51,7 @@ panel.onDidDispose(() => {
 - `webview.html` is a **complete** HTML document, not a fragment.
 - `acquireVsCodeApi()` **once** in chrome; keep the return value.
 - `enableScripts: true` for chrome. `localResourceRoots` = extension resources only (`dist/webview`), never the workspace (artboard is nested iframe `srcdoc`).
-- Chrome CSP: `default-src 'none'` plus nonce'd `script-src` and `style-src` via `webview.cspSource`. No `http:` resources.
+- Chrome CSP: `default-src 'none'` plus nonce'd `script-src` and `style-src` via `webview.cspSource`, and `style-src-attr 'unsafe-inline'` (style attributes in artboard frames, 0.4). No `http:` resources.
 - Prefer `getState` / `setState` over `retainContextWhenHidden` (high memory). Use retain only if iframe state cannot be restored from disk SoT.
 
 ## URIs, FS, processes

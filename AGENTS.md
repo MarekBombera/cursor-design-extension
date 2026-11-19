@@ -5,11 +5,12 @@
 **Notion:**
 
 - Hub (locks, MCP/disk, Interact vs Edit): https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+- 0.4 Edit-lite (active; Decisions section is the plan): https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d
 - 0.3 Comments for Agent (shipped): https://app.notion.com/p/3fd500344e088171925dd51bc542c00c
 - 0.2 Interact (shipped): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
 - 0.1 archive (shipped, don’t re-litigate): https://app.notion.com/p/3da500344e0881e884dcc828fc49a395
 
-**Status:** 0.3 Comments for Agent shipped (build-plan item 8, plan in `blueprint/reference/0.3-comments-plan.md`); no active build-plan item.
+**Status:** 0.3 Comments for Agent shipped (build-plan item 8, plan in `blueprint/reference/0.3-comments-plan.md`). Active: 0.4 Edit-lite (build-plan item 9, 9a-9g).
 
 **After work:** run `pnpm verify`. Do not skip it.
 

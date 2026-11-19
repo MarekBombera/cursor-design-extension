@@ -1,57 +1,86 @@
-# Drop the Electron test suite and css-select - Overview for review
+# 9a Source tags + inline-style CSP - Overview for review
 
-Source of truth: `blueprint/history/fixes/drop-the-electron-test-suite-and-css-select.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09a-source-tags-inline-style-csp.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Two dependency cuts, shipped 2026-11-18.
+The first slice of 0.4 Edit-lite. Nothing to click yet; it lays two foundations:
 
-- **Electron test suite removed.** It only ever held the scaffold's sample test and cannot run Cursor's API. That took 99 packages out of the install, and `pnpm test` now runs the real unit suite.
-- **css-select replaced.** An in-house matcher, `src/disk/selectorMatch.ts`, now checks comment targets on disk in one linear walk with one honest work limit, using matching rules proven in real Chromium. The extension ships 5 runtime packages instead of 14.
-- **Reviewed hard.** Two fresh reviewers (Opus 5.5, Fable 5.2) found a hang, a crash and an unbounded-cost path. All are fixed and closed.
+- **Source tags.** Every element written in an artboard file now carries `data-cd-src="N"` in the copy the panel shows. Later edits (9b-9e) name an element by N, and the extension finds its exact characters on disk. Disk files, exports and comment selectors never see the tags.
+- **Inline styles render.** `style="…"` attributes now work in frames. Both the Agent skill and the MCP `html` description tell the Agent to keep the user's style attributes.
 
-## Flow
+Zero new dependencies. Independent review passed (fresh Opus 5.5, all four lenses).
+
+## System map
 
 ```mermaid
 flowchart LR
-  Sel["Stored selector<br/>(≤ 1000 chars, finder grammar)"] --> Parse["Sticky-regex tokens<br/>one reading per character<br/>null = unchecked"]
-  File["Artboard HTML on disk"] --> Tree["parse5 tree"]
-  Parse --> Walk["One top-down walk<br/>parent array + ancestor counters<br/>per-element attribute map and class set"]
-  Tree --> Walk
-  Walk -->|"work > 10M units"| Unchecked["null → unchecked"]
-  Walk --> Flags["Matches → tag, text, fingerprint<br/>→ stale / targetMissing"]
+  Disk[("artboards/id.html<br/>(never tagged)")] --> Host
+  subgraph Host["Extension host"]
+    Cap["size cap on disk HTML"] --> Memo{"same HTML<br/>as last post?"}
+    Memo -- yes --> Reuse["reuse tagged copy"]
+    Memo -- no --> Parse["shared parse<br/>(also used by comment flags)"] --> Tag["sourceTaggedHtml<br/>data-cd-src=N"]
+  end
+  Reuse --> Chrome["Chrome<br/>canvas:updated"]
+  Tag --> Chrome
+  Chrome --> Frame["Frame iframe<br/>style attributes render"]
+  Disk --> Export["export, read_artboard,<br/>comment flags"]
+```
+
+## Key loop
+
+```mermaid
+sequenceDiagram
+  participant A as Agent
+  participant D as Disk
+  participant H as Host
+  participant C as Chrome
+  participant F as Frame
+  A->>D: update_artboard (html description: style attributes work, keep the user's)
+  D-->>H: watcher
+  H->>H: panelFrames: cap, tag changed frames (memo for unchanged)
+  H->>C: canvas:updated (tagged html)
+  C->>F: blob frame (chrome CSP + style-src-attr, FRAME_CSP)
 ```
 
 ## What you will see
 
-- **Normal comments:** nothing changes. All 110 real picks gave the same match and fingerprint as css-select.
-- **Comments the old caps refused:** on very deep or very wide pages, or with longer selectors, they now get a real fresh or stale answer instead of "unchecked".
-- **One-time stale:** a comment whose target contains an element with both a namespaced and a plain attribute of one name (SVG `xlink:href` + `href`), or integer-like attribute names, reads stale once. The old tree format dropped or reordered those attributes in the fingerprint.
-- **`pnpm test`** runs Vitest.
+- Frames look the same; an artboard with `style="…"` now renders it.
+- Frame devtools show `data-cd-src="0"`, `"1"`, … on elements (39 on the dev-workspace canvas).
+- Disk files and exports have no tags.
 
 ## Decisions locked
 
-- **Chromium is the authority.** One case table runs through the matcher (in Verify) and through Chromium (in the browser tests).
-- **Work limit:** 10 million units per match. A unit is one compound or simple-selector check, one attribute read, or one folded value character. The worst case measured about 0.3-0.7 s; past the limit the comment reads "unchecked".
-- **The matcher never throws.** It returns `null` for anything outside the grammar or past 1000 characters, and a throw from it is treated as a bug.
-- **No new dependencies.** Tests use fast-check, happy-dom and Playwright.
+- Numbers follow start-tag order in the file, from 0. Not numbered: implied tags, parser-inserted fakes, `script`/`style`/`title`/`textarea`, template content, SVG `text`.
+- A misnested formatting element (`<p><b>x</p><p>y`) shares its original's number; 9b refuses a duplicated number.
+- A tagging failure never blanks the stage: that frame posts untagged and logs once.
+- Only the chrome CSP changed (`style-src-attr 'unsafe-inline'`); `FRAME_CSP` is unchanged, so `url()` in a style and inline `on*` handlers stay blocked.
 
 ## Out of scope
 
-- F-125 (unverified): parse5's tree can differ from Chromium's on rare markup (no doctype, declarative shadow DOM, `<select>` content). This predates the change and is tracked.
-- `@vitest/coverage-v8` and knip stay.
+Reading the numbers back (9b-9e), undo (9f), frame-runtime changes, the chrome's own no-`style=` convention.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Finder grammar | The selector shapes our picker emits: tags, `#id`, `.class`, `[attr="v"]`, `:nth-child(n)`, `:nth-of-type(n)`, joined by `" > "` or `" "` |
-| Case table | One list of pages, selectors and expected matches, checked against both our matcher and Chromium |
-| Work limit (`MAX_MATCH_WORK`) | The most one match may cost before it gives up as "unchecked", so a hostile page cannot freeze the extension |
-| Oracle | A random cross-check against happy-dom on simple trees, with selectors built from true facts about the page |
+| Source tag (`data-cd-src`) | Names one element by its position in the file, so an edit lands on exactly that element |
+| Frame copy | The HTML the panel renders; tagged and stamped, never written back to disk |
+| Tagged-copy memo | Keeps unchanged frames from being re-parsed on every file event |
+| `style-src-attr` | The CSP switch that lets `style="…"` attributes apply |
 
-## Done means
+## Verification
 
-- `pnpm verify` passes (574 tests), `pnpm test:browser` passes (135), and `pnpm knip` is clean.
-- The `.vsix` file list is unchanged.
-- Findings F-118 to F-124 and F-126 to F-129 are closed and archived with the fix.
+- `pnpm verify` 596 unit tests; `pnpm test:browser` 136 passed (182 gallery skipped).
+- Audit: 7 P3 findings fixed and closed by re-review; independent review passed at `4f899d9`.
+- F5 in Cursor (Bombic, 2026-11-19):
+  - tags in devtools: pass (39);
+  - a hand-added style attribute renders: pass;
+  - disk untouched: pass;
+  - export clean: pass.
+  - Agent sees the new `html` description: the live server serves it (direct `tools/list` probe), but Cursor's Agent still quoted the old text after a server restart and a fresh chat. Tracked as F-135 for 9g.
+
+## Your actions
+
+- F-135: check what makes Cursor's Agent pick up changed MCP tool descriptions (full quit?).
+- Notion 0.4 page: fix the sentence that says an edit sends the generation (the plan uses the content hash).

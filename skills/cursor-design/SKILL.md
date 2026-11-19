@@ -36,7 +36,7 @@ With more than one workspace folder open, every tool uses the **first** folder. 
 Each frame renders in a sandboxed iframe (`sandbox="allow-scripts"`, opaque origin) under the panel's strict Content Security Policy. Break these rules and the frame silently renders wrong.
 
 - **Self-contained.** Each artboard is its own document: CSS in `<style>` tags and JS in `<script>` tags inside it. Frames share nothing, so a desktop, tablet and mobile set repeats its design tokens and CSS in every artboard. Keep the copies identical.
-- **No `style="..."` attributes**, and no `setAttribute('style', ...)`. Use classes from your `<style>` tag. From script, toggle classes or set `element.style.color = ...` (that works).
+- **Style attributes work, but keep the user's.** A `style="..."` attribute already in the file may be the user's own edit from the panel: keep it, and keep its value, when you update the artboard. For your own CSS, prefer classes in your `<style>` tag.
 - **No inline event handlers** (`onclick="..."` or any `on*` attribute) and no `javascript:` URLs. Use `addEventListener`.
 - **Nothing from outside the document.** The frame makes no network requests. Blocked: `<script src>` (CDN libraries and CSS frameworks), `<img src>`, `<link rel="stylesheet">`, CSS `url(...)` and `@import`, web fonts, `fetch`, and `data:` URIs. Write plain JS and CSS. Draw icons and illustrations as inline `<svg>`. Use system font stacks (`system-ui, -apple-system, "Segoe UI", sans-serif`). Show photos as labeled placeholder boxes.
 - **No storage:** `localStorage`, `sessionStorage`, `indexedDB` and cookies throw. Keep state in JS variables.

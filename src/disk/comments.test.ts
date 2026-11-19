@@ -26,7 +26,7 @@ import {
 	resolveComment,
 	setCommentStatus,
 } from './comments';
-import { MAX_PARSED_DOCUMENTS } from './commentViews';
+import { MAX_PARSED_DOCUMENTS, cachedArtboardDocument } from './commentViews';
 import type { NewComment } from './commentsFile';
 import {
 	HINT_CHECK_BUDGET,
@@ -626,6 +626,18 @@ test('an unchanged frame is parsed once across reads, and again after an edit', 
 	);
 	await readComments({ workspaceRoot });
 	assert.equal(parseCount() - before, 2);
+});
+
+// The panel's source tags and the flag read share one parse of an unchanged frame.
+test('cachedArtboardDocument and a later flag read share one parse', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await seedHero(workspaceRoot);
+	await addComment({ workspaceRoot, comment: pick() });
+	const html = await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8');
+	const before = parseCount();
+	cachedArtboardDocument({ workspaceRoot, frameId: 'hero', html });
+	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, false);
+	assert.equal(parseCount() - before, 1);
 });
 
 test('the parse cache keeps at most MAX_PARSED_DOCUMENTS frames', async () => {

@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -52,7 +52,7 @@ flowchart LR
   end
   subgraph Webview["Webview (chrome CSP, nonce)"]
     Chrome["Svelte chrome<br/>hostBridge.svelte.ts"]
-    Frames["one sandboxed blob iframe per artboard<br/>head: charset, FRAME_CSP, runtime (frame/runtime.ts)"]
+    Frames["one sandboxed blob iframe per artboard<br/>head: charset, FRAME_CSP, runtime (frame/runtime.ts)<br/>body: disk HTML + data-cd-src numbers (9a)"]
   end
   Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
   Home[("~/.cursor/skills/cursor-design/SKILL.md")]
@@ -78,7 +78,9 @@ flowchart LR
 
 Each blob frame's head starts with the artboard's `<meta charset>`, then `FRAME_CSP` (inline
 script and style only, no sources), then the runtime: a nonce'd `<script src>`, even one injected
-at runtime or by a script placed before `<meta charset>`, never loads. Chrome → frame messages (8d1) go only through `postToFrame`, to registered iframes; the frame
+at runtime or by a script placed before `<meta charset>`, never loads. Style attributes render: the
+chrome CSP allows them (`style-src-attr 'unsafe-inline'`, 9a); inline `on*` handlers stay blocked, and a
+`url(…)` inside a style is still a blocked subresource. Chrome → frame messages (8d1) go only through `postToFrame`, to registered iframes; the frame
 runtime accepts them only from the parent it captured at load. Chrome never touches disk or MCP. The MCP
 process never touches the panel; it reaches the user only through disk and the watcher.
 
@@ -129,6 +131,7 @@ sequenceDiagram
   H->>H: openArtboardPanel (preserveFocus), webview.html = chrome shell
   H->>D: delete .ensure-panel
   C->>H: artboard:ready (after the message listener exists)
+  H->>H: panelFrames (9a): cap on disk HTML, tag changed frames with data-cd-src (memo)
   H->>C: canvas:updated {activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, html}]}
   opt snapshot has an error
     H->>C: artboard:error {message}
@@ -165,6 +168,17 @@ sequenceDiagram
     M-->>A: isError: conflict, read_artboard and retry
   end
   D-->>H: watcher (debounced)
+  H->>D: readCanvasView (disk HTML)
+  alt disk HTML over 1.5M chars
+    H->>H: html '' + too-large message (tile)
+  else memo hit (same frame id, same disk HTML)
+    H->>H: memoized tagged copy, no parse
+  else changed frame
+    H->>H: cachedArtboardDocument (parse shared with comment flags), sourceTaggedHtml
+    opt tagging throws
+      H->>H: log artboardDisk.sourceTags:<id> once, post untagged
+    end
+  end
   H->>C: ui:status + canvas:updated
   C->>C: html changed: new blob URL, height guard reset
   C->>F: load stamped document (runtime first in head)
@@ -174,7 +188,11 @@ sequenceDiagram
 
 Chrome routes every window message with `routeMessage`: a registered iframe's window is a frame
 message (then `parseFrameMessage`), any other opaque-origin sender is dropped, the rest goes to
-`parseHostMessage`. Each `canvas:updated` is merged by `mergeCanvasFrames`: an identical re-post
+`parseHostMessage`. Source tags (9a) number every element written in the file by start-tag
+order (`sourceTags.ts`; implied elements, `script`/`style`/`title`/`textarea`, template content and SVG
+`text` get none) and are deterministic, so an unchanged frame re-posts identical HTML. Disk, export,
+`read_artboard`, comment flags and comment selectors never see them; the memo is pruned to the
+posted frames (and emptied on the untrusted path). Each `canvas:updated` is merged by `mergeCanvasFrames`: an identical re-post
 (tab switch) changes nothing; new html reloads that frame and restarts its height guard.
 
 Stage pan and zoom have three inputs, all through `wheelToView` / `panStage`: a wheel on the stage
@@ -505,7 +523,7 @@ settles the gesture to disk (the Agent wins).
 | chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
 | chrome → host | `comment:copy` | `{requestId, id}` (8h) |
 | chrome → host | `comment:copy-open` | `{requestId}` (8h) |
-| host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` |
+| host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` (each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a) |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
 | host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |

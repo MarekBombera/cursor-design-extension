@@ -31,6 +31,7 @@ export const buildArtboardChromeHtml = ({
 	const csp = [
 		"default-src 'none'",
 		`style-src 'nonce-${nonce}' ${webview.cspSource}`,
+		"style-src-attr 'unsafe-inline'",
 		`script-src 'nonce-${nonce}' ${webview.cspSource}`,
 		'frame-src blob:',
 	].join('; ');

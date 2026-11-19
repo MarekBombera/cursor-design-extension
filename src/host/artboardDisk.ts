@@ -6,6 +6,7 @@ import {
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
+	panelFrames,
 	UNTRUSTED_WORKSPACE_MESSAGE,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
@@ -73,7 +74,8 @@ const snapshotFromCanvasView = async ({
 	workspaceFolder,
 	outputChannel,
 }: WorkspaceDiskArgs): Promise<CanvasSnapshot> => {
-	const view = await readCanvasView({ workspaceRoot: workspaceFolder.uri.fsPath });
+	const workspaceRoot = workspaceFolder.uri.fsPath;
+	const view = await readCanvasView({ workspaceRoot });
 	logCanvasViewReadErrors({ view, outputChannel });
 	const activeFrame = view.frames.find((frame) => frame.id === view.activeArtboardId);
 	const errorMessage = canvasSnapshotErrorMessage({
@@ -85,7 +87,14 @@ const snapshotFromCanvasView = async ({
 	return {
 		activeArtboardId: view.activeArtboardId,
 		generation: activeFrame?.generation ?? 0,
-		frames: view.frames,
+		// Same root string as panelComments' readComments, so the shared parse cache keys match.
+		frames: panelFrames({
+			workspaceRoot,
+			frames: view.frames,
+			onTagError: (frameId, error) => {
+				logDiskError({ scope: `artboardDisk.sourceTags:${frameId}`, error, outputChannel });
+			},
+		}),
 		handoffStale: view.handoffStale,
 		errorMessage,
 	};
@@ -103,6 +112,8 @@ const loadActiveSnapshot = async ({
 	initializeWhenMissing,
 }: LoadActiveSnapshotArgs): Promise<CanvasSnapshot> => {
 	if (!vscode.workspace.isTrusted) {
+		// No frames are posted, so drop every tagged copy the memo still holds.
+		panelFrames({ workspaceRoot: workspaceFolder.uri.fsPath, frames: [], onTagError: () => {} });
 		return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 	}
 

@@ -36,7 +36,7 @@ test('shell is a complete document whose CSP is exactly the chrome policy', () =
 	const csp = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(chrome.html)?.[1];
 	assert.equal(
 		csp,
-		`default-src 'none'; style-src 'nonce-${chrome.cspNonce}' vscode-webview://test; script-src 'nonce-${chrome.cspNonce}' vscode-webview://test; frame-src blob:`,
+		`default-src 'none'; style-src 'nonce-${chrome.cspNonce}' vscode-webview://test; style-src-attr 'unsafe-inline'; script-src 'nonce-${chrome.cspNonce}' vscode-webview://test; frame-src blob:`,
 	);
 });
 

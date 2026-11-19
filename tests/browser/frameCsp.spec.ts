@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-import { canvasUpdated, frameOf, openHarness, postToChrome, untilHeightReported } from './harness';
+import {
+	canvasUpdated,
+	centerOf,
+	clickAt,
+	frameElementBox,
+	frameOf,
+	openHarness,
+	postToChrome,
+	untilHeightReported,
+} from './harness';
 
 // FRAME_CSP (stampArtboardHtml.ts): inline artboard code runs, but nothing leaves the frame, not
 // even a <script src> that carries the stamped nonce or one artboard JS adds at runtime with the
@@ -135,4 +144,77 @@ test('under the chrome CSP, a styled frame and its pin log no violation', async 
 	).toBe('rgb(1, 2, 3)');
 	expect(await frame.evaluate(() => document.documentElement.lang)).toBe('cs');
 	expect(violations).toEqual([]);
+});
+
+// The chrome CSP's style-src-attr lets an artboard's style attributes render (Edit-lite writes
+// them), whether written in the file or set by its script, while an inline on* handler stays
+// blocked by script-src and a url() inside a style attribute stays blocked by FRAME_CSP.
+const STYLE_ATTRIBUTE_PAGE = `<!doctype html><html><head>
+<script>
+	window.__violations = [];
+	document.addEventListener('securitypolicyviolation', (event) => {
+		window.__violations.push(event.violatedDirective);
+	});
+</script>
+</head><body>
+<p class="a" style="color: rgb(4, 5, 6)">a</p>
+<p class="b">b</p>
+<div class="bg" style="background-image: url(${REMOTE}/bg.png)">bg</div>
+<button onclick="window.__inline = true">button</button>
+<script>
+	document.querySelector('.b').setAttribute('style', 'color: rgb(7, 8, 9)');
+	document.querySelector('button').addEventListener('click', () => { window.__listener = true; });
+</script>
+</body></html>`;
+
+test('under the chrome CSP, style attributes render, inline handlers and style urls stay blocked', async ({
+	page,
+}) => {
+	const styleViolations: string[] = [];
+	page.on('console', (message) => {
+		if (message.text().includes('style-src')) {
+			styleViolations.push(message.text());
+		}
+	});
+	const remoteFailures: string[] = [];
+	page.on('requestfailed', (request) => {
+		if (request.url().startsWith(REMOTE)) {
+			remoteFailures.push(request.failure()?.errorText ?? '');
+		}
+	});
+	const harness = await openHarness(page, { chromeCsp: true });
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{ id: 'a', label: 'A', x: 0, y: 0, width: 400, generation: 1, html: STYLE_ATTRIBUTE_PAGE },
+		]),
+	);
+	await untilHeightReported(page, 'a');
+	const frame = await frameOf(page, 'a');
+
+	expect(
+		await frame.evaluate(() => [
+			getComputedStyle(document.querySelector('.a')!).color,
+			getComputedStyle(document.querySelector('.b')!).color,
+		]),
+	).toEqual(['rgb(4, 5, 6)', 'rgb(7, 8, 9)']);
+	// clickAt, not frame.click: its scroll-into-view pans the stage (harness.ts). The stage fits
+	// the frame at its zoom, so the button's box is scaled to screen px.
+	await clickAt(page, centerOf(await frameElementBox({ page, frameId: 'a', selector: 'button' })));
+	await expect
+		.poll(() => frame.evaluate(() => (window as { __listener?: boolean }).__listener))
+		.toBe(true);
+	expect(await frame.evaluate(() => (window as { __inline?: boolean }).__inline)).toBeUndefined();
+	// The background url() was attempted and blocked, not merely absent.
+	await expect
+		.poll(() => frame.evaluate(() => (window as { __violations?: string[] }).__violations ?? []))
+		.toContain('img-src');
+	const violations = await frame.evaluate(
+		() => (window as { __violations?: string[] }).__violations ?? [],
+	);
+	expect(violations.some((directive) => directive.startsWith('script-src'))).toBe(true);
+	expect(violations.filter((directive) => directive.startsWith('style-src'))).toEqual([]);
+	expect(harness.abortedRequests()).toBe(0);
+	expect(remoteFailures.every((errorText) => errorText === 'csp')).toBe(true);
+	expect(styleViolations).toEqual([]);
 });

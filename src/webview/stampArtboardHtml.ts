@@ -10,9 +10,10 @@ export const FRAME_CSP =
 	"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
 
 // The blob frame inherits the chrome's nonce CSP, so bare script/style tags would be blocked.
-// Stamping the chrome nonce re-allows exactly those tags; inline handlers and style attributes
-// stay blocked by the inherited policy, and FRAME_CSP blocks every subresource. The artboard's
-// own meta http-equiv is stripped so it cannot loosen or stack policies; FRAME_CSP goes in first.
+// Stamping the chrome nonce re-allows exactly those tags; inline handlers stay blocked by the
+// inherited policy, style attributes are allowed by its style-src-attr, and FRAME_CSP blocks every
+// subresource. The artboard's own meta http-equiv is stripped so it cannot loosen or stack
+// policies; FRAME_CSP goes in first.
 // The canvas runtime goes into the blob copy only; disk and export HTML never see either.
 export const stampArtboardHtml = ({
 	html,

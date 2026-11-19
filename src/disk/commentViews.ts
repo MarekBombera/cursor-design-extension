@@ -31,8 +31,40 @@ const CHECK_BUDGET_MS = 200;
 // ponytail: capped at MAX_PARSED_DOCUMENTS, oldest insert evicted first (FIFO, not LRU), so a
 // deleted frame or a previous workspace stops holding its tree once newer frames arrive; past the
 // cap a read that needs every frame reparses them all. Upgrade path: LRU (re-insert on hit).
+// The panel's source tags share this cache (cachedArtboardDocument) and, on a changed frame,
+// insert into it, so a canvas of more than 32 changed frames evicts comment documents (the host's
+// tagged-copy memo keeps unchanged frames out of it). Trees carry source locations, so memory is
+// about 34 MB for a realistic 1.5M-char frame (about 134 MB for one of bare tiny tags): up to about
+// 1.1 GB across 32 realistic worst-case frames, about 64 MB for typical 20-200 KB artboards.
+// Upgrade path: also cap the cache by total HTML chars.
 export const MAX_PARSED_DOCUMENTS = 32;
 const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
+
+// The frame's parse, reused while its HTML text is identical; `html` is the text just read.
+export const cachedArtboardDocument = ({
+	workspaceRoot,
+	frameId,
+	html,
+}: {
+	workspaceRoot: string;
+	frameId: string;
+	html: string;
+}): ArtboardDocument => {
+	const key = `${workspaceRoot}\0${frameId}`;
+	const cached = parsedDocuments.get(key);
+	if (cached?.html === html) {
+		return cached.document;
+	}
+	const document = parseArtboardDocument(html);
+	parsedDocuments.set(key, { html, document });
+	for (const oldest of parsedDocuments.keys()) {
+		if (parsedDocuments.size <= MAX_PARSED_DOCUMENTS) {
+			break;
+		}
+		parsedDocuments.delete(oldest);
+	}
+	return document;
+};
 
 const loadArtboardDocument = async (
 	workspaceRoot: string,
@@ -47,19 +79,7 @@ const loadArtboardDocument = async (
 			parsedDocuments.delete(key);
 			return 'missing';
 		}
-		const cached = parsedDocuments.get(key);
-		if (cached?.html === html) {
-			return cached.document;
-		}
-		const document = parseArtboardDocument(html);
-		parsedDocuments.set(key, { html, document });
-		for (const oldest of parsedDocuments.keys()) {
-			if (parsedDocuments.size <= MAX_PARSED_DOCUMENTS) {
-				break;
-			}
-			parsedDocuments.delete(oldest);
-		}
-		return document;
+		return cachedArtboardDocument({ workspaceRoot, frameId, html });
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
 			logTargetReadError(error);

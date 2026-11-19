@@ -1,8 +1,8 @@
 # cursor-design - Project Overview
 
-<!-- blueprint:source-hash 52320922df6b059e981307fbf07b55814e8c1ad31124d7b5a46641f65ea55c1e -->
+<!-- blueprint:source-hash ed5793b6a5a2871b2ad92860b5a59bb071cd45f725af77bacf647a02631d4977 -->
 
-> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 (in progress) adds Svelte chrome, frame drag/resize, element picking and comments for the Agent.
+> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite (next) lets the human change text and inline styles in an Edit mode, saved straight to disk.
 
 Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` (repo) and the shipped Agent skill `cursor-design` (`skills/cursor-design/SKILL.md`). Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
@@ -43,7 +43,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 7f. **Test depth** - fast-check properties, scrubbed snapshots, coverage script (no thresholds).
    - 7g. **MCP contract tests** - real client over `InMemoryTransport` for all 8 tools + `listTools` set; characterise current errors.
    - 7h. **Verify + CI** - one Verify command (check, test, pack); GitHub workflow on push/PR; final F5 + `.vsix` smoke.
-8. **0.3 Comments for Agent** (in progress) - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with a copy-prompt handoff; disk and export HTML stay pristine. Scope changed 2026-10-21 to comments only, no editing. Brief: https://app.notion.com/p/3fd500344e088171925dd51bc542c00c. Plan, decisions D1-D4, error tables and edge-case tests (read before each `/feature`): `blueprint/reference/0.3-comments-plan.md`.
+8. **0.3 Comments for Agent** (shipped) - Svelte chrome, frame drag/resize, precise element picking, comments on disk as Agent references with a copy-prompt handoff; disk and export HTML stay pristine. Scope changed 2026-10-21 to comments only, no editing. Brief: https://app.notion.com/p/3fd500344e088171925dd51bc542c00c. Plan, decisions D1-D4, error tables and edge-case tests (read before each `/feature`): `blueprint/reference/0.3-comments-plan.md`.
    - 8a. **Svelte toolchain** (shipped) - Svelte 5 + vite-plugin-svelte bundle in `dist/webview/` under the existing CSP; frame runtime as an IIFE string; `svelte-check` and the webview build in Verify and CI.
    - 8b. **Svelte port** (shipped) - Svelte components behind one host bridge; stage geometry and frame runtime are real TS modules; F5 parity checklist passed.
    - 8c. **Frame drag/resize** - drag by label, resize width by right handle, whole-px snap (8px arrow nudge), width 120-3840; one `canvas.json` write on pointer-up through a cross-process workspace lock with a `base` conflict check; per-frame generation on the wire; in-house, no Moveable; Agent `place_frame` mid-drag wins.
@@ -56,6 +56,16 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 8g. **Comments panel** - Reply, Resolve, Reopen, Agent notes as replies, click to jump.
    - 8h. **Copy prompt** - locked template word for word (literal test); Copy all open; marks sent only after the clipboard write; host clipboard.
    - 8i. **Verify** - F5 dogfood of every Notion done-when line; `.vsix` smoke; docs checked against shipped code.
+9. **0.4 Edit-lite** (next) - Edit mode: click an element, change its text, font size, colour, padding or margin in an in-house inspector; the save changes only that spot of the artboard HTML; undo/redo; the Agent's next update keeps the edits; disk and export stay pristine; zero new dependencies. Notion page (its Decisions section wins over these lines; read before each `/feature`): https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d
+   - 9a. **Source tags + inline-style CSP** - host adds `data-cd-src="N"` (parse5 start-tag order) to the frame copy only; size limit checked on disk HTML; chrome CSP gains `style-src-attr 'unsafe-inline'`; Agent skill keeps style attributes; rule 02, CSP browser test, picking fixture updated together.
+   - 9b. **Edit core** - pure: disk HTML + number + field + value gives new HTML changing one text node or one inline declaration, byte-exact elsewhere; in-house inline-style parser; Notion text encoding; refuses unknown/duplicated number, children, or live text that differs from the source.
+   - 9c. **Checked write + edit message** - `updateArtboard` read-compare-write under `withWorkspaceLock` (MCP too); `canvas:updated` frames carry `hash`; typed guarded edit message, one answer before the watcher echo.
+   - 9d. **Edit mode + selection** - `FrameMode` gains `edit`, the 0.3 picker serves both modes; frame reports number, text, children flag, inline and computed values; inspector (Edit mode only, fields disabled); "not editable" for script-created and cloned elements; mixed-content hint.
+   - 9e. **Edit fields + save** - native fields, live preview via a chrome-to-frame apply message, save on commit, adopt answered HTML/hash/generation without a frame reload; refused edit reloads.
+   - 9f. **Undo/redo** - 20 whole-file snapshots per frame per session on the host; outside change clears history; new edit clears redo; buttons; Cmd+Z only if an F5 spike shows it works.
+   - 9g. **Verify** - five fields with undo/redo, diff-exact, stale-base Agent update conflicts then keeps edits, export clean, comment stale then fresh after undo; `.vsix` smoke; docs checked.
+
+**0.4 out of scope:** classes and style blocks, border and per-side spacing, editing one text piece inside mixed content, layers, drag-reordering, GrapesJS/Webstudio/Puck, brand kit. 0.4.1 follow-up (mode switch opens the matching panel) is not item 9.
 
 ### 0.2 canvas model
 
@@ -89,6 +99,8 @@ No database. Gitignored workspace folder `.cursor-design/`.
 - optional `artboards/<id>.meta.json` - `id`, `title`, `generation` (monotonic), `hash`, `viewport`, `updatedAt`
 
 `update_artboard` requires `baseGeneration` (or `baseHash`). Mismatch -> conflict; Agent re-reads then retries. MCP serializes writes per artboard id.
+
+0.4: the panel becomes a second writer of `artboards/<id>.html` through `updateArtboard`'s compare-and-write, checked by content hash; 9c puts it under the workspace lock for MCP and panel alike (unlocked before 0.4). `data-cd-src="N"` source numbers exist only in the frame copy, never on disk or in export. Undo snapshots (20 per frame) live in extension memory for the panel session, never on disk. An edit changes the target element's text, so comments on it read stale until the content returns to the commented bytes.
 
 ### Canvas layout (`canvas.json`, 0.2, locked)
 
@@ -141,6 +153,8 @@ Panel-only. Chat stays in Cursor Agent.
 - **Reveal Design Folder** / **Export Handoff**
 - Artboard HTML is user/Agent content, not chrome-themed
 - 0.2: default Interact mode (no Edit chrome); stage with labeled frames and group headings; toolbar with zoom presets and fit-all; error tile per broken frame; no frame list
+- 0.3: Comment mode (`C`), pins, comments panel, copy prompt
+- 0.4: Edit mode next to Interact (default) and Comment; a small inspector (text, size, colour, padding, margin, Undo, Redo) visible only in Edit mode
 
 ## Deployment
 
