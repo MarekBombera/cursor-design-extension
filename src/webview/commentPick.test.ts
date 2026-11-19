@@ -193,6 +193,23 @@ test('a re-post moves only a pick chrome still holds for that frame (F-80)', () 
 	assert.deepEqual(same.state.pick?.rect, { ...rect, y: 9 });
 });
 
+test('a re-post keeps the pick sequence, so the toolbar does not re-announce it (9e)', () => {
+	const held = commenting({ pick: { ...pickIn('a'), sequence: 4 } });
+	const reposted = applyPickMessage({
+		state: held,
+		frameId: 'a',
+		message: { type: 'cd:pick', ...pickFields, repost: true, text: 'Edited' },
+	});
+	assert.equal(reposted.state.pick?.sequence, 4);
+	assert.equal(reposted.state.pick?.text, 'Edited');
+	const clicked = applyPickMessage({
+		state: held,
+		frameId: 'a',
+		message: { type: 'cd:pick', ...pickFields },
+	});
+	assert.equal(clicked.state.pick?.sequence, 5);
+});
+
 test('choosing a mode forgets hover and pick and tells every frame', () => {
 	const step = chooseMode({ mode: 'edit', frameIds: ['a', 'b'] });
 	assert.deepEqual(step.state, { mode: 'edit', hover: undefined, pick: undefined });

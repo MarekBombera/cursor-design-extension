@@ -1,12 +1,17 @@
 import { expect, type Page } from '@playwright/test';
 
+import { MAX_PICK_STYLE_CHARS } from '../../../../src/disk/layout';
 import {
 	boxOf,
 	clickAt,
 	editFrame,
 	enterEditMode,
 	frameElementBox,
+	frameOf,
 	inspector,
+	isMessageOfType,
+	posted,
+	postToChrome,
 } from '../../harness';
 import { type Session, settle, type StateDefinition } from '../scene';
 
@@ -67,5 +72,61 @@ inspectorState(
 		await pick(session.page, '#made');
 		await settle(session.page);
 		await session.shoot({ closeup: await boxOf(inspector(session.page)) });
+	},
+);
+inspectorState(
+	'field-error',
+	'Edit mode, picked the padded div, typed an invalid padding and left the field (9e).',
+	async (session) => {
+		await openEditMode(session);
+		await pick(session.page, '#padded');
+		const padding = inspector(session.page).getByLabel('Padding', { exact: true });
+		await padding.fill('4 apples;');
+		await padding.blur();
+		await expect(inspector(session.page).getByText(/^Not saved: use a number/)).toBeVisible();
+		await settle(session.page);
+		await session.shoot({ closeup: await boxOf(inspector(session.page)) });
+	},
+);
+inspectorState(
+	'request-error',
+	'Edit mode, saved a margin on the h1 and the host refused it (conflict copy, 9e).',
+	async (session) => {
+		const { page } = session;
+		await openEditMode(session);
+		await pick(page, '#title');
+		const margin = inspector(page).getByLabel('Margin', { exact: true });
+		await margin.fill('4');
+		await margin.blur();
+		await expect
+			.poll(
+				async () =>
+					(await posted(page)).filter((data) => isMessageOfType(data, 'artboard:edit')).length,
+			)
+			.toBe(1);
+		const request = (await posted(page)).find((data) => isMessageOfType(data, 'artboard:edit'));
+		await postToChrome(page, {
+			type: 'ui:error',
+			requestId: isMessageOfType(request, 'artboard:edit') ? String(request.requestId) : '',
+			message: 'This artboard changed on disk. Make the edit again.',
+		});
+		await expect(inspector(page).getByText('This artboard changed on disk.')).toBeVisible();
+		await settle(page);
+		await session.shoot({ closeup: await boxOf(inspector(page)) });
+	},
+);
+inspectorState(
+	'style-too-long',
+	'Edit mode, picked a div whose style attribute is over the cap: the hint, no style fields (9e).',
+	async (session) => {
+		const { page } = session;
+		await openEditMode(session);
+		await (await frameOf(page, 'edit')).locator('#padded').evaluate((element, length) => {
+			element.setAttribute('style', `--x: ${'a'.repeat(length)}`);
+		}, MAX_PICK_STYLE_CHARS);
+		await pick(page, '#padded');
+		await expect(inspector(page).getByText(/style attribute is too long/)).toBeVisible();
+		await settle(page);
+		await session.shoot({ closeup: await boxOf(inspector(page)) });
 	},
 );

@@ -4,6 +4,7 @@ import {
 	parseFrameMessage,
 } from './frame/frameMessages';
 import {
+	type ArtboardEditMessage,
 	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
@@ -81,10 +82,16 @@ export const postCommentRequest = (message: CommentRequestMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
+// 9e: one Edit-mode save; the host answers artboard:edited or ui:error with its requestId.
+export const postEditRequest = (message: ArtboardEditMessage): void => {
+	vscodeApi.postMessage($state.snapshot(message));
+};
+
 // The only chrome → frame send. '*' because a sandboxed frame has an opaque origin, so there is
 // nothing to target; the frame can only navigate to blob: (chrome CSP frame-src), a document its
-// own script made. The payload is a mode, a step command, or this frame's own comment ids and
-// selectors (cd:anchors), never comment bodies or another frame's data.
+// own script made. The payload is a mode, a step or refresh command, this frame's own comment ids
+// and selectors (cd:anchors), or an Edit-mode preview of this frame's own element (cd:edit-apply),
+// never comment bodies or another frame's data.
 export const postToFrame = (iframe: HTMLIFrameElement, message: ChromeFrameMessage): void => {
 	iframe.contentWindow?.postMessage(message, '*');
 };

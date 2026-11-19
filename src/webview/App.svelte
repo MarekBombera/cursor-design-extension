@@ -7,6 +7,7 @@
 	import CommentsPanel from './CommentsPanel.svelte';
 	import { frameLabel, liveRegionText } from './commentsPanel';
 	import { CommentsState } from './commentsState.svelte';
+	import { EditState } from './editState.svelte';
 	import CommentThread from './CommentThread.svelte';
 	import type { FrameMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
@@ -37,6 +38,7 @@
 		mode: savedCommentUi.mode,
 		heldDraft: savedCommentUi.commentDraft,
 	});
+	const edit = new EditState({ canvas, picker });
 
 	// Frames that left the stage or became tiles take their hover, pick, draft and anchor answers
 	// with them; an empty stage leaves Comment or Edit mode.
@@ -51,6 +53,7 @@
 			canvas.applyCanvasUpdated(message);
 			keepLiveCommentState();
 			picker.restoreHeldDraft();
+			edit.handleFramesChanged();
 			return;
 		}
 		if (message.type === 'artboard:error') {
@@ -71,6 +74,7 @@
 			picker.handleCommentAnswer(message);
 			comments.handleActionAnswer(message);
 			comments.handleCopyOpenAnswer(message);
+			edit.handleEditAnswer(message);
 			return;
 		}
 		if (message.type === 'comment:saved') {
@@ -82,8 +86,8 @@
 			comments.handleCopyOpenAnswer(message);
 			return;
 		}
-		// 9c: typed but never parsed (no sender until 9e, which adopts the answer here).
 		if (message.type === 'artboard:edited') {
+			edit.handleEditAnswer(message);
 			return;
 		}
 		canvas.mcpUnavailable = !message.mcpAvailable;
@@ -100,6 +104,9 @@
 			// A new document: its old answers are gone, and it measures after the cd:mode above.
 			if (message.type === 'cd:ready') {
 				pinThread.resetFrameAnchors(frameId);
+				edit.handleFrameReady(frameId);
+			} else if (message.type === 'cd:pick') {
+				edit.handlePick(message, frameId);
 			}
 			return;
 		}
@@ -133,6 +140,7 @@
 	const handleRenderError = (id: string): void => {
 		canvas.handleRenderError(id);
 		keepLiveCommentState();
+		edit.handleFramesChanged();
 	};
 
 	// The one comment-UI save, on every change (no debounce: setState is cheap, and a debounce would
@@ -192,8 +200,14 @@
 		<Inspector
 			{pick}
 			frameLabel={pick === undefined ? '' : frameLabel(canvas.frames, pick.frameId)}
+			drafts={edit.drafts}
+			requestError={edit.requestError}
+			fieldError={edit.fieldError}
 			onParent={() => picker.stepPick('cd:pick-parent')}
 			onChild={() => picker.stepPick('cd:pick-child')}
+			onFieldFocus={edit.handleFieldFocus}
+			onFieldInput={edit.handleFieldInput}
+			onFieldCommit={edit.handleFieldCommit}
 		/>
 	{/if}
 	<CommentsPanel

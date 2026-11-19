@@ -2,11 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { ChromePick } from './commentPick';
+import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
 import {
+	commitDraft,
+	draftFate,
+	draftPreview,
+	type EditDraft,
 	editability,
+	fieldValue,
 	inlineValue,
 	inspectorView,
 	pickAnnouncementText,
+	startDraft,
+	textMaxLength,
 	toHexColor,
 } from './editInspector';
 import type { PickEditFields } from './frame/frameMessages';
@@ -169,4 +177,172 @@ test('toHexColor reads only Chromium computed rgb() and rgba()', () => {
 	]) {
 		assert.equal(toHexColor(value), undefined, value);
 	}
+});
+
+// ---- 9e drafts ----------------------------------------------------------------------------------
+
+const draftOf = (
+	field: EditDraft['field'],
+	value: string,
+	fields: Partial<PickEditFields> = {},
+) => {
+	const draft = startDraft({ pick: pickWith(fields), documentVersion: 2, field, value });
+	assert.ok(draft !== undefined);
+	return draft;
+};
+
+test('a draft starts only on an editable pick, with its key and raw baselines', () => {
+	const draft = draftOf('text', 'New');
+	assert.deepEqual(draft.key, { frameId: 'a', sourceNumber: 4, documentVersion: 2 });
+	assert.equal(draft.liveText, '\n    Title\n  ');
+	assert.equal(draft.style, 'font-size: 32px; color: #ff0000');
+	for (const fields of [{ sourceNumber: null }, { sharedNumber: true }]) {
+		assert.equal(
+			startDraft({ pick: pickWith(fields), documentVersion: 2, field: 'text', value: 'x' }),
+			undefined,
+		);
+	}
+	assert.equal(
+		startDraft({ pick: undefined, documentVersion: 2, field: 'text', value: 'x' }),
+		undefined,
+	);
+	// An over-cap style: no style draft; text still drafts.
+	assert.equal(
+		startDraft({
+			pick: pickWith({ style: null }),
+			documentVersion: 2,
+			field: 'padding',
+			value: '1',
+		}),
+		undefined,
+	);
+	assert.ok(
+		startDraft({ pick: pickWith({ style: null }), documentVersion: 2, field: 'text', value: 'x' }),
+	);
+});
+
+test('a field shows its draft only for the element it started on', () => {
+	const draft = draftOf('padding', '8');
+	assert.equal(fieldValue({ draft, pick: pickWith({}), pickValue: '' }), '8');
+	assert.equal(fieldValue({ draft, pick: pickWith({ sourceNumber: 5 }), pickValue: '2px' }), '2px');
+	assert.equal(fieldValue({ draft: undefined, pick: pickWith({}), pickValue: '2px' }), '2px');
+});
+
+const previewStyle = (draft: EditDraft): string | undefined => {
+	const preview = draftPreview(draft);
+	return preview !== undefined && 'style' in preview ? preview.style : undefined;
+};
+
+test('previews: text keeps the live edges; styles use the core string rules', () => {
+	assert.deepEqual(draftPreview(draftOf('text', 'New\ntitle')), {
+		type: 'cd:edit-apply',
+		sourceNumber: 4,
+		text: '\n    New title\n  ',
+	});
+	assert.deepEqual(draftPreview(draftOf('font-size', '16')), {
+		type: 'cd:edit-apply',
+		sourceNumber: 4,
+		style: 'font-size: 16px; color: #ff0000',
+	});
+	// Clearing removes the declaration; a shorthand drops its longhands.
+	assert.equal(previewStyle(draftOf('color', '')), 'font-size: 32px;');
+	assert.equal(
+		previewStyle(draftOf('padding', '4', { style: 'padding-left: 2px; color: red' })),
+		'color: red; padding: 4px',
+	);
+	// Not previewable: a refused value, or a result over the cap.
+	assert.equal(draftPreview(draftOf('padding', '1)(')), undefined);
+	assert.equal(
+		draftPreview(draftOf('margin', '1', { style: `--x: ${'a'.repeat(MAX_PICK_STYLE_CHARS - 6)}` })),
+		undefined,
+	);
+});
+
+test('unchanged commits send nothing and revert only a sent preview', () => {
+	const sixteen = draftOf('font-size', '32', { style: 'font-size: 32px' });
+	assert.deepEqual(commitDraft(sixteen), { kind: 'unchanged', revert: undefined });
+	const previewed = commitDraft({ ...sixteen, previewed: true });
+	assert.equal(previewed.kind, 'unchanged');
+	assert.deepEqual(previewed.kind === 'unchanged' ? previewed.revert : undefined, {
+		type: 'cd:edit-apply',
+		sourceNumber: 4,
+		style: 'font-size: 32px',
+	});
+	assert.equal(commitDraft(draftOf('color', '#FF0000')).kind, 'unchanged');
+	// A newline-only change normalizes to the same text.
+	assert.equal(commitDraft(draftOf('text', 'Title', { text: 'Ti\ntle' })).kind, 'save');
+	assert.equal(commitDraft(draftOf('text', 'a b', { text: 'a\nb' })).kind, 'unchanged');
+	// A baseline the rules refuse counts as changed.
+	assert.equal(
+		commitDraft(draftOf('padding', '4', { style: 'padding: 4px !important' })).kind,
+		'save',
+	);
+});
+
+test('invalid commits keep the draft with its error and restore the baseline', () => {
+	const invalid = commitDraft(draftOf('padding', '16 apples;'));
+	assert.equal(invalid.kind, 'invalid');
+	assert.equal(invalid.kind === 'invalid' ? invalid.error : '', 'invalid-length');
+	assert.deepEqual(invalid.kind === 'invalid' ? invalid.revert : undefined, {
+		type: 'cd:edit-apply',
+		sourceNumber: 4,
+		style: 'font-size: 32px; color: #ff0000',
+	});
+	const open = commitDraft(draftOf('padding', '4', { style: 'background: url(a' }));
+	assert.equal(open.kind === 'invalid' ? open.error : '', 'complex-style');
+	const control = commitDraft(draftOf('text', 'a\u0001b'));
+	assert.equal(control.kind === 'invalid' ? control.error : '', 'control-text');
+});
+
+test('a save carries the draft key, the raw value and, for text, the baseline', () => {
+	assert.deepEqual(commitDraft(draftOf('text', ' New ')), {
+		kind: 'save',
+		commit: {
+			key: { frameId: 'a', sourceNumber: 4, documentVersion: 2 },
+			field: 'text',
+			value: ' New ',
+			liveText: '\n    Title\n  ',
+		},
+	});
+	assert.deepEqual(commitDraft(draftOf('margin', ' 8 ')), {
+		kind: 'save',
+		commit: {
+			key: { frameId: 'a', sourceNumber: 4, documentVersion: 2 },
+			field: 'margin',
+			value: ' 8 ',
+		},
+	});
+});
+
+test('the text maxlength leaves room for the baseline edge whitespace', () => {
+	assert.equal(textMaxLength('\n  Title \n'), MAX_EDIT_TEXT_CHARS - 5);
+	assert.equal(textMaxLength('   '), MAX_EDIT_TEXT_CHARS - 3);
+	assert.equal(textMaxLength(''), MAX_EDIT_TEXT_CHARS);
+});
+
+test('draft lifecycle: reload drops, another element commits, a lost number drops', () => {
+	const draft = draftOf('padding', '8');
+	const live = { kind: 'iframe' as const, documentVersion: 2 };
+	assert.equal(draftFate({ draft, frame: live, pick: pickWith({}) }), 'keep');
+	assert.equal(draftFate({ draft, frame: undefined, pick: undefined }), 'drop');
+	assert.equal(draftFate({ draft, frame: { ...live, kind: 'tile' }, pick: undefined }), 'drop');
+	assert.equal(
+		draftFate({ draft, frame: { ...live, documentVersion: 3 }, pick: pickWith({}) }),
+		'drop',
+	);
+	assert.equal(draftFate({ draft, frame: live, pick: undefined }), 'keep');
+	assert.equal(draftFate({ draft, frame: live, pick: pickWith({ sourceNumber: 9 }) }), 'commit');
+	assert.equal(
+		draftFate({ draft, frame: live, pick: pickWith({ sourceNumber: 9 }, { repost: true }) }),
+		'keep',
+	);
+	assert.equal(draftFate({ draft, frame: live, pick: pickWith({}, { frameId: 'b' }) }), 'commit');
+	assert.equal(draftFate({ draft, frame: live, pick: pickWith({ sharedNumber: true }) }), 'drop');
+});
+
+test('an over-cap style attribute shows the hint instead of the style fields', () => {
+	const view = inspectorView(pickWith({ style: null }));
+	assert.equal(view.kind === 'editable' ? view.style : '', 'too-long');
+	const normal = inspectorView(pickWith({ style: '' }));
+	assert.equal(normal.kind === 'editable' ? normal.style : '', 'editable');
 });

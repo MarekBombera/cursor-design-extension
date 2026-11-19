@@ -21,7 +21,7 @@ test('canvas runtime stays within its size budget', () => {
 	assert.ok(runtimeSource.length < RUNTIME_SIZE_BUDGET, String(runtimeSource.length));
 });
 
-test('canvas runtime posts only its frame messages and never touches the artboard', () => {
+test('canvas runtime posts only its frame messages and writes the artboard only to preview', () => {
 	// Picking and pin listeners live in functions bundled above; what matters is the call order:
 	// capture parent, register wheel, install picking, install pin anchors, then announce cd:ready.
 	const parentIndex = runtimeSource.indexOf('window.parent');
@@ -70,13 +70,14 @@ test('canvas runtime posts only its frame messages and never touches the artboar
 		'removeAttribute',
 		'.dataset',
 		'innerHTML',
-		'setAttribute',
 		'data-dc-',
 		'sc-host',
 		'design_doc_mode',
 	]) {
 		assert.ok(!runtimeSource.includes(forbidden), forbidden);
 	}
+	// 9e: the one style write is cd:edit-apply's Edit-mode preview.
+	assert.equal(runtimeSource.split('setAttribute(').length - 1, 1);
 	// Finder is bundled into the runtime string (a dropped import fails here).
 	assert.ok(runtimeSource.includes("Can't generate CSS selector"));
 });

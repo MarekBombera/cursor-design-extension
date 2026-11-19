@@ -222,3 +222,25 @@ test('comment:added needs a string requestId; ui:error a string message and opti
 		message: 'Copy failed.',
 	});
 });
+
+test('artboard:edited needs every field with its canvas:updated guard (9e)', () => {
+	const edited = {
+		type: 'artboard:edited',
+		requestId: 'r1',
+		frameId: 'hero',
+		hash: 'sha256:abc',
+		generation: 4,
+		html: '<p>x</p>',
+	} as const;
+	assert.deepEqual(parseHostMessage({ ...edited, extra: 1 }), edited);
+	for (const broken of [
+		{ requestId: 1 },
+		{ frameId: null },
+		{ hash: undefined },
+		{ generation: '4' },
+		{ generation: Number.NaN },
+		{ html: 3 },
+	]) {
+		assert.equal(parseHostMessage({ ...edited, ...broken }), undefined, JSON.stringify(broken));
+	}
+});

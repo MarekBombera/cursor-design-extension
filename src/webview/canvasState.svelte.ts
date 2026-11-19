@@ -1,10 +1,12 @@
 import {
+	adoptEditAnswer,
 	applyFrameHeight,
 	demoteToTile,
 	type FrameRecord,
 	frameSizeText,
 	liveIframeIds,
 	mergeCanvasFrames,
+	reloadFrame,
 	toChromeFrames,
 	withGestureOverride,
 } from './canvasFrames';
@@ -27,7 +29,12 @@ import {
 	readSavedStageView,
 	saveStageView,
 } from './hostBridge.svelte';
-import type { CanvasUpdatedMessage, FramePlacement, PostedComment } from './hostMessages';
+import type {
+	ArtboardEditedMessage,
+	CanvasUpdatedMessage,
+	FramePlacement,
+	PostedComment,
+} from './hostMessages';
 import {
 	clampStageView,
 	fitStageView,
@@ -135,11 +142,14 @@ export class CanvasState {
 
 	applyCanvasUpdated = (message: CanvasUpdatedMessage): void => {
 		this.artboardId = message.activeArtboardId;
-		this.generation = message.activeArtboardId === '' ? '' : String(message.generation);
 		this.nonce = message.cspNonce;
 		// A deleted artboard file (or an entry that failed validation) leaves the stage; its
 		// Frame unmounts and revokes its blob URL.
 		this.frames = mergeCanvasFrames({ records: this.frames, frames: message.frames });
+		// From the merged record, so a skipped stale pre-write post cannot move the label back.
+		const active = this.frames.find((frame) => frame.id === message.activeArtboardId);
+		this.generation =
+			message.activeArtboardId === '' ? '' : String(active?.generation ?? message.generation);
 		this.framesKnown = true;
 		this.gesture = settleFrameGesture({
 			gesture: this.gesture,
@@ -304,5 +314,19 @@ export class CanvasState {
 
 	handleRenderError = (id: string): void => {
 		this.#updateFrame(id, demoteToTile);
+	};
+
+	// 9e: the host's answer to the user's own edit, based on `baseHash`; no reload.
+	adoptEditAnswer = (answer: ArtboardEditedMessage, baseHash: string): void => {
+		this.#updateFrame(answer.frameId, (record) => adoptEditAnswer({ record, answer, baseHash }));
+		const active = this.frames.find((frame) => frame.id === this.artboardId);
+		if (answer.frameId === this.artboardId && active !== undefined) {
+			this.generation = String(active.generation);
+		}
+	};
+
+	// 9e: a refused edit drops its preview by rebuilding the iframe from the latest adopted copy.
+	reloadFrame = (id: string): void => {
+		this.#updateFrame(id, reloadFrame);
 	};
 }

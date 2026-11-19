@@ -7,14 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-09 [P3] accepted - Blueprint manifest still hashes the replaced adapter copies
-
-**File:** blueprint/.state/manifest.json:6
-**Found:** 2026-10-12 by /audit (scope: current; lens: quality)
-**Why it matters:** Commit f4c9edd replaced the `.agents/skills` and `.claude/skills` trees with symlinks into `.cursor/skills`, but the tracked manifest still lists both adapter paths as separate managed files with their old hashes. 28 entries no longer match (all 23 `.claude/skills` entries, plus `.agents/skills` complete, doctor, feature, fix, rollback). `/doctor` reports this manifest, and a Blueprint update that writes each adapter path in turn would write through both symlinks into the same `.cursor` file, so the last adapter written wins.
-**Suggested fix:** Record the symlink layout as an intended local customization (for example a note in `AGENTS.md` or the doctor skill telling update tooling to target `.cursor` once), or refresh the manifest through the Blueprint updater rather than by hand. No product code change.
-**Resolution:** Accepted 2026-11-19 with the 1.16.1 upgrade. The single `.cursor` tree plus symlinks is deliberate (AGENTS.md: Agent files), so the official updater is never run here; upgrades are a manual three-way merge that regenerates the manifest from pristine template hashes. The remaining drift (local customizations in complete, blueprint-doctor, feature, fix, and the `.claude` flavor's `disable-model-invocation` line) is expected and is the merge base for the next upgrade.
-
 ### F-14 [P2] open - Watch matcher misses the `vp pack` success line
 
 **File:** .vscode/tasks.json:41
@@ -273,4 +265,36 @@
 **Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
 **Why it matters:** Three places where the archived spec or the owner catalog no longer says what the code does: (1) the spec says the computed colour text uses the placeholder colour (`--cd-placeholder`); `Inspector.svelte:181-184` deliberately uses `--cd-fg-2` (its comment: the placeholder colour misses 4.5:1 on light themes). The code is the better choice, the spec is stale. (2) Step 3 done-when (current-feature.md:185) still asks `commentPick.test.ts` to cover "`chooseMode` ... same mode sends nothing", but the same-mode guard moved to `CommentPicker.#setMode` (spec line 138) and `chooseMode` always sends; no test pins that guard (low stakes: only Interact → Interact reaches it, with no pick or draft to lose). (3) Rule 05's design-system entry lists the host-competing element rules as `kbd`, `textarea`, `select`; `theme.css` now also owns the global `input:not([type])` / `input[type='text']` rules and `textarea:disabled, input:disabled`. Rule 05 says keeping the catalog current is part of the change.
 **Suggested fix:** Docs only: in the spec, say the computed colour text uses `--cd-fg-2` and drop "same mode sends nothing" from the `chooseMode` done-when; in `.claude/rules/05-single-job.md` add the text `input` rules to the host-competing element list. No code change, no requirement lost.
+**Resolution:**
+
+### F-141 [P3] open - Two ponytail marks the 9e spec requires are missing from the code
+
+**File:** src/webview/Inspector.svelte:178
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
+**Why it matters:** The spec's Notes for the AI (current-feature.md:358-360) and step 5 (line 230) list five `ponytail:` marks to leave in code. Three are present (`editRequests.ts:8` one in flight and no timeout, `editValues.ts:46` the reference-whitespace edge). Two are not: "colour cannot clear" (the native `<input type="color">` has no empty value, so an inline colour can never be removed from the inspector) and "focus falls to the body when a reload that empties the pick unmounts a focused field; the live region still announces the copy". `grep -rn ponytail src/webview` finds neither. Rule 03 says a deliberate ceiling carries a `ponytail:` comment naming it and its upgrade path, so the next reader cannot tell these are known limits.
+**Suggested fix:** Add one `ponytail:` comment beside the colour input in `Inspector.svelte` (no clear; upgrade: a Clear button that commits '') and one beside the request-error live region (focus falls to body on a reload that empties the pick; upgrade: move focus to the stage viewport as `CommentPicker`'s mode setter does). Comments only; no requirement lost.
+**Resolution:** 2026-11-19 /audit independent (9e, fresh subagent claude-opus-5-5, target 5c8a33a): re-examined, still open. `grep -rn ponytail` over `Inspector.svelte`, `editState.svelte.ts`, `editInspector.ts` finds neither mark; only `editRequests.ts:8` and `editValues.ts:46` carry the spec's marks.
+
+### F-142 [P3] open - An abandoned invalid draft reports "the frame changed" when the user picks another element
+
+**File:** src/webview/editState.svelte.ts:118
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
+**Why it matters:** An invalid commit on Enter or blur keeps the draft with its field error (spec lifecycle "Invalid"). If the user then clicks another element, `#settleDrafts` commits that draft with `keepInvalid: false`, which drops it and sets the request error to `NOT_SAVED_COPY` ("Not saved: the frame changed. Try again."). Nothing about the frame changed: the value was refused by the chrome's own rule, and the field error explaining that is now gone with the old pick. The same happens to an invalid draft left over from a mode switch, on the next pick of another element. No data is lost (nothing was ever sendable), but the copy points the user at the wrong cause. The spec's lifecycle table does not say which copy a pick-change commit of an invalid draft should show.
+**Suggested fix:** Drop an invalid draft silently on a pick-change commit (its field error already told the user it was not saved), or show the draft's own `FIELD_ERROR_COPY` as the request error instead of `NOT_SAVED_COPY`. One branch in `#commit`; add the case to the browser "dirty field then click another element" test. No current requirement lost.
+**Resolution:** 2026-11-19 /audit independent (9e, fresh subagent claude-opus-5-5, target 5c8a33a): re-examined, still open. `#settleDrafts` (editState.svelte.ts:166) -> `#commit(draft, { keepInvalid: false })` -> `notSaved` (line 118) still sets `NOT_SAVED_COPY` for a draft the chrome itself refused. Same path for an invalid draft carried over a mode switch: App routes every `cd:pick` to `handlePick`, so the first Comment-mode pick of another element drops it with the same copy, shown on the next Edit entry.
+
+### F-143 [P3] open - The stale pre-write skip's generation guard has no test that fails without it
+
+**File:** src/webview/canvasFrames.ts:87
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: tests; fresh subagent claude-opus-5-5)
+**Why it matters:** `isStalePreWrite` skips a post only when its hash is in `replacedHashes` **and** `entry.generation < record.generation`. The generation half is load-bearing: an outside revert to the replaced content (the user undoes the panel save in the editor and saves) posts the replaced hash with the same meta generation (`canvasView.ts:223`, an editor save does not bump meta), and must merge and reload. Without the guard the frame keeps showing the adopted copy while disk holds the reverted bytes, and the next save is refused as a conflict. Every `canvasFrames.test.ts` case that posts a replaced hash uses an older generation (`posted('a', { x: 40 })`, generation 1 against 2/3), so deleting `&& entry.generation < record.generation` fails no test (rule 09: a test earns its place when deleting its guard makes it fail).
+**Suggested fix:** One assertion in `after an adopt, the echo and any late pre-write read change nothing`: merge `posted('a', { generation: 2 })` (replaced hash, same generation) into `echoed` and expect `documentHtml === '<p>a</p>'`, a version bump and `replacedHashes` `[]`. Test only; no requirement lost.
+**Resolution:**
+
+### F-144 [P3] unverified - A style preview re-reads the picked element's whole innerText on every keystroke
+
+**File:** src/webview/frame/commentPicking.ts:159
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: performance; fresh subagent claude-opus-5-5)
+**Why it matters:** Every `cd:edit-apply` on the picked element runs `refreshCurrent`, which calls `describeContent` (`selector.ts:137`: `element.innerText` of the whole subtree, a forced layout, then `getComputedStyle`) plus `describeEditTarget` (a document-wide `querySelectorAll`), and re-posts the pick. One `input` event = one preview, so typing a padding or font-size value on a large container (a `<main>` with most of the page) repeats that per keystroke, where 9d did it once per click. The text excerpt cannot change from a style-only preview. Not measured; on typical leaf elements the cost is small.
+**Suggested fix:** Measure in the F5 check (type into Padding with a large section picked). If noticeable, keep the cached `text` excerpt in `refreshCurrent` after a `style` apply and recompute only `styles` and `edit`. Otherwise accept under a `ponytail:` note.
 **Resolution:**

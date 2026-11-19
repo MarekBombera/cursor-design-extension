@@ -15,7 +15,10 @@
 		kind: StageFrame['kind'];
 		tileKind: StageFrame['tileKind'];
 		tileText: string;
-		html: string;
+		// What the iframe is built from; a new version (a forced reload) rebuilds it even when the
+		// HTML is the same. The latest adopted copy is not a prop: adopting never reloads (9e).
+		documentHtml: string;
+		documentVersion: number;
 		nonce: string;
 		runtimeSource: string;
 		// Under a move or resize gesture: raised above its neighbours.
@@ -36,7 +39,8 @@
 		kind,
 		tileKind,
 		tileText,
-		html,
+		documentHtml,
+		documentVersion,
 		nonce,
 		runtimeSource,
 		lifted,
@@ -50,17 +54,20 @@
 	// and every re-run sets a new blob URL: the document reloads, its runtime reports its height
 	// again, and the frame reload-loops. These deriveds only notify when the value changes.
 	const frameId = $derived(id);
-	const frameHtml = $derived(html);
+	const frameHtml = $derived(documentHtml);
+	const frameVersion = $derived(documentVersion);
 	// An empty file is just empty; the other tile kind is a failure (canvasFrames.ts decides).
 	const emptyTile = $derived(tileKind === 'empty');
 
 	// Registers before src is set, so the first cd:frame-height is never dropped. The nested
-	// effect reads only html and nonce (kind is the {#if} around it): label, position, width
-	// or lifted changes never reload the document.
+	// effect reads only the document html, its version and nonce (kind is the {#if} around it):
+	// label, position, width or lifted changes never reload the document.
 	const attachIframe: Attachment<HTMLIFrameElement> = (iframe) => {
 		onIframe(frameId, iframe);
 		$effect(() => {
 			let blobUrl: string;
+			// Read so a forced reload (same html, new version) re-runs this effect.
+			void frameVersion;
 			try {
 				const document = stampArtboardHtml({ html: frameHtml, nonce, runtimeSource });
 				blobUrl = URL.createObjectURL(new Blob([document], { type: 'text/html' }));

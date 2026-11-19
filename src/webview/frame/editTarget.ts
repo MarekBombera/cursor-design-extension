@@ -40,6 +40,7 @@ export const describeEditTarget = (element: Element): PickEditFields => {
 			element.ownerDocument.querySelectorAll(`[${SOURCE_TAG_ATTRIBUTE}="${sourceNumber}"]`).length >
 				1,
 		...textOf(element),
-		style: style === null || style.length > MAX_PICK_STYLE_CHARS ? null : style,
+		// '' for no attribute; null only over the cap (9e: a hint instead of the style fields).
+		style: style === null ? '' : style.length > MAX_PICK_STYLE_CHARS ? null : style,
 	};
 };

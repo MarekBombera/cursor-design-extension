@@ -6,18 +6,19 @@ import {
 	parseArtboardDocument,
 } from './commentTarget';
 import {
-	asciiTrim,
 	leadingWhitespaceLength,
 	removeStyleProperty,
 	setStyleProperty,
 	trailingWhitespaceLength,
 } from './inlineStyle';
 import {
-	EDIT_FIELDS,
-	MAX_EDIT_TEXT_CHARS,
-	MAX_STYLE_VALUE_CHARS,
-	RAW_TEXT_ELEMENTS,
-} from './layout';
+	hasLoneSurrogate,
+	isRefusedEditText,
+	normalizeEditText,
+	normalizeStyleValue,
+	type StyleField,
+} from './editValues';
+import { EDIT_FIELDS, MAX_EDIT_TEXT_CHARS, RAW_TEXT_ELEMENTS } from './layout';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 // Edit core (0.4): one Edit-mode change to an artboard's disk HTML. The element is named by its
@@ -27,7 +28,8 @@ import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 type EditField = (typeof EDIT_FIELDS)[number];
 
-export type StyleField = Exclude<EditField, 'text'>;
+// Owned by editValues.ts (parse5-free, shared with the chrome); re-exported for the core's callers.
+export type { StyleField };
 
 export type ArtboardEdit =
 	| { sourceNumber: number; field: 'text'; value: string; liveText: string }
@@ -48,35 +50,12 @@ type TargetArgs = { html: string; element: ArtboardElement };
 
 const LEADING_NEWLINE_DROPPED = new Set(['pre', 'listing']);
 
-const ASCII_WHITESPACE_RUNS = /[\t\n\f\r ]+/g;
-
-const NEWLINES = /\r\n|\r|\n/g;
-
-const LONE_SURROGATE = /\p{Cs}/u;
-
-const COLOR_VALUE = /^#[0-9a-fA-F]{6}$/;
-
-const LENGTH_VALUE = /^[A-Za-z0-9.%+\-*/(), ]+$/;
-
-const BARE_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
-
 const EMPTY_VALUE = /[\t\n\f\r ]*=/y;
 
 // Spelled as a code point: the formatter would turn a \u00a0 escape into an invisible character.
 const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
 
 const refuse = (refusal: EditRefusal): EditResult => ({ ok: false, refusal });
-
-// C0 controls other than tab, and DEL, are refused in edited text.
-const hasRefusedControl = (text: string): boolean => {
-	for (let index = 0; index < text.length; index += 1) {
-		const code = text.charCodeAt(index);
-		if ((code < 0x20 && code !== 0x09) || code === 0x7f) {
-			return true;
-		}
-	}
-	return false;
-};
 
 const isEditField = (field: unknown): field is EditField =>
 	EDIT_FIELDS.some((editField) => editField === field);
@@ -224,11 +203,11 @@ const editText = ({
 	) {
 		return refuse('not-plain-text');
 	}
-	if (liveText.length > MAX_EDIT_TEXT_CHARS || LONE_SURROGATE.test(liveText)) {
+	if (liveText.length > MAX_EDIT_TEXT_CHARS || hasLoneSurrogate(liveText)) {
 		return refuse('invalid-value');
 	}
-	const text = asciiTrim(value.replaceAll(NEWLINES, ' '));
-	if (text.length > MAX_EDIT_TEXT_CHARS || hasRefusedControl(text) || LONE_SURROGATE.test(text)) {
+	const text = normalizeEditText(value);
+	if (isRefusedEditText(text)) {
 		return refuse('invalid-value');
 	}
 	const [textNode] = children;
@@ -247,36 +226,6 @@ const editText = ({
 	return keepsStructure({ html, entries, sourceNumber, splice })
 		? { ok: true, html: splice.html }
 		: refuse('not-plain-text');
-};
-
-// Trims and collapses ASCII whitespace, then checks the field's rule. '' = clear; undefined =
-// refused. Bare numbers outside parentheses get px. The written value can never hold a quote,
-// &, <, >, ;, :, \, !, braces or a comment, so it is safe in any attribute quoting and cannot
-// end or swallow another declaration. A value the browser ignores (abc) is kept as typed.
-const styleValue = (field: StyleField, value: string): string | undefined => {
-	const collapsed = asciiTrim(value.replaceAll(ASCII_WHITESPACE_RUNS, ' '));
-	if (collapsed === '') {
-		return '';
-	}
-	if (field === 'color') {
-		return COLOR_VALUE.test(collapsed) ? collapsed : undefined;
-	}
-	if (!LENGTH_VALUE.test(collapsed) || collapsed.includes('/*') || collapsed.includes('*/')) {
-		return undefined;
-	}
-	let depth = 0;
-	const parts: string[] = [];
-	for (const part of collapsed.split(' ')) {
-		parts.push(depth === 0 && BARE_NUMBER.test(part) ? `${part}px` : part);
-		for (const character of part) {
-			depth += character === '(' ? 1 : character === ')' ? -1 : 0;
-			if (depth < 0) {
-				return undefined;
-			}
-		}
-	}
-	const written = parts.join(' ');
-	return depth === 0 && written.length <= MAX_STYLE_VALUE_CHARS ? written : undefined;
 };
 
 type StyleAttribute = {
@@ -331,7 +280,7 @@ const editStyle = ({
 	field,
 	value,
 }: TargetArgs & { field: StyleField; value: string }): EditResult => {
-	const written = styleValue(field, value);
+	const written = normalizeStyleValue(field, value);
 	if (written === undefined) {
 		return refuse('invalid-value');
 	}

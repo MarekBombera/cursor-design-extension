@@ -93,7 +93,7 @@ export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: st
 export type CopiedMessage = { type: 'ui:copied'; requestId: string; count: number };
 
 // 9c: the success answer to one artboard:edit. `html` is the new frame copy (tagged), the exact
-// string the watcher echo's canvas:updated will carry for this frame.
+// string the watcher echo's canvas:updated will carry for this frame. The chrome adopts it (9e).
 export type ArtboardEditedMessage = {
 	type: 'artboard:edited';
 	requestId: string;
@@ -393,6 +393,23 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 	}
 	if (data.type === 'ui:error') {
 		return parseUiError(data);
+	}
+	if (data.type === 'artboard:edited') {
+		// The same guards as a canvas:updated frame's html, hash and generation.
+		return typeof data.requestId === 'string' &&
+			typeof data.frameId === 'string' &&
+			typeof data.hash === 'string' &&
+			isFiniteNumber(data.generation) &&
+			typeof data.html === 'string'
+			? {
+					type: 'artboard:edited',
+					requestId: data.requestId,
+					frameId: data.frameId,
+					hash: data.hash,
+					generation: data.generation,
+					html: data.html,
+				}
+			: undefined;
 	}
 	if (data.type === 'ui:copied') {
 		return typeof data.requestId === 'string' &&

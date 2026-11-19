@@ -1,6 +1,6 @@
 import type { FrameRect } from './frame/frameMessages';
 import type { FrameGesture } from './frameGesture';
-import type { PostedCanvasFrame } from './hostMessages';
+import type { ArtboardEditedMessage, PostedCanvasFrame } from './hostMessages';
 import {
 	type ChromeFrame,
 	type FrameHeightGuard,
@@ -29,10 +29,18 @@ export type StageFrame = {
 	// Why a tile shows: an empty file or a failure. Read only while kind is 'tile'.
 	tileKind: 'empty' | 'error';
 	tileText: string;
+	// The latest known tagged copy: posted, or adopted from an edit answer (9e).
 	html: string;
+	// What the iframe was built from; Frame's blob effect reads only these two, so adopting an
+	// edit answer never reloads. The version bumps on every reload.
+	documentHtml: string;
+	documentVersion: number;
 };
 
 export type FrameRecord = StageFrame & {
+	// Hashes the user's own adopted saves replaced since the last outside change (9e): a post
+	// carrying one with an older generation read disk before the save.
+	replacedHashes: readonly string[];
 	group: string | undefined;
 	// Measured iframe height; the wrapper uses TILE_HEIGHT while kind is 'tile'.
 	measuredHeight: number;
@@ -65,19 +73,38 @@ const newRecord = (entry: PostedCanvasFrame): FrameRecord => ({
 	tileKind: 'empty',
 	tileText: '',
 	html: '',
+	documentHtml: '',
+	documentVersion: 0,
+	replacedHashes: [],
 });
 
+// A refresh that read disk before the user's own save: it carries a hash that save replaced and
+// an older generation. Keep the adopted copy (9c handed this ceiling to 9e).
+const isStalePreWrite = (record: FrameRecord, entry: PostedCanvasFrame): boolean =>
+	entry.errorMessage === undefined &&
+	record.kind === 'iframe' &&
+	record.replacedHashes.includes(entry.hash) &&
+	entry.generation < record.generation;
+
 const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord => {
-	const placed: FrameRecord = {
-		...record,
+	const placement = {
 		label: entry.label,
 		x: entry.x,
 		y: entry.y,
 		width: entry.width,
 		group: entry.group,
+	};
+	if (isStalePreWrite(record, entry)) {
+		return { ...record, ...placement };
+	}
+	const placed: FrameRecord = {
+		...record,
+		...placement,
 		generation: entry.generation,
 		hash: entry.hash,
 		html: entry.html,
+		// The echo of the user's own save keeps the list; any other change ends it.
+		replacedHashes: entry.hash === record.hash ? record.replacedHashes : [],
 	};
 	if (entry.errorMessage !== undefined || entry.html.trim() === '') {
 		return {
@@ -96,8 +123,44 @@ const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord
 		kind: 'iframe',
 		guard: reloads ? resetGuard() : record.guard,
 		height: record.measuredHeight,
+		documentHtml: reloads ? entry.html : record.documentHtml,
+		documentVersion: reloads ? record.documentVersion + 1 : record.documentVersion,
 	};
 };
+
+// 9e: the host's answer to the user's own edit. Taken only while the record still holds the
+// HTML the edit was based on: otherwise a newer post (the echo, or an outside change) already
+// won. The iframe already shows the edit (its preview), so nothing reloads.
+export const adoptEditAnswer = ({
+	record,
+	answer,
+	baseHash,
+}: {
+	record: FrameRecord;
+	answer: Pick<ArtboardEditedMessage, 'html' | 'hash' | 'generation'>;
+	baseHash: string;
+}): FrameRecord =>
+	record.kind === 'iframe' && record.hash === baseHash
+		? {
+				...record,
+				html: answer.html,
+				hash: answer.hash,
+				generation: answer.generation,
+				replacedHashes: [...record.replacedHashes, baseHash],
+			}
+		: record;
+
+// 9e: rebuild the iframe from the latest known copy (a refused edit drops its preview), keeping
+// every edit already adopted.
+export const reloadFrame = (record: FrameRecord): FrameRecord =>
+	record.kind === 'iframe'
+		? {
+				...record,
+				documentHtml: record.html,
+				documentVersion: record.documentVersion + 1,
+				guard: resetGuard(),
+			}
+		: record;
 
 // Existing records keep their order (moving an iframe in the DOM reloads it); new frames are
 // appended in the host's order; frames the host no longer sends are dropped.

@@ -50,6 +50,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var EDIT_APPLY_MESSAGE = &quot;cd:edit-apply&quot;;
+	var PICK_REFRESH_MESSAGE = &quot;cd:pick-refresh&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var FRAME_MODES = [
@@ -66,6 +68,21 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var isSourceNumber = (value) =&gt; value === null || typeof value === &quot;number&quot; &amp;&amp; Number.isSafeInteger(value) &amp;&amp; value &gt;= 0;
+	var parseEditApply = (record) =&gt; {
+		const { sourceNumber, text, style } = record;
+		if (!isSourceNumber(sourceNumber) || sourceNumber === null) return;
+		if (typeof text === &quot;string&quot; &amp;&amp; style === void 0 &amp;&amp; text.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			text
+		};
+		if (typeof style === &quot;string&quot; &amp;&amp; text === void 0 &amp;&amp; style.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			style
+		};
 	};
 	var parseAnchorList = (value, parseEntry) =&gt; {
 		if (!Array.isArray(value) || value.length &gt; 500) return;
@@ -96,6 +113,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
+			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
 			case FRAME_ANCHORS_MESSAGE: {
 				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
@@ -137,7 +156,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			sourceNumber,
 			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
 			...textOf(element),
-			style: style === null || style.length &gt; 5e3 ? null : style
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
 		};
 	};
 	// src/webview/frame/pickPath.ts
@@ -515,30 +534,31 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return styles;
 	};
-	var describeElement = (element, isPage) =&gt; {
+	var describeContent = (element, isPage) =&gt; {
 		if (isPage) {
 			const body = element.ownerDocument.body ?? element;
 			return {
-				selector: &quot;body&quot;,
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
 				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
 			};
 		}
 		if (!element.isConnected) return {
-			selector: null,
 			tagName: element.localName,
 			text: &quot;&quot;,
 			styles: {}
 		};
 		const style = window.getComputedStyle(element);
 		return {
-			selector: buildSelector(element),
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
+	var describeElement = (element, isPage) =&gt; ({
+		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
+		...describeContent(element, isPage)
+	});
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -611,13 +631,23 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const editTargetOf = (element) =&gt; isRoot(element) ? element.ownerDocument.body ?? element : element;
 		const describe = (element) =&gt; {
-			const isPage = isRoot(element);
-			const described = describeElement(element, isPage);
+			const described = describeElement(element, isRoot(element));
 			return mode === &quot;edit&quot; ? {
 				...described,
-				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+				edit: describeEditTarget(editTargetOf(element))
 			} : described;
+		};
+		const refreshCurrent = () =&gt; {
+			const current = path.at(-1);
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current === void 0 || cached === void 0) return;
+			descriptions.set(current, {
+				...cached,
+				...describeContent(current, isRoot(current)),
+				edit: describeEditTarget(editTargetOf(current))
+			});
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -631,7 +661,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = ({ force }) =&gt; {
+		const postPick = ({ force, repost }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
@@ -662,7 +692,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 					height: Math.min(box.height, MAX_FRAME_COORDINATE)
 				},
 				isPage: isRoot(current),
-				repost: !force
+				repost
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -705,7 +735,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick({ force: true });
+			postPick({
+				force: true,
+				repost: false
+			});
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -738,7 +771,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick({ force: true });
+					postPick({
+						force: true,
+						repost: false
+					});
 					window.focus();
 				}
 			}
@@ -779,10 +815,32 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			pendingRepost = void 0;
 			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick({ force: false });
+			if (path.length &gt; 0) postPick({
+				force: false,
+				repost: true
+			});
 		};
 		const repostRects = () =&gt; {
 			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+		};
+		const applyEdit = (message) =&gt; {
+			const matches = document.querySelectorAll(\`[\${SOURCE_TAG_ATTRIBUTE}=&quot;\${message.sourceNumber}&quot;]\`);
+			const [target] = matches;
+			if (matches.length !== 1 || target === void 0) return;
+			if (&quot;text&quot; in message) {
+				const children = target.childNodes;
+				const [only] = children;
+				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				target.textContent = message.text;
+			} else {
+				const { style: styleText } = message;
+				target.setAttribute(&quot;style&quot;, styleText);
+			}
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; editTargetOf(current) === target) {
+				refreshCurrent();
+				repostRects();
+			}
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -794,7 +852,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) {
+				stepPick(message.type === PICK_PARENT_MESSAGE);
+				return;
+			}
+			if (mode !== &quot;edit&quot;) return;
+			if (message.type === &quot;cd:pick-refresh&quot; &amp;&amp; path.length &gt; 0) {
+				refreshCurrent();
+				postPick({
+					force: true,
+					repost: true
+				});
+			} else if (message.type === &quot;cd:edit-apply&quot;) applyEdit(message);
 		});
 	};
 	// src/webview/frame/anchorRects.ts
@@ -1054,6 +1123,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var EDIT_APPLY_MESSAGE = &quot;cd:edit-apply&quot;;
+	var PICK_REFRESH_MESSAGE = &quot;cd:pick-refresh&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var FRAME_MODES = [
@@ -1070,6 +1141,21 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var isSourceNumber = (value) =&gt; value === null || typeof value === &quot;number&quot; &amp;&amp; Number.isSafeInteger(value) &amp;&amp; value &gt;= 0;
+	var parseEditApply = (record) =&gt; {
+		const { sourceNumber, text, style } = record;
+		if (!isSourceNumber(sourceNumber) || sourceNumber === null) return;
+		if (typeof text === &quot;string&quot; &amp;&amp; style === void 0 &amp;&amp; text.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			text
+		};
+		if (typeof style === &quot;string&quot; &amp;&amp; text === void 0 &amp;&amp; style.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			style
+		};
 	};
 	var parseAnchorList = (value, parseEntry) =&gt; {
 		if (!Array.isArray(value) || value.length &gt; 500) return;
@@ -1100,6 +1186,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
+			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
 			case FRAME_ANCHORS_MESSAGE: {
 				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
@@ -1141,7 +1229,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			sourceNumber,
 			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
 			...textOf(element),
-			style: style === null || style.length &gt; 5e3 ? null : style
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
 		};
 	};
 	// src/webview/frame/pickPath.ts
@@ -1519,30 +1607,31 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return styles;
 	};
-	var describeElement = (element, isPage) =&gt; {
+	var describeContent = (element, isPage) =&gt; {
 		if (isPage) {
 			const body = element.ownerDocument.body ?? element;
 			return {
-				selector: &quot;body&quot;,
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
 				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
 			};
 		}
 		if (!element.isConnected) return {
-			selector: null,
 			tagName: element.localName,
 			text: &quot;&quot;,
 			styles: {}
 		};
 		const style = window.getComputedStyle(element);
 		return {
-			selector: buildSelector(element),
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
+	var describeElement = (element, isPage) =&gt; ({
+		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
+		...describeContent(element, isPage)
+	});
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -1615,13 +1704,23 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const editTargetOf = (element) =&gt; isRoot(element) ? element.ownerDocument.body ?? element : element;
 		const describe = (element) =&gt; {
-			const isPage = isRoot(element);
-			const described = describeElement(element, isPage);
+			const described = describeElement(element, isRoot(element));
 			return mode === &quot;edit&quot; ? {
 				...described,
-				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+				edit: describeEditTarget(editTargetOf(element))
 			} : described;
+		};
+		const refreshCurrent = () =&gt; {
+			const current = path.at(-1);
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current === void 0 || cached === void 0) return;
+			descriptions.set(current, {
+				...cached,
+				...describeContent(current, isRoot(current)),
+				edit: describeEditTarget(editTargetOf(current))
+			});
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -1635,7 +1734,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = ({ force }) =&gt; {
+		const postPick = ({ force, repost }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
@@ -1666,7 +1765,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 					height: Math.min(box.height, MAX_FRAME_COORDINATE)
 				},
 				isPage: isRoot(current),
-				repost: !force
+				repost
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -1709,7 +1808,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick({ force: true });
+			postPick({
+				force: true,
+				repost: false
+			});
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -1742,7 +1844,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick({ force: true });
+					postPick({
+						force: true,
+						repost: false
+					});
 					window.focus();
 				}
 			}
@@ -1783,10 +1888,32 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			pendingRepost = void 0;
 			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick({ force: false });
+			if (path.length &gt; 0) postPick({
+				force: false,
+				repost: true
+			});
 		};
 		const repostRects = () =&gt; {
 			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+		};
+		const applyEdit = (message) =&gt; {
+			const matches = document.querySelectorAll(\`[\${SOURCE_TAG_ATTRIBUTE}=&quot;\${message.sourceNumber}&quot;]\`);
+			const [target] = matches;
+			if (matches.length !== 1 || target === void 0) return;
+			if (&quot;text&quot; in message) {
+				const children = target.childNodes;
+				const [only] = children;
+				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				target.textContent = message.text;
+			} else {
+				const { style: styleText } = message;
+				target.setAttribute(&quot;style&quot;, styleText);
+			}
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; editTargetOf(current) === target) {
+				refreshCurrent();
+				repostRects();
+			}
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -1798,7 +1925,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) {
+				stepPick(message.type === PICK_PARENT_MESSAGE);
+				return;
+			}
+			if (mode !== &quot;edit&quot;) return;
+			if (message.type === &quot;cd:pick-refresh&quot; &amp;&amp; path.length &gt; 0) {
+				refreshCurrent();
+				postPick({
+					force: true,
+					repost: true
+				});
+			} else if (message.type === &quot;cd:edit-apply&quot;) applyEdit(message);
 		});
 	};
 	// src/webview/frame/anchorRects.ts
@@ -2058,6 +2196,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var EDIT_APPLY_MESSAGE = &quot;cd:edit-apply&quot;;
+	var PICK_REFRESH_MESSAGE = &quot;cd:pick-refresh&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var FRAME_MODES = [
@@ -2074,6 +2214,21 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var isSourceNumber = (value) =&gt; value === null || typeof value === &quot;number&quot; &amp;&amp; Number.isSafeInteger(value) &amp;&amp; value &gt;= 0;
+	var parseEditApply = (record) =&gt; {
+		const { sourceNumber, text, style } = record;
+		if (!isSourceNumber(sourceNumber) || sourceNumber === null) return;
+		if (typeof text === &quot;string&quot; &amp;&amp; style === void 0 &amp;&amp; text.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			text
+		};
+		if (typeof style === &quot;string&quot; &amp;&amp; text === void 0 &amp;&amp; style.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			style
+		};
 	};
 	var parseAnchorList = (value, parseEntry) =&gt; {
 		if (!Array.isArray(value) || value.length &gt; 500) return;
@@ -2104,6 +2259,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
+			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
 			case FRAME_ANCHORS_MESSAGE: {
 				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
@@ -2145,7 +2302,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			sourceNumber,
 			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
 			...textOf(element),
-			style: style === null || style.length &gt; 5e3 ? null : style
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
 		};
 	};
 	// src/webview/frame/pickPath.ts
@@ -2523,30 +2680,31 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return styles;
 	};
-	var describeElement = (element, isPage) =&gt; {
+	var describeContent = (element, isPage) =&gt; {
 		if (isPage) {
 			const body = element.ownerDocument.body ?? element;
 			return {
-				selector: &quot;body&quot;,
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
 				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
 			};
 		}
 		if (!element.isConnected) return {
-			selector: null,
 			tagName: element.localName,
 			text: &quot;&quot;,
 			styles: {}
 		};
 		const style = window.getComputedStyle(element);
 		return {
-			selector: buildSelector(element),
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
+	var describeElement = (element, isPage) =&gt; ({
+		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
+		...describeContent(element, isPage)
+	});
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -2619,13 +2777,23 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const editTargetOf = (element) =&gt; isRoot(element) ? element.ownerDocument.body ?? element : element;
 		const describe = (element) =&gt; {
-			const isPage = isRoot(element);
-			const described = describeElement(element, isPage);
+			const described = describeElement(element, isRoot(element));
 			return mode === &quot;edit&quot; ? {
 				...described,
-				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+				edit: describeEditTarget(editTargetOf(element))
 			} : described;
+		};
+		const refreshCurrent = () =&gt; {
+			const current = path.at(-1);
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current === void 0 || cached === void 0) return;
+			descriptions.set(current, {
+				...cached,
+				...describeContent(current, isRoot(current)),
+				edit: describeEditTarget(editTargetOf(current))
+			});
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -2639,7 +2807,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = ({ force }) =&gt; {
+		const postPick = ({ force, repost }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
@@ -2670,7 +2838,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 					height: Math.min(box.height, MAX_FRAME_COORDINATE)
 				},
 				isPage: isRoot(current),
-				repost: !force
+				repost
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -2713,7 +2881,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick({ force: true });
+			postPick({
+				force: true,
+				repost: false
+			});
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -2746,7 +2917,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick({ force: true });
+					postPick({
+						force: true,
+						repost: false
+					});
 					window.focus();
 				}
 			}
@@ -2787,10 +2961,32 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			pendingRepost = void 0;
 			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick({ force: false });
+			if (path.length &gt; 0) postPick({
+				force: false,
+				repost: true
+			});
 		};
 		const repostRects = () =&gt; {
 			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+		};
+		const applyEdit = (message) =&gt; {
+			const matches = document.querySelectorAll(\`[\${SOURCE_TAG_ATTRIBUTE}=&quot;\${message.sourceNumber}&quot;]\`);
+			const [target] = matches;
+			if (matches.length !== 1 || target === void 0) return;
+			if (&quot;text&quot; in message) {
+				const children = target.childNodes;
+				const [only] = children;
+				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				target.textContent = message.text;
+			} else {
+				const { style: styleText } = message;
+				target.setAttribute(&quot;style&quot;, styleText);
+			}
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; editTargetOf(current) === target) {
+				refreshCurrent();
+				repostRects();
+			}
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -2802,7 +2998,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) {
+				stepPick(message.type === PICK_PARENT_MESSAGE);
+				return;
+			}
+			if (mode !== &quot;edit&quot;) return;
+			if (message.type === &quot;cd:pick-refresh&quot; &amp;&amp; path.length &gt; 0) {
+				refreshCurrent();
+				postPick({
+					force: true,
+					repost: true
+				});
+			} else if (message.type === &quot;cd:edit-apply&quot;) applyEdit(message);
 		});
 	};
 	// src/webview/frame/anchorRects.ts
@@ -3062,6 +3269,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var FRAME_MODE_MESSAGE = &quot;cd:mode&quot;;
 	var PICK_PARENT_MESSAGE = &quot;cd:pick-parent&quot;;
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
+	var EDIT_APPLY_MESSAGE = &quot;cd:edit-apply&quot;;
+	var PICK_REFRESH_MESSAGE = &quot;cd:pick-refresh&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
 	var FRAME_MODES = [
@@ -3078,6 +3287,21 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
+	};
+	var isSourceNumber = (value) =&gt; value === null || typeof value === &quot;number&quot; &amp;&amp; Number.isSafeInteger(value) &amp;&amp; value &gt;= 0;
+	var parseEditApply = (record) =&gt; {
+		const { sourceNumber, text, style } = record;
+		if (!isSourceNumber(sourceNumber) || sourceNumber === null) return;
+		if (typeof text === &quot;string&quot; &amp;&amp; style === void 0 &amp;&amp; text.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			text
+		};
+		if (typeof style === &quot;string&quot; &amp;&amp; text === void 0 &amp;&amp; style.length &lt;= 5e3) return {
+			type: EDIT_APPLY_MESSAGE,
+			sourceNumber,
+			style
+		};
 	};
 	var parseAnchorList = (value, parseEntry) =&gt; {
 		if (!Array.isArray(value) || value.length &gt; 500) return;
@@ -3108,6 +3332,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
+			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
+			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
 			case FRAME_ANCHORS_MESSAGE: {
 				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
@@ -3149,7 +3375,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			sourceNumber,
 			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
 			...textOf(element),
-			style: style === null || style.length &gt; 5e3 ? null : style
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
 		};
 	};
 	// src/webview/frame/pickPath.ts
@@ -3527,30 +3753,31 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return styles;
 	};
-	var describeElement = (element, isPage) =&gt; {
+	var describeContent = (element, isPage) =&gt; {
 		if (isPage) {
 			const body = element.ownerDocument.body ?? element;
 			return {
-				selector: &quot;body&quot;,
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
 				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
 			};
 		}
 		if (!element.isConnected) return {
-			selector: null,
 			tagName: element.localName,
 			text: &quot;&quot;,
 			styles: {}
 		};
 		const style = window.getComputedStyle(element);
 		return {
-			selector: buildSelector(element),
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
 			styles: readStyles((property) =&gt; style.getPropertyValue(property))
 		};
 	};
+	var describeElement = (element, isPage) =&gt; ({
+		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
+		...describeContent(element, isPage)
+	});
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -3623,13 +3850,23 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const editTargetOf = (element) =&gt; isRoot(element) ? element.ownerDocument.body ?? element : element;
 		const describe = (element) =&gt; {
-			const isPage = isRoot(element);
-			const described = describeElement(element, isPage);
+			const described = describeElement(element, isRoot(element));
 			return mode === &quot;edit&quot; ? {
 				...described,
-				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+				edit: describeEditTarget(editTargetOf(element))
 			} : described;
+		};
+		const refreshCurrent = () =&gt; {
+			const current = path.at(-1);
+			const cached = current === void 0 ? void 0 : descriptions.get(current);
+			if (current === void 0 || cached === void 0) return;
+			descriptions.set(current, {
+				...cached,
+				...describeContent(current, isRoot(current)),
+				edit: describeEditTarget(editTargetOf(current))
+			});
 		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
@@ -3643,7 +3880,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			x: 0,
 			y: 0
 		};
-		const postPick = ({ force }) =&gt; {
+		const postPick = ({ force, repost }) =&gt; {
 			const anchor = path[0];
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
@@ -3674,7 +3911,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 					height: Math.min(box.height, MAX_FRAME_COORDINATE)
 				},
 				isPage: isRoot(current),
-				repost: !force
+				repost
 			}, &quot;*&quot;);
 			lastPosted = next;
 		};
@@ -3717,7 +3954,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (path.length === 0) return;
 			path = toParent ? stepUp(path) : stepToChild(path);
 			describeCurrent();
-			postPick({ force: true });
+			postPick({
+				force: true,
+				repost: false
+			});
 		};
 		const BLOCKED_KEYS = /* @__PURE__ */ new Set([
 			&quot;Enter&quot;,
@@ -3750,7 +3990,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 						};
 					}
 					describeCurrent();
-					postPick({ force: true });
+					postPick({
+						force: true,
+						repost: false
+					});
 					window.focus();
 				}
 			}
@@ -3791,10 +4034,32 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			pendingRepost = void 0;
 			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
-			if (path.length &gt; 0) postPick({ force: false });
+			if (path.length &gt; 0) postPick({
+				force: false,
+				repost: true
+			});
 		};
 		const repostRects = () =&gt; {
 			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+		};
+		const applyEdit = (message) =&gt; {
+			const matches = document.querySelectorAll(\`[\${SOURCE_TAG_ATTRIBUTE}=&quot;\${message.sourceNumber}&quot;]\`);
+			const [target] = matches;
+			if (matches.length !== 1 || target === void 0) return;
+			if (&quot;text&quot; in message) {
+				const children = target.childNodes;
+				const [only] = children;
+				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				target.textContent = message.text;
+			} else {
+				const { style: styleText } = message;
+				target.setAttribute(&quot;style&quot;, styleText);
+			}
+			const current = path.at(-1);
+			if (current !== void 0 &amp;&amp; editTargetOf(current) === target) {
+				refreshCurrent();
+				repostRects();
+			}
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -3806,7 +4071,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				setMode(message.mode);
 				return;
 			}
-			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) stepPick(message.type === PICK_PARENT_MESSAGE);
+			if (message.type === &quot;cd:pick-parent&quot; || message.type === &quot;cd:pick-child&quot;) {
+				stepPick(message.type === PICK_PARENT_MESSAGE);
+				return;
+			}
+			if (mode !== &quot;edit&quot;) return;
+			if (message.type === &quot;cd:pick-refresh&quot; &amp;&amp; path.length &gt; 0) {
+				refreshCurrent();
+				postPick({
+					force: true,
+					repost: true
+				});
+			} else if (message.type === &quot;cd:edit-apply&quot;) applyEdit(message);
 		});
 	};
 	// src/webview/frame/anchorRects.ts

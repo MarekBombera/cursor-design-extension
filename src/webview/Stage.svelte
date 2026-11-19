@@ -395,7 +395,8 @@
 				kind={frame.kind}
 				tileKind={frame.tileKind}
 				tileText={frame.tileText}
-				html={frame.html}
+				documentHtml={frame.documentHtml}
+				documentVersion={frame.documentVersion}
 				{nonce}
 				{runtimeSource}
 				lifted={captured?.id === frame.id}

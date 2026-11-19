@@ -1,5 +1,7 @@
-import { MAX_FRAME_COORDINATE } from '../../disk/layout';
+import { MAX_FRAME_COORDINATE, SOURCE_TAG_ATTRIBUTE } from '../../disk/layout';
 import {
+	EDIT_APPLY_MESSAGE,
+	type EditApplyMessage,
 	FRAME_HOVER_MESSAGE,
 	FRAME_MODE_MESSAGE,
 	FRAME_PICK_MESSAGE,
@@ -8,6 +10,7 @@ import {
 	type FrameRect,
 	PICK_CHILD_MESSAGE,
 	PICK_PARENT_MESSAGE,
+	PICK_REFRESH_MESSAGE,
 	parseChromeFrameMessage,
 } from './frameMessages';
 import { describeEditTarget } from './editTarget';
@@ -20,7 +23,7 @@ import {
 	pointInTarget,
 	sameRect,
 } from './pickTarget';
-import { describeElement, type PickDescription } from './selector';
+import { describeContent, describeElement, type PickDescription } from './selector';
 
 // A pick's description, with the edit target's fields in Edit mode.
 type Described = PickDescription & Pick<FramePickMessage, 'edit'>;
@@ -63,8 +66,8 @@ export const visibleRect = (element: Element): FrameRect | null => {
 
 // Comment mode (8d1) and Edit mode (9d) share this picker. Chrome sends cd:mode /
 // cd:pick-parent / cd:pick-child; outside Interact mode the runtime blocks the design's own input
-// and reports what a click picks, plus the edit target's fields in Edit mode. It never writes to
-// the design DOM. Part of the frame runtime: runtime.ts calls this after capturing `host`, before
+// and reports what a click picks, plus the edit target's fields in Edit mode. It writes to the
+// design DOM only through cd:edit-apply, in Edit mode (9e preview). Part of the frame runtime: runtime.ts calls this after capturing `host`, before
 // cd:ready.
 export const installCommentPicking = (host: Window): void => {
 	let mode: FrameMode = 'interact';
@@ -141,15 +144,29 @@ export const installCommentPicking = (host: Window): void => {
 	// Edit mode adds what the edit core needs; a page pick edits body, the element its styles read.
 	// ponytail: finder still runs on every Edit-mode pick (up to its 200 ms timeout) because the
 	// description is shared with Comment mode; upgrade: skip buildSelector when the mode is edit.
+	const editTargetOf = (element: Element): Element =>
+		isRoot(element) ? (element.ownerDocument.body ?? element) : element;
+
 	const describe = (element: Element): Described => {
-		const isPage = isRoot(element);
-		const described = describeElement(element, isPage);
+		const described = describeElement(element, isRoot(element));
 		return mode === 'edit'
-			? {
-					...described,
-					edit: describeEditTarget(isPage ? (element.ownerDocument.body ?? element) : element),
-				}
+			? { ...described, edit: describeEditTarget(editTargetOf(element)) }
 			: described;
+	};
+
+	// 9e: the current pick's description after a preview or on request, reusing the cached
+	// selector (a text or inline-style change cannot move the element, and finder is slow).
+	const refreshCurrent = (): void => {
+		const current = path.at(-1);
+		const cached = current === undefined ? undefined : descriptions.get(current);
+		if (current === undefined || cached === undefined) {
+			return;
+		}
+		descriptions.set(current, {
+			...cached,
+			...describeContent(current, isRoot(current)),
+			edit: describeEditTarget(editTargetOf(current)),
+		});
 	};
 
 	// A throw leaves no entry, so postPick sends nothing rather than another element's data.
@@ -172,7 +189,9 @@ export const installCommentPicking = (host: Window): void => {
 
 	// Every post recomputes rect and point; the descriptions are kept, so scrolls skip finder.
 	// A click or step forces the post; a re-post is skipped when chrome already has this pick.
-	const postPick = ({ force }: { force: boolean }): void => {
+	// force skips the unchanged check; repost is the flag the chrome reads (a re-post never starts a
+	// new pick there).
+	const postPick = ({ force, repost }: { force: boolean; repost: boolean }): void => {
 		const anchor = path[0];
 		const current = path.at(-1);
 		const cached = current === undefined ? undefined : descriptions.get(current);
@@ -217,7 +236,7 @@ export const installCommentPicking = (host: Window): void => {
 					height: Math.min(box.height, MAX_FRAME_COORDINATE),
 				},
 				isPage: isRoot(current),
-				repost: !force,
+				repost,
 			},
 			'*',
 		);
@@ -264,7 +283,7 @@ export const installCommentPicking = (host: Window): void => {
 		}
 		path = toParent ? stepUp(path) : stepToChild(path);
 		describeCurrent();
-		postPick({ force: true });
+		postPick({ force: true, repost: false });
 	};
 
 	const BLOCKED_KEYS = new Set(['Enter', ' ', 'ArrowUp', 'ArrowDown']);
@@ -297,7 +316,7 @@ export const installCommentPicking = (host: Window): void => {
 					anchorOffset = { x: event.clientX - box.x, y: event.clientY - box.y };
 				}
 				describeCurrent();
-				postPick({ force: true });
+				postPick({ force: true, repost: false });
 				// The blocked mousedown never moves focus, so ↑/↓ would stay in whatever had it
 				// (Cursor chat). Focus this frame's window; the design DOM is untouched.
 				window.focus();
@@ -367,7 +386,7 @@ export const installCommentPicking = (host: Window): void => {
 			postHover(hover.element);
 		}
 		if (path.length > 0) {
-			postPick({ force: false });
+			postPick({ force: false, repost: true });
 		}
 	};
 
@@ -377,6 +396,38 @@ export const installCommentPicking = (host: Window): void => {
 			pendingRepost = requestAnimationFrame(repostFrame);
 		}
 	};
+	// 9e preview: the one element numbered N gets the text or style attribute the chrome computed
+	// (the edit core's own rules). Text only where the element holds plain text, as the core
+	// requires. The chrome never sends text for void or raw-text elements (inspectorView gives them
+	// no text field) and script / style / title / textarea carry no number, so the tag sets stay out
+	// of the runtime's size budget.
+	const applyEdit = (message: EditApplyMessage): void => {
+		const matches = document.querySelectorAll(
+			`[${SOURCE_TAG_ATTRIBUTE}="${message.sourceNumber}"]`,
+		);
+		const [target] = matches;
+		if (matches.length !== 1 || target === undefined) {
+			return;
+		}
+		if ('text' in message) {
+			const children = target.childNodes;
+			const [only] = children;
+			if (children.length > 1 || (only !== undefined && !(only instanceof Text))) {
+				return;
+			}
+			target.textContent = message.text;
+		} else {
+			// Destructured: the runtime guard bans `.style` reads anywhere in the runtime string.
+			const { style: styleText } = message;
+			target.setAttribute('style', styleText);
+		}
+		const current = path.at(-1);
+		if (current !== undefined && editTargetOf(current) === target) {
+			refreshCurrent();
+			repostRects();
+		}
+	};
+
 	window.addEventListener('scroll', repostRects, { capture: true });
 	window.addEventListener('resize', repostRects);
 
@@ -398,6 +449,16 @@ export const installCommentPicking = (host: Window): void => {
 		// Explicit types: any other chrome message (cd:anchors) must never step an open pick.
 		if (message.type === PICK_PARENT_MESSAGE || message.type === PICK_CHILD_MESSAGE) {
 			stepPick(message.type === PICK_PARENT_MESSAGE);
+			return;
+		}
+		if (mode !== 'edit') {
+			return;
+		}
+		if (message.type === PICK_REFRESH_MESSAGE && path.length > 0) {
+			refreshCurrent();
+			postPick({ force: true, repost: true });
+		} else if (message.type === EDIT_APPLY_MESSAGE) {
+			applyEdit(message);
 		}
 	});
 };

@@ -34,6 +34,12 @@ export const PICK_PARENT_MESSAGE = 'cd:pick-parent';
 
 export const PICK_CHILD_MESSAGE = 'cd:pick-child';
 
+// Chrome → frame (9e, Edit mode only): preview one element's whole text node or style attribute.
+export const EDIT_APPLY_MESSAGE = 'cd:edit-apply';
+
+// Chrome → frame (9e, Edit mode only): re-describe the current pick and re-post it.
+export const PICK_REFRESH_MESSAGE = 'cd:pick-refresh';
+
 // Chrome → frame: the element comments of this frame to measure (8f2 pins).
 export const FRAME_ANCHORS_MESSAGE = 'cd:anchors';
 
@@ -70,7 +76,8 @@ export type PickEditFields = {
 	textState: (typeof PICK_TEXT_STATES)[number];
 	// The text node's full, unmodified data iff 'plain'; '' otherwise.
 	text: string;
-	// The style attribute as the live page holds it; null when absent or over MAX_PICK_STYLE_CHARS.
+	// The style attribute as the live page holds it: '' when absent, null only over
+	// MAX_PICK_STYLE_CHARS (9e shows a hint instead of the style fields).
 	style: string | null;
 };
 
@@ -120,6 +127,12 @@ export type AnchorRect = { id: string; box: FrameRect | null; visible: FrameRect
 
 type FrameAnchorsMessage = { type: typeof FRAME_ANCHORS_MESSAGE; anchors: AnchorRequest[] };
 
+// 9e live preview: exactly one of `text` (the element's whole new text node) or `style` (its whole
+// new style attribute). Display only: nothing reaches disk from it.
+export type EditApplyMessage =
+	| { type: typeof EDIT_APPLY_MESSAGE; sourceNumber: number; text: string }
+	| { type: typeof EDIT_APPLY_MESSAGE; sourceNumber: number; style: string };
+
 type FrameAnchorRectsMessage = {
 	type: typeof FRAME_ANCHOR_RECTS_MESSAGE;
 	anchors: AnchorRect[];
@@ -138,6 +151,8 @@ export type ChromeFrameMessage =
 	| { type: typeof FRAME_MODE_MESSAGE; mode: FrameMode }
 	| { type: typeof PICK_PARENT_MESSAGE }
 	| { type: typeof PICK_CHILD_MESSAGE }
+	| { type: typeof PICK_REFRESH_MESSAGE }
+	| EditApplyMessage
 	| FrameAnchorsMessage;
 
 const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
@@ -312,6 +327,20 @@ export const parsePickFields = (
 const isSourceNumber = (value: unknown): value is number | null =>
 	value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
 
+const parseEditApply = (record: Record<string, unknown>): EditApplyMessage | undefined => {
+	const { sourceNumber, text, style } = record;
+	if (!isSourceNumber(sourceNumber) || sourceNumber === null) {
+		return undefined;
+	}
+	if (typeof text === 'string' && style === undefined && text.length <= MAX_EDIT_TEXT_CHARS) {
+		return { type: EDIT_APPLY_MESSAGE, sourceNumber, text };
+	}
+	if (typeof style === 'string' && text === undefined && style.length <= MAX_PICK_STYLE_CHARS) {
+		return { type: EDIT_APPLY_MESSAGE, sourceNumber, style };
+	}
+	return undefined;
+};
+
 const isPickTextState = (value: unknown): value is PickEditFields['textState'] =>
 	(PICK_TEXT_STATES as readonly unknown[]).includes(value);
 
@@ -442,6 +471,10 @@ export const parseChromeFrameMessage = (data: unknown): ChromeFrameMessage | und
 			return { type: PICK_PARENT_MESSAGE };
 		case PICK_CHILD_MESSAGE:
 			return { type: PICK_CHILD_MESSAGE };
+		case PICK_REFRESH_MESSAGE:
+			return { type: PICK_REFRESH_MESSAGE };
+		case EDIT_APPLY_MESSAGE:
+			return parseEditApply(record);
 		case FRAME_ANCHORS_MESSAGE: {
 			const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
 			return anchors === undefined ? undefined : { type: FRAME_ANCHORS_MESSAGE, anchors };

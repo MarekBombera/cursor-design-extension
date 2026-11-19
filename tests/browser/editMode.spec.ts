@@ -1,6 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import { parseArtboardDocument } from '../../src/disk/commentTarget';
 import { SOURCE_TAG_ATTRIBUTE } from '../../src/disk/layout';
+import { sourceTaggedHtml } from '../../src/disk/sourceTags';
+import { NOT_SAVED_COPY } from '../../src/webview/editRequests';
 import {
 	FRAME_PICK_MESSAGE,
 	type FramePickMessage,
@@ -19,6 +22,7 @@ import {
 	frameBox,
 	frameElementBox,
 	frameOf,
+	isMessageOfType,
 	inspector,
 	loadsOf,
 	messagesOfType,
@@ -26,7 +30,9 @@ import {
 	openHarness,
 	type Point,
 	popover,
+	posted,
 	postToChrome,
+	readEditFixture,
 	savedRecord,
 	savedState,
 	untilHeightReported,
@@ -88,7 +94,7 @@ test('Edit mode shows the inspector and the hint, and only then does the frame p
 	await expect(page.locator('.mode-hint')).toContainText('Click an element to edit');
 });
 
-test('a plain-text pick reports its edit fields and fills disabled fields', async ({ page }) => {
+test('a plain-text pick reports its edit fields and fills enabled fields', async ({ page }) => {
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
@@ -102,11 +108,11 @@ test('a plain-text pick reports its edit fields and fills disabled fields', asyn
 	});
 	await expect(inspector(page).getByText('Edit › h1')).toBeVisible();
 	await expect(field(page, 'Text')).toHaveValue('Title');
-	await expect(field(page, 'Text')).toBeDisabled();
+	await expect(field(page, 'Text')).toBeEnabled();
 	await expect(field(page, 'Font size')).toHaveValue('32px');
-	await expect(field(page, 'Font size')).toBeDisabled();
+	await expect(field(page, 'Font size')).toBeEnabled();
 	await expect(field(page, 'Color')).toHaveValue('#ff0000');
-	await expect(field(page, 'Color')).toBeDisabled();
+	await expect(field(page, 'Color')).toBeEnabled();
 	await expect(inspector(page).getByText('#ff0000', { exact: true })).toBeVisible();
 	await expect(field(page, 'Padding')).toHaveValue('');
 	await expect(field(page, 'Padding')).toHaveAttribute('placeholder', '0px');
@@ -312,4 +318,304 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'false');
 	await expect(inspector(page)).toHaveCount(0);
 	await expect(boxOf(page.locator('.viewport'))).resolves.toBeDefined();
+});
+
+// ---- 9e Edit fields + save ----------------------------------------------------------------------
+
+const editsPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
+	(await posted(page)).filter((data): data is Record<string, unknown> =>
+		isMessageOfType(data, 'artboard:edit'),
+	);
+
+// The host's answer: the fixture with `change` applied, tagged as panelFrameHtml tags it.
+const editedAnswer = ({
+	request,
+	change,
+	hash,
+	generation,
+}: {
+	request: Record<string, unknown>;
+	change: (html: string) => string;
+	hash: string;
+	generation: number;
+}) => {
+	const html = change(readEditFixture());
+	return {
+		type: 'artboard:edited' as const,
+		requestId: String(request.requestId),
+		frameId: 'a',
+		hash,
+		generation,
+		html: sourceTaggedHtml({ html, document: parseArtboardDocument(html) }),
+	};
+};
+
+const renamedTitle = (html: string): string => html.replace('>Title</h1>', '>New</h1>');
+
+const inFrame = async (page: Page, selector: string) =>
+	(await frameOf(page, 'a')).locator(selector);
+
+// What the chrome would post to the frame, sent as the chrome (the frame's parent).
+const postToFrame = (page: Page, message: unknown): Promise<void> =>
+	page.evaluate((data) => {
+		const iframe = document.querySelector<HTMLIFrameElement>('[data-cd-frame-id="a"] iframe');
+		iframe?.contentWindow?.postMessage(data, '*');
+	}, message);
+
+test('cd:edit-apply previews text and style in Edit mode only, and re-posts the pick', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	const title = await sourceNumberOf(page, '#title');
+	await postToFrame(page, { type: 'cd:mode', mode: 'comment' });
+	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: title, text: 'Ignored' });
+	await nextAnimationFrame(page);
+	await expect(await inFrame(page, '#title')).toHaveText('Title');
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const picks = (await picksOf(page)).length;
+	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: title, text: 'Preview' });
+	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: title, style: 'color: #00ff00' });
+	await expect(await inFrame(page, '#title')).toHaveText('Preview');
+	await expect(await inFrame(page, '#title')).toHaveAttribute('style', 'color: #00ff00');
+	await expect.poll(async () => (await lastPick(page))?.edit?.style).toBe('color: #00ff00');
+	const after = await picksOf(page);
+	expect(after.length).toBeGreaterThan(picks);
+	expect(after.at(-1)?.repost).toBe(true);
+	expect(after.at(-1)?.edit?.text).toBe('Preview');
+	// An element without a style attribute reports '' (null means over the cap).
+	await clickElement(page, '#spaced');
+	expect((await lastPick(page))?.edit?.style).toBe('');
+});
+
+test('a page pick refreshes after a preview of body', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await selectParent(page).click();
+	await expect.poll(async () => (await lastPick(page))?.isPage).toBe(true);
+	const body = await sourceNumberOf(page, 'body');
+	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: body, style: 'margin: 4px' });
+	await expect.poll(async () => (await lastPick(page))?.edit?.style).toBe('margin: 4px');
+});
+
+test('typing previews; blur saves once with the raw liveText; the answer and echo never reload', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const loads = await loadsOf(page, 'a');
+	await field(page, 'Text').fill('New');
+	await expect(await inFrame(page, '#title')).toHaveText('New');
+	expect(await editsPosted(page)).toHaveLength(0);
+	await field(page, 'Text').blur();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [request] = await editsPosted(page);
+	expect(request).toMatchObject({
+		frameId: 'a',
+		sourceNumber: await sourceNumberOf(page, '#title'),
+		hash: 'sha256:test',
+		field: 'text',
+		value: 'New',
+		liveText: 'Title',
+	});
+	const answer = editedAnswer({
+		request: request ?? {},
+		change: renamedTitle,
+		hash: 'sha256:new',
+		generation: 2,
+	});
+	await postToChrome(page, answer);
+	await postToChrome(
+		page,
+		canvasUpdated([{ ...EDIT_FRAME, html: answer.html, hash: 'sha256:new', generation: 2 }]),
+	);
+	// A refresh that read disk before the write: skipped.
+	await postToChrome(page, canvasUpdated([EDIT_FRAME]));
+	await nextAnimationFrame(page);
+	expect(await loadsOf(page, 'a')).toBe(loads);
+	await expect(await inFrame(page, '#title')).toHaveText('New');
+	await expect(field(page, 'Text')).toHaveValue('New');
+	// An outside change still reloads.
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{ ...EDIT_FRAME, html: `${answer.html}<p>agent</p>`, hash: 'sha256:agent', generation: 3 },
+		]),
+	);
+	await expect.poll(() => loadsOf(page, 'a')).toBe(loads + 1);
+});
+
+test('Enter commits font size and keeps focus; colour commits on change as #rrggbb', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await field(page, 'Font size').fill('16');
+	await expect(await inFrame(page, '#title')).toHaveAttribute(
+		'style',
+		'font-size: 16px; color: #ff0000',
+	);
+	await field(page, 'Font size').press('Enter');
+	await expect(field(page, 'Font size')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).at(-1)?.value).toBe('16');
+	const [request] = await editsPosted(page);
+	await postToChrome(
+		page,
+		editedAnswer({
+			request: request ?? {},
+			change: (html) => html.replace('font-size: 32px', 'font-size: 16px'),
+			hash: 'sha256:size',
+			generation: 2,
+		}),
+	);
+	await expect(field(page, 'Font size')).toHaveValue('16px');
+	await field(page, 'Color').fill('#00ff00');
+	await expect.poll(async () => (await editsPosted(page)).at(-1)?.value).toBe('#00ff00');
+	expect((await editsPosted(page)).at(-1)?.hash).toBe('sha256:size');
+});
+
+test('an invalid value shows its error, posts nothing and restores the frame', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'Padding').fill('4');
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 4px');
+	await field(page, 'Padding').fill('4 apples;');
+	await field(page, 'Padding').blur();
+	const error = inspector(page).getByText('Not saved: use a number');
+	await expect(error).toBeVisible();
+	await expect(field(page, 'Padding')).toHaveAttribute('aria-invalid', 'true');
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 8px 16px');
+	expect(await editsPosted(page)).toHaveLength(0);
+	await field(page, 'Padding').fill('4');
+	await expect(error).toHaveCount(0);
+});
+
+test('a newline-only text change sends nothing; the next real edit saves', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#spaced');
+	await field(page, 'Text').fill('Spaced\ntext');
+	await field(page, 'Text').blur();
+	await expect(await inFrame(page, '#spaced')).toHaveText('\n    Spaced text\n');
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(0);
+	await field(page, 'Text').fill('Spaced!');
+	await field(page, 'Text').blur();
+	await expect
+		.poll(async () => (await editsPosted(page)).at(-1)?.liveText)
+		.toBe('\n    Spaced text\n');
+});
+
+test('a refused save reloads once with the earlier adopted edit and shows the copy', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await field(page, 'Text').fill('New');
+	await field(page, 'Text').blur();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [first] = await editsPosted(page);
+	await postToChrome(
+		page,
+		editedAnswer({ request: first ?? {}, change: renamedTitle, hash: 'sha256:new', generation: 2 }),
+	);
+	await field(page, 'Margin').fill('4');
+	await field(page, 'Margin').blur();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
+	const second = (await editsPosted(page)).at(-1);
+	expect(second?.hash).toBe('sha256:new');
+	const loads = await loadsOf(page, 'a');
+	await postToChrome(page, {
+		type: 'ui:error',
+		requestId: String(second?.requestId),
+		message: 'This artboard changed on disk. Make the edit again.',
+	});
+	await expect.poll(() => loadsOf(page, 'a')).toBe(loads + 1);
+	await expect(await inFrame(page, '#title')).toHaveText('New');
+	await expect(await inFrame(page, '#title')).not.toHaveAttribute('style', /margin/);
+	await expect(inspector(page).getByText('This artboard changed on disk.')).toBeVisible();
+});
+
+test('two quick commits: one in flight, the second after the answer with its hash', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'Padding').fill('4');
+	await field(page, 'Margin').focus();
+	await field(page, 'Margin').fill('2');
+	await field(page, 'Margin').blur();
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(1);
+	const [first] = await editsPosted(page);
+	expect(first?.field).toBe('padding');
+	await postToChrome(
+		page,
+		editedAnswer({
+			request: first ?? {},
+			change: (html) => html.replace('padding: 8px 16px', 'padding: 4px'),
+			hash: 'sha256:pad',
+			generation: 2,
+		}),
+	);
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
+	expect((await editsPosted(page)).at(-1)).toMatchObject({ field: 'margin', hash: 'sha256:pad' });
+});
+
+test('a dirty field, then a click on another element, saves to the first element only', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await field(page, 'Margin').fill('6');
+	await clickElement(page, '#padded');
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	await nextAnimationFrame(page);
+	const edits = await editsPosted(page);
+	expect(edits).toHaveLength(1);
+	expect(edits[0]).toMatchObject({
+		sourceNumber: await sourceNumberOf(page, '#title'),
+		value: '6',
+	});
+	await expect(field(page, 'Margin')).toHaveValue('');
+});
+
+test('an outside change while a field is dirty posts nothing and says Not saved', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await field(page, 'Text').fill('Draft');
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{
+				...EDIT_FRAME,
+				html: `${EDIT_FRAME.html}<p>agent</p>`,
+				hash: 'sha256:agent',
+				generation: 2,
+			},
+		]),
+	);
+	await expect(inspector(page).getByText(NOT_SAVED_COPY)).toBeVisible();
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+test('C typed in a field stays in Edit mode', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'Margin').focus();
+	await page.keyboard.type('c');
+	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
+	await expect(inspector(page)).toBeVisible();
 });

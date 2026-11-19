@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import {
+	adoptEditAnswer,
 	applyFrameHeight,
 	demoteToTile,
 	EMPTY_ARTBOARD_COPY,
@@ -11,6 +12,7 @@ import {
 	liveIframeIds,
 	mergeCanvasFrames,
 	PROVISIONAL_FRAME_HEIGHT,
+	reloadFrame,
 	RENDER_ERROR_COPY,
 	TILE_HEIGHT,
 	toChromeFrames,
@@ -237,4 +239,71 @@ test('a frame label shows the width alone until the first height report, and a t
 	assert.equal(frameSizeText(reported), `${fresh.width} × 900`);
 	// A tile has no size, and its stale measured height never shows.
 	assert.equal(frameSizeText(demoteToTile(reported)), '');
+});
+
+// 9e: the user's own edit. Base: hash h0, generation 1; the answer: h1, generation 2.
+const base = (): FrameRecord => measured('a');
+const answer = { html: '<p>edited</p>', hash: 'sha256:h1', generation: 2 };
+const adopted = (): FrameRecord =>
+	adoptEditAnswer({ record: base(), answer, baseHash: 'sha256:a' });
+
+test('an adopted edit answer replaces the copy, hash and generation without a reload', () => {
+	const record = adopted();
+	assert.equal(record.html, answer.html);
+	assert.equal(record.hash, answer.hash);
+	assert.equal(record.generation, 2);
+	assert.equal(record.documentHtml, base().documentHtml);
+	assert.equal(record.documentVersion, base().documentVersion);
+	assert.deepEqual(record.replacedHashes, ['sha256:a']);
+	// A newer post already won (another base), or the frame is a tile: unchanged.
+	const other = base();
+	assert.equal(adoptEditAnswer({ record: other, answer, baseHash: 'sha256:x' }), other);
+	const tile = demoteToTile(base());
+	assert.equal(adoptEditAnswer({ record: tile, answer, baseHash: 'sha256:a' }), tile);
+});
+
+test('after an adopt, the echo and any late pre-write read change nothing', () => {
+	const echoed = only(
+		mergeCanvasFrames({ records: [adopted()], frames: [posted('a', { ...answer })] }),
+	);
+	assert.equal(echoed.documentVersion, base().documentVersion);
+	assert.deepEqual(echoed.replacedHashes, ['sha256:a']);
+	// The pre-write read arrives after the echo, with a new placement: only the placement moves.
+	const stale = posted('a', { x: 40 });
+	const kept = only(mergeCanvasFrames({ records: [echoed], frames: [stale] }));
+	assert.equal(kept.html, answer.html);
+	assert.equal(kept.hash, answer.hash);
+	assert.equal(kept.documentVersion, base().documentVersion);
+	assert.equal(kept.x, 40);
+	// Two adopts in a row: a late read of the first base is still skipped.
+	const twice = adoptEditAnswer({
+		record: echoed,
+		answer: { html: '<p>again</p>', hash: 'sha256:h2', generation: 3 },
+		baseHash: 'sha256:h1',
+	});
+	assert.equal(only(mergeCanvasFrames({ records: [twice], frames: [stale] })).hash, 'sha256:h2');
+});
+
+test('a stale tile post and an outside change merge as before; the change ends the list', () => {
+	const tile = only(
+		mergeCanvasFrames({ records: [adopted()], frames: [posted('a', { errorMessage: 'gone' })] }),
+	);
+	assert.equal(tile.kind, 'tile');
+	const outside = only(
+		mergeCanvasFrames({
+			records: [adopted()],
+			frames: [posted('a', { html: '<p>agent</p>', hash: 'sha256:agent', generation: 3 })],
+		}),
+	);
+	assert.equal(outside.documentHtml, '<p>agent</p>');
+	assert.equal(outside.documentVersion, base().documentVersion + 1);
+	assert.deepEqual(outside.replacedHashes, []);
+});
+
+test('a forced reload rebuilds from the latest adopted copy, once', () => {
+	const reloaded = reloadFrame(adopted());
+	assert.equal(reloaded.documentHtml, answer.html);
+	assert.equal(reloaded.documentVersion, base().documentVersion + 1);
+	const tile = demoteToTile(base());
+	assert.equal(reloadFrame(tile), tile);
 });

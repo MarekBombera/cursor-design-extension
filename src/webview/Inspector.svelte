@@ -1,24 +1,50 @@
 <script lang="ts">
 	import { MAX_EDIT_TEXT_CHARS } from '../disk/layout';
 	import type { ChromePick } from './commentPick';
-	import { type InputField, inspectorView } from './editInspector';
+	import type { EditField } from './editRequests';
+	import {
+		type EditDraft,
+		fieldValue,
+		type InputField,
+		inspectorView,
+		textMaxLength,
+	} from './editInspector';
 	import EmptyState from './ui/EmptyState.svelte';
 	import IconButton from './ui/IconButton.svelte';
 	import Message from './ui/Message.svelte';
 
-	// The Edit-mode inspector (9d): the picked element's text and inline styles in disabled fields
-	// (9e enables them). Rendered only in Edit mode, first in the workspace DOM (Tab order inspector
-	// → comments panel → stage); CSS `order` draws it at the right edge. Frame data reaches the DOM
-	// only as field values and text, never {@html}.
+	// The Edit-mode inspector (9d, live since 9e): the picked element's text and inline styles.
+	// Input previews in the frame; Enter or blur commits text and lengths, the picker's change
+	// commits colour (EditState decides what is saved). Rendered only in Edit mode, first in the
+	// workspace DOM (Tab order inspector → comments panel → stage); CSS `order` draws it at the
+	// right edge. Frame data reaches the DOM only as field values and text, never {@html}.
 	type Props = {
 		pick: ChromePick | undefined;
 		// The picked frame's display name; '' without a pick.
 		frameLabel: string;
+		drafts: Partial<Record<EditField, EditDraft>>;
+		// The last save's refusal or "Not saved" copy; shown in every view.
+		requestError: string | undefined;
+		fieldError: (field: EditField) => string | undefined;
 		onParent: () => void;
 		onChild: () => void;
+		onFieldFocus: () => void;
+		onFieldInput: (field: EditField, value: string) => void;
+		onFieldCommit: (field: EditField) => void;
 	};
 
-	let { pick, frameLabel, onParent, onChild }: Props = $props();
+	let {
+		pick,
+		frameLabel,
+		drafts,
+		requestError,
+		fieldError,
+		onParent,
+		onChild,
+		onFieldFocus,
+		onFieldInput,
+		onFieldCommit,
+	}: Props = $props();
 
 	const fieldId = $props.id();
 
@@ -42,6 +68,9 @@
 		'too-long': `This text is over ${MAX_EDIT_TEXT_CHARS.toLocaleString('en-US')} characters: ask the Agent to change it.`,
 	} as const;
 
+	const STYLE_TOO_LONG_COPY =
+		"This element's style attribute is too long to edit here: ask the Agent.";
+
 	// aria-disabled, not disabled: when a frame reload clears the pick under a focused step button,
 	// focus stays on it instead of falling to body.
 	const step = (send: () => void): void => {
@@ -49,6 +78,19 @@
 			send();
 		}
 	};
+
+	const shown = (field: EditField, pickValue: string): string =>
+		fieldValue({ draft: drafts[field], pick, pickValue });
+
+	// Enter (Shift+Enter too) commits; no newline is typed. Never while an IME composes.
+	const commitOnEnter = (field: EditField) => (event: KeyboardEvent) => {
+		if (event.key === 'Enter' && !event.isComposing) {
+			event.preventDefault();
+			onFieldCommit(field);
+		}
+	};
+
+	const errorId = (field: EditField): string => `${fieldId}-${field}-error`;
 </script>
 
 <aside aria-label="Inspector" data-cd-inspector>
@@ -73,6 +115,11 @@
 		{/if}
 	</div>
 	<div class="body">
+		<div class={{ 'request-error': requestError !== undefined }} aria-live="polite">
+			{#if requestError !== undefined}
+				<Message tone="error">{requestError}</Message>
+			{/if}
+		</div>
 		{#if view.kind === 'empty'}
 			<EmptyState icon="edit" title="No element selected">
 				Click an element to edit its text and style.
@@ -80,31 +127,71 @@
 		{:else if view.kind === 'not-editable'}
 			<Message tone="info">{NOT_EDITABLE_COPY[view.reason]}</Message>
 		{:else}
+			{@const textError = fieldError('text')}
 			<div class="fields">
 				{#if view.text.state === 'plain'}
 					<label for="{fieldId}-text">Text</label>
-					<textarea id="{fieldId}-text" rows="3" disabled value={view.text.value}></textarea>
+					<textarea
+						id="{fieldId}-text"
+						rows="3"
+						maxlength={textMaxLength(drafts.text?.liveText ?? view.text.liveText)}
+						value={shown('text', view.text.value)}
+						aria-invalid={textError !== undefined}
+						aria-describedby={textError === undefined ? undefined : errorId('text')}
+						onfocus={onFieldFocus}
+						oninput={(event) => onFieldInput('text', event.currentTarget.value)}
+						onkeydown={commitOnEnter('text')}
+						onblur={() => onFieldCommit('text')}
+					></textarea>
+					{#if textError !== undefined}
+						<Message tone="error" id={errorId('text')}>{textError}</Message>
+					{/if}
 				{:else if view.text.state !== 'none'}
 					<Message tone="info">{TEXT_HINTS[view.text.state]}</Message>
 				{/if}
-				{#each view.fields as field (field.field)}
-					<label for="{fieldId}-{field.field}">{FIELD_LABELS[field.field]}</label>
-					<input
-						id="{fieldId}-{field.field}"
-						type="text"
-						disabled
-						value={field.value}
-						placeholder={field.placeholder}
-					/>
-					<!-- Color sits with the type fields, after Font size; a computed value reads secondary. -->
-					{#if field.field === 'font-size'}
-						<label for="{fieldId}-color">Color</label>
-						<span class="color">
-							<input id="{fieldId}-color" type="color" disabled value={view.color.hex} />
-							<span class={{ computed: view.color.computed }}>{view.color.value}</span>
-						</span>
-					{/if}
-				{/each}
+				{#if view.style === 'too-long'}
+					<Message tone="info">{STYLE_TOO_LONG_COPY}</Message>
+				{:else}
+					{#each view.fields as field (field.field)}
+						{@const error = fieldError(field.field)}
+						<label for="{fieldId}-{field.field}">{FIELD_LABELS[field.field]}</label>
+						<input
+							id="{fieldId}-{field.field}"
+							type="text"
+							value={shown(field.field, field.value)}
+							placeholder={field.placeholder}
+							aria-invalid={error !== undefined}
+							aria-describedby={error === undefined ? undefined : errorId(field.field)}
+							onfocus={onFieldFocus}
+							oninput={(event) => onFieldInput(field.field, event.currentTarget.value)}
+							onkeydown={commitOnEnter(field.field)}
+							onblur={() => onFieldCommit(field.field)}
+						/>
+						{#if error !== undefined}
+							<Message tone="error" id={errorId(field.field)}>{error}</Message>
+						{/if}
+						<!-- Color sits with the type fields, after Font size; a computed value reads secondary. -->
+						{#if field.field === 'font-size'}
+							{@const colorDraft = drafts.color}
+							<label for="{fieldId}-color">Color</label>
+							<span class="color">
+								<!-- The native picker: input previews, change (release) commits; no blur commit,
+								     opening the picker may blur it. -->
+								<input
+									id="{fieldId}-color"
+									type="color"
+									value={shown('color', view.color.hex)}
+									onfocus={onFieldFocus}
+									oninput={(event) => onFieldInput('color', event.currentTarget.value)}
+									onchange={() => onFieldCommit('color')}
+								/>
+								<span class={{ computed: view.color.computed && colorDraft === undefined }}
+									>{shown('color', view.color.value)}</span
+								>
+							</span>
+						{/if}
+					{/each}
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -152,6 +239,9 @@
 		font-size: var(--cd-fs-sm);
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.request-error {
+		margin-bottom: var(--cd-space-12);
 	}
 	.body {
 		display: flex;

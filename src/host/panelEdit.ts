@@ -91,7 +91,9 @@ export const answerEditRequest = async ({
 		// debounce. Two ceilings: the HTML write, meta write and lock release (read + unlink) taking
 		// over 200 ms lets the echo arrive first, and a refresh (watcher or frame:place) that read disk
 		// before this write can post the old hash and generation after this answer. Neither loses
-		// data; the chrome (9e) handles both. editArtboard refuses a result over the preview cap,
+		// data. The chrome (9e, canvasFrames.ts): an echo first reloads the frame and the answer is
+		// a no-op (a waiting save says "Not saved"); a stale pre-write post is skipped
+		// (replacedHashes). editArtboard refuses a result over the preview cap,
 		// so panelFrameHtml returns no too-large errorMessage here.
 		const posted = panelFrameHtml({
 			workspaceRoot,

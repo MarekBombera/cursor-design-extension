@@ -112,23 +112,26 @@ export const readStyles = (read: (property: string) => string): CommentStyles =>
 // The pick fields that depend only on the element, not on the click or scroll position.
 export type PickDescription = Pick<FramePickMessage, 'selector' | 'tagName' | 'text' | 'styles'>;
 
-export const describeElement = (element: Element, isPage: boolean): PickDescription => {
+// Everything but the selector: cheap enough to recompute after an Edit-mode preview (9e), which
+// reuses the cached selector instead of running finder again.
+export const describeContent = (
+	element: Element,
+	isPage: boolean,
+): Omit<PickDescription, 'selector'> => {
 	if (isPage) {
 		// The whole page's text is noise; 8e checks page comments by generation.
 		const body = element.ownerDocument.body ?? element;
 		return {
-			selector: 'body',
 			tagName: 'body',
 			text: '',
 			styles: readStyles((property) => window.getComputedStyle(body).getPropertyValue(property)),
 		};
 	}
 	if (!element.isConnected) {
-		return { selector: null, tagName: element.localName, text: '', styles: {} };
+		return { tagName: element.localName, text: '', styles: {} };
 	}
 	const style = window.getComputedStyle(element);
 	return {
-		selector: buildSelector(element),
 		tagName: element.localName,
 		text: textExcerpt(
 			element instanceof HTMLElement ? element.innerText : (element.textContent ?? ''),
@@ -136,3 +139,8 @@ export const describeElement = (element: Element, isPage: boolean): PickDescript
 		styles: readStyles((property) => style.getPropertyValue(property)),
 	};
 };
+
+export const describeElement = (element: Element, isPage: boolean): PickDescription => ({
+	selector: isPage ? 'body' : element.isConnected ? buildSelector(element) : null,
+	...describeContent(element, isPage),
+});

@@ -134,8 +134,10 @@ export const applyPickMessage = ({
 			? [{ frameId: previous.frameId, message: frameModeMessage(state.mode) }]
 			: [];
 	const { type: _type, ...fields } = message;
-	// Counts picks so the Toolbar's live region text changes even when two picks read the same.
-	const sequence = (previous?.sequence ?? 0) + 1;
+	// Counts picks so the Toolbar's live region text changes even when two picks read the same. A
+	// re-post (scroll, 9e preview) is the same pick: it keeps the count, so nothing is re-announced.
+	const sequence =
+		message.repost && previous !== undefined ? previous.sequence : (previous?.sequence ?? 0) + 1;
 	return { state: { ...state, pick: { frameId, sequence, ...fields } }, sends };
 };
 
