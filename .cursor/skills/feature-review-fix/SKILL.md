@@ -7,7 +7,7 @@ description: Judge both dual-reviewer reports, research as needed, and rewrite t
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
-**First action:** Before project inspection, preflight, or any other tool call, publish `running` to `blueprint/.state/run.json` using the dashboard activity contract in `AGENTS.md` with `--command feature-review-fix` and boundary `reviewed`.
+**First action:** Before project inspection, preflight, or any other tool call, publish `running` to `blueprint/.state/run.json` using the dashboard activity contract in `blueprint/workflow.md` with `--command feature-review-fix` and boundary `reviewed`.
 
 Where this sits in the workflow:
 
@@ -20,8 +20,8 @@ This agent is the **final judge and implementor of spec fixes**. It is not the p
 
 ## Step 0 - preflight (fail fast)
 
-1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/doctor`.
-2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature`, `/fix`, or `/rollback`.
+1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/blueprint-doctor`.
+2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature` or `/fix`.
 3. Require a complete packet at `blueprint/context/feature-review.md`. It must exist and must not be the reset stub. It must contain both `## Breaker` and `## Literalist`, and each of those must contain all five subsections: `### Model`, `### Verdict`, `### Findings`, `### Nits`, `### Not reviewed`. Missing or malformed packet: stop, point to `/feature-review`. Do not self-review. Do not spawn Breaker or Literalist from this skill.
 
 ## Step 1 - read both reports in full
@@ -64,7 +64,7 @@ Rewrite `blueprint/context/current-feature.md` **once**. Draft and merge in cont
 - If this step rewrites the spec, also refresh `blueprint/context/current-feature-overview.md` so it stays the trimmed readable version of the new spec (same sections and constraints as `/feature`). Never leave the overview stale or as a stub after a spec rewrite.
 - Re-run the **Chart checklist** in `blueprint/context/system-map.md` on the overview's data-flow chart against the rewritten spec. Accepted findings often move where an event is handled or add a handshake. Redraw the chart rather than patching prose around a stale chart.
 
-Do not edit the packet. `blueprint/context/feature-review.md` stays as `/feature-review` wrote it until `/feature`, `/fix`, `/rollback`, or `/complete` resets it.
+Do not edit the packet. `blueprint/context/feature-review.md` stays as `/feature-review` wrote it until `/feature`, `/fix`, or `/complete` resets it.
 
 ## Step 5 - report
 

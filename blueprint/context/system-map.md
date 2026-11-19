@@ -3,7 +3,7 @@
 > **Durable file.** The data flow of the **shipped** code on the default branch: processes,
 > messages, and disk. It is for humans steering the project and for agents about to change it.
 > `/complete` merges each finished work item's flows in, after checking them against the built
-> code. `/feature`, `/fix`, and `/rollback` read it as the baseline and repair any drift they find.
+> code. `/feature` and `/fix` read it as the baseline and repair any drift they find.
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 

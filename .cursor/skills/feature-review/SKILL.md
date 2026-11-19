@@ -7,7 +7,7 @@ description: Dual-subagent review of the active current-feature.md spec for bugs
 
 **Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
 
-**First action:** Before project inspection, preflight, or any other tool call, publish `running` to `blueprint/.state/run.json` using the dashboard activity contract in `AGENTS.md` with boundary `reviewed`.
+**First action:** Before project inspection, preflight, or any other tool call, publish `running` to `blueprint/.state/run.json` using the dashboard activity contract in `blueprint/workflow.md` with boundary `reviewed`.
 
 Where this sits in the workflow:
 
@@ -20,8 +20,8 @@ This skill reviews the spec itself: `blueprint/context/current-feature.md`. It n
 
 ## Step 0 - preflight (fail fast)
 
-1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/doctor`.
-2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature`, `/fix`, or `/rollback`. Never review an empty spec.
+1. Read `blueprint/config.json` when present. Invalid configuration stops all mutating work and points to `/blueprint-doctor`.
+2. Require an active spec: `blueprint/context/current-feature.md` must exist and must not be the reset stub. On a stub or missing file, stop and point to `/feature` or `/fix`. Never review an empty spec.
 3. Require both reviewer files, each with its `model:` line and an `effort: high` line:
    - `.cursor/agents/feature-review-breaker.md`: `model: claude-opus-5-5`
    - `.cursor/agents/feature-review-literalist.md`: `model: claude-sonnet-5-5`
@@ -66,8 +66,8 @@ Canonical shape:
 
 > **Generated file.** Dual-reviewer packet for the active spec. Written by
 > `/feature-review` after both Breaker and Literalist reports validate. Consumed
-> by `/feature-review-fix`. Reset by `/feature`, `/fix`, `/rollback`, and
-> `/complete` like other current-* files.
+> by `/feature-review-fix`. Reset by `/feature`, `/fix`, and `/complete` like
+> other current-* files.
 
 **Title:** <first heading of the spec, without the leading #>
 **From build-plan:** <copied when the spec has this field>

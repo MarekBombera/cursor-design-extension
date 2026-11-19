@@ -31,7 +31,7 @@ One copy of everything; never copy files between adapter trees.
 - `pnpm verify` runs `scripts/check-agent-rules.mjs`, which fails on a plain `.mdc` file (Cursor's "New rule" creates one), a broken link, or `globs:` / `paths:` drift.
 
 This repo also uses [AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint)
-1.13.0 as a file-backed workflow overlay (plans, specs, review gates). Blueprint
+1.16.1 as a file-backed workflow overlay (plans, specs, review gates). Blueprint
 does not define the product stack. Never run a framework scaffolder inside this
 directory; the extension scaffold already exists. The official updater refuses the
 symlinked adapter trees, so Blueprint updates are a manual three-way merge.
@@ -58,27 +58,29 @@ and installed dependencies before adding machinery.
 
 ## Read these when relevant
 
-- `blueprint/config.json` - workflow policy: review cadence, quality gates, branch prefixes, `git.landing`. Skills read it themselves; an invalid file stops mutating commands and points to `/doctor`. Configuration never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
+- `blueprint/config.json` - workflow policy: review cadence, quality gates, branch prefixes, `git.landing`. Skills read it themselves; an invalid file stops mutating commands and points to `/blueprint-doctor`. Configuration never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
+- `blueprint/workflow.md` - managed workflow reference (configuration, each skill, dashboard activity, checks)
 - `blueprint/context/project-overview.md` - durable product context from the plans
 - `blueprint/context/system-map.md` - shipped data flow (processes, messages, disk) with the chart checklist; read before changing a cross-process flow
 - `blueprint/context/coding-standards.md` - stack, testing, and writing standards (code rules live in `.claude/rules/`)
 - `blueprint/context/ai-interaction.md` - read when running the Blueprint workflow
-- `blueprint/context/current-feature.md` - the one feature, fix, or rollback being built in this checkout
+- `blueprint/context/current-feature.md` - the one feature or fix being built in this checkout
 
 Reuse relevant context already loaded in the session; skills load the rest on demand.
 
 ## Workflow
 
-Build one feature, fix, or rollback at a time, behind review gates:
+Build one feature or fix at a time, behind review gates:
 
-`/feature` (or `/fix`, `/rollback`) -> `/feature-review` -> `/feature-review-fix` ->
+`/feature` (or `/fix`) -> `/feature-review` -> `/feature-review-fix` ->
 `/implement` -> `/check` -> `/audit current` -> `/complete`
 
 Approve the spec `/feature-review-fix` rewrote before Implement. Check proves
 behavior; Audit reviews code and records findings in `blueprint/context/findings.md`
 (open P0/P1 findings block `/complete`). Audit is not mandatory unless the
 configured gates select it. `/check guide` only generates manual instructions.
-`/explore`, `/brief`, `/status`, and `/doctor` are read-only orientation.
+`/explore`, `/brief`, `/blueprint-status`, and `/blueprint-doctor` are read-only
+orientation. To remove a shipped feature, use `/fix`.
 
 In Codex, invoke skills as `$feature`; in Claude Code and Cursor, as `/feature`.
 These are chat commands, not terminal commands.
@@ -89,36 +91,17 @@ Approval boundaries:
   `/complete`; Continuous works locally and never pushes, deploys, or publishes.
 - `/complete` follows `git.landing` (`local-merge`): squash merge needs an
   explicit yes, and pushing needs a separate yes.
-- `/release` prepares Render/Vercel config only. This product ships as a `.vsix`;
-  never deploy, publish, or push without a separate yes in the current chat.
+- This product ships as a `.vsix`; never deploy, publish, or push without a separate yes in the current chat.
 - Parallel work uses one Git worktree or clone per work item, each on its own
   branch. Never replace another worker's active spec.
 
 ## Dashboard activity
 
 Tracked commands record progress in `blueprint/.state/run.json` (generated, ignored
-by Git): `onboard`, `adopt`, `discovery`, `overview`, `feature`, `fix`,
-`feature-review`, `feature-review-fix`, `rollback`, `implement`, `debug`, `check`,
-`audit`, `tests`, `ci`, `prototype`, `autopilot`, `continuous`, `complete`, and
-`release`. `explore`, `brief`, `status`, `doctor`, and `check guide` never write it.
-
-Writing the initial record is the first action of a tracked command, before any
-other tool call. It does not authorize product changes or bypass a safety check.
-Never create or edit `run.json` directly; use the helper from the project root:
-
-```text
-node .cursor/skills/doctor/scripts/run-state.mjs <action> <options>
-```
-
-- `start --command <skill> --summary <truthful-summary> --boundary <boundary>`
-- `update` at milestones; for a blocker add `--status blocked --resume <exact-command>`
-- `finish --status ready|completed --summary <truthful-summary>`
-
-`status`: `running`, `blocked`, `ready` (reached its review handoff), or
-`completed`. `boundary`: `read-only`, `reviewed`, or `local-only`. Optional:
-`--detail`, progress, feature id/title. The helper validates every field. If it
-is missing or fails, report the warning and continue without a manual fallback.
-Never put secrets, raw logs, prompts, or user content in this file.
+by Git) through `node .cursor/skills/blueprint-doctor/scripts/run-state.mjs`, never
+by hand. The contract (which commands, first-action rule, fields) is
+`blueprint/workflow.md` → Dashboard activity. Here `feature-review` and
+`feature-review-fix` are tracked too.
 
 ## Automatic verification
 

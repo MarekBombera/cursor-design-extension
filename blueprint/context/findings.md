@@ -7,13 +7,13 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-09 [P3] open - Blueprint manifest still hashes the replaced adapter copies
+### F-09 [P3] accepted - Blueprint manifest still hashes the replaced adapter copies
 
 **File:** blueprint/.state/manifest.json:6
 **Found:** 2026-10-12 by /audit (scope: current; lens: quality)
 **Why it matters:** Commit f4c9edd replaced the `.agents/skills` and `.claude/skills` trees with symlinks into `.cursor/skills`, but the tracked manifest still lists both adapter paths as separate managed files with their old hashes. 28 entries no longer match (all 23 `.claude/skills` entries, plus `.agents/skills` complete, doctor, feature, fix, rollback). `/doctor` reports this manifest, and a Blueprint update that writes each adapter path in turn would write through both symlinks into the same `.cursor` file, so the last adapter written wins.
 **Suggested fix:** Record the symlink layout as an intended local customization (for example a note in `AGENTS.md` or the doctor skill telling update tooling to target `.cursor` once), or refresh the manifest through the Blueprint updater rather than by hand. No product code change.
-**Resolution:**
+**Resolution:** Accepted 2026-11-19 with the 1.16.1 upgrade. The single `.cursor` tree plus symlinks is deliberate (AGENTS.md: Agent files), so the official updater is never run here; upgrades are a manual three-way merge that regenerates the manifest from pristine template hashes. The remaining drift (local customizations in complete, blueprint-doctor, feature, fix, and the `.claude` flavor's `disable-model-invocation` line) is expected and is the merge base for the next upgrade.
 
 ### F-14 [P2] open - Watch matcher misses the `vp pack` success line
 
