@@ -26,8 +26,8 @@ declare const acquireVsCodeApi: () => VsCodeApi;
 
 const vscodeApi = acquireVsCodeApi();
 
-// Webview state is one record, {stageView, commentsPanelOpen, commentMode, commentDraft,
-// openThreadId, replyDrafts}; each save keeps the other keys, so no save erases another's.
+// Webview state is one record, {stageView, commentsPanelOpen, mode, commentDraft, openThreadId,
+// replyDrafts}; each save keeps the other keys, so no save erases another's.
 const savedRecord = (): Record<string, unknown> => {
 	const state = vscodeApi.getState();
 	return state !== null && typeof state === 'object' ? { ...state } : {};
@@ -49,20 +49,21 @@ export const saveCommentsPanelOpen = (open: boolean): void => {
 
 export const readSavedCommentUi = (): SavedCommentUi => parseSavedCommentUi(vscodeApi.getState());
 
-// Snapshot: a deep $state proxy cannot be cloned. A key at its default (mode off, no draft, no
-// thread, no reply text) is left out, so a closed comment UI leaves only the other keys.
+// Snapshot: a deep $state proxy cannot be cloned. A key at its default (Interact mode, no draft,
+// no thread, no reply text) is left out, so a closed comment UI leaves only the other keys; the
+// previous record's `mode` is dropped first, so leaving a mode is saved too.
 export const saveCommentUi = (ui: SavedCommentUi): void => {
 	const {
-		commentMode: _commentMode,
+		mode: _mode,
 		commentDraft: _commentDraft,
 		openThreadId: _openThreadId,
 		replyDrafts: _replyDrafts,
 		...others
 	} = savedRecord();
-	const { commentMode, commentDraft, openThreadId, replyDrafts } = $state.snapshot(ui);
+	const { mode, commentDraft, openThreadId, replyDrafts } = $state.snapshot(ui);
 	vscodeApi.setState({
 		...others,
-		...(commentMode ? { commentMode } : {}),
+		...(mode === 'interact' ? {} : { mode }),
 		...(commentDraft === undefined ? {} : { commentDraft }),
 		...(openThreadId === undefined ? {} : { openThreadId }),
 		...(Object.keys(replyDrafts).length === 0 ? {} : { replyDrafts }),

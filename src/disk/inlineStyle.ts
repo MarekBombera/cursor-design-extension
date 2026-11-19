@@ -213,6 +213,9 @@ export type StyleSegment = {
 	// Decoded name before the first top-level `:`, trimmed and ASCII-lowercased; absent when the
 	// segment has no such colon (malformed, empty, comment-only), so it never matches.
 	property?: string;
+	// Raw text after that colon and its leading whitespace, as typed (`!important`, comments and
+	// trailing whitespace kept); present exactly when `property` is.
+	value?: string;
 };
 
 // Every segment's `text + separator`, joined, gives back `styleText` exactly. `endsOpen` is true
@@ -222,10 +225,12 @@ export const splitStyleDeclarations = (
 ): { segments: StyleSegment[]; endsOpen: boolean } => {
 	const { segments, endsOpen } = scanStyle(styleText);
 	return {
-		segments: segments.map(({ start, end, separatorEnd, property }) => ({
+		segments: segments.map(({ start, end, separatorEnd, property, valueStart }) => ({
 			text: styleText.slice(start, end),
 			separator: styleText.slice(end, separatorEnd),
-			...(property === undefined ? {} : { property }),
+			...(property === undefined || valueStart === undefined
+				? {}
+				: { property, value: styleText.slice(valueStart, end) }),
 		})),
 		endsOpen,
 	};

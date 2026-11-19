@@ -4,8 +4,11 @@
 import {
 	COMMENT_ID_PATTERN,
 	COMMENT_STYLE_KEYS,
+	type EDIT_STYLE_FIELDS,
 	MAX_COMMENTS,
+	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
+	MAX_PICK_STYLE_CHARS,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
 	MAX_STYLE_VALUE_CHARS,
@@ -40,9 +43,36 @@ export const FRAME_ANCHOR_RECTS_MESSAGE = 'cd:anchor-rects';
 // Frame-local CSS px (the frame's client coordinates).
 export type FrameRect = { x: number; y: number; width: number; height: number };
 
-export type FrameMode = 'interact' | 'comment';
+export const FRAME_MODES = ['interact', 'comment', 'edit'] as const;
+
+export type FrameMode = (typeof FRAME_MODES)[number];
+
+// cd:mode's guard, shared with the saved webview state (savedState.ts).
+export const isFrameMode = (value: unknown): value is FrameMode =>
+	(FRAME_MODES as readonly unknown[]).includes(value);
 
 export type CommentStyles = Partial<Record<(typeof COMMENT_STYLE_KEYS)[number], string>>;
+
+export type EditStyleField = (typeof EDIT_STYLE_FIELDS)[number];
+
+const PICK_TEXT_STATES = ['plain', 'children', 'too-long'] as const;
+
+// What an Edit-mode pick reports about its target (9d): what the edit core needs to know. The
+// computed values are the pick's own `styles`.
+export type PickEditFields = {
+	// The target's data-cd-src as a canonical non-negative integer; null when absent, malformed or
+	// the target is disconnected.
+	sourceNumber: number | null;
+	// Another element in the target's document carries the same number (a script cloned it).
+	sharedNumber: boolean;
+	// 'plain': no child nodes or exactly one text node; 'children': anything else; 'too-long':
+	// plain, but over MAX_EDIT_TEXT_CHARS.
+	textState: (typeof PICK_TEXT_STATES)[number];
+	// The text node's full, unmodified data iff 'plain'; '' otherwise.
+	text: string;
+	// The style attribute as the live page holds it; null when absent or over MAX_PICK_STYLE_CHARS.
+	style: string | null;
+};
 
 type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
 
@@ -74,6 +104,8 @@ export type FramePickMessage = {
 	isPage: boolean;
 	// True for a scroll or resize re-post of the same pick; false for a click or ↑/↓ step.
 	repost: boolean;
+	// Present iff the frame is in Edit mode.
+	edit?: PickEditFields;
 };
 
 // The mode keys, forwarded so they work with focus inside a frame.
@@ -249,11 +281,11 @@ const parseStyles = (value: unknown): CommentStyles | undefined => {
 	return styles;
 };
 
-// The pick's own fields, without `type` and `repost`: cd:pick and a saved comment draft (the
-// chrome's webview state) share these guards.
+// The pick's own fields, without `type`, `repost` and `edit`: cd:pick and a saved comment draft
+// (the chrome's webview state) share these guards.
 export const parsePickFields = (
 	record: Record<string, unknown>,
-): Omit<FramePickMessage, 'type' | 'repost'> | undefined => {
+): Omit<FramePickMessage, 'type' | 'repost' | 'edit'> | undefined => {
 	const { tagName, text, isPage } = record;
 	const rect = parseNullableRect(record.rect);
 	const selector = parseSelector(record.selector);
@@ -276,12 +308,48 @@ export const parsePickFields = (
 	return { selector, tagName, text, rect, point, box, styles, isPage };
 };
 
+// The host's artboard:edit takes the same range (chromeMessages.ts).
+const isSourceNumber = (value: unknown): value is number | null =>
+	value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+
+const isPickTextState = (value: unknown): value is PickEditFields['textState'] =>
+	(PICK_TEXT_STATES as readonly unknown[]).includes(value);
+
+// Rebuilt, so extra keys are dropped. `text` and `style` may hold control characters: both are
+// the page's own text, shown only as field values and never put in an Agent prompt.
+const parsePickEdit = (value: unknown): PickEditFields | undefined => {
+	const record = asRecord(value);
+	if (record === undefined || Array.isArray(value)) {
+		return undefined;
+	}
+	const { sourceNumber, sharedNumber, textState, text, style } = record;
+	if (
+		!isSourceNumber(sourceNumber) ||
+		typeof sharedNumber !== 'boolean' ||
+		(sharedNumber && sourceNumber === null) ||
+		!isPickTextState(textState) ||
+		typeof text !== 'string' ||
+		text.length > MAX_EDIT_TEXT_CHARS ||
+		(textState !== 'plain' && text !== '') ||
+		(style !== null && (typeof style !== 'string' || style.length > MAX_PICK_STYLE_CHARS))
+	) {
+		return undefined;
+	}
+	return { sourceNumber, sharedNumber, textState, text, style };
+};
+
 const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {
 	const fields = parsePickFields(record);
 	if (fields === undefined || typeof record.repost !== 'boolean') {
 		return undefined;
 	}
-	return { type: FRAME_PICK_MESSAGE, ...fields, repost: record.repost };
+	if (record.edit === undefined) {
+		return { type: FRAME_PICK_MESSAGE, ...fields, repost: record.repost };
+	}
+	const edit = parsePickEdit(record.edit);
+	return edit === undefined
+		? undefined
+		: { type: FRAME_PICK_MESSAGE, ...fields, repost: record.repost, edit };
 };
 
 // At most MAX_COMMENTS entries; one bad entry rejects the whole list. Entries are rebuilt, so
@@ -369,9 +437,7 @@ export const parseChromeFrameMessage = (data: unknown): ChromeFrameMessage | und
 	}
 	switch (record.type) {
 		case FRAME_MODE_MESSAGE:
-			return record.mode === 'interact' || record.mode === 'comment'
-				? { type: FRAME_MODE_MESSAGE, mode: record.mode }
-				: undefined;
+			return isFrameMode(record.mode) ? { type: FRAME_MODE_MESSAGE, mode: record.mode } : undefined;
 		case PICK_PARENT_MESSAGE:
 			return { type: PICK_PARENT_MESSAGE };
 		case PICK_CHILD_MESSAGE:

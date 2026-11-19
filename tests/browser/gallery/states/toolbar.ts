@@ -1,5 +1,12 @@
 import { expect } from '@playwright/test';
-import { boxOf, clickChrome, commentButton, postToChrome, zoomSelect } from '../../harness';
+import {
+	boxOf,
+	clickChrome,
+	commentButton,
+	editButton,
+	postToChrome,
+	zoomSelect,
+} from '../../harness';
 import { openPanelUi, toolbar } from '../interact';
 import { HANDOFF_STALE, type Session, settle, type StateDefinition, withComments } from '../scene';
 
@@ -30,6 +37,14 @@ toolbarState('comment-mode', 'Clicked the Comment segment.', async ({ open, shoo
 	await open(withComments());
 	await clickChrome(commentButton(page));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
+	await page.mouse.move(640, 20);
+	await settle(page);
+	await shoot({ closeup: await boxOf(toolbar(page)) });
+});
+toolbarState('edit-mode', 'Clicked the Edit segment.', async ({ open, shoot, page }) => {
+	await open(withComments());
+	await clickChrome(editButton(page));
+	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await page.mouse.move(640, 20);
 	await settle(page);
 	await shoot({ closeup: await boxOf(toolbar(page)) });

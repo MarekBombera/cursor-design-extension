@@ -32,6 +32,8 @@ export const ICONS = {
 	],
 	cursor: [{ kind: 'path', path: 'M3.5 2.5l9.5 5.3-4.2 1.1-1.9 4.1z' }],
 	dot: [{ kind: 'circle', cx: 8, cy: 8, radius: 4, fill: true }],
+	// A pencil: Edit mode (9d).
+	edit: [{ kind: 'path', path: 'M10.5 2.5l3 3-8 8H2.5v-3zM9 4l3 3' }],
 	element: [{ kind: 'path', path: 'M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5' }],
 	error: [
 		{ kind: 'circle', cx: 8, cy: 8, radius: 6 },

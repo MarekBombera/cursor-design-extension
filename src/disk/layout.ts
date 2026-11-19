@@ -51,8 +51,47 @@ export const MAX_PICK_TEXT_CHARS = 200;
 
 export const MAX_STYLE_VALUE_CHARS = 200;
 
+// Edit-mode style fields (0.4): the inline declarations an edit can change; the inspector derives
+// its fields from them.
+export const EDIT_STYLE_FIELDS = ['font-size', 'color', 'padding', 'margin'] as const;
+
 // Edit-mode fields (0.4): the edit core's allowlist, shared with the panel's artboard:edit type.
-export const EDIT_FIELDS = ['text', 'font-size', 'color', 'padding', 'margin'] as const;
+export const EDIT_FIELDS = ['text', ...EDIT_STYLE_FIELDS] as const;
+
+// Source numbers (0.4): the attribute the host splices into the frame copy (sourceTags.ts). Here,
+// not there, so the frame runtime and the chrome never import parse5.
+export const SOURCE_TAG_ATTRIBUTE = 'data-cd-src';
+
+// Elements whose text parse5 reads as raw text: an encoded edit would show its entities. The edit
+// core refuses text edits on them; the inspector shows no Text field.
+export const RAW_TEXT_ELEMENTS: ReadonlySet<string> = new Set([
+	'iframe',
+	'noembed',
+	'noframes',
+	'noscript',
+	'xmp',
+	'plaintext',
+]);
+
+// HTML void elements: they can never hold text, so the inspector shows no Text field.
+export const VOID_ELEMENTS: ReadonlySet<string> = new Set([
+	'area',
+	'base',
+	'br',
+	'col',
+	'embed',
+	'hr',
+	'img',
+	'input',
+	'link',
+	'meta',
+	'source',
+	'track',
+	'wbr',
+]);
+
+// An Edit-mode pick's style attribute as the frame reports it; a longer one is reported as null.
+export const MAX_PICK_STYLE_CHARS = 5000;
 
 // Edit-mode text (0.4): the new text and the frame's live text of an edited element.
 export const MAX_EDIT_TEXT_CHARS = 5000;

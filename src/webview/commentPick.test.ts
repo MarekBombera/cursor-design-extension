@@ -3,14 +3,18 @@ import { test } from 'vite-plus/test';
 
 import {
 	applyPickMessage,
+	type ChromePick,
+	chooseMode,
 	clearPick,
 	type CommentPickState,
 	INITIAL_COMMENT_PICK,
 	keepLiveFrames,
 	modeKeyAction,
 	type ModeKeyInput,
-	toggleCommentMode,
+	pickCounts,
+	pressedMode,
 } from './commentPick';
+import { FRAME_MODES, type FrameMode, type PickEditFields } from './frame/frameMessages';
 
 const rect = { x: 1, y: 2, width: 3, height: 4 };
 const pickFields = {
@@ -24,13 +28,20 @@ const pickFields = {
 	isPage: false,
 	repost: false,
 };
-const pickIn = (frameId: string): CommentPickState['pick'] => ({
+const pickIn = (frameId: string): ChromePick => ({
 	frameId,
 	sequence: 1,
 	...pickFields,
 });
+const edit: PickEditFields = {
+	sourceNumber: 3,
+	sharedNumber: false,
+	textState: 'plain',
+	text: 'Card',
+	style: null,
+};
 const commenting = (overrides: Partial<CommentPickState> = {}): CommentPickState => ({
-	commentMode: true,
+	mode: 'comment',
 	hover: undefined,
 	pick: undefined,
 	...overrides,
@@ -53,15 +64,76 @@ test('a reload clears only that frame and re-sends the current mode', () => {
 	]);
 });
 
-test('hover and pick posted outside Comment mode are ignored (a design script can post them)', () => {
+test('hover and pick posted in Interact mode are ignored (a design script can post them)', () => {
 	for (const message of [
 		{ type: 'cd:hover', rect },
 		{ type: 'cd:pick', ...pickFields },
+		{ type: 'cd:pick', ...pickFields, edit },
 	] as const) {
 		const step = applyPickMessage({ state: INITIAL_COMMENT_PICK, frameId: 'a', message });
 		assert.equal(step.state, INITIAL_COMMENT_PICK);
 		assert.deepEqual(step.sends, []);
 	}
+});
+
+test('pickCounts: a pick counts only when its edit fields match the mode', () => {
+	const hover = { type: 'cd:hover', rect } as const;
+	const commentPick = { type: 'cd:pick', ...pickFields } as const;
+	const editPick = { type: 'cd:pick', ...pickFields, edit } as const;
+	const table: Array<[FrameMode, boolean, boolean, boolean]> = [
+		// mode, hover, pick without edit, pick with edit
+		['interact', false, false, false],
+		['comment', true, true, false],
+		['edit', true, false, true],
+	];
+	for (const [mode, hoverCounts, commentCounts, editCounts] of table) {
+		assert.equal(pickCounts({ mode, message: hover }), hoverCounts, `${mode} hover`);
+		assert.equal(pickCounts({ mode, message: commentPick }), commentCounts, `${mode} pick`);
+		assert.equal(pickCounts({ mode, message: editPick }), editCounts, `${mode} edit pick`);
+	}
+});
+
+test('Edit mode keeps hover and an edit pick, drops a pick without edit; Comment drops one with', () => {
+	const editing = commenting({ mode: 'edit' });
+	const hovered = applyPickMessage({
+		state: editing,
+		frameId: 'a',
+		message: { type: 'cd:hover', rect },
+	});
+	assert.deepEqual(hovered.state.hover, { frameId: 'a', rect });
+	const picked = applyPickMessage({
+		state: editing,
+		frameId: 'a',
+		message: { type: 'cd:pick', ...pickFields, edit },
+	});
+	assert.deepEqual(picked.state.pick, { frameId: 'a', sequence: 1, ...pickFields, edit });
+	// A Comment-mode pick still in flight after the switch to Edit mode, and the reverse.
+	const stale = applyPickMessage({
+		state: editing,
+		frameId: 'a',
+		message: { type: 'cd:pick', ...pickFields },
+	});
+	assert.equal(stale.state, editing);
+	assert.deepEqual(stale.sends, []);
+	const forged = applyPickMessage({
+		state: commenting(),
+		frameId: 'a',
+		message: { type: 'cd:pick', ...pickFields, edit },
+	});
+	assert.equal(forged.state.pick, undefined);
+	assert.deepEqual(forged.sends, []);
+	// The previous frame forgets its path with the current mode.
+	const other = applyPickMessage({
+		state: picked.state,
+		frameId: 'b',
+		message: { type: 'cd:pick', ...pickFields, edit },
+	});
+	assert.deepEqual(other.sends, [{ frameId: 'a', message: { type: 'cd:mode', mode: 'edit' } }]);
+	// A reload in Edit mode re-sends edit.
+	assert.deepEqual(
+		applyPickMessage({ state: picked.state, frameId: 'a', message: { type: 'cd:ready' } }).sends,
+		[{ frameId: 'a', message: { type: 'cd:mode', mode: 'edit' } }],
+	);
 });
 
 test('a null hover from another frame does not clear the current hover', () => {
@@ -121,26 +193,36 @@ test('a re-post moves only a pick chrome still holds for that frame (F-80)', () 
 	assert.deepEqual(same.state.pick?.rect, { ...rect, y: 9 });
 });
 
-test('toggling forgets hover and pick and tells every frame the new mode', () => {
-	const step = toggleCommentMode({
-		state: commenting({ hover: { frameId: 'a', rect }, pick: pickIn('a') }),
-		frameIds: ['a', 'b'],
-	});
-	assert.deepEqual(step.state, INITIAL_COMMENT_PICK);
-	assert.deepEqual(
-		step.sends.map((send) => send.frameId),
-		['a', 'b'],
-	);
-	assert.ok(
-		step.sends.every((send) => send.message.type === 'cd:mode' && send.message.mode === 'interact'),
-	);
+test('choosing a mode forgets hover and pick and tells every frame', () => {
+	const step = chooseMode({ mode: 'edit', frameIds: ['a', 'b'] });
+	assert.deepEqual(step.state, { mode: 'edit', hover: undefined, pick: undefined });
+	assert.deepEqual(step.sends, [
+		{ frameId: 'a', message: { type: 'cd:mode', mode: 'edit' } },
+		{ frameId: 'b', message: { type: 'cd:mode', mode: 'edit' } },
+	]);
 });
 
-test('frames leaving the stage take their hover and pick; an empty stage leaves Comment mode', () => {
+test('pressing the active mode returns to Interact; any other press chooses that mode', () => {
+	for (const current of FRAME_MODES) {
+		for (const pressed of FRAME_MODES) {
+			assert.equal(
+				pressedMode(current, pressed),
+				pressed === current ? 'interact' : pressed,
+				`${current} + ${pressed}`,
+			);
+		}
+	}
+});
+
+test('frames leaving the stage take their hover and pick; an empty stage leaves Comment or Edit mode', () => {
 	const state = commenting({ hover: { frameId: 'gone', rect }, pick: pickIn('kept') });
 	const kept = keepLiveFrames({ state, liveFrameIds: new Set(['kept']) });
-	assert.deepEqual(kept, { commentMode: true, hover: undefined, pick: pickIn('kept') });
+	assert.deepEqual(kept, { mode: 'comment', hover: undefined, pick: pickIn('kept') });
 	assert.deepEqual(keepLiveFrames({ state, liveFrameIds: new Set() }), INITIAL_COMMENT_PICK);
+	assert.deepEqual(
+		keepLiveFrames({ state: commenting({ mode: 'edit' }), liveFrameIds: new Set() }),
+		INITIAL_COMMENT_PICK,
+	);
 });
 
 const keyInput = (overrides: Partial<ModeKeyInput> = {}): ModeKeyInput => ({
@@ -151,7 +233,7 @@ const keyInput = (overrides: Partial<ModeKeyInput> = {}): ModeKeyInput => ({
 	repeat: false,
 	defaultPrevented: false,
 	inTextEntry: false,
-	commentMode: false,
+	mode: 'interact',
 	hasFrames: true,
 	popoverOpen: false,
 	forwarded: false,
@@ -160,6 +242,8 @@ const keyInput = (overrides: Partial<ModeKeyInput> = {}): ModeKeyInput => ({
 
 test('c toggles only when nothing else owns the key and a frame is live', () => {
 	assert.equal(modeKeyAction(keyInput()), 'toggle');
+	// In Edit mode C presses Comment too.
+	assert.equal(modeKeyAction(keyInput({ mode: 'edit' })), 'toggle');
 	assert.equal(modeKeyAction(keyInput({ key: 'C', forwarded: true })), 'toggle');
 	for (const blocked of [
 		{ ctrlKey: true }, // Ctrl+C copies
@@ -174,14 +258,15 @@ test('c toggles only when nothing else owns the key and a frame is live', () => 
 	}
 });
 
-test('Escape leaves Comment mode, and only in Comment mode', () => {
-	assert.equal(modeKeyAction(keyInput({ key: 'Escape', commentMode: true })), 'exit');
-	assert.equal(modeKeyAction(keyInput({ key: 'Escape', commentMode: false })), undefined);
-	assert.equal(modeKeyAction(keyInput({ key: 'Enter', commentMode: true })), undefined);
+test('Escape leaves Comment and Edit mode, and does nothing in Interact mode', () => {
+	assert.equal(modeKeyAction(keyInput({ key: 'Escape', mode: 'comment' })), 'exit');
+	assert.equal(modeKeyAction(keyInput({ key: 'Escape', mode: 'edit' })), 'exit');
+	assert.equal(modeKeyAction(keyInput({ key: 'Escape', mode: 'interact' })), undefined);
+	assert.equal(modeKeyAction(keyInput({ key: 'Enter', mode: 'comment' })), undefined);
 });
 
 test('with the popover open only a chrome Escape cancels; c and a forwarded Escape do nothing', () => {
-	const open = { commentMode: true, popoverOpen: true };
+	const open = { mode: 'comment', popoverOpen: true } as const;
 	assert.equal(modeKeyAction(keyInput({ ...open, key: 'Escape' })), 'cancel');
 	assert.equal(modeKeyAction(keyInput({ ...open, key: 'Escape', forwarded: true })), undefined);
 	assert.equal(modeKeyAction(keyInput({ ...open, key: 'c' })), undefined);

@@ -12,7 +12,12 @@ import {
 	setStyleProperty,
 	trailingWhitespaceLength,
 } from './inlineStyle';
-import { EDIT_FIELDS, MAX_EDIT_TEXT_CHARS, MAX_STYLE_VALUE_CHARS } from './layout';
+import {
+	EDIT_FIELDS,
+	MAX_EDIT_TEXT_CHARS,
+	MAX_STYLE_VALUE_CHARS,
+	RAW_TEXT_ELEMENTS,
+} from './layout';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 // Edit core (0.4): one Edit-mode change to an artboard's disk HTML. The element is named by its
@@ -40,9 +45,6 @@ export type EditRefusal =
 export type EditResult = { ok: true; html: string } | { ok: false; refusal: EditRefusal };
 
 type TargetArgs = { html: string; element: ArtboardElement };
-
-// Elements whose text parse5 reads as raw text: an encoded edit would show its entities.
-const RAW_TEXT_NAMES = new Set(['iframe', 'noembed', 'noframes', 'noscript', 'xmp', 'plaintext']);
 
 const LEADING_NEWLINE_DROPPED = new Set(['pre', 'listing']);
 
@@ -216,7 +218,7 @@ const editText = ({
 }): EditResult => {
 	const children = element.childNodes;
 	if (
-		(element.namespaceURI === parse5Html.NS.HTML && RAW_TEXT_NAMES.has(element.tagName)) ||
+		(element.namespaceURI === parse5Html.NS.HTML && RAW_TEXT_ELEMENTS.has(element.tagName)) ||
 		children.length > 1 ||
 		(children[0] !== undefined && !defaultTreeAdapter.isTextNode(children[0]))
 	) {

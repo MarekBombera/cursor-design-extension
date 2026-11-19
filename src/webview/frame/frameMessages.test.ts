@@ -3,7 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'vite-plus/test';
 
-import { MAX_COMMENTS, MAX_SELECTOR_CHARS } from '../../disk/layout';
+import {
+	MAX_COMMENTS,
+	MAX_EDIT_TEXT_CHARS,
+	MAX_PICK_STYLE_CHARS,
+	MAX_SELECTOR_CHARS,
+} from '../../disk/layout';
 import {
 	FRAME_ANCHORS_MESSAGE,
 	FRAME_ANCHOR_RECTS_MESSAGE,
@@ -202,6 +207,57 @@ test('parsePickFields keeps the pick fields without type and repost, with the sa
 	assert.equal(parsePickFields({ ...fields, isPage: true }), undefined);
 });
 
+const edit = {
+	sourceNumber: 7,
+	sharedNumber: false,
+	textState: 'plain',
+	text: '\n    Title\n',
+	style: 'font-size: 32px;\n color: #ff0000',
+} as const;
+
+test('cd:pick rebuilds its edit fields and drops extra keys inside them', () => {
+	assert.deepEqual(parseFrameMessage({ ...pick, edit: { ...edit, extra: 1 } }), { ...pick, edit });
+	for (const fields of [
+		{ ...edit, sourceNumber: null, style: null },
+		{ ...edit, sourceNumber: 0, sharedNumber: true },
+		{ ...edit, sourceNumber: Number.MAX_SAFE_INTEGER },
+		{ ...edit, textState: 'children', text: '' },
+		{ ...edit, textState: 'too-long', text: '' },
+		{ ...edit, text: 'a'.repeat(MAX_EDIT_TEXT_CHARS) },
+		{ ...edit, style: 'a'.repeat(MAX_PICK_STYLE_CHARS) },
+		{ ...edit, style: '' },
+	]) {
+		assert.deepEqual(parseFrameMessage({ ...pick, edit: fields }), { ...pick, edit: fields });
+	}
+	// A pick without edit (Comment mode) parses as before.
+	assert.equal('edit' in (parseFrameMessage(pick) ?? {}), false);
+});
+
+test('cd:pick with a bad edit field is rejected whole', () => {
+	for (const fields of [
+		null,
+		[],
+		'edit',
+		{ ...edit, sourceNumber: -1 },
+		{ ...edit, sourceNumber: 1.5 },
+		{ ...edit, sourceNumber: '3' },
+		{ ...edit, sourceNumber: Number.MAX_SAFE_INTEGER + 1 },
+		{ ...edit, sourceNumber: undefined },
+		{ ...edit, sourceNumber: null, sharedNumber: true },
+		{ ...edit, sharedNumber: 'no' },
+		{ ...edit, textState: 'mixed' },
+		{ ...edit, textState: 'children', text: 'x' },
+		{ ...edit, textState: 'too-long', text: 'x' },
+		{ ...edit, text: 'a'.repeat(MAX_EDIT_TEXT_CHARS + 1) },
+		{ ...edit, text: 3 },
+		{ ...edit, style: 3 },
+		{ ...edit, style: undefined },
+		{ ...edit, style: 'a'.repeat(MAX_PICK_STYLE_CHARS + 1) },
+	]) {
+		assert.equal(parseFrameMessage({ ...pick, edit: fields }), undefined, JSON.stringify(fields));
+	}
+});
+
 test('cd:key accepts exactly c and Escape', () => {
 	for (const key of ['c', 'Escape'] as const) {
 		assert.deepEqual(parseFrameMessage({ type: FRAME_KEY_MESSAGE, key, extra: 1 }), {
@@ -252,7 +308,7 @@ test('rects must be finite, non-negative in size and within the coordinate cap',
 });
 
 test('parseChromeFrameMessage accepts only the mode and step commands', () => {
-	for (const mode of ['interact', 'comment'] as const) {
+	for (const mode of ['interact', 'comment', 'edit'] as const) {
 		assert.deepEqual(parseChromeFrameMessage({ type: FRAME_MODE_MESSAGE, mode, extra: 1 }), {
 			type: FRAME_MODE_MESSAGE,
 			mode,
@@ -267,7 +323,7 @@ test('parseChromeFrameMessage accepts only the mode and step commands', () => {
 	for (const value of [
 		null,
 		'cd:mode',
-		{ type: FRAME_MODE_MESSAGE, mode: 'edit' },
+		{ type: FRAME_MODE_MESSAGE, mode: 'Edit' },
 		{ type: FRAME_MODE_MESSAGE },
 		{ type: FRAME_PICK_MESSAGE },
 		{ type: 'cd:anchors' },
@@ -365,6 +421,6 @@ test('cd:anchor-rects needs valid rects, and box null with visible null', () => 
 
 test('rule 02 message line names exactly these frame messages', () => {
 	const ruleSource = readFileSync(join(process.cwd(), '.claude/rules/02-mcp-webview.md'), 'utf8');
-	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure), comment:create { requestId, frameId, generation, selector, tagName, text, rect|null, point, box, styles, isPage, body } (chrome → host, untrusted: \`parseChromeMessage\`, then \`addComment\`; refused in untrusted workspaces; every attempt with a valid requestId answered once, never replayed: comment:added { requestId } or ui:error { message, requestId? }), comment:reply { requestId, id, body } and comment:set-status { requestId, id, status: open|resolved } (chrome → host, same boundary and one-answer rule, through the disk lib's \`replyToComment\` / \`setCommentStatus\`, which take the lock themselves: never wrap them; the answer is comment:saved { requestId } or ui:error, posted before the comments:updated it causes), comment:copy { requestId, id } and comment:copy-open { requestId } (8h, chrome → host, same boundary and one-answer rule; the host builds the locked prompt from disk with \`commentPrompt\`, writes \`vscode.env.clipboard\` first, and only then calls \`markCommentsSent\` (open only, takes the lock itself); the answer is ui:copied { requestId, count } (count = comments moved open → sent) or ui:error, and every copy answer is followed by comments:updated); artboard:edit { requestId, frameId, sourceNumber, hash, field: text|font-size|color|padding|margin, value, liveText? (iff text) } (9c, chrome → host, untrusted: \`parseChromeMessage\` checks shape and size only, \`editArtboard\` checks the hash and runs the edit core; refused in untrusted workspaces; every attempt with a valid requestId answered once, never replayed: artboard:edited { requestId, frameId, hash, generation, html } (html = the tagged frame copy the watcher echo will post) or ui:error { message, requestId }), canvas:updated (frames carry \`generation\` and \`hash\`: hashHtml of the disk HTML, never the tagged copy, '' when unreadable) (each frame's html is the disk HTML with host-added data-cd-src="N" source numbers, sourceTags.ts; disk, export, comment flags and read_artboard never carry them)|artboard:error, ui:status, comments:updated { comments, error? } (host → chrome; each comment carries \`stale\` / \`targetMissing\` from \`readComments\`, \`null\` = unchecked; comments:updated is held until artboard:ready and re-sent on reload like canvas:updated, and its \`error\` is the comments banner, never a blank stage). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { selector|null, tagName, text, rect|null, point, box, styles, isPage, repost } (\`rect\` is frame-local CSS px; \`point\` is CSS px relative to the current target's border box and \`box\` is that box's unclipped size; \`repost\` is true for a scroll or resize re-post, false for a click or step; chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} outside Comment mode), ${FRAME_KEY_MESSAGE} { key: c|Escape } (C or Escape with frame focus, not from editable targets or with Ctrl/Meta/Alt; the chrome's mode-key rule decides), ${FRAME_ANCHOR_RECTS_MESSAGE} { anchors: [{ id, box|null, visible|null }] } (\`box\` is the target's unclipped border box, \`visible\` that box clipped by scrolling ancestors and the frame viewport; chrome keeps them under the sending frame's id only, in any mode). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}, ${FRAME_ANCHORS_MESSAGE} { anchors: [{ id, selector }] } (the frame's element comments; the runtime answers with ${FRAME_ANCHOR_RECTS_MESSAGE}, at most once per animation frame and only when a target moved).\n`;
+	const ruleLine = `5. Messages: artboard:ready, frame:place { id, x, y, width, base: { x, y, width } } (chrome → host, untrusted: \`parseChromeMessage\`, refused in untrusted workspaces, every attempt answered with one canvas:updated plus artboard:error on failure), comment:create { requestId, frameId, generation, selector, tagName, text, rect|null, point, box, styles, isPage, body } (chrome → host, untrusted: \`parseChromeMessage\`, then \`addComment\`; refused in untrusted workspaces; every attempt with a valid requestId answered once, never replayed: comment:added { requestId } or ui:error { message, requestId? }), comment:reply { requestId, id, body } and comment:set-status { requestId, id, status: open|resolved } (chrome → host, same boundary and one-answer rule, through the disk lib's \`replyToComment\` / \`setCommentStatus\`, which take the lock themselves: never wrap them; the answer is comment:saved { requestId } or ui:error, posted before the comments:updated it causes), comment:copy { requestId, id } and comment:copy-open { requestId } (8h, chrome → host, same boundary and one-answer rule; the host builds the locked prompt from disk with \`commentPrompt\`, writes \`vscode.env.clipboard\` first, and only then calls \`markCommentsSent\` (open only, takes the lock itself); the answer is ui:copied { requestId, count } (count = comments moved open → sent) or ui:error, and every copy answer is followed by comments:updated); artboard:edit { requestId, frameId, sourceNumber, hash, field: text|font-size|color|padding|margin, value, liveText? (iff text) } (9c, chrome → host, untrusted: \`parseChromeMessage\` checks shape and size only, \`editArtboard\` checks the hash and runs the edit core; refused in untrusted workspaces; every attempt with a valid requestId answered once, never replayed: artboard:edited { requestId, frameId, hash, generation, html } (html = the tagged frame copy the watcher echo will post) or ui:error { message, requestId }), canvas:updated (frames carry \`generation\` and \`hash\`: hashHtml of the disk HTML, never the tagged copy, '' when unreadable) (each frame's html is the disk HTML with host-added data-cd-src="N" source numbers, sourceTags.ts; disk, export, comment flags and read_artboard never carry them)|artboard:error, ui:status, comments:updated { comments, error? } (host → chrome; each comment carries \`stale\` / \`targetMissing\` from \`readComments\`, \`null\` = unchecked; comments:updated is held until artboard:ready and re-sent on reload like canvas:updated, and its \`error\` is the comments banner, never a blank stage). iframe → chrome, allowlisted by source and typed (\`parseFrameMessage\`): ${FRAME_HEIGHT_MESSAGE} { height }, ${FRAME_WHEEL_MESSAGE} { deltaX, deltaY, ctrlKey, x, y }, ${FRAME_READY_MESSAGE}, ${FRAME_HOVER_MESSAGE} { rect|null }, ${FRAME_PICK_MESSAGE} { selector|null, tagName, text, rect|null, point, box, styles, isPage, repost, edit? } (\`rect\` is frame-local CSS px; \`point\` is CSS px relative to the current target's border box and \`box\` is that box's unclipped size; \`repost\` is true for a scroll or resize re-post, false for a click or step; \`edit\` { sourceNumber|null, sharedNumber, textState: plain|children|too-long, text, style|null } only in Edit mode (9d): \`sharedNumber\` only with a number, \`text\` the raw text node (at most MAX_EDIT_TEXT_CHARS, '' unless plain), \`style\` the style attribute (at most MAX_PICK_STYLE_CHARS); chrome drops ${FRAME_HOVER_MESSAGE} and ${FRAME_PICK_MESSAGE} in Interact mode and a ${FRAME_PICK_MESSAGE} whose \`edit\` does not match the mode, Edit with it and Comment without, \`pickCounts\`), ${FRAME_KEY_MESSAGE} { key: c|Escape } (C or Escape with frame focus, not from editable targets or with Ctrl/Meta/Alt; the chrome's mode-key rule decides), ${FRAME_ANCHOR_RECTS_MESSAGE} { anchors: [{ id, box|null, visible|null }] } (\`box\` is the target's unclipped border box, \`visible\` that box clipped by scrolling ancestors and the frame viewport; chrome keeps them under the sending frame's id only, in any mode). Chrome → iframe (runtime accepts only from the parent it captured at load, \`parseChromeFrameMessage\`): ${FRAME_MODE_MESSAGE} { mode: interact|comment|edit }, ${PICK_PARENT_MESSAGE}, ${PICK_CHILD_MESSAGE}, ${FRAME_ANCHORS_MESSAGE} { anchors: [{ id, selector }] } (the frame's element comments; the runtime answers with ${FRAME_ANCHOR_RECTS_MESSAGE}, at most once per animation frame and only when a target moved).\n`;
 	assert.ok(ruleSource.includes(ruleLine));
 });

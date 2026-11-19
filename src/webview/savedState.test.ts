@@ -36,7 +36,7 @@ const savedTarget = {
 };
 const savedDraft = { frameId: 'a', generation: 2, target: savedTarget, body: 'Bolder' };
 const savedUi = {
-	commentMode: true,
+	mode: 'comment',
 	commentDraft: savedDraft,
 	replyDrafts: { c1: 'Thanks', c2: '' },
 };
@@ -44,20 +44,34 @@ const savedUi = {
 test('saved comment UI round-trips through JSON', () => {
 	assert.deepEqual(parseSavedCommentUi(JSON.parse(JSON.stringify(savedUi))), savedUi);
 	assert.deepEqual(parseSavedCommentUi({ openThreadId: 'c1', stageView: {} }), {
-		commentMode: false,
+		mode: 'interact',
 		openThreadId: 'c1',
 		replyDrafts: {},
 	});
 });
 
+test('saved mode: comment and edit come back; missing, bogus and the old commentMode key read as interact', () => {
+	assert.equal(parseSavedCommentUi({ mode: 'edit' }).mode, 'edit');
+	assert.equal(parseSavedCommentUi({ mode: 'comment' }).mode, 'comment');
+	for (const state of [
+		{},
+		{ mode: 'Edit' },
+		{ mode: 'interact' },
+		{ mode: true },
+		{ commentMode: true },
+	]) {
+		assert.equal(parseSavedCommentUi(state).mode, 'interact', JSON.stringify(state));
+	}
+});
+
 test('saved comment UI: a non-object state or wrong types read as the defaults', () => {
-	const empty = { commentMode: false, replyDrafts: {} };
+	const empty = { mode: 'interact', replyDrafts: {} };
 	for (const state of [undefined, null, 'x', 7, []]) {
 		assert.deepEqual(parseSavedCommentUi(state), empty, JSON.stringify(state));
 	}
 	assert.deepEqual(
 		parseSavedCommentUi({
-			commentMode: 'true',
+			mode: 7,
 			commentDraft: 'x',
 			openThreadId: 7,
 			replyDrafts: 'x',
@@ -83,7 +97,7 @@ test('saved comment UI: a malformed draft is dropped alone', () => {
 	]) {
 		assert.deepEqual(
 			parseSavedCommentUi({ ...savedUi, commentDraft: { ...savedDraft, ...broken } }),
-			{ commentMode: true, replyDrafts: savedUi.replyDrafts },
+			{ mode: 'comment', replyDrafts: savedUi.replyDrafts },
 			JSON.stringify(broken),
 		);
 	}

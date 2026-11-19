@@ -1,96 +1,94 @@
-# 9c Checked write + edit message - Overview for review
+# 9d Edit mode + selection - Overview for review
 
-Source of truth: `blueprint/history/features/09c-checked-write-edit-message.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09d-edit-mode-selection.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The artboard HTML now has two safe writers. The Agent's `update_artboard` reads, compares and
-writes under the workspace lock, and the panel got a typed "change this one spot" message
-(`artboard:edit`) that runs the 9b edit core against the file's exact content hash and gets
-exactly one answer. Nothing in the panel sends it yet: Edit mode and the inspector come in 9d
-and 9e.
-
-## What you will see
-
-- No new panel UI.
-- The Agent can get `WORKSPACE_BUSY` from `update_artboard` while another write holds the lock
-  (retry; up to 30 s after a crashed write). Its skill says so.
-- `update_artboard` with the wrong letter case (`HERO` for `hero.html`) is now "not found"
-  instead of renaming the file on macOS / Windows.
+The toolbar now has **Interact · Edit · Comment**. In Edit mode you click an element in a frame
+(the same picker as comments: click, Alt+click, ↑ / ↓, parent / child buttons). An **Inspector**
+on the right then shows its text, font size, colour, padding and margin, still disabled: saving
+is 9e. Style fields show the element's own `style` value exactly as typed, with the computed value
+as the grey placeholder. Elements the file can't place (made or copied by a script) say "not
+editable". Mixed content says "ask the Agent". No disk, MCP or host change.
 
 ## System map
 
 ```mermaid
 flowchart LR
-  Agent -->|update_artboard| MCP
-  Chrome -->|artboard:edit 9e+| Host
-  MCP -->|updateArtboard| Lock
-  Host -->|editArtboard then updateArtboard| Lock
-  Lock[".cursor-design/.lock<br/>read, compare hash, write html + meta"] --> Disk[(artboards/id.html + meta)]
-  Disk -->|watcher| Host
-  Host -->|canvas:updated frames carry hash| Chrome
-  Host -->|artboard:edited or ui:error, once| Chrome
+  User((User)) -->|Edit / C / Escape| Chrome["Chrome<br/>Toolbar, CommentPicker, Inspector"]
+  Chrome -->|cd:mode interact, comment, edit| Frame["Frame runtime<br/>picker + editTarget"]
+  Frame -->|cd:pick + edit fields| Chrome
+  Chrome -->|mode| State[("webview state")]
+  Chrome -.->|nothing new| Host["Extension host"]
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
-  participant C as Chrome (9e)
-  participant H as Host
-  participant D as Disk
-  H->>C: canvas:updated {frames[{..., generation, hash, html}]}
-  C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, field, value, liveText?}
-  H->>D: editArtboard: read, exact-case name, size cap, hash check, edit core
-  H->>D: updateArtboard {baseHash}: lock, re-check hash, write
-  H->>C: artboard:edited {hash, generation, html} or ui:error
-  D-->>H: watcher echo (200 ms later)
-  H->>C: canvas:updated (identical for that frame)
+  participant U as User
+  participant C as Chrome
+  participant F as Frame
+  U->>C: Edit button
+  C->>F: cd:mode {edit}
+  U->>F: click an element (design's own click blocked)
+  F->>C: cd:pick {..., edit {sourceNumber, sharedNumber, textState, text, style}}
+  alt pick does not match the mode (pickCounts)
+    C->>C: dropped: no outline, no popover, no inspector change
+  else Edit mode pick
+    C->>C: Inspector: empty / not editable / disabled fields
+  end
+  U->>C: Escape
+  C->>F: cd:mode {interact} (focus in the inspector moves to the stage first)
 ```
+
+## What you will see
+
+- An Edit segment between Interact and Comment, and the hint "Click an element to edit · Esc to leave".
+- The Inspector at the right edge (240 px): frame › tag, Select parent / child, then Text, Font
+  size, Color (swatch plus typed value), Padding, Margin, all greyed.
+- "Not editable" for script-made or script-copied elements; a hint instead of Text for mixed
+  content or text over 5,000 characters; no Text field for `img`, `input` and similar.
+- Edit mode survives a tab switch; the selection does not.
 
 ## Architecture decisions
 
-- **Exact content hash, not generation,** is the edit base. The frame's `hash` is computed from
-  the disk bytes (never the tagged copy, never the stored meta hash).
-- **One lock owner: `updateArtboard`.** `editArtboard` parses before the lock and lets
-  `updateArtboard` re-check the same hash under it: equal hash means equal bytes.
-- **The answer's `html` is the echo's exact string** (`panelFrameHtml` seeds the tagged-copy
-  memo), so 9e can adopt it without reloading the frame.
-- **Panel copy is an allowlist:** Agent wording (`call read_artboard`, `set_artboard a new id`)
-  never reaches the panel; refusals carry their own copy.
-- **Edits over the 1.5M-char preview cap are refused** before anything is written.
-- **One hash rule** (`scannedHashes`) feeds both the frame `hash` and the handoff badge; each
-  frame is hashed once per refresh.
+- One picker for Comment and Edit mode; Edit-mode picks add an `edit` object read with DOM reads
+  only (the frame runtime is embedded in exported `canvas.html`, so it stays small: a size-budget
+  test).
+- One acceptance rule, `pickCounts`, decides for the pick and the comment draft, so a late or
+  forged pick from the other mode does nothing.
+- The inspector reads inline values with the same tokenizer the 9b edit core edits, so 9e can
+  save "only what changed".
+- Constants the frame needs moved to `layout.ts`, so parse5 never enters the frame or chrome bundle.
 
 ## Decisions locked
 
-- A frame without `hash` is dropped by the chrome (no silent default).
-- `liveText` is required for text edits and forbidden for style edits.
-- Independent review was not run: Bombic directed completion after the fresh Opus audit, a
-  re-review that closed F-134 / F-136, and an Opus + Sonnet refactoring review whose agreed
-  fixes are in (spec step 7).
+- Escape leaves Edit mode; `C` goes from Edit to Comment; the Edit button toggles; no `E` shortcut.
+- Edit mode is saved across a tab switch (`mode` key, Interact omitted).
+- Handed to 9e: send the raw `edit.text` as `liveText` and re-read it before a save; tell an absent
+  style attribute from an over-cap one before enabling style fields.
 
 ## Out of scope
 
-Any chrome sender, Edit mode, inspector, live preview, adopting the answer (9d, 9e); undo/redo
-(9f); locking `set_artboard` / `set_active_artboard`.
+Saving, live preview and the `artboard:edit` sender (9e); undo / redo (9f); mode switch opening a
+panel (0.4.1); renaming the comment-picker modules.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Content hash | SHA-256 of the file bytes; an edit made against an older file is refused instead of overwriting newer work |
-| Workspace lock | `.cursor-design/.lock`, shared by the MCP process and the extension, so two writers never interleave |
-| Source number | The `data-cd-src="N"` the host adds to the frame copy (9a); names the element to edit |
-| Watcher echo | The panel refresh the file watcher triggers after any write, including the panel's own |
+| Source number (`data-cd-src`) | The host tags each element written in the file, so an edit can name its exact spot |
+| Shared number | A script cloned an element: two live elements claim one file spot, so neither is editable |
+| `pickCounts` | The one rule for which picks count in which mode |
+| Inspector | The Edit-mode side panel; read-only until 9e |
 
 ## Your actions
 
-- Optional, skipped this time: F5 smoke of two Agent edits, and a fake `.lock` to see
-  `WORKSPACE_BUSY` live (see the 9c chat; no blocker).
+- Done 2026-11-19: F5 walk-through in Cursor (8 steps), all passed.
 
 ## Done means
 
-- `pnpm verify` green (652 unit tests), `pnpm test:browser` green (136 passed).
-- Audit: no P0-P2; F-134, F-136 closed; F-137 (double parse on text edits) stays unverified for
-  9e; F-135 for 9g.
+`pnpm verify` green (667 unit tests), `pnpm test:browser` 147 passed (11 new Edit-mode tests),
+gallery contrast clean, independent review passed (fresh Opus 5.5 subagent) for the refactored
+checkpoint, and the F5 walk-through passed.

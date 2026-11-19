@@ -1,5 +1,8 @@
 <script lang="ts">
+	import type { ChromePick } from './commentPick';
 	import { liveRegionText } from './commentsPanel';
+	import { pickAnnouncementText } from './editInspector';
+	import type { FrameMode } from './frame/frameMessages';
 	import { zoomChoices } from './zoomChoices';
 	import Badge from './ui/Badge.svelte';
 	import Button from './ui/Button.svelte';
@@ -12,13 +15,14 @@
 		handoffStale: boolean;
 		zoom: number;
 		disabled: boolean;
-		commentMode: boolean;
-		pick: { tagName: string; isPage: boolean; sequence: number } | undefined;
+		mode: FrameMode;
+		pick: Pick<ChromePick, 'tagName' | 'isPage' | 'sequence' | 'edit'> | undefined;
 		commentsPanelOpen: boolean;
 		unresolvedCount: number;
 		onPreset: (zoom: number) => void;
 		onFit: () => void;
-		onToggleComment: () => void;
+		// A mode button was pressed (CommentPicker applies pressedMode).
+		onChooseMode: (pressed: FrameMode) => void;
 		onToggleCommentsPanel: () => void;
 	};
 
@@ -28,13 +32,13 @@
 		handoffStale,
 		zoom,
 		disabled,
-		commentMode,
+		mode,
 		pick,
 		commentsPanelOpen,
 		unresolvedCount,
 		onPreset,
 		onFit,
-		onToggleComment,
+		onChooseMode,
 		onToggleCommentsPanel,
 	}: Props = $props();
 
@@ -43,11 +47,8 @@
 	// not re-announced, so every other pick ends in a no-break space: two div picks in a row still
 	// both speak.
 	const pickAnnouncement = $derived.by(() => {
-		if (!commentMode || pick === undefined) {
-			return '';
-		}
-		const text = pick.isPage ? 'Whole frame selected' : `${pick.tagName} element selected`;
-		return liveRegionText({ text, sequence: pick.sequence });
+		const text = pickAnnouncementText({ mode, pick });
+		return text === '' || pick === undefined ? '' : liveRegionText({ text, sequence: pick.sequence });
 	});
 
 	const zoomChoice = $derived(zoomChoices(zoom));
@@ -56,12 +57,6 @@
 		onPreset(Number(event.currentTarget.value));
 	};
 
-	// Interact leaves Comment mode; in Interact mode it is already chosen.
-	const chooseInteract = (): void => {
-		if (commentMode) {
-			onToggleComment();
-		}
-	};
 </script>
 
 <header class="bar">
@@ -88,23 +83,31 @@
 		{/if}
 	</span>
 	<span class="divider"></span>
-	<!-- Toggle buttons, not radios: Comment keeps its aria-pressed toggle and C shortcut. -->
+	<!-- Toggle buttons, not radios: Edit and Comment toggle back to Interact (pressedMode), and
+	     Comment keeps its C shortcut. -->
 	<div class="mode" role="group" aria-label="Mode">
 		<Button
 			variant="segment"
 			icon="cursor"
-			aria-pressed={!commentMode}
+			aria-pressed={mode === 'interact'}
 			{disabled}
-			onclick={chooseInteract}>Interact</Button
+			onclick={() => onChooseMode('interact')}>Interact</Button
+		>
+		<Button
+			variant="segment"
+			icon="edit"
+			aria-pressed={mode === 'edit'}
+			{disabled}
+			onclick={() => onChooseMode('edit')}>Edit</Button
 		>
 		<Button
 			variant="segment"
 			icon="comment"
-			aria-pressed={commentMode}
+			aria-pressed={mode === 'comment'}
 			aria-keyshortcuts="c"
 			title="Comment (C)"
 			{disabled}
-			onclick={onToggleComment}>Comment</Button
+			onclick={() => onChooseMode('comment')}>Comment</Button
 		>
 	</div>
 	<!-- Muted with the mode buttons it is the shortcut for. -->

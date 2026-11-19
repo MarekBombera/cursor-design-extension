@@ -40,6 +40,7 @@ import {
 } from './gallery/scene';
 import { bannersStates } from './gallery/states/banners';
 import { focusStates } from './gallery/states/focus';
+import { inspectorStates } from './gallery/states/inspector';
 import { answerError, panelStates } from './gallery/states/panel';
 import { pinsStates } from './gallery/states/pins';
 import { popoverStates } from './gallery/states/popover';
@@ -93,6 +94,7 @@ const states: StateDefinition[] = [
 	...threadStates,
 	...panelStates,
 	...focusStates,
+	...inspectorStates,
 ];
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');

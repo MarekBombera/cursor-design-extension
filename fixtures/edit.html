@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Edit fixture</title>
+		<style>
+			body {
+				margin: 0;
+				padding: 24px 24px 200px;
+				font: 16px/1.4 sans-serif;
+			}
+			#padded {
+				background: #eeeeee;
+			}
+		</style>
+	</head>
+	<body>
+		<h1 id="title" style="font-size: 32px; color: #ff0000">Title</h1>
+		<!-- prettier-ignore -->
+		<p id="spaced">
+    Spaced text
+</p>
+		<button id="mixed" type="button"><span id="go">Go</span> now</button>
+		<span id="clicks">0</span>
+		<p id="commented">Before<!-- note -->after</p>
+		<img id="picture" alt="" width="40" height="40" style="background: #cccccc" />
+		<div id="padded" style="padding: 8px 16px">Padded</div>
+		<p id="cloned">Cloned text</p>
+		<script>
+			document.getElementById('mixed').addEventListener('click', () => {
+				const counter = document.getElementById('clicks');
+				counter.textContent = String(Number(counter.textContent) + 1);
+			});
+			const made = document.createElement('div');
+			made.id = 'made';
+			made.textContent = 'Made by script';
+			document.body.append(made);
+			const copy = document.getElementById('cloned').cloneNode(true);
+			copy.id = 'cloned-copy';
+			document.body.append(copy);
+		</script>
+	</body>
+</html>

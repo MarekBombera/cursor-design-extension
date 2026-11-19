@@ -16,6 +16,7 @@
 	import { PinThread } from './pinThread.svelte';
 	import Stage from './Stage.svelte';
 	import Toolbar from './Toolbar.svelte';
+	import Inspector from './Inspector.svelte';
 	import EmptyState from './ui/EmptyState.svelte';
 
 	// The comment UI saved before this webview reloaded (a tab switch). Comment mode and reply text
@@ -33,12 +34,12 @@
 	const picker = new CommentPicker({
 		canvas,
 		pinThread,
-		commentMode: savedCommentUi.commentMode,
+		mode: savedCommentUi.mode,
 		heldDraft: savedCommentUi.commentDraft,
 	});
 
 	// Frames that left the stage or became tiles take their hover, pick, draft and anchor answers
-	// with them; an empty stage leaves Comment mode.
+	// with them; an empty stage leaves Comment or Edit mode.
 	const keepLiveCommentState = (): void => {
 		const liveFrameIds = liveIframeIds(canvas.frames);
 		picker.keepLiveState(liveFrameIds);
@@ -141,7 +142,7 @@
 	// succeeded, the comment or reply arrives via comments:updated.
 	$effect(() => {
 		saveCommentUi({
-			commentMode: picker.picking.commentMode,
+			mode: picker.picking.mode,
 			commentDraft: picker.heldDraft ?? picker.savedDraft,
 			openThreadId: pinThread.openThreadId ?? pinThread.heldThreadId,
 			replyDrafts: comments.savedReplyDrafts,
@@ -169,13 +170,13 @@
 	handoffStale={canvas.handoffStale}
 	zoom={canvas.committedView?.zoom ?? 1}
 	disabled={canvas.frames.length === 0}
-	commentMode={picker.picking.commentMode}
+	mode={picker.picking.mode}
 	pick={picker.picking.pick}
 	commentsPanelOpen={comments.commentsPanelOpen}
 	unresolvedCount={comments.summary.open + comments.summary.sent}
 	onPreset={canvas.handlePreset}
 	onFit={canvas.handleFit}
-	onToggleComment={picker.handleToggleComment}
+	onChooseMode={picker.handleChooseMode}
 	onToggleCommentsPanel={comments.handleToggleCommentsPanel}
 />
 <Banners
@@ -183,8 +184,18 @@
 	commentsError={comments.commentsError}
 	mcpUnavailable={canvas.mcpUnavailable}
 />
-<!-- The panel comes first (Tab order panel → stage); CSS order draws it on the right. -->
+<!-- The inspector (Edit mode only) and the panel come first (Tab order inspector → panel → stage);
+     CSS order draws them on the right, the inspector at the edge. -->
 <div class="workspace">
+	{#if picker.picking.mode === 'edit'}
+		{@const pick = picker.picking.pick}
+		<Inspector
+			{pick}
+			frameLabel={pick === undefined ? '' : frameLabel(canvas.frames, pick.frameId)}
+			onParent={() => picker.stepPick('cd:pick-parent')}
+			onChild={() => picker.stepPick('cd:pick-child')}
+		/>
+	{/if}
 	<CommentsPanel
 		open={comments.commentsPanelOpen}
 		items={pinThread.commentItems}
@@ -215,7 +226,7 @@
 		transform={canvas.transform}
 		zoom={canvas.committedView?.zoom ?? 1}
 		hidden={canvas.frames.length === 0}
-		commentMode={picker.picking.commentMode}
+		mode={picker.picking.mode}
 		hoverOutline={picker.hoverOutline}
 		pickOutline={picker.pickOutline}
 		flashOutline={pinThread.flashOutline}

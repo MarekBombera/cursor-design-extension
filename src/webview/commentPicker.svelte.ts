@@ -2,6 +2,7 @@ import { type FrameRecord, frameOutline, liveIframeIds } from './canvasFrames';
 import type { CanvasState } from './canvasState.svelte';
 import {
 	applyPickMessage,
+	chooseMode,
 	clearPick,
 	type CommentPickState,
 	type CommentPickStep,
@@ -10,8 +11,9 @@ import {
 	type ModeKeyAction,
 	modeKeyAction,
 	type ModeKeyInput,
+	pickCounts,
 	type PickStepType,
-	toggleCommentMode,
+	pressedMode,
 } from './commentPick';
 import {
 	answerDraft,
@@ -23,24 +25,32 @@ import {
 	resolveHeldDraft,
 	submitDraft,
 } from './commentPopover';
-import type { FrameHoverMessage, FramePickMessage, FrameReadyMessage } from './frame/frameMessages';
+import type {
+	FrameHoverMessage,
+	FrameMode,
+	FramePickMessage,
+	FrameReadyMessage,
+} from './frame/frameMessages';
 import { postCommentRequest } from './hostBridge.svelte';
 import { canTakeFocus, type PinThread } from './pinThread.svelte';
 
 const popoverHasFocus = (): boolean =>
 	document.activeElement?.closest('[data-cd-comment-popover]') != null;
 
+const inspectorHasFocus = (): boolean =>
+	document.activeElement?.closest('[data-cd-inspector]') != null;
+
 const isTextEntry = (target: EventTarget | null): boolean =>
 	target instanceof HTMLElement &&
 	(target.isContentEditable || target.matches('input, textarea, select'));
 
-// Comment mode, the hover and pick it shows, the add-comment draft a pick opens (and the one held
-// across a reload), and the C / Escape mode keys. The rules live in commentPick.ts and
-// commentPopover.ts.
+// The mode (Interact, Comment, Edit), the hover and pick Comment and Edit mode share, the
+// add-comment draft a Comment-mode pick opens (and the one held across a reload), and the C /
+// Escape mode keys. The rules live in commentPick.ts and commentPopover.ts.
 export class CommentPicker {
 	readonly #canvas: CanvasState;
 	readonly #pinThread: PinThread;
-	// Comment mode, hover and pick; the rules live in commentPick.ts.
+	// The mode, hover and pick; the rules live in commentPick.ts.
 	picking: CommentPickState;
 	// The open comment popover's target and request state; the rules live in commentPopover.ts.
 	draft: CommentDraft | undefined = $state();
@@ -91,17 +101,17 @@ export class CommentPicker {
 	constructor({
 		canvas,
 		pinThread,
-		commentMode,
+		mode,
 		heldDraft,
 	}: {
 		canvas: CanvasState;
 		pinThread: PinThread;
-		commentMode: boolean;
+		mode: FrameMode;
 		heldDraft: CommentDraft | undefined;
 	}) {
 		this.#canvas = canvas;
 		this.#pinThread = pinThread;
-		this.picking = $state({ ...INITIAL_COMMENT_PICK, commentMode });
+		this.picking = $state({ ...INITIAL_COMMENT_PICK, mode });
 		this.heldDraft = $state.raw(heldDraft);
 
 		// The restored popover mounts only once the stage has committed a view, so its focus waits for
@@ -134,22 +144,41 @@ export class CommentPicker {
 		}
 	};
 
+	// The inspector unmounts when Edit mode ends: focus inside it moves to the stage viewport first,
+	// never to body. On an empty stage the viewport is hidden, so focus falls to body there (no
+	// frame, nothing to focus; the mode buttons are disabled).
+	#leaveInspectorFocus = (next: FrameMode): void => {
+		if (this.picking.mode === 'edit' && next !== 'edit' && inspectorHasFocus()) {
+			this.#pinThread.stage?.focusViewport();
+		}
+	};
+
 	keepLiveState = (liveFrameIds: ReadonlySet<string>): void => {
-		this.picking = keepLiveFrames({ state: this.picking, liveFrameIds });
+		const picking = keepLiveFrames({ state: this.picking, liveFrameIds });
+		this.#leaveInspectorFocus(picking.mode);
+		this.picking = picking;
 		this.draft = keepLiveDraft({
 			draft: this.draft,
-			commentMode: this.picking.commentMode,
+			commentMode: this.picking.mode === 'comment',
 			liveFrameIds,
 		});
 	};
 
-	// Entering or leaving the mode discards any draft, pending or not; a late answer is ignored.
-	handleToggleComment = (): void => {
+	// The one path that changes the mode. Changing it discards any draft, pending or not; a late
+	// answer is ignored. The same mode changes nothing.
+	#setMode = (next: FrameMode): void => {
+		if (next === this.picking.mode) {
+			return;
+		}
+		this.#leaveInspectorFocus(next);
 		this.draft = undefined;
 		this.heldDraft = undefined;
-		this.#applyPickStep(
-			toggleCommentMode({ state: this.picking, frameIds: this.#canvas.iframes.keys() }),
-		);
+		this.#applyPickStep(chooseMode({ mode: next, frameIds: this.#canvas.iframes.keys() }));
+	};
+
+	// A toolbar mode button: pressing the active mode returns to Interact.
+	handleChooseMode = (pressed: FrameMode): void => {
+		this.#setMode(pressedMode(this.picking.mode, pressed));
 	};
 
 	// Typed text goes with the draft. The frame forgets its pick too, and gets focus back when
@@ -185,7 +214,7 @@ export class CommentPicker {
 		}
 		this.draft = resolveHeldDraft({
 			held: this.heldDraft,
-			commentMode: this.picking.commentMode,
+			commentMode: this.picking.mode === 'comment',
 			frames: this.#canvas.frames,
 		}).draft;
 		this.heldDraft = undefined;
@@ -242,11 +271,17 @@ export class CommentPicker {
 		});
 	};
 
+	// One verdict (pickCounts) for the pick and the draft: an Edit-mode pick in flight across a
+	// switch to Comment mode, or a forged one, opens no draft.
 	handlePickMessage = (
 		frame: FrameRecord,
 		message: FrameReadyMessage | FrameHoverMessage | FramePickMessage,
 	): void => {
-		if (message.type === 'cd:pick' && this.picking.commentMode) {
+		if (
+			message.type === 'cd:pick' &&
+			this.picking.mode === 'comment' &&
+			pickCounts({ mode: this.picking.mode, message })
+		) {
 			this.#applyPickToDraft(frame, message);
 		}
 		this.#applyPickStep(applyPickMessage({ state: this.picking, frameId: frame.id, message }));
@@ -258,10 +293,12 @@ export class CommentPicker {
 		}
 	};
 
-	// C toggles Comment mode; Escape leaves it (toggling off is leaving it) or cancels the draft.
+	// C presses Comment; Escape leaves Comment or Edit mode, or cancels the draft.
 	#applyModeKey = (action: ModeKeyAction | undefined): void => {
-		if (action === 'toggle' || action === 'exit') {
-			this.handleToggleComment();
+		if (action === 'toggle') {
+			this.handleChooseMode('comment');
+		} else if (action === 'exit') {
+			this.#setMode('interact');
 		} else if (action === 'cancel') {
 			this.handleCancel();
 		}
@@ -269,11 +306,11 @@ export class CommentPicker {
 
 	// The chrome's own keydown and a frame's cd:key share one rule, with the live state.
 	#modeKey = (
-		key: Omit<ModeKeyInput, 'commentMode' | 'hasFrames' | 'popoverOpen'>,
+		key: Omit<ModeKeyInput, 'mode' | 'hasFrames' | 'popoverOpen'>,
 	): ModeKeyAction | undefined =>
 		modeKeyAction({
 			...key,
-			commentMode: this.picking.commentMode,
+			mode: this.picking.mode,
 			hasFrames: liveIframeIds(this.#canvas.frames).size > 0,
 			popoverOpen: this.draft !== undefined,
 		});

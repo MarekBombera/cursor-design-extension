@@ -156,6 +156,7 @@ body {
 	--cd-pin-sm: 18px;
 	--cd-kbd-lh: 14px;
 	--cd-panel-w: 320px;
+	--cd-inspector-w: 240px;
 	--cd-widget-w: 340px;
 	--cd-widget-max-h: 440px;
 
@@ -272,9 +273,11 @@ kbd {
 	text-align: center;
 	vertical-align: baseline;
 }
-textarea {
+/* Text fields: the textarea and the text input (the Edit-mode inspector, 9d) share one look. */
+textarea,
+input:not([type]),
+input[type='text'] {
 	box-sizing: border-box;
-	display: block;
 	width: 100%;
 	padding: var(--cd-space-6) var(--cd-space-8);
 	border: 1px solid var(--cd-input-edge);
@@ -282,10 +285,20 @@ textarea {
 	background: var(--cd-input-bg);
 	color: var(--cd-input-fg);
 	font: inherit;
+}
+textarea {
+	display: block;
 	resize: vertical;
 }
-textarea::placeholder {
+textarea::placeholder,
+input:not([type])::placeholder,
+input[type='text']::placeholder {
 	color: var(--cd-placeholder);
+}
+/* The global field colour would otherwise hide the browser's disabled look. */
+textarea:disabled,
+input:disabled {
+	color: var(--cd-fg-disabled);
 }
 select {
 	border: 1px solid var(--cd-dropdown-edge);
@@ -302,6 +315,8 @@ select:disabled {
    :focus-visible: the host's equally specific textarea:focus / select:focus ring would otherwise
    win on a mouse focus. */
 textarea:focus,
+input:not([type]):focus,
+input[type='text']:focus,
 select:focus {
 	outline: 1px solid var(--cd-focus);
 	outline-offset: -1px;

@@ -5,7 +5,8 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter } from 'parse5';
 import { test } from 'vite-plus/test';
 
 import { parseArtboardDocument } from './commentTarget';
-import { SOURCE_TAG_ATTRIBUTE, numberedElements, sourceTaggedHtml } from './sourceTags';
+import { SOURCE_TAG_ATTRIBUTE } from './layout';
+import { numberedElements, sourceTaggedHtml } from './sourceTags';
 
 const tagged = (html: string): string =>
 	sourceTaggedHtml({ html, document: parseArtboardDocument(html) });

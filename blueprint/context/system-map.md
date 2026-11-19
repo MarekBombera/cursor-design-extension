@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** feature 9d Edit mode + selection (`feature/edit-mode-selection`): no host or disk change; `cd:mode` gains `edit`, and in Edit mode the frame picker (shared with Comment mode) adds `edit {sourceNumber|null, sharedNumber, textState, text, style|null}` to each `cd:pick` (`describeEditTarget`, DOM reads only); the chrome's one acceptance rule `pickCounts` drops a `cd:hover` / `cd:pick` in Interact mode and a `cd:pick` whose `edit` does not match the mode, for the pick and the comment draft alike; the Edit-mode inspector (`inspectorView`, disabled fields) and the saved `mode` key (replacing `commentMode`). Before it, feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -56,7 +56,7 @@ flowchart LR
   end
   Disk[(".cursor-design/<br/>manifest.json, canvas.json, comments.json,<br/>artboards/id.html + meta,<br/>.ensure-panel, .lock, handoff/")]
   Home[("~/.cursor/skills/cursor-design/SKILL.md")]
-  State[("webview state<br/>stageView, commentsPanelOpen,<br/>commentMode, commentDraft, openThreadId, replyDrafts")]
+  State[("webview state<br/>stageView, commentsPanelOpen,<br/>mode, commentDraft, openThreadId, replyDrafts")]
   Clip[("system clipboard")]
 
   Agent -->|MCP tool calls| Tools
@@ -73,7 +73,7 @@ flowchart LR
   Chrome -->|getState on load (parseSavedCommentUi), setState: each save keeps the other keys| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
   Frames -->|cd:frame-height, cd:frame-wheel,<br/>cd:ready, cd:hover, cd:pick, cd:key,<br/>cd:anchor-rects| Chrome
-  Chrome -->|postToFrame: cd:mode,<br/>cd:pick-parent, cd:pick-child, cd:anchors| Frames
+  Chrome -->|postToFrame: cd:mode (interact, comment, edit),<br/>cd:pick-parent, cd:pick-child, cd:anchors| Frames
 ```
 
 Each blob frame's head starts with the artboard's `<meta charset>`, then `FRAME_CSP` (inline
@@ -209,7 +209,7 @@ scrolls back (`scrollSinkStep`), but only within a second of a frame wheel or an
 
 ## Panel edit message (9c)
 
-No chrome sender yet (Edit mode and the inspector land in 9d / 9e); the host side is shipped.
+No chrome sender yet: 9d shipped Edit mode and a disabled inspector, 9e sends; the host side is shipped.
 
 ```mermaid
 sequenceDiagram
@@ -275,10 +275,58 @@ sequenceDiagram
   C->>A: cd:mode {comment} (A forgets its path)
 ```
 
-- Chrome ignores `cd:hover` and `cd:pick` outside Comment mode; a design's own script can post them.
+- Chrome drops `cd:hover` and `cd:pick` in Interact mode, and a `cd:pick` whose `edit` does not
+  match the mode (`pickCounts`, 9d); a design's own script can post them.
 - Only iframe frames hold a pick: a frame that becomes a tile or leaves the stage drops it; an
   empty stage leaves Comment mode.
 - Frame data reaches the UI only as chip text and outline geometry (never `{@html}`).
+
+## Edit mode and selection (9d)
+
+The 8d1 picker serves Edit mode too: same blocked events, keys, hover and re-posts. No host
+message and no disk write; the inspector shows the pick in disabled fields (9e enables them).
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Chrome (Toolbar, CommentPicker, Inspector)
+  participant A as Frame A runtime
+  participant B as Frame B runtime
+  participant S as Webview state
+  U->>C: Edit button, or C / Escape (chrome keydown, or cd:key from a frame)
+  C->>C: #setMode(pressedMode(...)): same mode = nothing; focus in the inspector → stage viewport first
+  C->>A: cd:mode {edit}
+  C->>B: cd:mode {edit}
+  C->>S: saveCommentUi {mode: 'edit'} (previous mode dropped first; omitted for interact)
+  A->>C: cd:ready (load or reload)
+  C->>C: if A held the pick: drop it (inspector empty, a focused step button keeps focus)
+  C->>A: cd:mode {current mode}
+  U->>A: click (blocked, picked; frame takes focus)
+  A->>C: cd:pick {..., edit {sourceNumber|null, sharedNumber, textState, text, style|null}}
+  alt pickCounts false (Interact; Edit without edit; Comment with edit, e.g. forged)
+    C->>C: dropped: no pick, no draft, nothing sent
+  else Edit mode with edit
+    C->>C: inspectorView: empty / not-editable / editable; pickAnnouncementText in the toolbar
+  end
+  U->>C: Select parent / Select child (inspector)
+  C->>A: cd:pick-parent / cd:pick-child
+  A->>C: cd:pick {..., edit}
+  U->>B: click in frame B
+  B->>C: cd:pick {..., edit}
+  C->>A: cd:mode {edit} (A forgets its path)
+```
+
+- `parsePickEdit` rejects the whole `cd:pick` on any bad `edit` field and rebuilds it: number
+  `null` or a safe non-negative integer, `sharedNumber` only with a number, `text` (raw text node,
+  at most `MAX_EDIT_TEXT_CHARS`, `''` unless plain), `style` (at most `MAX_PICK_STYLE_CHARS`).
+  Both are the page's own text, shown only as field values.
+- The frame reads the edit target through `getAttribute`, `childNodes` and `querySelectorAll` only
+  (`editTarget.ts`); a page pick edits `body`. The exported `canvas.html` never sends `cd:mode`, so
+  this code stays dormant there.
+- Inspector fields: the inline value as typed (`inlineValue`: the last declaration, read after the
+  tokenizer's own colon), the computed value from the pick's `styles` as placeholder; not editable
+  for no source number or a number shared by two live elements; "ask the Agent" for mixed content
+  or text over the cap.
 
 ## Comment mode and popover (8f1)
 
@@ -452,7 +500,7 @@ sequenceDiagram
 - Panel state: the toolbar toggle saves `commentsPanelOpen` (`saveCommentsPanelOpen`) in the one
   webview state record beside `stageView`; each save keeps the other keys. A missing or
   non-boolean value reads as closed. Nothing new on disk.
-- Comment UI across a tab switch (fix, chrome-only): one `$effect` saves `commentMode`,
+- Comment UI across a tab switch (fix, chrome-only; 9d renamed the mode key to `mode`, Comment or Edit): one `$effect` saves `mode`,
   `commentDraft` (with its `body`; never a pending one), `openThreadId` and `replyDrafts` through
   `saveCommentUi`, omitting default keys. On load `parseSavedCommentUi` drops bad keys one by one.
   Comment mode and reply text come back at once; the draft is held until the first
@@ -582,10 +630,10 @@ settles the gesture to disk (the Agent wins).
 | frame → chrome | `cd:frame-wheel` | `{deltaX, deltaY, ctrlKey, x, y}` (frame-local CSS px) |
 | frame → chrome | `cd:ready` | none |
 | frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
-| frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, box, styles, isPage, repost}` (selector from finder inside the frame; `point` relative to the target's box, `box` its unclipped size; `repost` true for a scroll or resize re-post) |
+| frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, box, styles, isPage, repost, edit?}` (selector from finder inside the frame; `point` relative to the target's box, `box` its unclipped size; `repost` true for a scroll or resize re-post; `edit` `{sourceNumber \| null, sharedNumber, textState, text, style \| null}` only in Edit mode, 9d) |
 | frame → chrome | `cd:key` | `{key: 'c' \| 'Escape'}` (frame focus, not editable, no modifiers or repeat) |
 | frame → chrome | `cd:anchor-rects` | `{anchors: [{id, box \| null, visible \| null}]}` (frame-local CSS px; `box` unclipped, `visible` clipped by scrolling ancestors and the frame viewport; `box: null` requires `visible: null`) |
-| chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment'}` |
+| chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment' \| 'edit'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 | chrome → frame | `cd:anchors` | `{anchors: [{id, selector}]}` (the frame's element comments, every status; replaces its previous list) |
 

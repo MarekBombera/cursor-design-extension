@@ -4,11 +4,13 @@ import {
 	FRAME_MODE_MESSAGE,
 	FRAME_PICK_MESSAGE,
 	type FrameMode,
+	type FramePickMessage,
 	type FrameRect,
 	PICK_CHILD_MESSAGE,
 	PICK_PARENT_MESSAGE,
 	parseChromeFrameMessage,
 } from './frameMessages';
+import { describeEditTarget } from './editTarget';
 import { stepToChild, stepToParent } from './pickPath';
 import {
 	clipRect,
@@ -19,6 +21,9 @@ import {
 	sameRect,
 } from './pickTarget';
 import { describeElement, type PickDescription } from './selector';
+
+// A pick's description, with the edit target's fields in Edit mode.
+type Described = PickDescription & Pick<FramePickMessage, 'edit'>;
 
 const isRoot = (element: Element): boolean =>
 	element.localName === 'html' || element.localName === 'body';
@@ -56,18 +61,20 @@ export const visibleRect = (element: Element): FrameRect | null => {
 	return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 };
 
-// Comment mode (8d1). Chrome sends cd:mode / cd:pick-parent / cd:pick-child; the runtime blocks
-// the design's own input and reports what a click picks. It never writes to the design DOM.
-// Part of the frame runtime: runtime.ts calls this after capturing `host`, before cd:ready.
+// Comment mode (8d1) and Edit mode (9d) share this picker. Chrome sends cd:mode /
+// cd:pick-parent / cd:pick-child; outside Interact mode the runtime blocks the design's own input
+// and reports what a click picks, plus the edit target's fields in Edit mode. It never writes to
+// the design DOM. Part of the frame runtime: runtime.ts calls this after capturing `host`, before
+// cd:ready.
 export const installCommentPicking = (host: Window): void => {
 	let mode: FrameMode = 'interact';
 	// Index 0 is the clicked element, the last entry the current pick; empty means no pick.
 	let path: readonly Element[] = [];
 	// The click inside path[0]'s unclipped box, so the pick point follows the element.
 	let anchorOffset = { x: 0, y: 0 };
-	// describeElement per element of the current path, cleared on each click and cd:mode. Finder
+	// describe() per element of the current path, cleared on each click and cd:mode. Finder
 	// can take its full timeout, so ↑/↓ over the same path never runs it twice.
-	let descriptions = new Map<Element, PickDescription>();
+	let descriptions = new Map<Element, Described>();
 	// Path elements already described again after the design removed them (once each).
 	let removed = new WeakSet<Element>();
 	// Last posted hover; undefined means none posted since the last reset.
@@ -78,7 +85,7 @@ export const installCommentPicking = (host: Window): void => {
 	let lastPosted:
 		| {
 				element: Element;
-				described: PickDescription;
+				described: Described;
 				rect: FrameRect | null;
 				point: { x: number; y: number };
 		  }
@@ -131,11 +138,25 @@ export const installCommentPicking = (host: Window): void => {
 		return point.altKey ? stepUp(start) : start;
 	};
 
+	// Edit mode adds what the edit core needs; a page pick edits body, the element its styles read.
+	// ponytail: finder still runs on every Edit-mode pick (up to its 200 ms timeout) because the
+	// description is shared with Comment mode; upgrade: skip buildSelector when the mode is edit.
+	const describe = (element: Element): Described => {
+		const isPage = isRoot(element);
+		const described = describeElement(element, isPage);
+		return mode === 'edit'
+			? {
+					...described,
+					edit: describeEditTarget(isPage ? (element.ownerDocument.body ?? element) : element),
+				}
+			: described;
+	};
+
 	// A throw leaves no entry, so postPick sends nothing rather than another element's data.
 	const describeCurrent = (): void => {
 		const current = path.at(-1);
 		if (current !== undefined && !descriptions.has(current)) {
-			descriptions.set(current, describeElement(current, isRoot(current)));
+			descriptions.set(current, describe(current));
 		}
 	};
 
@@ -164,7 +185,7 @@ export const installCommentPicking = (host: Window): void => {
 			!current.isConnected &&
 			!removed.has(current)
 		) {
-			descriptions.set(current, describeElement(current, isRoot(current)));
+			descriptions.set(current, describe(current));
 			removed.add(current);
 		}
 		const described = current === undefined ? undefined : descriptions.get(current);
@@ -250,8 +271,8 @@ export const installCommentPicking = (host: Window): void => {
 
 	// One capture listener for every blocked event, so picking can never race a second listener.
 	// It blocks before picking, so a throw while describing still leaves the event blocked.
-	const blockInComment = (event: Event): void => {
-		if (mode !== 'comment') {
+	const blockWhilePicking = (event: Event): void => {
+		if (mode === 'interact') {
 			return;
 		}
 		if (event instanceof KeyboardEvent && !BLOCKED_KEYS.has(event.key)) {
@@ -296,12 +317,12 @@ export const installCommentPicking = (host: Window): void => {
 		'submit',
 		'keydown',
 	]) {
-		window.addEventListener(type, blockInComment, { capture: true });
+		window.addEventListener(type, blockWhilePicking, { capture: true });
 	}
 
 	const updateHover = (): void => {
 		pendingHover = undefined;
-		if (mode !== 'comment' || lastPointer === undefined) {
+		if (mode === 'interact' || lastPointer === undefined) {
 			return;
 		}
 		postHover(pathAt(lastPointer).at(-1));
@@ -312,7 +333,7 @@ export const installCommentPicking = (host: Window): void => {
 	window.addEventListener(
 		'pointermove',
 		(event) => {
-			if (mode !== 'comment') {
+			if (mode === 'interact') {
 				return;
 			}
 			lastPointer = { x: event.clientX, y: event.clientY, altKey: event.altKey };
@@ -326,7 +347,7 @@ export const installCommentPicking = (host: Window): void => {
 	window.addEventListener(
 		'mouseout',
 		(event) => {
-			if (mode !== 'comment' || event.relatedTarget !== null) {
+			if (mode === 'interact' || event.relatedTarget !== null) {
 				return;
 			}
 			lastPointer = undefined;
@@ -339,7 +360,7 @@ export const installCommentPicking = (host: Window): void => {
 	// A scroll or resize fires before that frame's rAF callbacks, so batching adds no lag.
 	const repostFrame = (): void => {
 		pendingRepost = undefined;
-		if (mode !== 'comment') {
+		if (mode === 'interact') {
 			return;
 		}
 		if (hover?.element !== undefined) {
@@ -352,7 +373,7 @@ export const installCommentPicking = (host: Window): void => {
 
 	// At most one re-post per animation frame, however many boxes scroll in it.
 	const repostRects = (): void => {
-		if (mode === 'comment' && pendingRepost === undefined) {
+		if (mode !== 'interact' && pendingRepost === undefined) {
 			pendingRepost = requestAnimationFrame(repostFrame);
 		}
 	};

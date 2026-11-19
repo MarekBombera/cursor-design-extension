@@ -1,21 +1,24 @@
 import type {
 	ChromeFrameMessage,
 	FrameHoverMessage,
+	FrameMode,
 	FramePickMessage,
 	FrameReadyMessage,
 	FrameRect,
 } from './frame/frameMessages';
 
-// Comment-mode picking rules for the chrome. Pure: App owns the state, posts the sends, and
-// draws the outlines.
+// Picking rules for the chrome, shared by Comment mode and Edit mode (9d). Pure: CommentPicker
+// owns the state, posts the sends, and App draws the outlines.
+
+// The chrome's pick: frame data, untrusted, shown only as text. sequence counts picks since the
+// last reset (1, 2, ...).
+export type ChromePick = { frameId: string; sequence: number } & Omit<FramePickMessage, 'type'>;
 
 export type CommentPickState = {
-	commentMode: boolean;
+	mode: FrameMode;
 	// Frame-local rects as the frame reported them.
 	hover: { frameId: string; rect: FrameRect } | undefined;
-	// Frame data, untrusted: chrome shows it only as text.
-	// sequence counts picks since the last reset (1, 2, ...).
-	pick: ({ frameId: string; sequence: number } & Omit<FramePickMessage, 'type'>) | undefined;
+	pick: ChromePick | undefined;
 };
 
 type FrameSend = { frameId: string; message: ChromeFrameMessage };
@@ -25,34 +28,55 @@ export type CommentPickStep = { state: CommentPickState; sends: FrameSend[] };
 export type PickStepType = 'cd:pick-parent' | 'cd:pick-child';
 
 export const INITIAL_COMMENT_PICK: CommentPickState = {
-	commentMode: false,
+	mode: 'interact',
 	hover: undefined,
 	pick: undefined,
 };
 
-const frameModeMessage = (commentMode: boolean): ChromeFrameMessage => ({
-	type: 'cd:mode',
-	mode: commentMode ? 'comment' : 'interact',
-});
+const frameModeMessage = (mode: FrameMode): ChromeFrameMessage => ({ type: 'cd:mode', mode });
 
-// Flips the mode, forgets hover and pick, and tells every live frame.
-export const toggleCommentMode = ({
-	state,
+// A mode button (or the C key, which presses Comment): pressing the active mode returns to
+// Interact; Interact itself stays Interact.
+export const pressedMode = (current: FrameMode, pressed: FrameMode): FrameMode =>
+	pressed === current ? 'interact' : pressed;
+
+// A new mode forgets hover and pick and tells every live frame. The caller skips the same mode
+// (CommentPicker's #setMode), so a repeat never drops a draft either.
+export const chooseMode = ({
+	mode,
 	frameIds,
 }: {
-	state: CommentPickState;
+	mode: FrameMode;
 	frameIds: Iterable<string>;
 }): CommentPickStep => {
-	const commentMode = !state.commentMode;
-	const message = frameModeMessage(commentMode);
+	const message = frameModeMessage(mode);
 	return {
-		state: { commentMode, hover: undefined, pick: undefined },
+		state: { mode, hover: undefined, pick: undefined },
 		sends: Array.from(frameIds, (frameId) => ({ frameId, message })),
 	};
 };
 
+// Whether a cd:hover or cd:pick counts in this mode. A design script can post them any time, and
+// a pick can be in flight across a mode change: an Edit-mode pick carries `edit`, a Comment-mode
+// pick never does. The one verdict for the pick state and the comment draft alike.
+export const pickCounts = ({
+	mode,
+	message,
+}: {
+	mode: FrameMode;
+	message: FrameHoverMessage | FramePickMessage;
+}): boolean => {
+	if (mode === 'interact') {
+		return false;
+	}
+	if (message.type === 'cd:hover') {
+		return true;
+	}
+	return (message.edit !== undefined) === (mode === 'edit');
+};
+
 // After canvas:updated: frames that left the stage take their hover and pick with them, and an
-// empty stage leaves Comment mode.
+// empty stage leaves Comment or Edit mode.
 export const keepLiveFrames = ({
 	state,
 	liveFrameIds,
@@ -60,7 +84,7 @@ export const keepLiveFrames = ({
 	state: CommentPickState;
 	liveFrameIds: ReadonlySet<string>;
 }): CommentPickState => ({
-	commentMode: state.commentMode && liveFrameIds.size > 0,
+	mode: liveFrameIds.size > 0 ? state.mode : 'interact',
 	hover:
 		state.hover !== undefined && liveFrameIds.has(state.hover.frameId) ? state.hover : undefined,
 	pick: state.pick !== undefined && liveFrameIds.has(state.pick.frameId) ? state.pick : undefined,
@@ -79,15 +103,14 @@ export const applyPickMessage = ({
 		// A first load or a reload: the frame has no pick, so chrome drops its stale ones.
 		return {
 			state: {
-				commentMode: state.commentMode,
+				mode: state.mode,
 				hover: state.hover?.frameId === frameId ? undefined : state.hover,
 				pick: state.pick?.frameId === frameId ? undefined : state.pick,
 			},
-			sends: [{ frameId, message: frameModeMessage(state.commentMode) }],
+			sends: [{ frameId, message: frameModeMessage(state.mode) }],
 		};
 	}
-	// A design script can post these any time; they only count in Comment mode.
-	if (!state.commentMode) {
+	if (!pickCounts({ mode: state.mode, message })) {
 		return { state, sends: [] };
 	}
 	if (message.type === 'cd:hover') {
@@ -108,7 +131,7 @@ export const applyPickMessage = ({
 	}
 	const sends: FrameSend[] =
 		previous !== undefined && previous.frameId !== frameId
-			? [{ frameId: previous.frameId, message: frameModeMessage(true) }]
+			? [{ frameId: previous.frameId, message: frameModeMessage(state.mode) }]
 			: [];
 	const { type: _type, ...fields } = message;
 	// Counts picks so the Toolbar's live region text changes even when two picks read the same.
@@ -122,7 +145,7 @@ export const clearPick = (state: CommentPickState): CommentPickStep => ({
 	sends:
 		state.pick === undefined
 			? []
-			: [{ frameId: state.pick.frameId, message: frameModeMessage(state.commentMode) }],
+			: [{ frameId: state.pick.frameId, message: frameModeMessage(state.mode) }],
 });
 
 export type ModeKeyAction = 'toggle' | 'exit' | 'cancel';
@@ -130,7 +153,8 @@ export type ModeKeyAction = 'toggle' | 'exit' | 'cancel';
 // C and Escape, from the chrome's own keydown or a frame's cd:key (`forwarded`, already filtered
 // by the runtime). First match wins. While the popover is open it owns keys: only a chrome Escape
 // that reaches here (focus had left the popover) cancels it, so neither C nor a forged cd:key
-// discards a draft.
+// discards a draft. 'toggle' presses Comment (pressedMode(mode, 'comment')); 'exit' returns to
+// Interact from Comment or Edit mode.
 export type ModeKeyInput = {
 	key: string;
 	ctrlKey: boolean;
@@ -139,7 +163,7 @@ export type ModeKeyInput = {
 	repeat: boolean;
 	defaultPrevented: boolean;
 	inTextEntry: boolean;
-	commentMode: boolean;
+	mode: FrameMode;
 	hasFrames: boolean;
 	popoverOpen: boolean;
 	forwarded: boolean;
@@ -153,7 +177,7 @@ export const modeKeyAction = ({
 	repeat,
 	defaultPrevented,
 	inTextEntry,
-	commentMode,
+	mode,
 	hasFrames,
 	popoverOpen,
 	forwarded,
@@ -167,5 +191,5 @@ export const modeKeyAction = ({
 	if (key === 'c' || key === 'C') {
 		return hasFrames ? 'toggle' : undefined;
 	}
-	return key === 'Escape' && commentMode ? 'exit' : undefined;
+	return key === 'Escape' && mode !== 'interact' ? 'exit' : undefined;
 };

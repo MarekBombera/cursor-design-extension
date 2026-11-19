@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { test } from 'vite-plus/test';
 
 import { matchCommentTarget, parseArtboardDocument, targetAgrees } from '../../disk/commentTarget';
-import { SOURCE_TAG_ATTRIBUTE, sourceTaggedHtml } from '../../disk/sourceTags';
+import { SOURCE_TAG_ATTRIBUTE } from '../../disk/layout';
+import { sourceTaggedHtml } from '../../disk/sourceTags';
 import { stampArtboardHtml } from '../stampArtboardHtml';
 import { buildSelector, describeElement } from './selector';
 

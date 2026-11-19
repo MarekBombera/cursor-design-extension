@@ -1,12 +1,11 @@
 import { type DefaultTreeAdapterMap, defaultTreeAdapter, html as parse5Html } from 'parse5';
 
 import type { ArtboardDocument, ArtboardElement } from './commentTarget';
+import { SOURCE_TAG_ATTRIBUTE } from './layout';
 
 // Source numbers (0.4): the frame copy the host posts gives every element written in the file a
 // data-cd-src="N", so an edit can name the element and the host can find its characters on disk.
 // Disk, export and comment selectors never see them.
-
-export const SOURCE_TAG_ATTRIBUTE = 'data-cd-src';
 
 type TreeNode = DefaultTreeAdapterMap['node'];
 

@@ -111,8 +111,8 @@ test('character references are read as the characters CSS sees', () => {
 		undefined,
 	]);
 	assert.deepEqual(splitStyleDeclarations('a: 1&semi;b: 2').segments, [
-		{ text: 'a: 1', separator: '&semi;', property: 'a' },
-		{ text: 'b: 2', separator: '', property: 'b' },
+		{ text: 'a: 1', separator: '&semi;', property: 'a', value: '1' },
+		{ text: 'b: 2', separator: '', property: 'b', value: '2' },
 	]);
 	// An unknown named reference is ordinary text: its own ; never separates.
 	assert.deepEqual(properties('content: a&copy;b; color: red'), ['content', 'color']);
@@ -120,6 +120,15 @@ test('character references are read as the characters CSS sees', () => {
 
 test('a comment before the name is not part of it', () => {
 	assert.equal(set('/* c */ color: red', 'color', '#000000'), '/* c */ color: #000000');
+});
+
+test('a segment value starts after the real colon, never one inside a comment (F-138)', () => {
+	const values = (styleText: string): Array<string | undefined> =>
+		splitStyleDeclarations(styleText).segments.map((segment) => segment.value);
+	assert.deepEqual(values('/* note: brand */ color: #ff0000'), ['#ff0000']);
+	assert.deepEqual(values('color/*a:b*/: red'), ['red']);
+	// Kept as typed after the colon's whitespace; a segment with no colon has no value.
+	assert.deepEqual(values('margin:  0 auto !important ; junk'), ['0 auto !important ', undefined]);
 });
 
 test('endsOpen reports text ending inside a string, comment, escape or bracket', () => {

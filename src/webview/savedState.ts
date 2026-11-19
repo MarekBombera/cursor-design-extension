@@ -1,6 +1,6 @@
 import { COMMENT_ID_PATTERN, MAX_COMMENT_BODY_CHARS, MAX_COMMENTS } from '../disk/layout';
 import type { CommentDraft } from './commentPopover';
-import { parsePickFields } from './frame/frameMessages';
+import { type FrameMode, isFrameMode, parsePickFields } from './frame/frameMessages';
 import { isFiniteNumber, isRecord } from './hostMessages';
 import type { StageView } from './stageGeometry';
 
@@ -23,9 +23,10 @@ export const parseSavedStageView = (value: unknown): StageView | undefined => {
 	return { x: value.x, y: value.y, zoom: value.zoom };
 };
 
-// The comment UI kept in webview state across a tab switch (the webview reloads).
+// The comment UI kept in webview state across a tab switch (the webview reloads), with the mode
+// (Comment or Edit, 9d).
 export type SavedCommentUi = {
-	commentMode: boolean;
+	mode: FrameMode;
 	// Never pending and never with an error.
 	commentDraft?: CommentDraft;
 	openThreadId?: string;
@@ -82,7 +83,7 @@ export const parseSavedCommentUi = (state: unknown): SavedCommentUi => {
 			? record.openThreadId
 			: undefined;
 	return {
-		commentMode: record.commentMode === true,
+		mode: isFrameMode(record.mode) ? record.mode : 'interact',
 		...(commentDraft === undefined ? {} : { commentDraft }),
 		...(openThreadId === undefined ? {} : { openThreadId }),
 		replyDrafts: parseReplyDrafts(record.replyDrafts),

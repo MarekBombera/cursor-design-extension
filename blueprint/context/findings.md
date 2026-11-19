@@ -241,7 +241,7 @@
 - parse5 parses `<noscript>` with scripting on, `stampArtboardHtml`'s DOMParser with scripting off; neither numbers its content, so it matters only if a later step reads numbers from the stamped DOM.
 - The size cap and tagging now live only in `panelFrames`, called only by `snapshotFromCanvasView`; `postedFrameFromSnapshot` is pinned "no cap". A new snapshot producer in 9c-9f that skips `panelFrames` would post uncapped, untagged HTML with nothing failing.
 **Suggested fix:** 9b maps N only through the host's own offset list; 9d's duplicate check scans every live element, not only numbered ones; any new snapshot producer goes through `panelFrames` (or a test ties `artboardDisk` to it).
-**Resolution:** 2026-11-19 /audit (9b): the 9b lead is done: `editArtboardHtml` maps N only through `numberedElements` of its own disk parse, never a number read from the frame copy. The 9d and snapshot-producer leads stay open as leads.
+**Resolution:** 2026-11-19 /audit (9b): the 9b lead is done: `editArtboardHtml` maps N only through `numberedElements` of its own disk parse, never a number read from the frame copy. The 9d and snapshot-producer leads stay open as leads. 2026-11-19 /audit independent (9d, fresh reviewer claude-opus-5-5): the 9d lead is done: `describeEditTarget` counts duplicates with `ownerDocument.querySelectorAll('[data-cd-src="N"]')` over every live element (author-written and script-set ones included), so any duplicate reads `shared-number`; the snapshot-producer lead stays open.
 
 ### F-135 [P3] unverified - Cursor's Agent keeps old MCP tool descriptions after the server restarts
 
@@ -257,4 +257,20 @@
 **Found:** 2026-11-19 by /audit (scope: current; lens: performance; fresh reviewer claude-opus-5-5)
 **Why it matters:** For a text edit, `editArtboardHtml` re-parses the spliced HTML to prove the numbering survived (`parseArtboardDocument(splice.html)`), then throws that parse away. `answerEditRequest` then calls `panelFrameHtml`, whose `cachedArtboardDocument` misses for the new bytes and parses them again. Both parses run on the extension host thread, for files up to `MAX_POSTED_ARTBOARD_HTML_CHARS` (1.5M chars). Rule 07 says no sync CPU on the host thread, and the existing `panelFrames` ponytail already names a worker thread as the upgrade path. Style edits parse once. The cost is not measured.
 **Suggested fix:** Measure one text edit on a file near the cap during 9e's live check. If it is noticeable, return the core's verification document with the result and seed `cachedArtboardDocument` with it (one parse saved), or accept the cost under the existing `panelFrames` ponytail.
+**Resolution:**
+
+### F-139 [P3] open - saveCommentUi keeps a legacy commentMode key the spec says each save removes
+
+**File:** src/webview/hostBridge.svelte.ts:55
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
+**Why it matters:** The spec's Webview state contract (current-feature.md:170, and "Each save removes both `mode` and `commentMode` from the previous record first") is not what the code does: `saveCommentUi` destructures `mode`, `commentDraft`, `openThreadId`, `replyDrafts` out of the previous record but not `commentMode`, so an old `commentMode: true` key rides along in `...others` on every save forever. Behaviour is unaffected today (`parseSavedCommentUi` ignores the key and the spec itself calls it practically unreachable, since webview state does not survive a window reload), so this is contract drift, not a user-visible bug. The spec is the archived record of what shipped.
+**Suggested fix:** Add `commentMode: _commentMode,` to the destructure in `saveCommentUi` (one line), or reword the spec's Webview state contract to say only `mode` is dropped. No current requirement is lost either way.
+**Resolution:**
+
+### F-140 [P3] open - Spec and owner catalog drift: computed colour token, stale chooseMode done-when, input rules missing from rule 05
+
+**File:** blueprint/context/current-feature.md:213
+**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
+**Why it matters:** Three places where the archived spec or the owner catalog no longer says what the code does: (1) the spec says the computed colour text uses the placeholder colour (`--cd-placeholder`); `Inspector.svelte:181-184` deliberately uses `--cd-fg-2` (its comment: the placeholder colour misses 4.5:1 on light themes). The code is the better choice, the spec is stale. (2) Step 3 done-when (current-feature.md:185) still asks `commentPick.test.ts` to cover "`chooseMode` ... same mode sends nothing", but the same-mode guard moved to `CommentPicker.#setMode` (spec line 138) and `chooseMode` always sends; no test pins that guard (low stakes: only Interact → Interact reaches it, with no pick or draft to lose). (3) Rule 05's design-system entry lists the host-competing element rules as `kbd`, `textarea`, `select`; `theme.css` now also owns the global `input:not([type])` / `input[type='text']` rules and `textarea:disabled, input:disabled`. Rule 05 says keeping the catalog current is part of the change.
+**Suggested fix:** Docs only: in the spec, say the computed colour text uses `--cd-fg-2` and drop "same mode sends nothing" from the `chooseMode` done-when; in `.claude/rules/05-single-job.md` add the text `input` rules to the host-competing element list. No code change, no requirement lost.
 **Resolution:**

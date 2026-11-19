@@ -3,6 +3,8 @@ import { extname, join } from 'node:path';
 
 import { expect, type Frame, type Locator, type Page } from '@playwright/test';
 
+import { parseArtboardDocument } from '../../src/disk/commentTarget';
+import { sourceTaggedHtml } from '../../src/disk/sourceTags';
 import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type {
 	CanvasUpdatedMessage,
@@ -244,6 +246,24 @@ export const frameOf = async (page: Page, frameId: string): Promise<Frame> => {
 export const readPickingFixture = (): string =>
 	readFileSync(join(__dirname, '..', '..', 'fixtures', 'picking.html'), 'utf8');
 
+export const readEditFixture = (): string =>
+	readFileSync(join(__dirname, '..', '..', 'fixtures', 'edit.html'), 'utf8');
+
+// The edit fixture as one frame, tagged with source numbers as the host does.
+export const editFrame = ({ id, label }: { id: string; label: string }): PostedCanvasFrame => {
+	const html = readEditFixture();
+	return {
+		id,
+		label,
+		x: 0,
+		y: 0,
+		width: 800,
+		generation: 1,
+		hash: 'sha256:test',
+		html: sourceTaggedHtml({ html, document: parseArtboardDocument(html) }),
+	};
+};
+
 export const canvasUpdated = (frames: PostedCanvasFrame[]): CanvasUpdatedMessage => ({
 	type: 'canvas:updated',
 	activeArtboardId: frames[0]?.id ?? '',
@@ -323,6 +343,16 @@ export const nextAnimationFrame = (page: Page): Promise<void> =>
 // Shared locators: by role and data-cd-* hooks, one definition per control.
 export const commentButton = (page: Page): Locator =>
 	page.getByRole('button', { name: 'Comment', exact: true });
+
+export const editButton = (page: Page): Locator =>
+	page.getByRole('group', { name: 'Mode' }).getByRole('button', { name: 'Edit', exact: true });
+
+export const inspector = (page: Page): Locator => page.locator('[data-cd-inspector]');
+
+export const enterEditMode = async (page: Page): Promise<void> => {
+	await clickChrome(editButton(page));
+	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
+};
 
 export const pinOf = (page: Page, id: string): Locator => page.locator(`[data-cd-pin="${id}"]`);
 

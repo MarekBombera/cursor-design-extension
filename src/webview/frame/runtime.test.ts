@@ -12,6 +12,15 @@ import {
 	FRAME_WHEEL_MESSAGE,
 } from './frameMessages';
 
+// ponytail: a soft ceiling for the exported canvas.html, which embeds this runtime: the length at
+// the start of 9d (31,039 unminified chars) plus 4,096. A toolchain bump that changes the
+// unminified output may need a re-baseline.
+const RUNTIME_SIZE_BUDGET = 35_135;
+
+test('canvas runtime stays within its size budget', () => {
+	assert.ok(runtimeSource.length < RUNTIME_SIZE_BUDGET, String(runtimeSource.length));
+});
+
 test('canvas runtime posts only its frame messages and never touches the artboard', () => {
 	// Picking and pin listeners live in functions bundled above; what matters is the call order:
 	// capture parent, register wheel, install picking, install pin anchors, then announce cd:ready.

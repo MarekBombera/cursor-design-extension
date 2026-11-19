@@ -23,6 +23,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
 		&quot;font-size&quot;,
@@ -51,6 +52,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
+	var FRAME_MODES = [
+		&quot;interact&quot;,
+		&quot;comment&quot;,
+		&quot;edit&quot;
+	];
+	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
@@ -83,7 +90,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const record = asRecord(data);
 		if (record === void 0) return;
 		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
 				type: FRAME_MODE_MESSAGE,
 				mode: record.mode
 			} : void 0;
@@ -98,6 +105,40 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
+	};
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var textOf = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+			textState: &quot;children&quot;,
+			text: &quot;&quot;
+		};
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null || style.length &gt; 5e3 ? null : style
+		};
 	};
 	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
@@ -570,9 +611,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const describe = (element) =&gt; {
+			const isPage = isRoot(element);
+			const described = describeElement(element, isPage);
+			return mode === &quot;edit&quot; ? {
+				...described,
+				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+			} : described;
+		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describe(current));
 		};
 		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
 			anchorBox: anchor.getBoundingClientRect(),
@@ -587,7 +636,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
 			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
-				descriptions.set(current, describeElement(current, isRoot(current)));
+				descriptions.set(current, describe(current));
 				removed.add(current);
 			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
@@ -664,8 +713,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;ArrowUp&quot;,
 			&quot;ArrowDown&quot;
 		]);
-		const blockInComment = (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+		const blockWhilePicking = (event) =&gt; {
+			if (mode === &quot;interact&quot;) return;
 			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -705,14 +754,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;contextmenu&quot;,
 			&quot;submit&quot;,
 			&quot;keydown&quot;
-		]) window.addEventListener(type, blockInComment, { capture: true });
+		]) window.addEventListener(type, blockWhilePicking, { capture: true });
 		const updateHover = () =&gt; {
 			pendingHover = void 0;
-			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			if (mode === &quot;interact&quot; || lastPointer === void 0) return;
 			postHover(pathAt(lastPointer).at(-1));
 		};
 		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			lastPointer = {
 				x: event.clientX,
 				y: event.clientY,
@@ -721,19 +770,19 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
 		}, { capture: true });
 		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			if (mode === &quot;interact&quot; || event.relatedTarget !== null) return;
 			lastPointer = void 0;
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
 		const repostFrame = () =&gt; {
 			pendingRepost = void 0;
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
 			if (path.length &gt; 0) postPick({ force: false });
 		};
 		const repostRects = () =&gt; {
-			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -978,6 +1027,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
 		&quot;font-size&quot;,
@@ -1006,6 +1056,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
+	var FRAME_MODES = [
+		&quot;interact&quot;,
+		&quot;comment&quot;,
+		&quot;edit&quot;
+	];
+	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
@@ -1038,7 +1094,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const record = asRecord(data);
 		if (record === void 0) return;
 		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
 				type: FRAME_MODE_MESSAGE,
 				mode: record.mode
 			} : void 0;
@@ -1053,6 +1109,40 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
+	};
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var textOf = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+			textState: &quot;children&quot;,
+			text: &quot;&quot;
+		};
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null || style.length &gt; 5e3 ? null : style
+		};
 	};
 	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
@@ -1525,9 +1615,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const describe = (element) =&gt; {
+			const isPage = isRoot(element);
+			const described = describeElement(element, isPage);
+			return mode === &quot;edit&quot; ? {
+				...described,
+				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+			} : described;
+		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describe(current));
 		};
 		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
 			anchorBox: anchor.getBoundingClientRect(),
@@ -1542,7 +1640,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
 			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
-				descriptions.set(current, describeElement(current, isRoot(current)));
+				descriptions.set(current, describe(current));
 				removed.add(current);
 			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
@@ -1619,8 +1717,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;ArrowUp&quot;,
 			&quot;ArrowDown&quot;
 		]);
-		const blockInComment = (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+		const blockWhilePicking = (event) =&gt; {
+			if (mode === &quot;interact&quot;) return;
 			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -1660,14 +1758,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;contextmenu&quot;,
 			&quot;submit&quot;,
 			&quot;keydown&quot;
-		]) window.addEventListener(type, blockInComment, { capture: true });
+		]) window.addEventListener(type, blockWhilePicking, { capture: true });
 		const updateHover = () =&gt; {
 			pendingHover = void 0;
-			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			if (mode === &quot;interact&quot; || lastPointer === void 0) return;
 			postHover(pathAt(lastPointer).at(-1));
 		};
 		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			lastPointer = {
 				x: event.clientX,
 				y: event.clientY,
@@ -1676,19 +1774,19 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
 		}, { capture: true });
 		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			if (mode === &quot;interact&quot; || event.relatedTarget !== null) return;
 			lastPointer = void 0;
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
 		const repostFrame = () =&gt; {
 			pendingRepost = void 0;
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
 			if (path.length &gt; 0) postPick({ force: false });
 		};
 		const repostRects = () =&gt; {
-			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -1933,6 +2031,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
 		&quot;font-size&quot;,
@@ -1961,6 +2060,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
+	var FRAME_MODES = [
+		&quot;interact&quot;,
+		&quot;comment&quot;,
+		&quot;edit&quot;
+	];
+	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
@@ -1993,7 +2098,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const record = asRecord(data);
 		if (record === void 0) return;
 		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
 				type: FRAME_MODE_MESSAGE,
 				mode: record.mode
 			} : void 0;
@@ -2008,6 +2113,40 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
+	};
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var textOf = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+			textState: &quot;children&quot;,
+			text: &quot;&quot;
+		};
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null || style.length &gt; 5e3 ? null : style
+		};
 	};
 	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
@@ -2480,9 +2619,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const describe = (element) =&gt; {
+			const isPage = isRoot(element);
+			const described = describeElement(element, isPage);
+			return mode === &quot;edit&quot; ? {
+				...described,
+				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+			} : described;
+		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describe(current));
 		};
 		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
 			anchorBox: anchor.getBoundingClientRect(),
@@ -2497,7 +2644,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
 			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
-				descriptions.set(current, describeElement(current, isRoot(current)));
+				descriptions.set(current, describe(current));
 				removed.add(current);
 			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
@@ -2574,8 +2721,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;ArrowUp&quot;,
 			&quot;ArrowDown&quot;
 		]);
-		const blockInComment = (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+		const blockWhilePicking = (event) =&gt; {
+			if (mode === &quot;interact&quot;) return;
 			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -2615,14 +2762,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;contextmenu&quot;,
 			&quot;submit&quot;,
 			&quot;keydown&quot;
-		]) window.addEventListener(type, blockInComment, { capture: true });
+		]) window.addEventListener(type, blockWhilePicking, { capture: true });
 		const updateHover = () =&gt; {
 			pendingHover = void 0;
-			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			if (mode === &quot;interact&quot; || lastPointer === void 0) return;
 			postHover(pathAt(lastPointer).at(-1));
 		};
 		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			lastPointer = {
 				x: event.clientX,
 				y: event.clientY,
@@ -2631,19 +2778,19 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
 		}, { capture: true });
 		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			if (mode === &quot;interact&quot; || event.relatedTarget !== null) return;
 			lastPointer = void 0;
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
 		const repostFrame = () =&gt; {
 			pendingRepost = void 0;
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
 			if (path.length &gt; 0) postPick({ force: false });
 		};
 		const repostRects = () =&gt; {
-			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);
@@ -2888,6 +3035,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
 		&quot;font-size&quot;,
@@ -2916,6 +3064,12 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var PICK_CHILD_MESSAGE = &quot;cd:pick-child&quot;;
 	var FRAME_ANCHORS_MESSAGE = &quot;cd:anchors&quot;;
 	var FRAME_ANCHOR_RECTS_MESSAGE = &quot;cd:anchor-rects&quot;;
+	var FRAME_MODES = [
+		&quot;interact&quot;,
+		&quot;comment&quot;,
+		&quot;edit&quot;
+	];
+	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
@@ -2948,7 +3102,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const record = asRecord(data);
 		if (record === void 0) return;
 		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return record.mode === &quot;interact&quot; || record.mode === &quot;comment&quot; ? {
+			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
 				type: FRAME_MODE_MESSAGE,
 				mode: record.mode
 			} : void 0;
@@ -2963,6 +3117,40 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
+	};
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var textOf = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+			textState: &quot;children&quot;,
+			text: &quot;&quot;
+		};
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null || style.length &gt; 5e3 ? null : style
+		};
 	};
 	// src/webview/frame/pickPath.ts
 	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
@@ -3435,9 +3623,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}) ?? document.body ?? document.documentElement];
 			return point.altKey ? stepUp(start) : start;
 		};
+		const describe = (element) =&gt; {
+			const isPage = isRoot(element);
+			const described = describeElement(element, isPage);
+			return mode === &quot;edit&quot; ? {
+				...described,
+				edit: describeEditTarget(isPage ? element.ownerDocument.body ?? element : element)
+			} : described;
+		};
 		const describeCurrent = () =&gt; {
 			const current = path.at(-1);
-			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describeElement(current, isRoot(current)));
+			if (current !== void 0 &amp;&amp; !descriptions.has(current)) descriptions.set(current, describe(current));
 		};
 		const pickPoint = (anchor, target) =&gt; anchor.isConnected &amp;&amp; target.isConnected ? pointInTarget({
 			anchorBox: anchor.getBoundingClientRect(),
@@ -3452,7 +3648,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const current = path.at(-1);
 			const cached = current === void 0 ? void 0 : descriptions.get(current);
 			if (current !== void 0 &amp;&amp; cached !== void 0 &amp;&amp; !current.isConnected &amp;&amp; !removed.has(current)) {
-				descriptions.set(current, describeElement(current, isRoot(current)));
+				descriptions.set(current, describe(current));
 				removed.add(current);
 			}
 			const described = current === void 0 ? void 0 : descriptions.get(current);
@@ -3529,8 +3725,8 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;ArrowUp&quot;,
 			&quot;ArrowDown&quot;
 		]);
-		const blockInComment = (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+		const blockWhilePicking = (event) =&gt; {
+			if (mode === &quot;interact&quot;) return;
 			if (event instanceof KeyboardEvent &amp;&amp; !BLOCKED_KEYS.has(event.key)) return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
@@ -3570,14 +3766,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			&quot;contextmenu&quot;,
 			&quot;submit&quot;,
 			&quot;keydown&quot;
-		]) window.addEventListener(type, blockInComment, { capture: true });
+		]) window.addEventListener(type, blockWhilePicking, { capture: true });
 		const updateHover = () =&gt; {
 			pendingHover = void 0;
-			if (mode !== &quot;comment&quot; || lastPointer === void 0) return;
+			if (mode === &quot;interact&quot; || lastPointer === void 0) return;
 			postHover(pathAt(lastPointer).at(-1));
 		};
 		window.addEventListener(&quot;pointermove&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			lastPointer = {
 				x: event.clientX,
 				y: event.clientY,
@@ -3586,19 +3782,19 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			if (pendingHover === void 0) pendingHover = requestAnimationFrame(updateHover);
 		}, { capture: true });
 		window.addEventListener(&quot;mouseout&quot;, (event) =&gt; {
-			if (mode !== &quot;comment&quot; || event.relatedTarget !== null) return;
+			if (mode === &quot;interact&quot; || event.relatedTarget !== null) return;
 			lastPointer = void 0;
 			cancelPendingHover();
 			postHover(void 0);
 		}, { capture: true });
 		const repostFrame = () =&gt; {
 			pendingRepost = void 0;
-			if (mode !== &quot;comment&quot;) return;
+			if (mode === &quot;interact&quot;) return;
 			if (hover?.element !== void 0) postHover(hover.element);
 			if (path.length &gt; 0) postPick({ force: false });
 		};
 		const repostRects = () =&gt; {
-			if (mode === &quot;comment&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
+			if (mode !== &quot;interact&quot; &amp;&amp; pendingRepost === void 0) pendingRepost = requestAnimationFrame(repostFrame);
 		};
 		window.addEventListener(&quot;scroll&quot;, repostRects, { capture: true });
 		window.addEventListener(&quot;resize&quot;, repostRects);

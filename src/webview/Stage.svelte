@@ -6,7 +6,9 @@
 	import Frame from './Frame.svelte';
 	import Overlay from './Overlay.svelte';
 	import Icon from './ui/Icon.svelte';
+	import type { IconName } from './ui/icons';
 	import type { StageFrame } from './canvasFrames';
+	import type { FrameMode } from './frame/frameMessages';
 	import {
 		arrowNudge,
 		type FrameGestureKind,
@@ -31,7 +33,7 @@
 		transform: string | undefined;
 		zoom: number;
 		hidden: boolean;
-		commentMode: boolean;
+		mode: FrameMode;
 		hoverOutline: StageRect | undefined;
 		pickOutline: StageRect | undefined;
 		flashOutline: StageRect | undefined;
@@ -55,7 +57,7 @@
 		transform,
 		zoom,
 		hidden,
-		commentMode,
+		mode,
 		hoverOutline,
 		pickOutline,
 		flashOutline,
@@ -67,6 +69,13 @@
 		onFrameGesture,
 		children,
 	}: Props = $props();
+
+	// The stage hint per picking mode: its icon and verb, spelled out rather than read from the wire
+	// mode value.
+	const MODE_HINTS = {
+		comment: { icon: 'comment', verb: 'comment' },
+		edit: { icon: 'edit', verb: 'edit' },
+	} as const satisfies Record<Exclude<FrameMode, 'interact'>, { icon: IconName; verb: string }>;
 
 	// The resize handle is a fixed 8 screen px wide, centered on the frame's right edge.
 	const HANDLE_SCREEN_WIDTH = 8;
@@ -474,10 +483,11 @@
 	</div>
 	<Overlay hover={hoverOutline} pick={pickOutline} flash={flashOutline} />
 	<!-- The toolbar's live region already announces the mode; this is the visible reminder. -->
-	{#if commentMode}
+	{#if mode !== 'interact'}
+		{@const hint = MODE_HINTS[mode]}
 		<div class="mode-hint" aria-hidden="true">
-			<span class="hint-icon"><Icon name="comment" size={14} /></span>
-			Click an element to comment <span class="separator">·</span> <kbd>Esc</kbd> to leave
+			<span class="hint-icon"><Icon name={hint.icon} size={14} /></span>
+			Click an element to {hint.verb} <span class="separator">·</span> <kbd>Esc</kbd> to leave
 		</div>
 	{/if}
 	{@render children?.()}
