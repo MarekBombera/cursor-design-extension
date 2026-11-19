@@ -181,7 +181,7 @@ Stage pan and zoom have three inputs, all through `wheelToView` / `panStage`: a 
 (Stage's non-passive listener), `cd:frame-wheel` from a frame, and the root scroll sink. Chromium
 latches a trackpad gesture to the out-of-process frame it started over and, once the frame slides
 out from under the pointer, hands the rest to the chrome as native root scroll. The chrome is
-`position: fixed` over a body with hidden scroll room, so App turns each root scroll into a pan and
+`position: fixed` over a body with hidden scroll room, so `CanvasState` turns each root scroll into a pan and
 scrolls back (`scrollSinkStep`), but only within a second of a frame wheel or an earlier sink pan.
 
 ## Comment-mode picking (8d1)
@@ -321,7 +321,7 @@ sequenceDiagram
   `inert` while a draft is open, so a click there picks the element under it.
 - A pin click opens `CommentThread` with no message to the host. Escape or Close returns focus to
   the pin. The thread closes when its comment or pin goes away, or a draft opens; focus inside it
-  then moves to the stage viewport. One `$effect.pre` in App closes it whenever `pins` no longer
+  then moves to the stage viewport. One `$effect.pre` in `PinThread` closes it whenever `pins` no longer
   holds it, before it unmounts, so it never stays open while hidden.
 
 ## Comments panel (8g)
