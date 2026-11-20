@@ -61,8 +61,7 @@ const edit = {
 	frameId: 'hero',
 	sourceNumber: 0,
 	hash: `sha256:${'a'.repeat(64)}`,
-	field: 'padding',
-	value: '8',
+	styles: [{ field: 'padding', value: '8' }],
 };
 
 beforeEach(() => {
@@ -92,13 +91,13 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 		workspaceRoot: '/ws',
 		artboardId: 'hero',
 		baseHash: edit.hash,
-		edit: { sourceNumber: 0, field: 'padding', value: '8' },
+		edit: { sourceNumber: 0, styles: [{ field: 'padding', value: '8' }] },
 	});
 });
 
 test('a text edit passes its live text to the edit core', async () => {
 	await answerEditRequest({
-		value: { ...edit, field: 'text', value: 'New', liveText: 'Old' },
+		value: { ...edit, styles: undefined, field: 'text', value: 'New', liveText: 'Old' },
 		outputChannel,
 	});
 	assert.deepEqual(vi.mocked(editArtboard).mock.calls[0]?.[0].edit, {
@@ -124,7 +123,10 @@ test('a conflict or a refusal is logged and answered once with panel copy', asyn
 });
 
 test('malformed, untrusted and folderless attempts are refused before any disk call', async () => {
-	await answerEditRequest({ value: { ...edit, field: 'border' }, outputChannel });
+	await answerEditRequest({
+		value: { ...edit, styles: [{ field: 'border', value: '1px' }] },
+		outputChannel,
+	});
 	host.isTrusted = false;
 	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, outputChannel });
 	host.isTrusted = true;

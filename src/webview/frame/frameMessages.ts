@@ -3,7 +3,7 @@
 import {
 	COMMENT_ID_PATTERN,
 	COMMENT_STYLE_KEYS,
-	type EDIT_STYLE_FIELDS,
+	EDIT_STYLE_FIELDS,
 	MAX_COMMENTS,
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
@@ -59,23 +59,27 @@ export type CommentStyles = Partial<Record<(typeof COMMENT_STYLE_KEYS)[number], 
 
 export type EditStyleField = (typeof EDIT_STYLE_FIELDS)[number];
 
-const PICK_TEXT_STATES = ['plain', 'children', 'too-long'] as const;
+const PICK_TEXT_STATES = ['plain', 'mixed', 'elements', 'too-long'] as const;
 
-// The computed values are the pick's own `styles`.
 export type PickEditFields = {
 	// The target's data-cd-src as a canonical non-negative integer; null when absent, malformed or
 	// the target is disconnected.
 	sourceNumber: number | null;
 	// Another element in the target's document carries the same number (a script cloned it).
 	sharedNumber: boolean;
-	// 'plain': no child nodes or exactly one text node; 'children': anything else; 'too-long':
-	// plain, but over MAX_EDIT_TEXT_CHARS.
+	// 'plain': no child nodes or exactly one text node; 'too-long': plain, but over
+	// MAX_EDIT_TEXT_CHARS. Anything else is 'mixed' when a child text node holds a character other
+	// than ASCII whitespace, else 'elements'.
 	textState: (typeof PICK_TEXT_STATES)[number];
 	// The text node's full, unmodified data iff 'plain'; '' otherwise.
 	text: string;
 	// The style attribute as the live page holds it: '' when absent, null only over
 	// MAX_PICK_STYLE_CHARS.
 	style: string | null;
+	// The edit target's computed value per EDIT_STYLE_FIELDS key, the one source of every edit
+	// field's current value; empty and unsafe values are omitted. Shown only as field values and
+	// placeholders, never in an Agent prompt. The comment record stays the pick's `styles`.
+	computed: Partial<Record<EditStyleField, string>>;
 };
 
 type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
@@ -277,18 +281,22 @@ const parseBox = (value: unknown): { width: number; height: number } | undefined
 	return { width: record.width, height: record.height };
 };
 
-const isStyleKey = (key: string): key is (typeof COMMENT_STYLE_KEYS)[number] =>
-	(COMMENT_STYLE_KEYS as readonly string[]).includes(key);
+const isKeyOf = <Key extends string>(keys: readonly Key[], key: string): key is Key =>
+	(keys as readonly string[]).includes(key);
 
-// One bad key or value rejects the whole map; the runtime never produces one.
-const parseStyles = (value: unknown): CommentStyles | undefined => {
+// One bad key or value rejects the whole map; the runtime never produces one. Rebuilt from the
+// allowlisted keys.
+const parseStyles = <Key extends string>(
+	value: unknown,
+	keys: readonly Key[],
+): Partial<Record<Key, string>> | undefined => {
 	const record = asRecord(value);
 	if (record === undefined || Array.isArray(value)) {
 		return undefined;
 	}
-	const styles: CommentStyles = {};
+	const styles: Partial<Record<Key, string>> = {};
 	for (const [key, style] of Object.entries(record)) {
-		if (!isStyleKey(key) || typeof style !== 'string' || !isSafeStyleValue(style)) {
+		if (!isKeyOf(keys, key) || typeof style !== 'string' || !isSafeStyleValue(style)) {
 			return undefined;
 		}
 		styles[key] = style;
@@ -305,7 +313,7 @@ export const parsePickFields = (
 	const selector = parseSelector(record.selector);
 	const point = parsePoint(record.point);
 	const box = parseBox(record.box);
-	const styles = parseStyles(record.styles);
+	const styles = parseStyles(record.styles, COMMENT_STYLE_KEYS);
 	if (!isTagName(tagName) || rect === undefined || typeof isPage !== 'boolean') {
 		return undefined;
 	}
@@ -351,7 +359,9 @@ const parsePickEdit = (value: unknown): PickEditFields | undefined => {
 		return undefined;
 	}
 	const { sourceNumber, sharedNumber, textState, text, style } = record;
+	const computed = parseStyles(record.computed, EDIT_STYLE_FIELDS);
 	if (
+		computed === undefined ||
 		!isSourceNumber(sourceNumber) ||
 		typeof sharedNumber !== 'boolean' ||
 		(sharedNumber && sourceNumber === null) ||
@@ -363,7 +373,7 @@ const parsePickEdit = (value: unknown): PickEditFields | undefined => {
 	) {
 		return undefined;
 	}
-	return { sourceNumber, sharedNumber, textState, text, style };
+	return { sourceNumber, sharedNumber, textState, text, style, computed };
 };
 
 const parseFramePick = (record: Record<string, unknown>): FramePickMessage | undefined => {

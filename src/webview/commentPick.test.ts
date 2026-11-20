@@ -39,6 +39,7 @@ const edit: PickEditFields = {
 	textState: 'plain',
 	text: 'Card',
 	style: null,
+	computed: {},
 };
 const commenting = (overrides: Partial<CommentPickState> = {}): CommentPickState => ({
 	mode: 'comment',

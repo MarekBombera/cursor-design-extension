@@ -92,6 +92,7 @@ test('a plain-text pick reports its edit fields and fills enabled fields', async
 		textState: 'plain',
 		text: 'Title',
 		style: 'font-size: 32px; color: #ff0000',
+		computed: expect.any(Object),
 	});
 	await expect(inspector(page).getByText('Edit › h1')).toBeVisible();
 	await expect(field(page, 'Text')).toHaveValue('Title');
@@ -105,6 +106,17 @@ test('a plain-text pick reports its edit fields and fills enabled fields', async
 	await expect(field(page, 'Padding')).toHaveAttribute('placeholder', '0px');
 	await expect(field(page, 'Margin')).toHaveValue('');
 	await expect(field(page, 'Margin')).not.toHaveAttribute('placeholder', '');
+});
+
+test("a pick reports the edit target's computed edit field values", async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const edit = (await lastPick(page, 'a'))?.edit;
+	expect(edit?.textState).toBe('plain');
+	expect(edit?.computed).toEqual(
+		expect.objectContaining({ 'font-size': '32px', 'font-weight': '700', 'text-align': 'start' }),
+	);
 });
 
 test("Edit mode blocks the design's own clicks; Interact mode lets them through", async ({
@@ -132,7 +144,7 @@ test('text: trimmed in the field, raw on the wire; mixed content and void elemen
 
 	for (const selector of ['#mixed', '#commented']) {
 		await clickElement(page, selector, { x: 0.9, y: 0.5 });
-		expect((await lastPick(page, 'a'))?.edit?.textState).toBe('children');
+		expect((await lastPick(page, 'a'))?.edit?.textState).toBe('mixed');
 		await expect(
 			inspector(page).getByText('Contains other elements: ask the Agent to change this text.'),
 		).toBeVisible();
@@ -179,7 +191,7 @@ test('script-made and script-copied elements read not editable; a page click sel
 	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(picks);
 	const pagePick = await lastPick(page, 'a');
 	expect(pagePick?.isPage).toBe(true);
-	expect(pagePick?.edit?.textState).toBe('children');
+	expect(pagePick?.edit?.textState).toBe('elements');
 	await expect(inspector(page).getByText('Edit › page')).toBeVisible();
 });
 
@@ -253,7 +265,14 @@ test('Comment mode: a forged pick carrying edit fields opens no popover and draw
 		styles: {},
 		isPage: false,
 		repost: false,
-		edit: { sourceNumber: 1, sharedNumber: false, textState: 'plain', text: 'Title', style: null },
+		edit: {
+			sourceNumber: 1,
+			sharedNumber: false,
+			textState: 'plain',
+			text: 'Title',
+			style: null,
+			computed: { 'font-size': '32px' },
+		},
 	};
 	// Well formed: only the acceptance rule can drop it.
 	expect(parseFrameMessage(forged)).toBeDefined();
@@ -319,6 +338,12 @@ const editsPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((data): data is Record<string, unknown> =>
 		isMessageOfType(data, 'artboard:edit'),
 	);
+
+// A field save posts its one change as `styles[0]`.
+const firstStyle = (
+	request: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined =>
+	(request?.styles as Record<string, unknown>[] | undefined)?.[0];
 
 // The host's answer: the fixture with `change` applied, tagged as panelFrameHtml tags it.
 const editedAnswer = ({
@@ -455,7 +480,7 @@ test('Enter commits font size and keeps focus; colour commits on change as #rrgg
 	);
 	await field(page, 'Font size').press('Enter');
 	await expect(field(page, 'Font size')).toBeFocused();
-	await expect.poll(async () => (await editsPosted(page)).at(-1)?.value).toBe('16');
+	await expect.poll(async () => firstStyle((await editsPosted(page)).at(-1))?.value).toBe('16');
 	const [request] = await editsPosted(page);
 	await postToChrome(
 		page,
@@ -468,7 +493,9 @@ test('Enter commits font size and keeps focus; colour commits on change as #rrgg
 	);
 	await expect(field(page, 'Font size')).toHaveValue('16px');
 	await field(page, 'Color').fill('#00ff00');
-	await expect.poll(async () => (await editsPosted(page)).at(-1)?.value).toBe('#00ff00');
+	await expect
+		.poll(async () => firstStyle((await editsPosted(page)).at(-1))?.value)
+		.toBe('#00ff00');
 	expect((await editsPosted(page)).at(-1)?.hash).toBe('sha256:size');
 });
 
@@ -549,7 +576,7 @@ test('two quick commits: one in flight, the second after the answer with its has
 	await nextAnimationFrame(page);
 	expect(await editsPosted(page)).toHaveLength(1);
 	const [first] = await editsPosted(page);
-	expect(first?.field).toBe('padding');
+	expect(firstStyle(first)?.field).toBe('padding');
 	await postToChrome(
 		page,
 		editedAnswer({
@@ -560,7 +587,10 @@ test('two quick commits: one in flight, the second after the answer with its has
 		}),
 	);
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
-	expect((await editsPosted(page)).at(-1)).toMatchObject({ field: 'margin', hash: 'sha256:pad' });
+	expect((await editsPosted(page)).at(-1)).toMatchObject({
+		styles: [{ field: 'margin', value: '2' }],
+		hash: 'sha256:pad',
+	});
 });
 
 test('a dirty field, then a click on another element, saves to the first element only', async ({
@@ -577,7 +607,7 @@ test('a dirty field, then a click on another element, saves to the first element
 	expect(edits).toHaveLength(1);
 	expect(edits[0]).toMatchObject({
 		sourceNumber: await sourceNumberOf(page, '#title'),
-		value: '6',
+		styles: [{ field: 'margin', value: '6' }],
 	});
 	await expect(field(page, 'Margin')).toHaveValue('');
 });

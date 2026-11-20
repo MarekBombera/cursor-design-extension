@@ -1,14 +1,14 @@
 import { asciiTrim, splitStyleDeclarations } from '../disk/inlineStyle';
-import { EDIT_STYLE_FIELDS, RAW_TEXT_ELEMENTS, VOID_ELEMENTS } from '../disk/layout';
+import { RAW_TEXT_ELEMENTS, VOID_ELEMENTS } from '../disk/layout';
 import type { ChromePick } from './commentPick';
-import type { EditStyleField, FrameMode, PickEditFields } from './frame/frameMessages';
+import type { FrameMode, PickEditFields } from './frame/frameMessages';
 
 type Editability = 'editable' | 'no-number' | 'shared-number';
 
-// Colour has its own swatch.
-export type InputField = Exclude<EditStyleField, 'color'>;
+// The inspector's own text inputs (colour has its own swatch), not every EDIT_STYLE_FIELDS key.
+const INPUT_FIELDS = ['font-size', 'padding', 'margin'] as const;
 
-const INPUT_FIELDS = EDIT_STYLE_FIELDS.filter((field): field is InputField => field !== 'color');
+export type InputField = (typeof INPUT_FIELDS)[number];
 
 type EditableView = {
 	kind: 'editable';
@@ -80,7 +80,7 @@ const editableView = ({
 }): EditableView => {
 	const noText = VOID_ELEMENTS.has(pick.tagName) || RAW_TEXT_ELEMENTS.has(pick.tagName);
 	const inlineColor = inlineValue(edit.style, 'color');
-	const computedColor = pick.styles.color ?? '';
+	const computedColor = edit.computed.color ?? '';
 	return {
 		kind: 'editable',
 		target,
@@ -88,12 +88,13 @@ const editableView = ({
 			? { state: 'none' }
 			: edit.textState === 'plain'
 				? { state: 'plain', value: asciiTrim(edit.text), liveText: edit.text }
-				: { state: edit.textState },
+				: // Mixed text and elements-only share one hint.
+					{ state: edit.textState === 'too-long' ? 'too-long' : 'children' },
 		style: edit.style === null ? 'too-long' : 'editable',
 		fields: INPUT_FIELDS.map((field) => ({
 			field,
 			value: inlineValue(edit.style, field),
-			placeholder: pick.styles[field] ?? '',
+			placeholder: edit.computed[field] ?? '',
 		})),
 		color: {
 			hex: toHexColor(computedColor) ?? FALLBACK_HEX,

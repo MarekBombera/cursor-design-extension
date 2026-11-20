@@ -5,7 +5,7 @@ import type { NewComment } from '../disk/commentsFile';
 import { isArtboardHash } from '../disk/hash';
 import {
 	COMMENT_ID_PATTERN,
-	EDIT_FIELDS,
+	EDIT_STYLE_FIELDS,
 	HISTORY_STEPS,
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
@@ -82,18 +82,31 @@ const commentCopyOpenSchema = z.object({
 
 // Shape and size only: text encoding, control characters, style value safety and the live text
 // compare are the edit core's; the frame id charset and exact file name the disk lib's.
-const artboardEditSchema = z
-	.object({
-		type: z.literal('artboard:edit'),
-		requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
-		frameId: z.string(),
-		sourceNumber: z.int().check(z.gte(0), z.lte(Number.MAX_SAFE_INTEGER)),
-		hash: z.string().check(z.refine(isArtboardHash)),
-		field: z.enum(EDIT_FIELDS),
-		value: z.string().check(z.maxLength(MAX_EDIT_TEXT_CHARS)),
-		liveText: z.optional(z.string().check(z.maxLength(MAX_EDIT_TEXT_CHARS))),
-	})
-	.check(z.refine((message) => (message.field === 'text') === (message.liveText !== undefined)));
+const artboardEditShape = {
+	type: z.literal('artboard:edit'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	frameId: z.string(),
+	sourceNumber: z.int().check(z.gte(0), z.lte(Number.MAX_SAFE_INTEGER)),
+	hash: z.string().check(z.refine(isArtboardHash)),
+};
+
+const editValue = z.string().check(z.maxLength(MAX_EDIT_TEXT_CHARS));
+
+const artboardEditTextSchema = z.object({
+	...artboardEditShape,
+	field: z.literal('text'),
+	value: editValue,
+	liveText: editValue,
+});
+
+const artboardEditStylesSchema = z.object({
+	...artboardEditShape,
+	styles: z.array(z.object({ field: z.enum(EDIT_STYLE_FIELDS), value: editValue })).check(
+		z.minLength(1),
+		z.maxLength(EDIT_STYLE_FIELDS.length),
+		z.refine((styles) => new Set(styles.map((change) => change.field)).size === styles.length),
+	),
+});
 
 // Shape only: the frame id charset is the disk lib's; the host owns the bytes an undo or redo
 // writes, so nothing else crosses this boundary.
@@ -104,22 +117,27 @@ const artboardHistorySchema = z.object({
 	step: z.enum(HISTORY_STEPS),
 });
 
-// The artboard id charset is enforced by placeFrame's parseArtboardId.
-const chromeMessageSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('artboard:ready') }),
-	z.object({
-		type: z.literal('frame:place'),
-		id: z.string(),
-		...placementShape,
-		base: z.object(placementShape),
-	}),
-	commentCreateSchema,
-	commentReplySchema,
-	commentSetStatusSchema,
-	commentCopySchema,
-	commentCopyOpenSchema,
-	artboardEditSchema,
-	artboardHistorySchema,
+// The artboard id charset is enforced by placeFrame's parseArtboardId. Both edit variants share
+// `type`, so they sit beside the discriminated union; text is tried first and unknown keys are
+// stripped, so a message with the text fields and `styles` parses as text.
+const chromeMessageSchema = z.union([
+	z.discriminatedUnion('type', [
+		z.object({ type: z.literal('artboard:ready') }),
+		z.object({
+			type: z.literal('frame:place'),
+			id: z.string(),
+			...placementShape,
+			base: z.object(placementShape),
+		}),
+		commentCreateSchema,
+		commentReplySchema,
+		commentSetStatusSchema,
+		commentCopySchema,
+		commentCopyOpenSchema,
+		artboardHistorySchema,
+	]),
+	artboardEditTextSchema,
+	artboardEditStylesSchema,
 ]);
 
 // Unknown `type`, a non-object, or any failing field returns undefined; never throws.

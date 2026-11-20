@@ -23,6 +23,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var EDIT_STYLE_FIELDS = [
+		&quot;font-size&quot;,
+		&quot;color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;font-weight&quot;,
+		&quot;font-style&quot;,
+		&quot;text-decoration-line&quot;,
+		&quot;text-align&quot;,
+		&quot;line-height&quot;,
+		&quot;letter-spacing&quot;,
+		&quot;text-transform&quot;,
+		&quot;background-color&quot;,
+		&quot;border-radius&quot;,
+		&quot;overflow&quot;,
+		&quot;opacity&quot;,
+		&quot;gap&quot;,
+		&quot;border-width&quot;,
+		&quot;border-style&quot;,
+		&quot;border-color&quot;
+	];
 	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -124,131 +145,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
-	};
-	// src/webview/frame/editTarget.ts
-	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
-	var sourceNumberOf = (element) =&gt; {
-		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
-		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
-		const number = Number(value);
-		return Number.isSafeInteger(number) ? number : null;
-	};
-	var hasOtherContent = (element) =&gt; {
-		const children = element.childNodes;
-		const [only] = children;
-		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
-	};
-	var textOf = (element) =&gt; {
-		if (hasOtherContent(element)) return {
-			textState: &quot;children&quot;,
-			text: &quot;&quot;
-		};
-		const [only] = element.childNodes;
-		const text = only instanceof Text ? only.data : &quot;&quot;;
-		return text.length &gt; 5e3 ? {
-			textState: &quot;too-long&quot;,
-			text: &quot;&quot;
-		} : {
-			textState: &quot;plain&quot;,
-			text
-		};
-	};
-	var describeEditTarget = (element) =&gt; {
-		const style = element.getAttribute(&quot;style&quot;);
-		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
-		return {
-			sourceNumber,
-			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
-			...textOf(element),
-			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
-		};
-	};
-	// src/webview/frame/pickPath.ts
-	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
-		const current = path.at(-1);
-		if (current === void 0 || isRoot(current)) return path;
-		const parent = parentOf(current);
-		return parent === null ? path : [...path, parent];
-	};
-	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	// src/webview/stageGeometry.ts
-	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	// src/webview/frame/pickTarget.ts
-	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
-		const resolved = stack.map(resolve);
-		for (const [index, candidate] of resolved.entries()) {
-			if (isRoot(candidate)) continue;
-			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
-		}
-	};
-	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
-	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
-	var clipRect = (rect, clips) =&gt; {
-		let left = rect.x;
-		let top = rect.y;
-		let right = rect.x + rect.width;
-		let bottom = rect.y + rect.height;
-		for (const clip of clips) {
-			left = Math.max(left, clip.x);
-			top = Math.max(top, clip.y);
-			right = Math.min(right, clip.x + clip.width);
-			bottom = Math.min(bottom, clip.y + clip.height);
-		}
-		if (left &gt;= right || top &gt;= bottom) return null;
-		return {
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top
-		};
-	};
-	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
-		x: clampNumber({
-			value: anchorBox.x + offset.x - targetBox.x,
-			min: 0,
-			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
-		}),
-		y: clampNumber({
-			value: anchorBox.y + offset.y - targetBox.y,
-			min: 0,
-			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
-		})
-	});
-	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
-	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
-	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
-	var isTransparentColor = (value) =&gt; {
-		const color = value.trim();
-		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
-	};
-	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
-		&quot;img&quot;,
-		&quot;svg&quot;,
-		&quot;video&quot;,
-		&quot;audio&quot;,
-		&quot;canvas&quot;,
-		&quot;iframe&quot;,
-		&quot;embed&quot;,
-		&quot;object&quot;,
-		&quot;picture&quot;,
-		&quot;input&quot;,
-		&quot;textarea&quot;,
-		&quot;select&quot;,
-		&quot;button&quot;,
-		&quot;progress&quot;,
-		&quot;meter&quot;,
-		&quot;hr&quot;
-	]);
-	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
-		if (width === 0 || height === 0) return false;
-		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
-		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
-		return [
-			[style.borderTopWidth, style.borderTopColor],
-			[style.borderRightWidth, style.borderRightColor],
-			[style.borderBottomWidth, style.borderBottomColor],
-			[style.borderLeftWidth, style.borderLeftColor]
-		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
@@ -528,9 +424,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const last = text.charCodeAt(text.length - 1);
 		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
 	};
-	var readStyles = (read) =&gt; {
+	var readStyles = (read, keys) =&gt; {
 		const styles = {};
-		for (const key of COMMENT_STYLE_KEYS) {
+		for (const key of keys) {
 			const raw = read(key);
 			if (hasControlChars(raw)) continue;
 			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
@@ -544,7 +440,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return {
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
-				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property), COMMENT_STYLE_KEYS)
 			};
 		}
 		if (!element.isConnected) return {
@@ -556,13 +452,145 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return {
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
-			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+			styles: readStyles((property) =&gt; style.getPropertyValue(property), COMMENT_STYLE_KEYS)
 		};
 	};
 	var describeElement = (element, isPage) =&gt; ({
 		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
 		...describeContent(element, isPage)
 	});
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var NOT_ASCII_WHITESPACE = /[^\\t\\n\\f\\r ]/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var hasOtherContent = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
+			textState: [...element.childNodes].some((node) =&gt; node instanceof Text &amp;&amp; NOT_ASCII_WHITESPACE.test(node.data)) ? &quot;mixed&quot; : &quot;elements&quot;,
+			text: &quot;&quot;
+		};
+		const [only] = element.childNodes;
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var computedOf = (element) =&gt; {
+		if (!element.isConnected) return {};
+		const computed = window.getComputedStyle(element);
+		return readStyles((property) =&gt; computed.getPropertyValue(property), EDIT_STYLE_FIELDS);
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style,
+			computed: computedOf(element)
+		};
+	};
+	// src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	// src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
+	// src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -1102,6 +1130,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var EDIT_STYLE_FIELDS = [
+		&quot;font-size&quot;,
+		&quot;color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;font-weight&quot;,
+		&quot;font-style&quot;,
+		&quot;text-decoration-line&quot;,
+		&quot;text-align&quot;,
+		&quot;line-height&quot;,
+		&quot;letter-spacing&quot;,
+		&quot;text-transform&quot;,
+		&quot;background-color&quot;,
+		&quot;border-radius&quot;,
+		&quot;overflow&quot;,
+		&quot;opacity&quot;,
+		&quot;gap&quot;,
+		&quot;border-width&quot;,
+		&quot;border-style&quot;,
+		&quot;border-color&quot;
+	];
 	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -1203,131 +1252,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
-	};
-	// src/webview/frame/editTarget.ts
-	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
-	var sourceNumberOf = (element) =&gt; {
-		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
-		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
-		const number = Number(value);
-		return Number.isSafeInteger(number) ? number : null;
-	};
-	var hasOtherContent = (element) =&gt; {
-		const children = element.childNodes;
-		const [only] = children;
-		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
-	};
-	var textOf = (element) =&gt; {
-		if (hasOtherContent(element)) return {
-			textState: &quot;children&quot;,
-			text: &quot;&quot;
-		};
-		const [only] = element.childNodes;
-		const text = only instanceof Text ? only.data : &quot;&quot;;
-		return text.length &gt; 5e3 ? {
-			textState: &quot;too-long&quot;,
-			text: &quot;&quot;
-		} : {
-			textState: &quot;plain&quot;,
-			text
-		};
-	};
-	var describeEditTarget = (element) =&gt; {
-		const style = element.getAttribute(&quot;style&quot;);
-		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
-		return {
-			sourceNumber,
-			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
-			...textOf(element),
-			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
-		};
-	};
-	// src/webview/frame/pickPath.ts
-	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
-		const current = path.at(-1);
-		if (current === void 0 || isRoot(current)) return path;
-		const parent = parentOf(current);
-		return parent === null ? path : [...path, parent];
-	};
-	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	// src/webview/stageGeometry.ts
-	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	// src/webview/frame/pickTarget.ts
-	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
-		const resolved = stack.map(resolve);
-		for (const [index, candidate] of resolved.entries()) {
-			if (isRoot(candidate)) continue;
-			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
-		}
-	};
-	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
-	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
-	var clipRect = (rect, clips) =&gt; {
-		let left = rect.x;
-		let top = rect.y;
-		let right = rect.x + rect.width;
-		let bottom = rect.y + rect.height;
-		for (const clip of clips) {
-			left = Math.max(left, clip.x);
-			top = Math.max(top, clip.y);
-			right = Math.min(right, clip.x + clip.width);
-			bottom = Math.min(bottom, clip.y + clip.height);
-		}
-		if (left &gt;= right || top &gt;= bottom) return null;
-		return {
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top
-		};
-	};
-	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
-		x: clampNumber({
-			value: anchorBox.x + offset.x - targetBox.x,
-			min: 0,
-			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
-		}),
-		y: clampNumber({
-			value: anchorBox.y + offset.y - targetBox.y,
-			min: 0,
-			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
-		})
-	});
-	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
-	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
-	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
-	var isTransparentColor = (value) =&gt; {
-		const color = value.trim();
-		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
-	};
-	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
-		&quot;img&quot;,
-		&quot;svg&quot;,
-		&quot;video&quot;,
-		&quot;audio&quot;,
-		&quot;canvas&quot;,
-		&quot;iframe&quot;,
-		&quot;embed&quot;,
-		&quot;object&quot;,
-		&quot;picture&quot;,
-		&quot;input&quot;,
-		&quot;textarea&quot;,
-		&quot;select&quot;,
-		&quot;button&quot;,
-		&quot;progress&quot;,
-		&quot;meter&quot;,
-		&quot;hr&quot;
-	]);
-	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
-		if (width === 0 || height === 0) return false;
-		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
-		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
-		return [
-			[style.borderTopWidth, style.borderTopColor],
-			[style.borderRightWidth, style.borderRightColor],
-			[style.borderBottomWidth, style.borderBottomColor],
-			[style.borderLeftWidth, style.borderLeftColor]
-		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
@@ -1607,9 +1531,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const last = text.charCodeAt(text.length - 1);
 		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
 	};
-	var readStyles = (read) =&gt; {
+	var readStyles = (read, keys) =&gt; {
 		const styles = {};
-		for (const key of COMMENT_STYLE_KEYS) {
+		for (const key of keys) {
 			const raw = read(key);
 			if (hasControlChars(raw)) continue;
 			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
@@ -1623,7 +1547,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return {
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
-				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property), COMMENT_STYLE_KEYS)
 			};
 		}
 		if (!element.isConnected) return {
@@ -1635,13 +1559,145 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return {
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
-			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+			styles: readStyles((property) =&gt; style.getPropertyValue(property), COMMENT_STYLE_KEYS)
 		};
 	};
 	var describeElement = (element, isPage) =&gt; ({
 		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
 		...describeContent(element, isPage)
 	});
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var NOT_ASCII_WHITESPACE = /[^\\t\\n\\f\\r ]/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var hasOtherContent = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
+			textState: [...element.childNodes].some((node) =&gt; node instanceof Text &amp;&amp; NOT_ASCII_WHITESPACE.test(node.data)) ? &quot;mixed&quot; : &quot;elements&quot;,
+			text: &quot;&quot;
+		};
+		const [only] = element.childNodes;
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var computedOf = (element) =&gt; {
+		if (!element.isConnected) return {};
+		const computed = window.getComputedStyle(element);
+		return readStyles((property) =&gt; computed.getPropertyValue(property), EDIT_STYLE_FIELDS);
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style,
+			computed: computedOf(element)
+		};
+	};
+	// src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	// src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
+	// src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -2181,6 +2237,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var EDIT_STYLE_FIELDS = [
+		&quot;font-size&quot;,
+		&quot;color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;font-weight&quot;,
+		&quot;font-style&quot;,
+		&quot;text-decoration-line&quot;,
+		&quot;text-align&quot;,
+		&quot;line-height&quot;,
+		&quot;letter-spacing&quot;,
+		&quot;text-transform&quot;,
+		&quot;background-color&quot;,
+		&quot;border-radius&quot;,
+		&quot;overflow&quot;,
+		&quot;opacity&quot;,
+		&quot;gap&quot;,
+		&quot;border-width&quot;,
+		&quot;border-style&quot;,
+		&quot;border-color&quot;
+	];
 	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -2282,131 +2359,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
-	};
-	// src/webview/frame/editTarget.ts
-	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
-	var sourceNumberOf = (element) =&gt; {
-		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
-		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
-		const number = Number(value);
-		return Number.isSafeInteger(number) ? number : null;
-	};
-	var hasOtherContent = (element) =&gt; {
-		const children = element.childNodes;
-		const [only] = children;
-		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
-	};
-	var textOf = (element) =&gt; {
-		if (hasOtherContent(element)) return {
-			textState: &quot;children&quot;,
-			text: &quot;&quot;
-		};
-		const [only] = element.childNodes;
-		const text = only instanceof Text ? only.data : &quot;&quot;;
-		return text.length &gt; 5e3 ? {
-			textState: &quot;too-long&quot;,
-			text: &quot;&quot;
-		} : {
-			textState: &quot;plain&quot;,
-			text
-		};
-	};
-	var describeEditTarget = (element) =&gt; {
-		const style = element.getAttribute(&quot;style&quot;);
-		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
-		return {
-			sourceNumber,
-			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
-			...textOf(element),
-			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
-		};
-	};
-	// src/webview/frame/pickPath.ts
-	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
-		const current = path.at(-1);
-		if (current === void 0 || isRoot(current)) return path;
-		const parent = parentOf(current);
-		return parent === null ? path : [...path, parent];
-	};
-	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	// src/webview/stageGeometry.ts
-	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	// src/webview/frame/pickTarget.ts
-	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
-		const resolved = stack.map(resolve);
-		for (const [index, candidate] of resolved.entries()) {
-			if (isRoot(candidate)) continue;
-			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
-		}
-	};
-	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
-	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
-	var clipRect = (rect, clips) =&gt; {
-		let left = rect.x;
-		let top = rect.y;
-		let right = rect.x + rect.width;
-		let bottom = rect.y + rect.height;
-		for (const clip of clips) {
-			left = Math.max(left, clip.x);
-			top = Math.max(top, clip.y);
-			right = Math.min(right, clip.x + clip.width);
-			bottom = Math.min(bottom, clip.y + clip.height);
-		}
-		if (left &gt;= right || top &gt;= bottom) return null;
-		return {
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top
-		};
-	};
-	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
-		x: clampNumber({
-			value: anchorBox.x + offset.x - targetBox.x,
-			min: 0,
-			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
-		}),
-		y: clampNumber({
-			value: anchorBox.y + offset.y - targetBox.y,
-			min: 0,
-			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
-		})
-	});
-	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
-	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
-	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
-	var isTransparentColor = (value) =&gt; {
-		const color = value.trim();
-		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
-	};
-	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
-		&quot;img&quot;,
-		&quot;svg&quot;,
-		&quot;video&quot;,
-		&quot;audio&quot;,
-		&quot;canvas&quot;,
-		&quot;iframe&quot;,
-		&quot;embed&quot;,
-		&quot;object&quot;,
-		&quot;picture&quot;,
-		&quot;input&quot;,
-		&quot;textarea&quot;,
-		&quot;select&quot;,
-		&quot;button&quot;,
-		&quot;progress&quot;,
-		&quot;meter&quot;,
-		&quot;hr&quot;
-	]);
-	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
-		if (width === 0 || height === 0) return false;
-		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
-		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
-		return [
-			[style.borderTopWidth, style.borderTopColor],
-			[style.borderRightWidth, style.borderRightColor],
-			[style.borderBottomWidth, style.borderBottomColor],
-			[style.borderLeftWidth, style.borderLeftColor]
-		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
@@ -2686,9 +2638,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const last = text.charCodeAt(text.length - 1);
 		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
 	};
-	var readStyles = (read) =&gt; {
+	var readStyles = (read, keys) =&gt; {
 		const styles = {};
-		for (const key of COMMENT_STYLE_KEYS) {
+		for (const key of keys) {
 			const raw = read(key);
 			if (hasControlChars(raw)) continue;
 			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
@@ -2702,7 +2654,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return {
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
-				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property), COMMENT_STYLE_KEYS)
 			};
 		}
 		if (!element.isConnected) return {
@@ -2714,13 +2666,145 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return {
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
-			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+			styles: readStyles((property) =&gt; style.getPropertyValue(property), COMMENT_STYLE_KEYS)
 		};
 	};
 	var describeElement = (element, isPage) =&gt; ({
 		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
 		...describeContent(element, isPage)
 	});
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var NOT_ASCII_WHITESPACE = /[^\\t\\n\\f\\r ]/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var hasOtherContent = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
+			textState: [...element.childNodes].some((node) =&gt; node instanceof Text &amp;&amp; NOT_ASCII_WHITESPACE.test(node.data)) ? &quot;mixed&quot; : &quot;elements&quot;,
+			text: &quot;&quot;
+		};
+		const [only] = element.childNodes;
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var computedOf = (element) =&gt; {
+		if (!element.isConnected) return {};
+		const computed = window.getComputedStyle(element);
+		return readStyles((property) =&gt; computed.getPropertyValue(property), EDIT_STYLE_FIELDS);
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style,
+			computed: computedOf(element)
+		};
+	};
+	// src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	// src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
+	// src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({
@@ -3260,6 +3344,27 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	// src/disk/layout.ts
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
+	var EDIT_STYLE_FIELDS = [
+		&quot;font-size&quot;,
+		&quot;color&quot;,
+		&quot;padding&quot;,
+		&quot;margin&quot;,
+		&quot;font-weight&quot;,
+		&quot;font-style&quot;,
+		&quot;text-decoration-line&quot;,
+		&quot;text-align&quot;,
+		&quot;line-height&quot;,
+		&quot;letter-spacing&quot;,
+		&quot;text-transform&quot;,
+		&quot;background-color&quot;,
+		&quot;border-radius&quot;,
+		&quot;overflow&quot;,
+		&quot;opacity&quot;,
+		&quot;gap&quot;,
+		&quot;border-width&quot;,
+		&quot;border-style&quot;,
+		&quot;border-color&quot;
+	];
 	var SOURCE_TAG_ATTRIBUTE = &quot;data-cd-src&quot;;
 	var COMMENT_STYLE_KEYS = [
 		&quot;font-family&quot;,
@@ -3361,131 +3466,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			}
 			default: return;
 		}
-	};
-	// src/webview/frame/editTarget.ts
-	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
-	var sourceNumberOf = (element) =&gt; {
-		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
-		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
-		const number = Number(value);
-		return Number.isSafeInteger(number) ? number : null;
-	};
-	var hasOtherContent = (element) =&gt; {
-		const children = element.childNodes;
-		const [only] = children;
-		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
-	};
-	var textOf = (element) =&gt; {
-		if (hasOtherContent(element)) return {
-			textState: &quot;children&quot;,
-			text: &quot;&quot;
-		};
-		const [only] = element.childNodes;
-		const text = only instanceof Text ? only.data : &quot;&quot;;
-		return text.length &gt; 5e3 ? {
-			textState: &quot;too-long&quot;,
-			text: &quot;&quot;
-		} : {
-			textState: &quot;plain&quot;,
-			text
-		};
-	};
-	var describeEditTarget = (element) =&gt; {
-		const style = element.getAttribute(&quot;style&quot;);
-		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
-		return {
-			sourceNumber,
-			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
-			...textOf(element),
-			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style
-		};
-	};
-	// src/webview/frame/pickPath.ts
-	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
-		const current = path.at(-1);
-		if (current === void 0 || isRoot(current)) return path;
-		const parent = parentOf(current);
-		return parent === null ? path : [...path, parent];
-	};
-	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
-	// src/webview/stageGeometry.ts
-	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
-	// src/webview/frame/pickTarget.ts
-	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
-		const resolved = stack.map(resolve);
-		for (const [index, candidate] of resolved.entries()) {
-			if (isRoot(candidate)) continue;
-			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
-		}
-	};
-	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
-	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
-	var clipRect = (rect, clips) =&gt; {
-		let left = rect.x;
-		let top = rect.y;
-		let right = rect.x + rect.width;
-		let bottom = rect.y + rect.height;
-		for (const clip of clips) {
-			left = Math.max(left, clip.x);
-			top = Math.max(top, clip.y);
-			right = Math.min(right, clip.x + clip.width);
-			bottom = Math.min(bottom, clip.y + clip.height);
-		}
-		if (left &gt;= right || top &gt;= bottom) return null;
-		return {
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top
-		};
-	};
-	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
-		x: clampNumber({
-			value: anchorBox.x + offset.x - targetBox.x,
-			min: 0,
-			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
-		}),
-		y: clampNumber({
-			value: anchorBox.y + offset.y - targetBox.y,
-			min: 0,
-			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
-		})
-	});
-	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
-	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
-	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
-	var isTransparentColor = (value) =&gt; {
-		const color = value.trim();
-		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
-	};
-	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
-		&quot;img&quot;,
-		&quot;svg&quot;,
-		&quot;video&quot;,
-		&quot;audio&quot;,
-		&quot;canvas&quot;,
-		&quot;iframe&quot;,
-		&quot;embed&quot;,
-		&quot;object&quot;,
-		&quot;picture&quot;,
-		&quot;input&quot;,
-		&quot;textarea&quot;,
-		&quot;select&quot;,
-		&quot;button&quot;,
-		&quot;progress&quot;,
-		&quot;meter&quot;,
-		&quot;hr&quot;
-	]);
-	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
-		if (width === 0 || height === 0) return false;
-		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
-		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
-		return [
-			[style.borderTopWidth, style.borderTopColor],
-			[style.borderRightWidth, style.borderRightColor],
-			[style.borderBottomWidth, style.borderBottomColor],
-			[style.borderLeftWidth, style.borderLeftColor]
-		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
 	};
 	// node_modules/.pnpm/@medv+finder@4.0.2/node_modules/@medv/finder/finder.js
 	var acceptedAttrNames = /* @__PURE__ */ new Set([
@@ -3765,9 +3745,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const last = text.charCodeAt(text.length - 1);
 		return last &gt;= 55296 &amp;&amp; last &lt;= 56319 ? text.slice(0, -1) : text;
 	};
-	var readStyles = (read) =&gt; {
+	var readStyles = (read, keys) =&gt; {
 		const styles = {};
-		for (const key of COMMENT_STYLE_KEYS) {
+		for (const key of keys) {
 			const raw = read(key);
 			if (hasControlChars(raw)) continue;
 			const value = raw.replaceAll(/ +/g, &quot; &quot;).trim();
@@ -3781,7 +3761,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			return {
 				tagName: &quot;body&quot;,
 				text: &quot;&quot;,
-				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property))
+				styles: readStyles((property) =&gt; window.getComputedStyle(body).getPropertyValue(property), COMMENT_STYLE_KEYS)
 			};
 		}
 		if (!element.isConnected) return {
@@ -3793,13 +3773,145 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return {
 			tagName: element.localName,
 			text: textExcerpt(element instanceof HTMLElement ? element.innerText : element.textContent ?? &quot;&quot;),
-			styles: readStyles((property) =&gt; style.getPropertyValue(property))
+			styles: readStyles((property) =&gt; style.getPropertyValue(property), COMMENT_STYLE_KEYS)
 		};
 	};
 	var describeElement = (element, isPage) =&gt; ({
 		selector: isPage ? &quot;body&quot; : element.isConnected ? buildSelector(element) : null,
 		...describeContent(element, isPage)
 	});
+	// src/webview/frame/editTarget.ts
+	var CANONICAL_NUMBER = /^(?:0|[1-9]\\d*)$/;
+	var NOT_ASCII_WHITESPACE = /[^\\t\\n\\f\\r ]/;
+	var sourceNumberOf = (element) =&gt; {
+		const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
+		if (value === null || !CANONICAL_NUMBER.test(value)) return null;
+		const number = Number(value);
+		return Number.isSafeInteger(number) ? number : null;
+	};
+	var hasOtherContent = (element) =&gt; {
+		const children = element.childNodes;
+		const [only] = children;
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
+			textState: [...element.childNodes].some((node) =&gt; node instanceof Text &amp;&amp; NOT_ASCII_WHITESPACE.test(node.data)) ? &quot;mixed&quot; : &quot;elements&quot;,
+			text: &quot;&quot;
+		};
+		const [only] = element.childNodes;
+		const text = only instanceof Text ? only.data : &quot;&quot;;
+		return text.length &gt; 5e3 ? {
+			textState: &quot;too-long&quot;,
+			text: &quot;&quot;
+		} : {
+			textState: &quot;plain&quot;,
+			text
+		};
+	};
+	var computedOf = (element) =&gt; {
+		if (!element.isConnected) return {};
+		const computed = window.getComputedStyle(element);
+		return readStyles((property) =&gt; computed.getPropertyValue(property), EDIT_STYLE_FIELDS);
+	};
+	var describeEditTarget = (element) =&gt; {
+		const style = element.getAttribute(&quot;style&quot;);
+		const sourceNumber = element.isConnected ? sourceNumberOf(element) : null;
+		return {
+			sourceNumber,
+			sharedNumber: sourceNumber !== null &amp;&amp; element.ownerDocument.querySelectorAll(\`[data-cd-src=&quot;\${sourceNumber}&quot;]\`).length &gt; 1,
+			...textOf(element),
+			style: style === null ? &quot;&quot; : style.length &gt; 5e3 ? null : style,
+			computed: computedOf(element)
+		};
+	};
+	// src/webview/frame/pickPath.ts
+	var stepToParent = ({ path, parentOf, isRoot }) =&gt; {
+		const current = path.at(-1);
+		if (current === void 0 || isRoot(current)) return path;
+		const parent = parentOf(current);
+		return parent === null ? path : [...path, parent];
+	};
+	var stepToChild = (path) =&gt; path.length &gt; 1 ? path.slice(0, -1) : path;
+	// src/webview/stageGeometry.ts
+	var clampNumber = ({ value, min, max }) =&gt; Math.min(max, Math.max(min, value));
+	// src/webview/frame/pickTarget.ts
+	var pickTarget = ({ stack, resolve, isRoot, paints, contains }) =&gt; {
+		const resolved = stack.map(resolve);
+		for (const [index, candidate] of resolved.entries()) {
+			if (isRoot(candidate)) continue;
+			if (!(!paints(candidate) &amp;&amp; resolved.slice(index + 1).some((below) =&gt; !contains(below, candidate)))) return candidate;
+		}
+	};
+	var sameRect = (left, right) =&gt; left === null || right === null ? left === right : left.x === right.x &amp;&amp; left.y === right.y &amp;&amp; left.width === right.width &amp;&amp; left.height === right.height;
+	var isUnchangedPick = ({ last, next }) =&gt; last.element === next.element &amp;&amp; last.described === next.described &amp;&amp; sameRect(last.rect, next.rect) &amp;&amp; last.point.x === next.point.x &amp;&amp; last.point.y === next.point.y;
+	var clipRect = (rect, clips) =&gt; {
+		let left = rect.x;
+		let top = rect.y;
+		let right = rect.x + rect.width;
+		let bottom = rect.y + rect.height;
+		for (const clip of clips) {
+			left = Math.max(left, clip.x);
+			top = Math.max(top, clip.y);
+			right = Math.min(right, clip.x + clip.width);
+			bottom = Math.min(bottom, clip.y + clip.height);
+		}
+		if (left &gt;= right || top &gt;= bottom) return null;
+		return {
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		};
+	};
+	var pointInTarget = ({ anchorBox, offset, targetBox }) =&gt; ({
+		x: clampNumber({
+			value: anchorBox.x + offset.x - targetBox.x,
+			min: 0,
+			max: Math.min(targetBox.width, MAX_FRAME_COORDINATE)
+		}),
+		y: clampNumber({
+			value: anchorBox.y + offset.y - targetBox.y,
+			min: 0,
+			max: Math.min(targetBox.height, MAX_FRAME_COORDINATE)
+		})
+	});
+	var ZERO_ALPHA = String.raw\`(?:0+(?:\\.0*)?|\\.0+)%?\\s*\\)$\`;
+	var LEGACY_ZERO_ALPHA = new RegExp(String.raw\`^(?:rgba|hsla)\\(.*,\\s*\${ZERO_ALPHA}\`, &quot;i&quot;);
+	var SLASH_ZERO_ALPHA = new RegExp(String.raw\`\\/\\s*\${ZERO_ALPHA}\`);
+	var isTransparentColor = (value) =&gt; {
+		const color = value.trim();
+		return color === &quot;transparent&quot; || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
+	};
+	var REPLACED_OR_CONTROL = /* @__PURE__ */ new Set([
+		&quot;img&quot;,
+		&quot;svg&quot;,
+		&quot;video&quot;,
+		&quot;audio&quot;,
+		&quot;canvas&quot;,
+		&quot;iframe&quot;,
+		&quot;embed&quot;,
+		&quot;object&quot;,
+		&quot;picture&quot;,
+		&quot;input&quot;,
+		&quot;textarea&quot;,
+		&quot;select&quot;,
+		&quot;button&quot;,
+		&quot;progress&quot;,
+		&quot;meter&quot;,
+		&quot;hr&quot;
+	]);
+	var paintsFromStyle = ({ localName, width, height, hasOwnText, style }) =&gt; {
+		if (width === 0 || height === 0) return false;
+		if (REPLACED_OR_CONTROL.has(localName) || hasOwnText) return true;
+		if (!isTransparentColor(style.backgroundColor) || style.backgroundImage !== &quot;none&quot; || style.boxShadow !== &quot;none&quot;) return true;
+		return [
+			[style.borderTopWidth, style.borderTopColor],
+			[style.borderRightWidth, style.borderRightColor],
+			[style.borderBottomWidth, style.borderBottomColor],
+			[style.borderLeftWidth, style.borderLeftColor]
+		].some(([borderWidth, borderColor]) =&gt; Number.parseFloat(borderWidth) &gt; 0 &amp;&amp; !isTransparentColor(borderColor));
+	};
 	// src/webview/frame/commentPicking.ts
 	var isRoot = (element) =&gt; element.localName === &quot;html&quot; || element.localName === &quot;body&quot;;
 	var toFrameRect = (box) =&gt; ({

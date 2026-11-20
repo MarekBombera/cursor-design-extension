@@ -1,12 +1,7 @@
 import { className, finder, idName } from '@medv/finder';
 
 import { COMMENT_STYLE_KEYS, MAX_PICK_TEXT_CHARS, MAX_SELECTOR_CHARS } from '../../disk/layout';
-import {
-	type CommentStyles,
-	type FramePickMessage,
-	hasControlChars,
-	isSafeStyleValue,
-} from './frameMessages';
+import { type FramePickMessage, hasControlChars, isSafeStyleValue } from './frameMessages';
 
 // Part of the frame runtime; it only reads the design DOM.
 
@@ -94,9 +89,12 @@ export const textExcerpt = (raw: string): string => {
 };
 
 // Unsafe values are omitted, never stripped: stripping changes their meaning.
-export const readStyles = (read: (property: string) => string): CommentStyles => {
-	const styles: CommentStyles = {};
-	for (const key of COMMENT_STYLE_KEYS) {
+export const readStyles = <Key extends string>(
+	read: (property: string) => string,
+	keys: readonly Key[],
+): Partial<Record<Key, string>> => {
+	const styles: Partial<Record<Key, string>> = {};
+	for (const key of keys) {
 		const raw = read(key);
 		if (hasControlChars(raw)) {
 			continue;
@@ -123,7 +121,10 @@ export const describeContent = (
 		return {
 			tagName: 'body',
 			text: '',
-			styles: readStyles((property) => window.getComputedStyle(body).getPropertyValue(property)),
+			styles: readStyles(
+				(property) => window.getComputedStyle(body).getPropertyValue(property),
+				COMMENT_STYLE_KEYS,
+			),
 		};
 	}
 	if (!element.isConnected) {
@@ -135,7 +136,7 @@ export const describeContent = (
 		text: textExcerpt(
 			element instanceof HTMLElement ? element.innerText : (element.textContent ?? ''),
 		),
-		styles: readStyles((property) => style.getPropertyValue(property)),
+		styles: readStyles((property) => style.getPropertyValue(property), COMMENT_STYLE_KEYS),
 	};
 };
 

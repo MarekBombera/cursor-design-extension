@@ -12,9 +12,10 @@ import {
 	FRAME_WHEEL_MESSAGE,
 } from './frameMessages';
 
-// ponytail: a soft ceiling on the runtime every exported canvas.html embeds: a 31,039-char
-// unminified baseline plus 4,096. Re-baseline when a toolchain bump changes the unminified output.
-const RUNTIME_SIZE_BUDGET = 35_135;
+// ponytail: a soft ceiling on the runtime every exported canvas.html embeds: a 35,829-char
+// unminified baseline (re-baselined in 9h for the Edit-mode pick's computed values and text states)
+// plus 4,096. Re-baseline when a toolchain bump changes the unminified output.
+const RUNTIME_SIZE_BUDGET = 39_925;
 
 test('canvas runtime stays within its size budget', () => {
 	assert.ok(runtimeSource.length < RUNTIME_SIZE_BUDGET, String(runtimeSource.length));

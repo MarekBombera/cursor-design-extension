@@ -51,11 +51,28 @@ export const MAX_PICK_TEXT_CHARS = 200;
 
 export const MAX_STYLE_VALUE_CHARS = 200;
 
-// The inline properties an edit can change; the inspector derives its fields from them.
-export const EDIT_STYLE_FIELDS = ['font-size', 'color', 'padding', 'margin'] as const;
-
-// The edit core's allowlist, shared with the panel's artboard:edit type.
-export const EDIT_FIELDS = ['text', ...EDIT_STYLE_FIELDS] as const;
+// The inline properties an edit can change, in list order.
+export const EDIT_STYLE_FIELDS = [
+	'font-size',
+	'color',
+	'padding',
+	'margin',
+	'font-weight',
+	'font-style',
+	'text-decoration-line',
+	'text-align',
+	'line-height',
+	'letter-spacing',
+	'text-transform',
+	'background-color',
+	'border-radius',
+	'overflow',
+	'opacity',
+	'gap',
+	'border-width',
+	'border-style',
+	'border-color',
+] as const;
 
 // Shared by the panel's artboard:history type and the host's zod enum.
 export const HISTORY_STEPS = ['undo', 'redo'] as const;

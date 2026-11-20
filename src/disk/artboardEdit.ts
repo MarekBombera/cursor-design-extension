@@ -5,33 +5,24 @@ import {
 	type ArtboardElement,
 	parseArtboardDocument,
 } from './commentTarget';
+import { leadingWhitespaceLength, trailingWhitespaceLength } from './inlineStyle';
 import {
-	leadingWhitespaceLength,
-	removeStyleProperty,
-	setStyleProperty,
-	trailingWhitespaceLength,
-} from './inlineStyle';
-import {
+	applyStyleChanges,
 	hasLoneSurrogate,
 	isRefusedEditText,
 	normalizeEditText,
-	normalizeStyleValue,
-	type StyleField,
+	type StyleChange,
 } from './editValues';
-import { EDIT_FIELDS, MAX_EDIT_TEXT_CHARS, RAW_TEXT_ELEMENTS } from './layout';
+import { EDIT_STYLE_FIELDS, MAX_EDIT_TEXT_CHARS, RAW_TEXT_ELEMENTS } from './layout';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 // One Edit-mode change to disk HTML, by source number: string splices at parse5 offsets change
-// only the element's text or one inline property; every other byte stays. Pure.
-
-type EditField = (typeof EDIT_FIELDS)[number];
-
-export type { StyleField };
+// only the element's text or its inline style properties; every other byte stays. Pure.
 
 export type ArtboardEdit =
 	| { sourceNumber: number; field: 'text'; value: string; liveText: string }
-	// An empty value (after trimming) clears the declaration.
-	| { sourceNumber: number; field: StyleField; value: string };
+	// An empty value (after trimming) clears that declaration.
+	| { sourceNumber: number; styles: readonly StyleChange[] };
 
 export type EditRefusal =
 	| 'unknown-number'
@@ -54,8 +45,32 @@ const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
 
 const refuse = (refusal: EditRefusal): EditResult => ({ ok: false, refusal });
 
-const isEditField = (field: unknown): field is EditField =>
-	EDIT_FIELDS.some((editField) => editField === field);
+const isStyleChange = (entry: unknown): entry is StyleChange => {
+	if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+		return false;
+	}
+	const { field, value } = entry as Record<string, unknown>;
+	return EDIT_STYLE_FIELDS.some((styleField) => styleField === field) && typeof value === 'string';
+};
+
+// The untrusted edit's checked shape: `field: 'text'` selects the text variant, anything else must
+// be the styles shape. undefined: neither.
+const checkedEdit = (
+	edit: Record<string, unknown>,
+): { value: string; liveText: string } | { styles: readonly StyleChange[] } | undefined => {
+	const { field, value, liveText, styles } = edit;
+	if (field === 'text') {
+		return typeof value === 'string' && typeof liveText === 'string'
+			? { value, liveText }
+			: undefined;
+	}
+	if (!Array.isArray(styles)) {
+		return undefined;
+	}
+	// Array.from fills holes with undefined: `every` skips holes, so a sparse list would pass.
+	const changes: unknown[] = Array.from(styles);
+	return changes.every(isStyleChange) ? { styles: changes } : undefined;
+};
 
 // A programming error, not a refusal: the caller passed a document parsed from other HTML. The
 // start tag's own bounds anchor it, not its name: parse5 renames some tags (`<image>` is `img`).
@@ -274,13 +289,8 @@ const readStyleAttribute = (
 const editStyle = ({
 	html,
 	element,
-	field,
-	value,
-}: TargetArgs & { field: StyleField; value: string }): EditResult => {
-	const written = normalizeStyleValue(field, value);
-	if (written === undefined) {
-		return refuse('invalid-value');
-	}
+	changes,
+}: TargetArgs & { changes: readonly StyleChange[] }): EditResult => {
 	const startTag = element.sourceCodeLocation?.startTag;
 	const styleLocation = element.sourceCodeLocation?.attrs?.style;
 	if (styleLocation === undefined) {
@@ -288,26 +298,28 @@ const editStyle = ({
 		if (element.attrs.some((attribute) => attribute.name === 'style')) {
 			return refuse('unsupported-style');
 		}
-		if (written === '') {
+		const applied = applyStyleChanges({ styleText: '', changes });
+		if (!applied.ok) {
+			return refuse(applied.refusal);
+		}
+		if (applied.styleText === '') {
 			return { ok: true, html };
 		}
 		const insertAt = tagNameEnd(html, startTag?.startOffset ?? 0);
 		return {
 			ok: true,
-			html: `${html.slice(0, insertAt)} style="${field}: ${written}"${html.slice(insertAt)}`,
+			html: `${html.slice(0, insertAt)} style="${applied.styleText}"${html.slice(insertAt)}`,
 		};
 	}
 	const attribute = readStyleAttribute(html, styleLocation);
 	if (attribute.quoted === undefined && attribute.styleText.includes('"')) {
 		return refuse('unsupported-style');
 	}
-	const styleText =
-		written === ''
-			? removeStyleProperty(attribute.styleText, field)
-			: setStyleProperty({ styleText: attribute.styleText, property: field, value: written });
-	if (styleText === undefined) {
-		return refuse('unsupported-style');
+	const applied = applyStyleChanges({ styleText: attribute.styleText, changes });
+	if (!applied.ok) {
+		return refuse(applied.refusal);
 	}
+	const { styleText } = applied;
 	if (styleText === attribute.styleText) {
 		return { ok: true, html };
 	}
@@ -334,14 +346,11 @@ export const editArtboardHtml = ({
 }): EditResult => {
 	// Untrusted panel input: re-checked here although parseChromeMessage checks its shape too.
 	const untrusted: Record<string, unknown> = edit;
-	const { field, value, liveText, sourceNumber } = untrusted;
-	if (
-		!isEditField(field) ||
-		typeof value !== 'string' ||
-		(field === 'text' && typeof liveText !== 'string')
-	) {
+	const checked = checkedEdit(untrusted);
+	if (checked === undefined) {
 		return refuse('invalid-value');
 	}
+	const { sourceNumber } = untrusted;
 	if (typeof sourceNumber !== 'number' || !Number.isSafeInteger(sourceNumber) || sourceNumber < 0) {
 		return refuse('unknown-number');
 	}
@@ -355,14 +364,14 @@ export const editArtboardHtml = ({
 		return refuse('shared-number');
 	}
 	assertParsedFrom(html, element);
-	return edit.field === 'text'
-		? editText({
+	return 'styles' in checked
+		? editStyle({ html, element, changes: checked.styles })
+		: editText({
 				html,
 				element,
 				sourceNumber,
 				entries,
-				value: edit.value,
-				liveText: edit.liveText,
-			})
-		: editStyle({ html, element, field: edit.field, value: edit.value });
+				value: checked.value,
+				liveText: checked.liveText,
+			});
 };

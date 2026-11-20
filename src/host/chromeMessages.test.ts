@@ -277,22 +277,40 @@ const styleEdit = {
 	frameId: 'hero',
 	sourceNumber: 0,
 	hash: HASH,
-	field: 'padding',
-	value: '8',
+	styles: [
+		{ field: 'padding', value: '8' },
+		{ field: 'border-color', value: '' },
+	],
 };
 
-test('artboard:edit parses a text and a style edit', () => {
+test('artboard:edit parses a text and a styles edit', () => {
 	assert.deepEqual(parseChromeMessage(textEdit), textEdit);
 	assert.deepEqual(parseChromeMessage(styleEdit), styleEdit);
+	// The chrome never sends both: text wins and styles is stripped.
+	assert.deepEqual(parseChromeMessage({ ...textEdit, styles: styleEdit.styles }), textEdit);
 });
 
 test('artboard:edit rejects bad fields, sizes, numbers, hashes and request ids', () => {
 	const over = 'x'.repeat(MAX_EDIT_TEXT_CHARS + 1);
+	const { styles: _styles, ...styleBase } = styleEdit;
 	for (const broken of [
-		{ ...styleEdit, field: 'border' },
+		{ ...styleBase, field: 'padding', value: '8' },
+		{ ...styleBase, field: 'color', value: '#000000' },
+		{ ...styleEdit, styles: [] },
+		{ ...styleEdit, styles: Array.from({ length: 20 }, () => ({ field: 'gap', value: '1' })) },
+		{
+			...styleEdit,
+			styles: [
+				{ field: 'gap', value: '1' },
+				{ field: 'gap', value: '2' },
+			],
+		},
+		{ ...styleEdit, styles: [{ field: 'border', value: '1px' }] },
+		{ ...styleEdit, styles: [{ field: 'gap', value: over }] },
+		{ ...styleEdit, styles: [null] },
+		{ ...styleEdit, styles: { field: 'gap', value: '1' } },
 		{ ...textEdit, liveText: undefined },
-		{ ...styleEdit, liveText: 'Old' },
-		{ ...styleEdit, value: over },
+		{ ...textEdit, value: over },
 		{ ...textEdit, liveText: over },
 		{ ...styleEdit, sourceNumber: -1 },
 		{ ...styleEdit, sourceNumber: 1.5 },
@@ -306,7 +324,7 @@ test('artboard:edit rejects bad fields, sizes, numbers, hashes and request ids',
 });
 
 test('a malformed artboard:edit is still an attempt with an answerable requestId', () => {
-	const broken = { ...styleEdit, field: 'border' };
+	const broken = { ...styleEdit, styles: [{ field: 'border', value: '1px' }] };
 	assert.equal(isArtboardEditAttempt(broken), true);
 	assert.equal(isArtboardEditAttempt({ type: 'comment:copy-open', requestId: 'x' }), false);
 	assert.equal(claimedRequestId(broken), 'edit-2');

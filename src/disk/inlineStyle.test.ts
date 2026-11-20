@@ -3,6 +3,7 @@ import * as fc from 'fast-check';
 import { test } from 'vite-plus/test';
 
 import {
+	BORDER_PARENTS,
 	MARGIN_LONGHANDS,
 	PADDING_LONGHANDS,
 	removeStyleProperty,
@@ -54,6 +55,44 @@ test('a later font shorthand moves the new font-size to the end', () => {
 		set('font: 16px serif; font-size: 10px', 'font-size', '12px'),
 		'font: 16px serif; font-size: 12px',
 	);
+});
+
+test('a later parent shorthand moves an in-place set to the end', () => {
+	assert.equal(
+		set('text-decoration-line: none; text-decoration: underline', 'text-decoration-line', 'none'),
+		'text-decoration: underline; text-decoration-line: none',
+	);
+	assert.equal(
+		set('border-color: #000; border: 1px solid #ddd', 'border-color', '#fff'),
+		'border: 1px solid #ddd; border-color: #fff',
+	);
+	assert.equal(
+		set('border-color: #000; border-inline-end: 1px solid', 'border-color', '#fff'),
+		'border-inline-end: 1px solid; border-color: #fff',
+	);
+	assert.equal(
+		set('background-color: #000; background: url(a.png)', 'background-color', '#fff'),
+		'background: url(a.png); background-color: #fff',
+	);
+	// A parent before the field, or another field's parent, changes nothing.
+	assert.equal(
+		set('background: none; background-color: #000; font: 12px serif', 'background-color', '#fff'),
+		'background: none; background-color: #fff; font: 12px serif',
+	);
+});
+
+test('a shorthand field drops only its own longhands', () => {
+	assert.equal(set('row-gap: 1px; display: grid', 'gap', '8px'), 'display: grid; gap: 8px');
+	assert.equal(
+		set('border-top-width: 1px; border-top-style: solid', 'border-width', '2px'),
+		'border-top-style: solid; border-width: 2px',
+	);
+	assert.equal(
+		set('border-top-left-radius: 1px; border-radius: 2px', 'border-radius', '4px'),
+		'border-radius: 4px',
+	);
+	assert.equal(set('overflow-x: auto', 'overflow', 'hidden'), 'overflow: hidden');
+	assert.equal(BORDER_PARENTS.length, 11);
 });
 
 test('padding drops its ten longhands and nothing else', () => {

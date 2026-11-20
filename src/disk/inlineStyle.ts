@@ -1,27 +1,67 @@
 // An edit changes or appends only the declarations it touches; every other character stays.
 
+const SIDES = [
+	'top',
+	'right',
+	'bottom',
+	'left',
+	'block',
+	'block-start',
+	'block-end',
+	'inline',
+	'inline-start',
+	'inline-end',
+] as const;
+
 const longhandsOf = (shorthand: string): readonly string[] =>
-	[
-		'top',
-		'right',
-		'bottom',
-		'left',
-		'block',
-		'block-start',
-		'block-end',
-		'inline',
-		'inline-start',
-		'inline-end',
-	].map((side) => `${shorthand}-${side}`);
+	SIDES.map((side) => `${shorthand}-${side}`);
+
+const borderSideLonghands = (suffix: string): readonly string[] =>
+	SIDES.map((side) => `border-${side}-${suffix}`);
 
 export const PADDING_LONGHANDS: readonly string[] = longhandsOf('padding');
 
 export const MARGIN_LONGHANDS: readonly string[] = longhandsOf('margin');
 
-// Setting or clearing a shorthand drops its longhands, or the edit would look ignored.
+// Every declaration that can set a side's width, style and colour at once.
+export const BORDER_PARENTS: readonly string[] = ['border', ...longhandsOf('border')];
+
+// Setting or clearing a shorthand drops its longhands, or the edit would look ignored. A border
+// field drops only its own aspect: border-width never touches a -style or -color longhand.
 const LONGHANDS = new Map<string, readonly string[]>([
 	['padding', PADDING_LONGHANDS],
 	['margin', MARGIN_LONGHANDS],
+	['gap', ['row-gap', 'column-gap', 'grid-gap', 'grid-row-gap', 'grid-column-gap']],
+	[
+		'border-radius',
+		[
+			'top-left',
+			'top-right',
+			'bottom-right',
+			'bottom-left',
+			'start-start',
+			'start-end',
+			'end-start',
+			'end-end',
+		].map((corner) => `border-${corner}-radius`),
+	],
+	['overflow', ['overflow-x', 'overflow-y', 'overflow-block', 'overflow-inline']],
+	['border-width', borderSideLonghands('width')],
+	['border-style', borderSideLonghands('style')],
+	['border-color', borderSideLonghands('color')],
+]);
+
+// A parent declared after the field's last declaration would override an in-place set.
+const PARENTS = new Map<string, readonly string[]>([
+	['font-size', ['font']],
+	['font-weight', ['font']],
+	['font-style', ['font']],
+	['line-height', ['font']],
+	['text-decoration-line', ['text-decoration']],
+	['background-color', ['background']],
+	['border-width', BORDER_PARENTS],
+	['border-style', BORDER_PARENTS],
+	['border-color', BORDER_PARENTS],
 ]);
 
 // Named references that spell CSS syntax; numeric references are always decoded.
@@ -101,7 +141,7 @@ export const asciiTrim = (text: string): string => {
 	return text.slice(start, text.length - trailingWhitespaceLength(text.slice(start)));
 };
 
-const asciiLowerCase = (text: string): string =>
+export const asciiLowerCase = (text: string): string =>
 	text.replaceAll(/[A-Z]/g, (letter) => letter.toLowerCase());
 
 type ScannedSegment = {
@@ -234,7 +274,10 @@ export const splitStyleDeclarations = (
 
 // Removes every segment naming one of `properties`, each with its own separator. When no kept
 // segment precedes a removed one, the next kept segment's leading whitespace goes too.
-const removeProperties = (styleText: string, properties: ReadonlySet<string>): string => {
+export const removeStyleProperties = (
+	styleText: string,
+	properties: ReadonlySet<string>,
+): string => {
 	let output = '';
 	let keptAny = false;
 	let removedFirst = false;
@@ -252,7 +295,7 @@ const removeProperties = (styleText: string, properties: ReadonlySet<string>): s
 
 // An absent property gives back the input unchanged; an emptied attribute stays `style=""`.
 export const removeStyleProperty = (styleText: string, property: string): string =>
-	removeProperties(styleText, new Set([property, ...(LONGHANDS.get(property) ?? [])]));
+	removeStyleProperties(styleText, new Set([property, ...(LONGHANDS.get(property) ?? [])]));
 
 // undefined: the text ends inside a string, comment, escape or bracket, so an appended
 // declaration would land inside it.
@@ -289,10 +332,13 @@ const lastIndexOfProperty = (segments: ScannedSegment[], property: string): numb
 };
 
 // `value` must already pass normalizeStyleValue. The last occurrence's value changes in place,
-// keeping its spacing and `!important`; otherwise one declaration is appended. Padding and margin
-// then drop their longhands. undefined: the value would be appended onto text that ends open.
+// keeping its spacing and `!important`; otherwise one declaration is appended. A shorthand then
+// drops its longhands. undefined: the value would be appended onto text that ends open.
 // ponytail: earlier duplicates stay, so an earlier `!important` duplicate still wins in the
 // browser. Upgrade path: drop earlier duplicates on set.
+// ponytail: a field moved to the end past a later parent (font-size before `font`, border-color
+// before `border-top`, ...) loses its own `!important`, and a parent marked `!important` still
+// wins after the move. Upgrade path: keep the flag on move and compare importance.
 export const setStyleProperty = ({
 	styleText,
 	property,
@@ -304,22 +350,23 @@ export const setStyleProperty = ({
 }): string | undefined => {
 	const { segments } = scanStyle(styleText);
 	const lastIndex = lastIndexOfProperty(segments, property);
-	// A later `font` shorthand would override an in-place font-size, so move it to the end.
+	const parents = PARENTS.get(property) ?? [];
 	const overridden =
-		property === 'font-size' &&
 		lastIndex >= 0 &&
-		segments.slice(lastIndex + 1).some((segment) => segment.property === 'font');
+		segments
+			.slice(lastIndex + 1)
+			.some((segment) => segment.property !== undefined && parents.includes(segment.property));
 	const target = overridden ? undefined : segments[lastIndex];
 	const declaration = `${property}: ${value}`;
 	let updated: string | undefined;
 	if (target?.valueStart !== undefined && target.valueEnd !== undefined) {
 		updated = `${styleText.slice(0, target.valueStart)}${value}${styleText.slice(target.valueEnd)}`;
 	} else {
-		const base = overridden ? removeProperties(styleText, new Set([property])) : styleText;
+		const base = overridden ? removeStyleProperties(styleText, new Set([property])) : styleText;
 		updated = appendDeclaration(base, declaration);
 	}
 	const longhands = LONGHANDS.get(property);
 	return updated === undefined || longhands === undefined
 		? updated
-		: removeProperties(updated, new Set(longhands));
+		: removeStyleProperties(updated, new Set(longhands));
 };

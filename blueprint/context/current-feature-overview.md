@@ -1,68 +1,108 @@
-# Fix: Chrome load error and export lock - Overview for review
+# 9h. More edit fields: saving - Overview for review
 
-> **Generated file.** Human-facing steering summary of the active work item:
-> same content as `current-feature.md`, trimmed. Written at `/feature` when the
-> spec is created, and kept current if the spec is revised. `/complete` may
-> polish this into the archive-ready one-pager; it is not the first write.
-> Open in Markdown preview to render the diagrams.
-
-Source of truth: `blueprint/history/fixes/chrome-load-error-and-export-lock.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09h-more-edit-fields-saving.md`. This file is the
+steering summary, not the build spec. Open in Markdown preview to render the diagrams.
 
 ## TL;DR
 
-This fix closes two findings the 9g audit confirmed.
-- **F-16:** opening the panel when `dist/webview/chrome.js` or `chrome.css` is missing now shows a Cursor error notification naming the file, instead of a silent blank tab.
-- **F-161:** export's final meta refresh and manifest write now run under the workspace lock and re-read the files first, so they no longer overwrite a meta that a panel edit, Undo or Agent update just saved.
-
-## Key loop (export tail, shipped)
-
-```mermaid
-sequenceDiagram
-  participant Ex as exportArtboard (MCP export_artboard or Export Handoff command)
-  participant L as .cursor-design/.lock
-  participant D as artboards/*.html + *.meta.json, manifest.json
-  Ex->>D: scan HTML, metas, manifest (no lock)
-  Ex->>D: write handoff/<exportId>/ (no lock)
-  Ex->>L: withWorkspaceLock (2 s timeout)
-  Ex->>D: re-read each stale frame's HTML + strict meta, then the manifest
-  Note over Ex,D: skip a frame whose HTML or meta changed since the scan
-  Ex->>D: write queued metas, then manifest (fresh copy + lastExport)
-  Ex-->>L: release
-```
+The save path and the canvas's report on the selected element now know everything the redesigned
+inspector (9i) needs. 15 more properties can be saved, each with its own value check. One save can
+change several properties as one write and one undo step. The canvas reports what an element holds
+and the current value of every editable property. The inspector you see is unchanged.
 
 ## What you will see
 
-- When the chrome bundle is missing, this notification appears: "Cursor Design could not load its panel: dist/webview/chrome.js is missing. Reinstall the extension, or run pnpm compile in a development checkout." Nothing changes when the files exist.
-- Exports look the same. A rare `WORKSPACE_BUSY` means retry; the tool description and the Agent skill both say so.
+Nothing new yet. The inspector still shows Text, Font size, Color, Padding and Margin, and the
+gallery shots match `main`. One small widening is live today: Color now also accepts `#fff`,
+`#ffff`, `#rrggbbaa` and `transparent`.
+
+## System map
+
+```mermaid
+flowchart LR
+  F["Frame (artboard iframe)<br/>describeEditTarget: textState, computed"] -- "cd:pick edit" --> C["Chrome (panel)<br/>inspector, drafts, preview"]
+  C -- "cd:edit-apply (preview)" --> F
+  C -- "artboard:edit (text or styles list)" --> H["Extension host<br/>parseChromeMessage"]
+  H -- "editArtboard" --> D["Disk .cursor-design/<br/>editArtboardHtml + applyStyleChanges"]
+  H -- "artboard:edited / ui:error" --> C
+  R["applyStyleChanges<br/>(editValues.ts)"] -.shared by.-> C
+  R -.shared by.-> D
+```
+
+## Key loop
+
+```mermaid
+sequenceDiagram
+  participant F as Frame
+  participant C as Chrome
+  participant H as Host
+  participant D as Disk
+  F->>C: cd:pick {edit {textState: plain|mixed|elements|too-long, text, style, computed}}
+  alt bad computed or the retired 'children' state
+    C->>C: whole pick dropped
+  end
+  Note over C,F: user types a style value
+  C->>C: stylePreview → applyStyleChanges
+  C->>F: cd:edit-apply {sourceNumber, style}
+  Note over C,H: user saves
+  C->>H: artboard:edit {…, styles: [{field, value}, …]} (or the text shape)
+  alt malformed (empty, over 19, repeated or unknown field, old shape)
+    H->>C: ui:error
+  else
+    H->>D: editArtboardHtml: shape check, number lookup, every value checked, applied in order
+    alt any refusal
+      H->>C: ui:error (nothing written)
+    else changed
+      H->>D: one write
+      H->>H: one undo step for the whole list
+      H->>C: artboard:edited {…, canUndo, canRedo}
+    end
+  end
+```
+
+## Rule logic
+
+- **Values:** fixed keyword lists (weight 100–900, align, case, overflow, border style, italic,
+  underline / strikethrough), hex or `transparent` for the three colours, 0–1 for opacity,
+  unitless `1.6` for leading (`1.` and `-1.5` refused), today's length rule for the rest. No
+  saved value can hold a quote, `;`, `:`, `<` or anything that ends the style attribute.
+- **Shorthands:** setting `gap`, `border-radius`, `overflow` or a border field drops only its own
+  longhands. A field set before a later parent shorthand (`font`, `text-decoration`,
+  `background`, `border…`) moves after it so it still applies.
+- **Border Reset:** clearing all three border fields in one save also removes `border:` and its
+  per-side shorthands. Clearing one or two leaves them.
 
 ## Decisions locked
 
-- **F-16:**
-  - A host-side check reuses `fileExists`, and the shell only exports the asset paths. A fallback text in the shell would flash on every open.
-  - Known gap: a `chrome.js` that loads but crashes before mounting still shows a blank panel (`ponytail:`).
-- **F-161:**
-  - Inside the lock, all reads come before any write.
-  - The meta comparison is raw equality with the scan.
-  - The manifest race with the unlocked `set_artboard` / `set_active_artboard` is narrowed, not closed (`ponytail:`).
+- Field order: today's four first, then the 15 new ones; lists match exactly what 9i offers.
+- The old single-property save shape is gone; panel and host ship together.
+- `edit.computed` is the one source of current values for edit fields; `display` (9i's Gap
+  check) stays in the pick's comment style list.
+- The size limit on the canvas code in every export was re-baselined to 39,925 characters.
+- `prototypes/` stays in the repo for 9i and is kept out of the `.vsix`.
 
-## Evidence
+## Out of scope
 
-| Check | Result |
-|---|---|
-| `handoff.test.ts` race cases (a)–(d), plus a test that a corrupt second meta writes nothing | pass; each guard, the lock and the read-before-write order fail their tests when removed |
-| `hostFs.test.ts` | pass; the stat-error case fails without the `.catch` |
-| Real Cursor, package without `chrome.js` | the toast shows the exact message; the tab stays blank |
-| Real Cursor, full package | the `hero` frame renders; no toast within 5 s; the Notifications center is empty |
-| `pnpm verify` / `pnpm test:browser` | 742 tests / 168 passed |
-| `/audit` (Opus + Sonnet) and closure review | no P0–P2; F-16, F-161 and F-165–F-167 closed; F-168 invalid |
+Any inspector UI change (sections, new controls, Reset and Add border buttons, set dot, tokens):
+9i. Per-side spacing, font family, shadow, transform, size, layout. MCP tools, the Agent skill,
+comments.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Export tail | The last part of an export, which refreshes stale metas and records `lastExport` |
-| Workspace lock | `.cursor-design/.lock`, which keeps the panel and every MCP process from writing at the same moment |
-| Chrome bundle | `dist/webview/chrome.js` and `chrome.css`: the panel's UI code |
+| `edit.computed` | the browser's current value of each editable property, for 9i's grey inherited values |
+| `textState` | what the element holds: `plain` text, text `mixed` with elements, only `elements`, or `too-long` |
+| `applyStyleChanges` | the one rule that applies a list of style changes, so preview and save agree |
+| Border parents | `border` and its per-side shorthands, which a later border field must not be hidden behind |
+
+## Done means
+
+- `pnpm verify` green (754 unit tests), `pnpm test:browser` green (169), inspector gallery
+  unchanged.
+- Three independent fresh-subagent reviews; the last passed at `f5d4e34` with no new findings.
+  F-162, F-163 and F-164 (all P3) were found, fixed and closed.
+- No F5 or real-Cursor run in 9h; 9i ends with it.
 
 ## Your actions
 

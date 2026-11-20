@@ -1,11 +1,19 @@
-import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS, SOURCE_TAG_ATTRIBUTE } from '../../disk/layout';
+import {
+	EDIT_STYLE_FIELDS,
+	MAX_EDIT_TEXT_CHARS,
+	MAX_PICK_STYLE_CHARS,
+	SOURCE_TAG_ATTRIBUTE,
+} from '../../disk/layout';
 import type { PickEditFields } from './frameMessages';
+import { readStyles } from './selector';
 
 // Part of the frame runtime, embedded in the exported canvas.html, so it stays small and only reads
 // the design DOM: attributes through getAttribute, children through childNodes. Never a setter,
 // `.style` or `.dataset`.
 
 const CANONICAL_NUMBER = /^(?:0|[1-9]\d*)$/;
+
+const NOT_ASCII_WHITESPACE = /[^\t\n\f\r ]/;
 
 const sourceNumberOf = (element: Element): number | null => {
 	const value = element.getAttribute(SOURCE_TAG_ATTRIBUTE);
@@ -25,13 +33,25 @@ export const hasOtherContent = (element: Element): boolean => {
 
 const textOf = (element: Element): Pick<PickEditFields, 'textState' | 'text'> => {
 	if (hasOtherContent(element)) {
-		return { textState: 'children', text: '' };
+		const mixed = [...element.childNodes].some(
+			(node) => node instanceof Text && NOT_ASCII_WHITESPACE.test(node.data),
+		);
+		return { textState: mixed ? 'mixed' : 'elements', text: '' };
 	}
 	const [only] = element.childNodes;
 	const text = only instanceof Text ? only.data : '';
 	return text.length > MAX_EDIT_TEXT_CHARS
 		? { textState: 'too-long', text: '' }
 		: { textState: 'plain', text };
+};
+
+// Every edit field's current value, as Chromium serializes it.
+const computedOf = (element: Element): PickEditFields['computed'] => {
+	if (!element.isConnected) {
+		return {};
+	}
+	const computed = window.getComputedStyle(element);
+	return readStyles((property) => computed.getPropertyValue(property), EDIT_STYLE_FIELDS);
 };
 
 export const describeEditTarget = (element: Element): PickEditFields => {
@@ -46,5 +66,6 @@ export const describeEditTarget = (element: Element): PickEditFields => {
 				1,
 		...textOf(element),
 		style: style === null ? '' : style.length > MAX_PICK_STYLE_CHARS ? null : style,
+		computed: computedOf(element),
 	};
 };

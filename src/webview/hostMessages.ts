@@ -1,4 +1,5 @@
-import type { EDIT_FIELDS, HISTORY_STEPS } from '../disk/layout';
+import type { StyleChange } from '../disk/editValues';
+import type { HISTORY_STEPS } from '../disk/layout';
 import {
 	type CommentStyles,
 	type FrameRect,
@@ -182,11 +183,13 @@ export type ArtboardEditMessage = {
 	frameId: string;
 	sourceNumber: number;
 	hash: string;
-	field: (typeof EDIT_FIELDS)[number];
-	value: string;
-	// Present iff field is 'text': the element's full live text (never the pick excerpt).
-	liveText?: string;
-};
+} &
+	// liveText: the element's full live text (never the pick excerpt).
+	(
+		| { field: 'text'; value: string; liveText: string }
+		// 1..EDIT_STYLE_FIELDS.length distinct fields, set or cleared together: one write, one undo step.
+		| { styles: StyleChange[] }
+	);
 
 export type HistoryStep = (typeof HISTORY_STEPS)[number];
 

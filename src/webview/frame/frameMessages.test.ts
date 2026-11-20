@@ -217,15 +217,21 @@ const edit = {
 	textState: 'plain',
 	text: '\n    Title\n',
 	style: 'font-size: 32px;\n color: #ff0000',
+	computed: { 'font-size': '32px', 'text-align': 'start', 'border-color': 'rgb(0, 0, 0)' },
 } as const;
 
 test('cd:pick rebuilds its edit fields and drops extra keys inside them', () => {
 	assert.deepEqual(parseFrameMessage({ ...pick, edit: { ...edit, extra: 1 } }), { ...pick, edit });
+	assert.deepEqual(parseFrameMessage({ ...pick, edit: { ...edit, computed: {} } }), {
+		...pick,
+		edit: { ...edit, computed: {} },
+	});
 	for (const fields of [
 		{ ...edit, sourceNumber: null, style: null },
 		{ ...edit, sourceNumber: 0, sharedNumber: true },
 		{ ...edit, sourceNumber: Number.MAX_SAFE_INTEGER },
-		{ ...edit, textState: 'children', text: '' },
+		{ ...edit, textState: 'mixed', text: '' },
+		{ ...edit, textState: 'elements', text: '' },
 		{ ...edit, textState: 'too-long', text: '' },
 		{ ...edit, text: 'a'.repeat(MAX_EDIT_TEXT_CHARS) },
 		{ ...edit, style: 'a'.repeat(MAX_PICK_STYLE_CHARS) },
@@ -250,13 +256,21 @@ test('cd:pick with a bad edit field is rejected whole', () => {
 		{ ...edit, sourceNumber: null, sharedNumber: true },
 		{ ...edit, sharedNumber: 'no' },
 		{ ...edit, textState: 'mixed' },
-		{ ...edit, textState: 'children', text: 'x' },
+		{ ...edit, textState: 'elements', text: 'x' },
+		// Retired before 9h.
+		{ ...edit, textState: 'children', text: '' },
 		{ ...edit, textState: 'too-long', text: 'x' },
 		{ ...edit, text: 'a'.repeat(MAX_EDIT_TEXT_CHARS + 1) },
 		{ ...edit, text: 3 },
 		{ ...edit, style: 3 },
 		{ ...edit, style: undefined },
 		{ ...edit, style: 'a'.repeat(MAX_PICK_STYLE_CHARS + 1) },
+		{ ...edit, computed: undefined },
+		{ ...edit, computed: [] },
+		{ ...edit, computed: { display: 'block' } },
+		{ ...edit, computed: { 'font-size': '' } },
+		{ ...edit, computed: { 'font-size': 'red; x: y' } },
+		{ ...edit, computed: { 'font-size': 3 } },
 	]) {
 		assert.equal(parseFrameMessage({ ...pick, edit: fields }), undefined, JSON.stringify(fields));
 	}

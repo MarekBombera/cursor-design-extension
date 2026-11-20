@@ -119,22 +119,16 @@ const postEdited = ({
 	});
 };
 
-// The edit core's union, built field by field: a style edit never carries liveText. The guard
-// already requires liveText for text; a missing one is refused as malformed, never defaulted.
-const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit => {
-	if (message.field !== 'text') {
-		return { sourceNumber: message.sourceNumber, field: message.field, value: message.value };
-	}
-	if (message.liveText === undefined) {
-		throw new InvalidArgsError('artboard:edit text without liveText.');
-	}
-	return {
-		sourceNumber: message.sourceNumber,
-		field: 'text',
-		value: message.value,
-		liveText: message.liveText,
-	};
-};
+// The edit core's union, built key by key: nothing else of the message reaches it.
+const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit =>
+	'styles' in message
+		? { sourceNumber: message.sourceNumber, styles: message.styles }
+		: {
+				sourceNumber: message.sourceNumber,
+				field: 'text',
+				value: message.value,
+				liveText: message.liveText,
+			};
 
 // Answered exactly once unless it has no usable requestId.
 export const answerEditRequest = async ({

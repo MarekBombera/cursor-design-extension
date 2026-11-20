@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, vi } from 'vite-plus/test';
 
+import { COMMENT_STYLE_KEYS } from '../../disk/layout';
 import { FRAME_PICK_MESSAGE, parseFrameMessage } from './frameMessages';
 import {
 	buildSelector,
@@ -183,11 +184,14 @@ test('readStyles keeps safe allowlisted values in allowlist order', () => {
 		'font-family': '"Inter",   sans-serif',
 		'z-index': '3',
 	};
-	assert.deepEqual(Object.entries(readStyles((property) => values[property] ?? '')), [
-		['font-family', '"Inter", sans-serif'],
-		['color', 'rgb(0, 0, 0)'],
-		['gap', '4px'],
-	]);
+	assert.deepEqual(
+		Object.entries(readStyles((property) => values[property] ?? '', COMMENT_STYLE_KEYS)),
+		[
+			['font-family', '"Inter", sans-serif'],
+			['color', 'rgb(0, 0, 0)'],
+			['gap', '4px'],
+		],
+	);
 	for (const unsafe of [
 		'',
 		'a'.repeat(201),
@@ -198,7 +202,7 @@ test('readStyles keeps safe allowlisted values in allowlist order', () => {
 		'red\n',
 	]) {
 		assert.deepEqual(
-			readStyles(() => unsafe),
+			readStyles(() => unsafe, COMMENT_STYLE_KEYS),
 			{},
 			JSON.stringify(unsafe),
 		);

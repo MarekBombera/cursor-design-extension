@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import {
-	type ArtboardEdit,
-	type EditResult,
-	type StyleField,
-	editArtboardHtml,
-} from './artboardEdit';
+import { type ArtboardEdit, type EditResult, editArtboardHtml } from './artboardEdit';
 import { parseArtboardDocument } from './commentTarget';
+import type { StyleChange, StyleField } from './editValues';
 import { MAX_EDIT_TEXT_CHARS } from './layout';
 
 const edited = (html: string, edit: ArtboardEdit): EditResult =>
@@ -17,7 +13,10 @@ const text = (html: string, sourceNumber: number, value: string, liveText: strin
 	edited(html, { sourceNumber, field: 'text', value, liveText });
 
 const style = (html: string, sourceNumber: number, field: StyleField, value: string): EditResult =>
-	edited(html, { sourceNumber, field, value });
+	edited(html, { sourceNumber, styles: [{ field, value }] });
+
+const styles = (html: string, changes: StyleChange[]): EditResult =>
+	edited(html, { sourceNumber: 0, styles: changes });
 
 const ok = (html: string): EditResult => ({ ok: true, html });
 
@@ -67,13 +66,19 @@ test('an unknown or shared number is refused before any field rule', () => {
 	assert.deepEqual(style('<p><b>x</p><p>y</p>', 1, 'color', '#000000'), refused('shared-number'));
 });
 
-test('a field outside the allowlist or a non-string value is refused', () => {
+test('a malformed edit shape is refused without throwing', () => {
 	const html = '<p>a</p>';
 	const document = parseArtboardDocument(html);
 	for (const edit of [
-		{ sourceNumber: 0, field: 'border', value: '1px' },
-		{ sourceNumber: 0, field: 'color', value: 1 },
 		{ sourceNumber: 0, field: 'text', value: 'b' },
+		{ sourceNumber: 0, field: 'color', value: '#000000' },
+		{ sourceNumber: 0, styles: [{ field: 'border', value: '1px' }] },
+		{ sourceNumber: 0, styles: [{ field: 'color', value: 1 }] },
+		{ sourceNumber: 0, styles: [null] },
+		// A hole at 0: `every` skips holes.
+		{ sourceNumber: 0, styles: Object.assign([], { 1: { field: 'color', value: '#000000' } }) },
+		{ sourceNumber: 0, styles: [['color', '#000000']] },
+		{ sourceNumber: 0, styles: { field: 'color', value: '#000000' } },
 	]) {
 		assert.deepEqual(
 			editArtboardHtml({ html, document, edit: edit as unknown as ArtboardEdit }),
@@ -166,6 +171,35 @@ test('a style edit adds, sets or removes one declaration in any attribute form',
 	assert.deepEqual(style('<p style>a</p>', 0, 'margin', '4'), ok('<p style="margin: 4px">a</p>'));
 });
 
+test('a multi-field edit applies every change in one splice', () => {
+	const changes: StyleChange[] = [
+		{ field: 'font-weight', value: '700' },
+		{ field: 'gap', value: '8' },
+	];
+	assert.deepEqual(
+		styles('<p class="x" style="color: #000000">a</p>', changes),
+		ok('<p class="x" style="color: #000000; font-weight: 700; gap: 8px">a</p>'),
+	);
+	assert.deepEqual(
+		styles('<p class="x">a</p>', changes),
+		ok('<p style="font-weight: 700; gap: 8px" class="x">a</p>'),
+	);
+	assert.deepEqual(
+		styles('<p>a</p>', [
+			{ field: 'gap', value: '' },
+			{ field: 'opacity', value: ' ' },
+		]),
+		ok('<p>a</p>'),
+	);
+	assert.deepEqual(
+		styles('<p style="color: #000000">a</p>', [
+			{ field: 'gap', value: '8' },
+			{ field: 'opacity', value: '2' },
+		]),
+		refused('invalid-value'),
+	);
+});
+
 test('a clear removes the declaration, with its longhands for padding and margin', () => {
 	assert.deepEqual(
 		style('<p style="color: red; margin: 0">a</p>', 0, 'color', ''),
@@ -195,7 +229,7 @@ test('bare numbers outside parentheses get px; anything else is kept as typed', 
 });
 
 test('unsafe style values are refused', () => {
-	for (const value of ['red', '#fff', '#ff00001', 'rgb(0,0,0)']) {
+	for (const value of ['red', '#12345', '#ff00001', 'rgb(0,0,0)']) {
 		assert.deepEqual(style('<p>a</p>', 0, 'color', value), refused('invalid-value'), value);
 	}
 	const overCapAfterPx = '1 '.repeat(60).trim();

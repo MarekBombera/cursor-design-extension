@@ -19,6 +19,7 @@ knip.json
 .claude/**
 blueprint/**
 fixtures/**
+prototypes/**
 AGENTS.md
 CLAUDE.md
 pnpm-lock.yaml

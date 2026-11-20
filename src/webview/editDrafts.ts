@@ -1,15 +1,11 @@
 import {
+	applyStyleChanges,
 	isRefusedEditText,
 	normalizeEditText,
 	normalizeStyleValue,
 	previewText,
 } from '../disk/editValues';
-import {
-	leadingWhitespaceLength,
-	removeStyleProperty,
-	setStyleProperty,
-	trailingWhitespaceLength,
-} from '../disk/inlineStyle';
+import { leadingWhitespaceLength, trailingWhitespaceLength } from '../disk/inlineStyle';
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
 import type { ChromePick } from './commentPick';
 import { editability, inlineValue } from './editInspector';
@@ -96,18 +92,18 @@ export const textMaxLength = (liveText: string): number => {
 
 type StylePreview = { style: string } | { error: FieldErrorKind };
 
+// The edit core's apply rule, so the preview is what a save writes.
 const stylePreview = (draft: EditDraft, field: EditStyleField): StylePreview => {
-	const value = normalizeStyleValue(field, draft.value);
-	if (value === undefined) {
-		return { error: 'invalid-length' };
+	const applied = applyStyleChanges({
+		styleText: draft.style,
+		changes: [{ field, value: draft.value }],
+	});
+	if (!applied.ok) {
+		return { error: applied.refusal === 'invalid-value' ? 'invalid-length' : 'complex-style' };
 	}
-	const style =
-		value === ''
-			? removeStyleProperty(draft.style, field)
-			: setStyleProperty({ styleText: draft.style, property: field, value });
-	return style === undefined || style.length > MAX_PICK_STYLE_CHARS
+	return applied.styleText.length > MAX_PICK_STYLE_CHARS
 		? { error: 'complex-style' }
-		: { style };
+		: { style: applied.styleText };
 };
 
 const applyMessage = (
@@ -173,7 +169,10 @@ export const commitDraft = (draft: EditDraft): CommitVerdict => {
 	const preview = stylePreview(draft, draft.field);
 	return 'error' in preview
 		? { kind: 'invalid', error: preview.error, revert: baselinePreview(draft) }
-		: { kind: 'save', commit: { key: draft.key, field: draft.field, value: draft.value } };
+		: {
+				kind: 'save',
+				commit: { key: draft.key, styles: [{ field: draft.field, value: draft.value }] },
+			};
 };
 
 export type DraftFate = 'keep' | 'commit' | 'drop';

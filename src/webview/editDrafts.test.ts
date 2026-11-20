@@ -24,6 +24,7 @@ const edit: PickEditFields = {
 	textState: 'plain',
 	text: '\n    Title\n  ',
 	style: 'font-size: 32px; color: #ff0000',
+	computed: {},
 };
 
 const pickWith = (
@@ -177,8 +178,7 @@ test('a save carries the draft key, the raw value and, for text, the baseline', 
 		kind: 'save',
 		commit: {
 			key: { frameId: 'a', sourceNumber: 4, documentVersion: 2 },
-			field: 'margin',
-			value: ' 8 ',
+			styles: [{ field: 'margin', value: ' 8 ' }],
 		},
 	});
 });

@@ -56,8 +56,7 @@ const seed = async (html: string): Promise<{ workspaceRoot: string; htmlPath: st
 
 const fontSize = (sourceNumber: number, value: string): ArtboardEdit => ({
 	sourceNumber,
-	field: 'font-size',
-	value,
+	styles: [{ field: 'font-size', value }],
 });
 
 const assertRefused = async (run: Promise<unknown>, reason: EditRefusedReason): Promise<void> => {

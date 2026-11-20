@@ -64,8 +64,8 @@ const htmlPath = (): string => join(host.root, ...artboardHtmlPathSegments('hero
 
 const diskHtml = (): Promise<string> => readFile(htmlPath(), 'utf8');
 
-// One padding edit on the <p> (source number 1) against the file's current hash.
-const editPadding = async (value: string): Promise<Answer> => {
+// One style edit on the <p> (source number 1) against the file's current hash.
+const editStyles = async (styles: Array<{ field: string; value: string }>): Promise<Answer> => {
 	requestCount += 1;
 	await answerEditRequest({
 		value: {
@@ -74,13 +74,14 @@ const editPadding = async (value: string): Promise<Answer> => {
 			frameId: 'hero',
 			sourceNumber: 1,
 			hash: hashHtml(await diskHtml()),
-			field: 'padding',
-			value,
+			styles,
 		},
 		outputChannel,
 	});
 	return lastAnswer();
 };
+
+const editPadding = (value: string): Promise<Answer> => editStyles([{ field: 'padding', value }]);
 
 const historyStep = async (
 	step: string,
@@ -139,6 +140,23 @@ test('undo restores the exact original bytes, redo the edited ones', async () =>
 	const redone = await historyStep('redo');
 	assert.equal(await diskHtml(), editedHtml);
 	assert.deepEqual([redone?.canUndo, redone?.canRedo], [true, false]);
+});
+
+test('a two-change save writes once and one undo restores both declarations', async () => {
+	const before = await readArtboard({ workspaceRoot: host.root, artboardId: 'hero' });
+	const edited = await editStyles([
+		{ field: 'padding', value: '8' },
+		{ field: 'font-weight', value: '700' },
+	]);
+	assert.equal(edited.generation, before.generation + 1);
+	assert.equal(
+		await diskHtml(),
+		'<main>\n  <p style="padding: 8px; font-weight: 700">x</p>\n</main>\n',
+	);
+	assert.deepEqual([edited.canUndo, edited.canRedo], [true, false]);
+	const undone = await historyStep('undo');
+	assert.equal(await diskHtml(), ORIGINAL);
+	assert.deepEqual([undone?.canUndo, undone?.canRedo], [false, true]);
 });
 
 test(`${MAX_HISTORY_STEPS + 1} edits keep ${MAX_HISTORY_STEPS} undo steps`, async () => {

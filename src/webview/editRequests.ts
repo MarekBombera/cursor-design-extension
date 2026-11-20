@@ -1,4 +1,5 @@
-import { type EDIT_FIELDS, MAX_HISTORY_STEPS } from '../disk/layout';
+import type { StyleChange, StyleField } from '../disk/editValues';
+import { MAX_HISTORY_STEPS } from '../disk/layout';
 import type { FrameRecord } from './canvasFrames';
 import type {
 	ArtboardEditedMessage,
@@ -18,20 +19,16 @@ import { canStep } from './undoRedo';
 // not in the live page. Upgrade path: the answer carries the restored text or style for
 // cd:edit-apply.
 
-export type EditField = (typeof EDIT_FIELDS)[number];
+export type EditField = 'text' | StyleField;
 
 // Which element a draft and its save belong to, fixed when the draft starts (never at commit:
 // the pick can move first). documentVersion: the frame's document then; a reload drops its preview.
 export type EditKey = { frameId: string; sourceNumber: number; documentVersion: number };
 
-export type EditCommit = {
-	key: EditKey;
-	field: EditField;
-	// The field's raw draft: the host normalizes.
-	value: string;
-	// Text only: the draft's baseline raw text node.
-	liveText?: string;
-};
+// Values are the raw drafts: the host normalizes. liveText: the draft's baseline raw text node.
+export type EditCommit =
+	| { key: EditKey; field: 'text'; value: string; liveText: string }
+	| { key: EditKey; styles: StyleChange[] };
 
 // A step has no element and no preview: it undoes or redoes the frame's last own write.
 type QueuedRequest =
@@ -150,9 +147,9 @@ export const nextSend = ({
 			frameId: commit.key.frameId,
 			sourceNumber: commit.key.sourceNumber,
 			hash: frame.hash,
-			field: commit.field,
-			value: commit.value,
-			...(commit.liveText === undefined ? {} : { liveText: commit.liveText }),
+			...('styles' in commit
+				? { styles: commit.styles }
+				: { field: 'text', value: commit.value, liveText: commit.liveText }),
 		};
 		return {
 			state: {

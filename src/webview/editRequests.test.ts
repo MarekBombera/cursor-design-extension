@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
+import type { StyleField } from '../disk/editValues';
 import { MAX_HISTORY_STEPS } from '../disk/layout';
 import {
 	answerEdit,
 	clearErrorOnPick,
 	type EditCommit,
+	type EditKey,
 	type EditRequestsState,
 	enqueueEdit,
 	enqueueStep,
@@ -37,12 +39,19 @@ const frame = (
 const editSent = (send: ReturnType<typeof nextSend>['send']) =>
 	send?.type === 'artboard:edit' ? send : undefined;
 
-const commit = (overrides: Partial<EditCommit> = {}): EditCommit => ({
-	key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
-	field: 'padding',
-	value: '8',
-	...overrides,
+const commit = ({
+	key = { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
+	field = 'padding',
+	value = '8',
+}: { key?: EditKey; field?: StyleField; value?: string } = {}): EditCommit => ({
+	key,
+	styles: [{ field, value }],
 });
+
+const sentStyle = (send: ReturnType<typeof nextSend>['send']) => {
+	const sent = editSent(send);
+	return sent !== undefined && 'styles' in sent ? sent.styles[0] : undefined;
+};
 
 let counter = 0;
 const newRequestId = (): string => {
@@ -59,7 +68,7 @@ test('two commits: one in flight, the second goes out after the answer with its 
 		frames: [frame('a')],
 		newRequestId,
 	});
-	assert.equal(editSent(first.send)?.field, 'padding');
+	assert.deepEqual(sentStyle(first.send), { field: 'padding', value: '8' });
 	assert.equal(editSent(first.send)?.hash, 'sha256:a0');
 	assert.equal(editSent(first.send)?.sourceNumber, 3);
 	assert.equal('liveText' in (first.send ?? {}), false);
@@ -85,17 +94,24 @@ test('two commits: one in flight, the second goes out after the answer with its 
 		frames: [frame('a', { hash: 'sha256:a1' })],
 		newRequestId,
 	});
-	assert.equal(editSent(second.send)?.field, 'margin');
+	assert.equal(sentStyle(second.send)?.field, 'margin');
 	assert.equal(editSent(second.send)?.hash, 'sha256:a1');
 });
 
 test('a text commit carries its baseline liveText', () => {
 	const { send } = nextSend({
-		state: queued(commit({ field: 'text', value: 'New', liveText: ' Old ' })),
+		state: queued({
+			key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
+			field: 'text',
+			value: 'New',
+			liveText: ' Old ',
+		}),
 		frames: [frame('a')],
 		newRequestId,
 	});
-	assert.equal(editSent(send)?.liveText, ' Old ');
+	const sent = editSent(send);
+	assert.equal(sent !== undefined && 'liveText' in sent ? sent.liveText : undefined, ' Old ');
+	assert.equal('styles' in (send ?? {}), false);
 });
 
 test('a refusal keeps its copy, drops the queue and names every frame to reload', () => {
@@ -157,7 +173,7 @@ test('a commit whose frame reloaded, left or became a tile is dropped and the ne
 		frames: [frame('a', { documentVersion: 2 }), frame('t', { kind: 'tile' }), frame('b')],
 		newRequestId,
 	});
-	assert.equal(editSent(step.send)?.value, 'sent');
+	assert.equal(sentStyle(step.send)?.value, 'sent');
 	assert.equal(step.state.error?.message, NOT_SAVED_COPY);
 	assert.deepEqual(step.state.waiting, []);
 	// All dropped: nothing sent, the queue is empty, the copy shows.

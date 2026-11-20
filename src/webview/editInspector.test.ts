@@ -17,6 +17,13 @@ const edit: PickEditFields = {
 	textState: 'plain',
 	text: '\n    Title\n  ',
 	style: 'font-size: 32px; color: #ff0000',
+	computed: {
+		'font-size': '32px',
+		color: 'rgb(255, 0, 0)',
+		padding: '0px',
+		margin: '21px 0px',
+		'font-weight': '700',
+	},
 };
 
 const pickWith = (
@@ -86,15 +93,16 @@ test('an editable pick fills the fields from the style attribute with computed p
 		{ field: 'margin', value: '', placeholder: '21px 0px' },
 	]);
 	assert.deepEqual(view.color, { hex: '#ff0000', value: '#ff0000', computed: false });
-	// No inline colour: the computed one, marked computed; a missing computed value is ''.
-	const plain = inspectorView(pickWith({ style: null }, { styles: {} }));
+	// No inline colour: the computed one, marked computed; a missing computed value is ''. The
+	// comment record (`styles`) never fills a field.
+	const plain = inspectorView(pickWith({ style: null, computed: {} }));
 	assert.ok(plain.kind === 'editable');
 	assert.deepEqual(plain.color, { hex: '#000000', value: '', computed: true });
 	assert.deepEqual(
 		plain.fields.map((field) => field.placeholder),
 		['', '', ''],
 	);
-	const page = inspectorView(pickWith({ textState: 'children', text: '' }, { isPage: true }));
+	const page = inspectorView(pickWith({ textState: 'elements', text: '' }, { isPage: true }));
 	assert.ok(page.kind === 'editable');
 	assert.equal(page.target, 'page');
 });
@@ -105,11 +113,13 @@ test('the text field: empty plain keeps a field, mixed and long show a hint, voi
 		return view.kind === 'editable' ? view.text : view.kind;
 	};
 	assert.deepEqual(textOf(pickWith({ text: '' })), { state: 'plain', value: '', liveText: '' });
-	assert.deepEqual(textOf(pickWith({ textState: 'children', text: '' })), { state: 'children' });
+	// Mixed text and elements-only show the same hint.
+	assert.deepEqual(textOf(pickWith({ textState: 'mixed', text: '' })), { state: 'children' });
+	assert.deepEqual(textOf(pickWith({ textState: 'elements', text: '' })), { state: 'children' });
 	assert.deepEqual(textOf(pickWith({ textState: 'too-long', text: '' })), { state: 'too-long' });
 	// The tag rule wins over every text state.
 	for (const tagName of ['img', 'input', 'iframe']) {
-		for (const textState of ['plain', 'children', 'too-long'] as const) {
+		for (const textState of ['plain', 'mixed', 'elements', 'too-long'] as const) {
 			assert.deepEqual(
 				textOf(pickWith({ textState, text: '' }, { tagName })),
 				{ state: 'none' },
