@@ -135,6 +135,9 @@
 		<p class="visually-hidden" aria-live="polite">{historyAnnouncement}</p>
 	</div>
 	<div class="body">
+		<!-- ponytail: a reload that empties the pick unmounts a focused field and focus falls to body;
+		     this region still announces the copy. Upgrade: move focus to the stage viewport first, as
+		     leaving Edit mode does. -->
 		<div class={{ 'request-error': requestError !== undefined }} aria-live="polite">
 			{#if requestError !== undefined}
 				<Message tone="error">{requestError}</Message>
@@ -195,7 +198,10 @@
 							<label for="{fieldId}-color">Color</label>
 							<span class="color">
 								<!-- The native picker: input previews, change (release) commits; no blur commit,
-								     opening the picker may blur it. -->
+								     opening the picker may blur it.
+								     ponytail: a colour input has no empty value, so an inline colour cannot be
+								     cleared here. Upgrade: a Clear button that commits '' (already "clear" in the
+								     edit rules). -->
 								<input
 									id="{fieldId}-color"
 									type="color"

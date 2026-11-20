@@ -47,10 +47,12 @@ export const saveCommentsPanelOpen = (open: boolean): void => {
 export const readSavedCommentUi = (): SavedCommentUi => parseSavedCommentUi(vscodeApi.getState());
 
 // Snapshot: a deep $state proxy cannot be cloned. A key at its default is left out; the previous
-// record's `mode` is dropped first, so leaving a mode is saved too.
+// record's `mode` (and the pre-9d `commentMode` key) is dropped first, so leaving a mode is saved
+// too.
 export const saveCommentUi = (ui: SavedCommentUi): void => {
 	const {
 		mode: _mode,
+		commentMode: _commentMode,
 		commentDraft: _commentDraft,
 		openThreadId: _openThreadId,
 		replyDrafts: _replyDrafts,

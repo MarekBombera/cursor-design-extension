@@ -130,6 +130,7 @@ body {
 	--cd-toolbar-h: 36px;
 	--cd-control-h: 26px;
 	--cd-control-h-sm: 22px;
+	--cd-button-pad-sm: var(--cd-space-6);
 	--cd-chip-h: 18px;
 	--cd-icon-btn: 24px;
 	--cd-avatar: 20px;

@@ -114,7 +114,10 @@ test('a refusal keeps its copy, drops the queue and names every frame to reload'
 	assert.equal(refused.state.error?.message, 'This artboard changed on disk. Make the edit again.');
 	assert.deepEqual([...refused.reloadFrameIds].sort(), ['a', 'b']);
 	// The reload ends drafts in the same event: the refusal copy wins.
-	assert.equal(notSaved(refused.state, undefined).error?.message, refused.state.error?.message);
+	assert.equal(
+		notSaved(refused.state, { key: undefined }).error?.message,
+		refused.state.error?.message,
+	);
 });
 
 test('answers for another request or frame are ignored', () => {
@@ -166,9 +169,7 @@ test('a commit whose frame reloaded, left or became a tile is dropped and the ne
 
 test('the copy clears on a new pick of another element only; a commit clears it too', () => {
 	const failed = notSaved(INITIAL_EDIT_REQUESTS, {
-		frameId: 'a',
-		sourceNumber: 3,
-		documentVersion: 1,
+		key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
 	});
 	assert.equal(clearErrorOnPick(failed, { frameId: 'a', sourceNumber: 3, repost: false }), failed);
 	assert.equal(clearErrorOnPick(failed, { frameId: 'a', sourceNumber: 4, repost: true }), failed);
@@ -303,7 +304,7 @@ test('an edit committed while a step is in flight is not saved once the step rel
 });
 
 test('enqueueStep clears the copy', () => {
-	const failed = notSaved(INITIAL_EDIT_REQUESTS, undefined);
+	const failed = notSaved(INITIAL_EDIT_REQUESTS, { key: undefined });
 	assert.equal(enqueueStep(failed, { frameId: 'a', step: 'undo' }).error, undefined);
 });
 

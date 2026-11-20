@@ -3,6 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { parseArtboardDocument } from '../../src/disk/commentTarget';
 import { SOURCE_TAG_ATTRIBUTE } from '../../src/disk/layout';
 import { sourceTaggedHtml } from '../../src/disk/sourceTags';
+import { FIELD_ERROR_COPY } from '../../src/webview/editDrafts';
 import { NOT_SAVED_COPY } from '../../src/webview/editRequests';
 import { FRAME_PICK_MESSAGE, parseFrameMessage } from '../../src/webview/frame/frameMessages';
 import {
@@ -308,6 +309,12 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 	await expect(boxOf(page.locator('.viewport'))).resolves.toBeDefined();
 });
 
+test('the first save drops the pre-9d commentMode key', async ({ page }) => {
+	await openHarness(page, { state: { commentMode: true } });
+	await expect.poll(async () => 'commentMode' in (await savedRecord(page))).toBe(false);
+	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'false');
+});
+
 const editsPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((data): data is Record<string, unknown> =>
 		isMessageOfType(data, 'artboard:edit'),
@@ -573,6 +580,40 @@ test('a dirty field, then a click on another element, saves to the first element
 		value: '6',
 	});
 	await expect(field(page, 'Margin')).toHaveValue('');
+});
+
+test('an invalid value left by a click on another element names its own cause', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'Padding').fill('4 apples;');
+	await clickElement(page, '#title');
+	await expect(field(page, 'Text')).toHaveValue('Title');
+	await expect(
+		inspector(page).locator('.request-error').getByText(FIELD_ERROR_COPY['invalid-length']),
+	).toBeVisible();
+	await expect(inspector(page).getByText(NOT_SAVED_COPY)).toHaveCount(0);
+	expect(await editsPosted(page)).toHaveLength(0);
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 8px 16px');
+});
+
+test('a refused value, then a pick of another element, names its own cause', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'Padding').fill('4 apples;');
+	await field(page, 'Padding').press('Enter');
+	await expect(inspector(page).getByText(FIELD_ERROR_COPY['invalid-length'])).toBeVisible();
+	await clickElement(page, '#title');
+	await expect(field(page, 'Text')).toHaveValue('Title');
+	await expect(
+		inspector(page).locator('.request-error').getByText(FIELD_ERROR_COPY['invalid-length']),
+	).toBeVisible();
+	await expect(inspector(page).getByText(NOT_SAVED_COPY)).toHaveCount(0);
+	expect(await editsPosted(page)).toHaveLength(0);
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 8px 16px');
 });
 
 test('an outside change while a field is dirty posts nothing and says Not saved', async ({

@@ -75,7 +75,7 @@
 	}
 	.size-sm {
 		height: var(--cd-control-h-sm);
-		padding: 0 var(--cd-space-6);
+		padding: 0 var(--cd-button-pad-sm);
 		gap: var(--cd-space-4);
 		font-size: var(--cd-fs-sm);
 	}

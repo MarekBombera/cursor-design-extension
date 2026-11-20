@@ -344,9 +344,6 @@ export const getComment = async ({
 }): Promise<CommentView> => {
 	const commentId = requireCommentId(id);
 	await assertLayoutDirsOwned(workspaceRoot);
-	if ((await commentsTextIfExists(workspaceRoot)) === undefined) {
-		throw new CommentNotFoundError();
-	}
 	const file = await readCommentsFile(workspaceRoot);
 	const comment = findComment(file, commentId);
 	const [view] = await withCommentViews(workspaceRoot, [comment]);

@@ -8,10 +8,14 @@ import {
 	draftFate,
 	draftPreview,
 	type EditDraft,
+	FIELD_ERROR_COPY,
+	type FieldErrorKind,
 	fieldValue,
+	invalidDraftCopy,
 	startDraft,
 	textMaxLength,
 } from './editDrafts';
+import { NOT_SAVED_COPY } from './editRequests';
 import type { PickEditFields } from './frame/frameMessages';
 
 const edit: PickEditFields = {
@@ -203,4 +207,11 @@ test('draft lifecycle: reload drops, another element commits, a lost number drop
 	);
 	assert.equal(draftFate({ draft, frame: live, pick: pickWith({}, { frameId: 'b' }) }), 'commit');
 	assert.equal(draftFate({ draft, frame: live, pick: pickWith({ sharedNumber: true }) }), 'drop');
+});
+
+test('an invalid draft ended by a pick names its own cause; a step returns the frame copy', () => {
+	for (const kind of Object.keys(FIELD_ERROR_COPY) as FieldErrorKind[]) {
+		assert.equal(invalidDraftCopy(kind, 'pick'), FIELD_ERROR_COPY[kind]);
+	}
+	assert.equal(invalidDraftCopy('invalid-length', 'step'), NOT_SAVED_COPY);
 });

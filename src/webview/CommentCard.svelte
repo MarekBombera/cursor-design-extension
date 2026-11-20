@@ -319,10 +319,14 @@
 		font-size: var(--cd-fs-xs);
 		white-space: nowrap;
 	}
+	/* Card-local (outside --cd-*): the line below reads it, so the two cannot drift apart. */
+	.thread {
+		--card-entry-gap: var(--cd-space-12);
+	}
 	.thread,
 	.replies {
 		display: grid;
-		gap: var(--cd-space-12);
+		gap: var(--card-entry-gap);
 		margin: 0;
 		padding: 0;
 		list-style: none;
@@ -338,12 +342,13 @@
 		row-gap: var(--cd-space-2);
 		min-width: 0;
 	}
-	/* The line from below this entry's avatar to the next one. */
+	/* The line from below this entry's avatar to the next one: it crosses the entry gap and keeps
+	   the same --cd-space-2 inset at both ends. */
 	.joined::before {
 		content: '';
 		position: absolute;
 		top: calc(var(--cd-avatar) + var(--cd-space-2));
-		bottom: calc(-1 * var(--cd-space-10));
+		bottom: calc(var(--cd-space-2) - var(--card-entry-gap));
 		left: calc(var(--cd-avatar) / 2 - 0.5px);
 		width: 1px;
 		background: var(--cd-edge);
@@ -381,11 +386,14 @@
 		gap: var(--cd-space-6);
 		margin-top: var(--cd-space-4);
 	}
+	/* The right outdent is the sm Button's side padding. The left 6px is a same-file number (the
+	   icon Button's 4px left padding plus its glyph's inset), not that token. */
 	.actions {
 		display: flex;
 		align-items: center;
 		gap: var(--cd-space-2);
-		margin: 0 calc(-1 * var(--cd-space-6)) calc(-1 * var(--cd-space-4));
+		margin: 0 calc(-1 * var(--cd-button-pad-sm)) calc(-1 * var(--cd-space-4))
+			calc(-1 * var(--cd-space-6));
 	}
 	.end {
 		margin-left: auto;

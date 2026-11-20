@@ -19,6 +19,7 @@ import {
 	draftPreview,
 	type EditDraft,
 	FIELD_ERROR_COPY,
+	invalidDraftCopy,
 	startDraft,
 } from './editDrafts';
 import type { FramePickMessage } from './frame/frameMessages';
@@ -87,7 +88,7 @@ export class EditState {
 			this.#canvas.sendToFrame(draft.key.frameId, baselinePreview(draft));
 		}
 		this.#setDraft(draft.field, undefined);
-		this.requests = notSaved(this.requests, draft.key);
+		this.requests = notSaved(this.requests, { key: draft.key });
 	};
 
 	// Focus: the frame re-describes the pick first, so the baseline a draft takes is fresh.
@@ -119,21 +120,24 @@ export class EditState {
 	handleFieldCommit = (field: EditField): void => {
 		const draft = this.drafts[field];
 		if (draft !== undefined) {
-			this.#commit(draft, { keepInvalid: true });
+			this.#commit(draft, { ending: 'field' });
 		}
 	};
 
-	#commit = (draft: EditDraft, { keepInvalid }: { keepInvalid: boolean }): void => {
+	#commit = (draft: EditDraft, { ending }: { ending: 'field' | 'pick' | 'step' }): void => {
 		const verdict = commitDraft(draft);
 		if (verdict.kind !== 'save' && verdict.revert !== undefined) {
 			this.#canvas.sendToFrame(draft.key.frameId, verdict.revert);
 		}
 		if (verdict.kind === 'invalid') {
-			if (keepInvalid) {
+			if (ending === 'field') {
 				this.#setDraft(draft.field, { ...draft, previewed: false, error: verdict.error });
 			} else {
 				this.#setDraft(draft.field, undefined);
-				this.requests = notSaved(this.requests, draft.key);
+				this.requests = notSaved(this.requests, {
+					key: draft.key,
+					message: invalidDraftCopy(verdict.error, ending),
+				});
 			}
 			return;
 		}
@@ -193,7 +197,7 @@ export class EditState {
 			return;
 		}
 		for (const draft of Object.values(this.drafts)) {
-			this.#commit(draft, { keepInvalid: false });
+			this.#commit(draft, { ending: 'step' });
 		}
 		this.requests = enqueueStep(this.requests, { frameId: target.frameId, step });
 		this.#pump();
@@ -243,7 +247,7 @@ export class EditState {
 			const frame = this.#canvas.frames.find((candidate) => candidate.id === draft.key.frameId);
 			const fate = draftFate({ draft, frame, pick });
 			if (fate === 'commit') {
-				this.#commit(draft, { keepInvalid: false });
+				this.#commit(draft, { ending: 'pick' });
 			} else if (fate === 'drop') {
 				this.#dropDraft(draft, frame?.documentVersion === draft.key.documentVersion);
 			}

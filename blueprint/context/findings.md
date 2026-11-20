@@ -24,43 +24,6 @@
 **Suggested fix:** Check with VoiceOver in F5 first. If the first pick is silent, keep the region in the tree with empty text (drop `hidden`, and hide the empty chip visually with `.chip:empty { padding: 0 }` rather than `display: none`).
 **Resolution:**
 
-### F-28 [P3] open - Exported canvas.html now ships the inert Comment-picking runtime
-
-**File:** src/webview/frame/runtime.ts:120
-**Found:** 2026-10-23 by /audit independent (scope: current; lens: quality, performance)
-**Why it matters:** `runtime.ts` always calls `installCommentPicking(host)` and posts `cd:ready`. `handoffCanvasHtml.ts` embeds the same runtime via `?iife`, so every exported handoff frame now carries the pick listeners, hit-test and paint heuristics (the canvas snapshot grew by ~1.1k lines) although the export page never sends `cd:mode`, so the code stays inert. Harmless today, but it is dead weight in a handoff artifact the Agent reads.
-**Suggested fix:** Either accept it (smallest; one runtime), or move the `installCommentPicking` call into the panel-only stamp path so the export bundles only height/wheel. No current requirement is lost either way.
-**Resolution:**
-
-### F-56 [P3] fixed - The per-pick description cache never refreshes, so selector, text and styles can go stale
-
-**File:** src/webview/frame/commentPicking.ts:113
-**Found:** 2026-10-25 by /audit (scope: current; lens: quality)
-**Why it matters:** F-41's repair keeps the description of each visited element until the next click or `cd:mode`. Scroll and resize re-posts reuse it (the spec requires that), but the chrome then pairs a fresh `rect` and `point` with old data: (1) the design script removes or rearranges the element: the cached selector stays non-null while `rect` is null and `:nth-of-type` indexes may point at a different element; (2) the user drags the frame's resize handle (still active in Comment mode until 8f1): media queries change `width`, `height`, `font-size`, `display` but the posted `styles` are from the old width; (3) ↑ then ↓ shows data captured at the first visit. The chrome and 8e never see that the data is old. Bounded by one click, and 8e's disk cross-check catches wrong selectors, but not wrong styles.
-**Suggested fix:** Drop the cache on `resize` (`descriptions = new Map()` then `describeCurrent()` in the resize handler before `postPick`), and in `postPick` re-describe when `!current.isConnected` (gives `selector: null`). Needs the user's yes because the spec says resize re-posts never run finder.
-**Resolution:** 2026-10-25 /implement (audit repair): partly: `postPick` describes a target again when the design removed it (`!isConnected`), so scroll and resize re-posts send `selector: null` with the null rect instead of a stale selector. Not changed: clearing the cache on `resize` would run finder (up to 200 ms) on every resize step of a frame drag-resize; style staleness after a resize stays until 8f1 makes resize inert in Comment mode. ↑ then ↓ reusing the first visit's data is the intended F-41 cache.
-2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests) re-read `commentPicking.ts` `postPick`: the disconnected-target re-describe is present and cheap (no finder for a disconnected element). The resize-staleness part is not repaired and has no recorded user acceptance; stays `fixed` (P3, does not block) until the user accepts that part or 8f1 makes resize inert.
-2026-10-25 /audit (scope: current; lens: quality, security, performance, tests): the removed-target re-describe now runs only while the cached selector is non-null (fix/fewer-pick-re-posts-on-scroll). That keys on the wrong signal for a page pick whose `body` is replaced and for an element that never had a selector; see F-60. The resize-staleness part is unchanged; stays `fixed`.
-2026-11-20 /audit current (fix/backlog-tests-and-dev-tooling, base main 805018a, all lenses): re-examined, stays `fixed`. The removed-target part holds (`postPick` re-describes once via the `removed` set, independent of the selector). The resize-staleness part is not repaired: the resize handle is still live in every mode (`Stage.svelte:386-405`, no mode gate) and the `resize` listener re-posts the cached description; no user acceptance is recorded.
-
-### F-57 [P3] fixed - Sink room duplicated in CSS, and clampNumber's export widens the canvas.html stageGeometry global
-
-**File:** src/webview/App.svelte:398
-**Found:** 2026-10-25 by /audit (scope: current; lens: quality)
-**Why it matters:** (1) `SCROLL_SINK_ROOM` (`frameGesture.ts:276`, not exported) and the literal `10000px` in two `:global(body)` declarations are one number kept in two files; raise the constant and the centre can exceed the real scroll range, and nothing fails (rule 04: single source). (2) F-48's repair exports `clampNumber` from `stageGeometry.ts`. The runtime IIFE tree-shakes it to one line (correct), but the exported `canvas.html` also gains `stageGeometry.clampNumber` on its public global (snapshot line 3208), outside the spec's "diff may contain only runtime text". No behavior change.
-**Suggested fix:** Export `SCROLL_SINK_ROOM` and set `--scroll-sink-room` on the root from App (or reference the constant in the comment and add a test that parses the two CSS literals). For (2), accept it, or move the clamp into a tiny `src/webview/frame/` helper that `stageGeometry.ts` imports.
-**Resolution:** 2026-10-25 /implement (audit repair): `SCROLL_SINK_ROOM` is exported and `App.svelte` sizes the body from it via CSSOM (`calc(100% + ${SCROLL_SINK_ROOM}px)`, allowed by the nonce CSP); the CSS literal is gone. The `stageGeometry.clampNumber` global in the exported `canvas.html` is accepted (one inert line, no behaviour); the spec note about runtime-only snapshot text is superseded by this resolution.
-2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests): part (1) confirmed repaired (App.svelte sizes the body from the exported constant). Part (2) is described as "accepted" by /implement, which is not a user decision; stays `fixed` (P3, does not block) until the user accepts it or it is moved.
-2026-11-20 /audit current (fix/backlog-tests-and-dev-tooling, base main 805018a, all lenses): re-examined, stays `fixed`. Part (1) holds (`canvasState.svelte.ts:239-242` sizes the body from the exported `SCROLL_SINK_ROOM`; no CSS literal). Part (2) is unchanged: the exported `canvas.html` still sets `exports.clampNumber` on the `stageGeometry` global (`handoffCanvasHtml.test.ts.snap:4604`); no user acceptance is recorded.
-
-### F-75 [P3] open - getComment reads comments.json twice, and commentsTextIfExists forwards to readUtf8IfExists
-
-**File:** src/disk/comments.ts:371 and :773
-**Found:** 2026-10-26 by independent /audit (scope: current; lens: quality, performance)
-**Why it matters:** `getComment` calls `commentsTextIfExists` (reads and discards the whole file) and then `readCommentsFile` (reads it again). `readCommentsFile` already returns an empty file when `comments.json` is missing, and `findComment` then throws `CommentNotFoundError`, so the pre-check changes no outcome in `getComment`, which takes no lock and creates nothing. The pre-check is needed in the writers only, to avoid creating `.lock` on a workspace with no comments file. `commentsTextIfExists` is itself a one-line forwarder (`readUtf8IfExists(workspaceLayoutFile(root, commentsPathSegments))`) that `readCommentsFile` repeats inline. Up to 500 comments of 2000 chars means a megabyte read twice per `get_comment`.
-**Suggested fix:** Delete the pre-check in `getComment` and drop `commentsTextIfExists` in favour of calling `readUtf8IfExists(workspaceLayoutFile(...))` in the four writers (or keep one tiny helper used by `readCommentsFile` too). No behaviour is lost: a missing file still gives `COMMENT_NOT_FOUND`.
-**Resolution:** open
-
 ### F-90 [P3] unverified - The open panel rebuilds every item on each cd:anchor-rects and drag move
 
 **File:** src/webview/App.svelte:186
@@ -71,47 +34,6 @@
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 6097011..d72811d): stays `unverified`. Re-read App.svelte `commentItems` and CommentsPanel: unchanged since the finding; no profile was run in this pass.
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 583bb93..9304fec): stays `unverified`. 8h passes three more props per card (`copyBlocked`, `copied`, `onCopy`) and adds the Copy all open row but leaves `commentItems` / `panelItems` unchanged; no profile was run in this pass.
 2026-11-18 /audit current (fresh reviewer, all lenses): still unverified. App now builds `panelItems` from the committed `frames`, not `displayFrames`, so a drag move no longer rebuilds the list; the per-`cd:anchor-rects` rebuild remains.
-
-### F-114 [P3] open - Architecture polish from the critical review
-
-**File:** several (ui/theme.css, Stage/Frame `--stage-zoom`, Frame lifted shadow, Button segment size, IconButton count label, TargetRef/Stage/Pins button resets, CommentCard layout numbers, `?? 0` number fallbacks, `frameSizeText` on tiles, guard exemptions, spec locator duplication, `STATUS_LABELS` twin)
-**Found:** 2026-11-17 by critical review (architecture and CSS)
-**Why it matters:**
-- `[hidden]` is fixed four times.
-- `--stage-zoom` sits outside the guarded namespace.
-- `--cd-lh-xs` equals `--cd-lh-sm`.
-- The lifted shadow and the kbd values are literals.
-- `segment` ignores `size`.
-- The IconButton count is only announced through its label (undocumented).
-- Three bare-button resets.
-- Layout numbers are coupled to other components.
-- Silent `?? 0` hides number mismatches.
-- A tile label keeps a stale height.
-- An exempt selector exempts its whole rule.
-- A meaning colour can pass through a local variable.
-- Locators are re-declared across specs.
-- The status words are written twice.
-
-**Suggested fix:**
-- One global `[hidden]` rule.
-- `--cd-stage-zoom`.
-- Merge the line heights.
-- Tokens for the lifted shadow and kbd.
-- `size?: never` on `segment`.
-- Document the IconButton label contract.
-- One global button reset.
-- `calc()` from local tokens.
-- Derive numbers where the full list is in hand.
-- Gate the size on `kind === 'iframe'`.
-- Exemptions list their allowed properties.
-- Detect meaning colours through local variables.
-- Shared locators in `harness.ts`.
-- Derive pin label words from `statusBadge`.
-
-**Resolution:**
-2026-11-17 Batch A part: one global `[hidden]` rule and `button` reset, `--cd-stage-zoom`, `--cd-lh-xs` merged into `--cd-lh-sm`, `--cd-shadow-lifted` and kbd tokens, `segment` typed `size?: never`, the IconButton label contract documented, guard exemptions list their properties, meaning colours caught through local custom properties (fixtures for both), `frameSizeText` only for iframes, shared spec locators in `harness.ts`. The CommentCard layout numbers, `?? 0` fallbacks and the status-word twin are Batch B.
-2026-11-17 Batch B part: TargetRef's button reset removed; the card's widget props gone (F-100); no `?? 0` numbers (`commentNumber` from the full list in `layoutPins` / `panelItems`, the thread takes its pin's number); `pinLabel` takes its status word from `statusBadge` (labels unchanged).
-2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for one part: the layout numbers coupled to other components (`CommentCard.svelte` `.actions` negative margins mirror the ghost `Button` padding; `.joined::before` mirrors the entry gap). Confirmed done: one `[hidden]` rule and one `button` reset, `--cd-stage-zoom`, no `--cd-lh-xs`, lifted-shadow and kbd tokens, `segment` `size?: never`, IconButton label contract, no `?? 0` comment numbers, `frameSizeText` iframe-only, exemptions list their properties, meaning colours caught through local custom properties, shared locators in `harness.ts`, pin label words from `statusBadge`.
 
 ### F-125 [P3] unverified - parse5's tree can differ from the frame's Chromium tree on rare markup
 
@@ -147,30 +69,6 @@
 **Why it matters:** For a text edit, `editArtboardHtml` re-parses the spliced HTML to prove the numbering survived (`parseArtboardDocument(splice.html)`), then throws that parse away. `answerEditRequest` then calls `panelFrameHtml`, whose `cachedArtboardDocument` misses for the new bytes and parses them again. Both parses run on the extension host thread, for files up to `MAX_POSTED_ARTBOARD_HTML_CHARS` (1.5M chars). Rule 07 says no sync CPU on the host thread, and the existing `panelFrames` ponytail already names a worker thread as the upgrade path. Style edits parse once. The cost is not measured.
 **Suggested fix:** Measure one text edit on a file near the cap during 9e's live check. If it is noticeable, return the core's verification document with the result and seed `cachedArtboardDocument` with it (one parse saved), or accept the cost under the existing `panelFrames` ponytail.
 **Resolution:**
-
-### F-139 [P3] open - saveCommentUi keeps a legacy commentMode key the spec says each save removes
-
-**File:** src/webview/hostBridge.svelte.ts:55
-**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
-**Why it matters:** The spec's Webview state contract (current-feature.md:170, and "Each save removes both `mode` and `commentMode` from the previous record first") is not what the code does: `saveCommentUi` destructures `mode`, `commentDraft`, `openThreadId`, `replyDrafts` out of the previous record but not `commentMode`, so an old `commentMode: true` key rides along in `...others` on every save forever. Behaviour is unaffected today (`parseSavedCommentUi` ignores the key and the spec itself calls it practically unreachable, since webview state does not survive a window reload), so this is contract drift, not a user-visible bug. The spec is the archived record of what shipped.
-**Suggested fix:** Add `commentMode: _commentMode,` to the destructure in `saveCommentUi` (one line), or reword the spec's Webview state contract to say only `mode` is dropped. No current requirement is lost either way.
-**Resolution:**
-
-### F-141 [P3] open - Two ponytail marks the 9e spec requires are missing from the code
-
-**File:** src/webview/Inspector.svelte:178
-**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
-**Why it matters:** The spec's Notes for the AI (current-feature.md:358-360) and step 5 (line 230) list five `ponytail:` marks to leave in code. Three are present (`editRequests.ts:8` one in flight and no timeout, `editValues.ts:46` the reference-whitespace edge). Two are not: "colour cannot clear" (the native `<input type="color">` has no empty value, so an inline colour can never be removed from the inspector) and "focus falls to the body when a reload that empties the pick unmounts a focused field; the live region still announces the copy". `grep -rn ponytail src/webview` finds neither. Rule 03 says a deliberate ceiling carries a `ponytail:` comment naming it and its upgrade path, so the next reader cannot tell these are known limits.
-**Suggested fix:** Add one `ponytail:` comment beside the colour input in `Inspector.svelte` (no clear; upgrade: a Clear button that commits '') and one beside the request-error live region (focus falls to body on a reload that empties the pick; upgrade: move focus to the stage viewport as `CommentPicker`'s mode setter does). Comments only; no requirement lost.
-**Resolution:** 2026-11-19 /audit independent (9e, fresh subagent claude-opus-5-5, target 5c8a33a): re-examined, still open. `grep -rn ponytail` over `Inspector.svelte`, `editState.svelte.ts`, `editInspector.ts` finds neither mark; only `editRequests.ts:8` and `editValues.ts:46` carry the spec's marks.
-
-### F-142 [P3] open - An abandoned invalid draft reports "the frame changed" when the user picks another element
-
-**File:** src/webview/editState.svelte.ts:118
-**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
-**Why it matters:** An invalid commit on Enter or blur keeps the draft with its field error (spec lifecycle "Invalid"). If the user then clicks another element, `#settleDrafts` commits that draft with `keepInvalid: false`, which drops it and sets the request error to `NOT_SAVED_COPY` ("Not saved: the frame changed. Try again."). Nothing about the frame changed: the value was refused by the chrome's own rule, and the field error explaining that is now gone with the old pick. The same happens to an invalid draft left over from a mode switch, on the next pick of another element. No data is lost (nothing was ever sendable), but the copy points the user at the wrong cause. The spec's lifecycle table does not say which copy a pick-change commit of an invalid draft should show.
-**Suggested fix:** Drop an invalid draft silently on a pick-change commit (its field error already told the user it was not saved), or show the draft's own `FIELD_ERROR_COPY` as the request error instead of `NOT_SAVED_COPY`. One branch in `#commit`; add the case to the browser "dirty field then click another element" test. No current requirement lost.
-**Resolution:** 2026-11-19 /audit independent (9e, fresh subagent claude-opus-5-5, target 5c8a33a): re-examined, still open. `#settleDrafts` (editState.svelte.ts:166) -> `#commit(draft, { keepInvalid: false })` -> `notSaved` (line 118) still sets `NOT_SAVED_COPY` for a draft the chrome itself refused. Same path for an invalid draft carried over a mode switch: App routes every `cd:pick` to `handlePick`, so the first Comment-mode pick of another element drops it with the same copy, shown on the next Edit entry.
 
 ### F-144 [P3] unverified - A style preview re-reads the picked element's whole innerText on every keystroke
 

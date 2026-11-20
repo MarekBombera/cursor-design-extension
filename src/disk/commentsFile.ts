@@ -310,7 +310,7 @@ export const serializeCommentsFile = (file: CommentsFile): string =>
 	toPrettyJson({ version: COMMENTS_SCHEMA_VERSION, comments: file.comments });
 
 export const readCommentsFile = async (workspaceRoot: string): Promise<CommentsFile> => {
-	const text = await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, commentsPathSegments));
+	const text = await commentsTextIfExists(workspaceRoot);
 	if (text === undefined) {
 		return emptyCommentsFile();
 	}

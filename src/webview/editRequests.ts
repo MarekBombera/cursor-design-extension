@@ -86,8 +86,10 @@ export const enqueueStep = (
 			};
 
 // An edit that ended unsent. A copy already showing (a refusal from the same event) wins.
-export const notSaved = (state: EditRequestsState, key: EditKey | undefined): EditRequestsState =>
-	state.error === undefined ? { ...state, error: { message: NOT_SAVED_COPY, key } } : state;
+export const notSaved = (
+	state: EditRequestsState,
+	{ key, message = NOT_SAVED_COPY }: { key: EditKey | undefined; message?: string },
+): EditRequestsState => (state.error === undefined ? { ...state, error: { message, key } } : state);
 
 const isSendableEdit = (commit: EditCommit, frame: SendFrame | undefined): frame is SendFrame =>
 	frame !== undefined &&
@@ -138,7 +140,7 @@ export const nextSend = ({
 		}
 		const { commit } = request;
 		if (!isSendableEdit(commit, frame)) {
-			next = notSaved(next, commit.key);
+			next = notSaved(next, { key: commit.key });
 			continue;
 		}
 		const requestId = newRequestId();

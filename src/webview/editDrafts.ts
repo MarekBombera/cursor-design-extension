@@ -13,7 +13,7 @@ import {
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
 import type { ChromePick } from './commentPick';
 import { editability, inlineValue } from './editInspector';
-import type { EditCommit, EditField, EditKey } from './editRequests';
+import { type EditCommit, type EditField, type EditKey, NOT_SAVED_COPY } from './editRequests';
 import type { EditApplyMessage, EditStyleField } from './frame/frameMessages';
 
 // The host stays the authority on every save; these rules only decide what to preview and send.
@@ -203,4 +203,18 @@ export const draftFate = ({
 		return pick.repost ? 'keep' : 'commit';
 	}
 	return pick.edit !== undefined && editability(pick.edit) !== 'editable' ? 'drop' : 'keep';
+};
+
+// A pick of another element ends the draft, so name the value's own cause, not a frame change.
+export const invalidDraftCopy = (error: FieldErrorKind, ending: 'pick' | 'step'): string => {
+	if (ending === 'pick') {
+		// ponytail: a user who already saw the field error sees the same copy once more here. Upgrade:
+		// track whether the field's blur went to an artboard iframe (FocusEvent.relatedTarget) and
+		// drop silently only when it did not.
+		return FIELD_ERROR_COPY[error];
+	}
+	// ponytail: the step that ends the draft clears this copy at once (enqueueStep), so an invalid
+	// draft ended by Undo / Redo ends silently; the copy shows only when the step queue is full.
+	// Upgrade: set the field copy after the step is enqueued.
+	return NOT_SAVED_COPY;
 };

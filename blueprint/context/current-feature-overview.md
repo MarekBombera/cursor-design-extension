@@ -1,82 +1,93 @@
-# Backlog: tests and dev tooling - Overview for review
+# Backlog: small product fixes - Overview for review
 
-Source of truth: `blueprint/history/fixes/backlog-tests-and-dev-tooling.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/fixes/backlog-small-product-fixes.md`. This file is the steering summary, not the build spec.
 
-**Branch:** `fix/backlog-tests-and-dev-tooling` · **Type:** Fix · **Status:** verified, completing
+**Branch:** `fix/backlog-small-product-fixes` · **Type:** Fix · **Status:** shipped (completed 2026-11-20)
 
 ## TL;DR
 
-Clears the open findings that need no product behaviour change: missing test guards (F-38, F-83,
-F-143, F-149, the F-112 remainder), a noisy watch task (F-15), and one new guard with no finding
-id (user-approved scope) that checks the system map's message table against the host ↔ chrome
-message types. Three findings left the ledger without a build step: F-14 `invalid` with evidence,
-F-39 and F-140 `accepted` by Bombic's decision (2026-11-20). `/audit current` was clean and also
-closed F-59, F-91 and F-117. No message, disk format or process
-flow changes, so there is no data-flow chart.
+Cleared the open findings that needed product code: a double read of `comments.json` (F-75), a
+legacy webview-state key that never went away (F-139), two missing `ponytail:` marks (F-141), the
+wrong "Not saved: the frame changed" copy when a pick of another element ends an invalid draft
+(F-142), and the last CommentCard layout numbers coupled to other components (F-114). The audit
+repairs F-155 and F-156 corrected descriptions only. F-28, F-56 and F-57 were archived as
+`accepted` (Bombic's decision). No message, disk format or process flow changed, so there is no
+data-flow chart.
+
+## Rule logic
+
+An open draft whose element is no longer picked, or that Undo / Redo ends, is re-validated by
+`#commit`:
+
+```mermaid
+flowchart TD
+  A[Draft ends: pick of another element, or Undo / Redo] --> B{Value valid?}
+  B -- yes --> C[Saved as before]
+  B -- no --> D[Preview reverted to the baseline]
+  D --> E{How did it end?}
+  E -- pick --> F["Request error: the field's own copy<br/>e.g. 'use a number, a CSS length…'"]
+  E -- Undo / Redo --> G["NOT_SAVED_COPY, cleared at once by the step<br/>(silent unless the step queue is full)"]
+```
 
 ## What you will see
 
-No change in the product. The `watch` task no longer fills the Problems panel with every Vite
-line and reports ready only after the chrome bundle is written. Vitest grows by two tests
-(729 → 731) and the browser suite by one (164 → 165 passed, 198 skipped).
+- Edit mode, type `4 apples;` in Padding, press Enter (field error shows), then click another
+  element: the request error reads "Not saved: use a number, a CSS length such as 1.5rem, or leave
+  it empty.", not "the frame changed".
+- Same value, no Enter, click straight onto another element: the same field copy.
+- Everything else looks and behaves the same (the comment card and thread measured identical
+  before and after). `get_comment` reads `comments.json` once instead of twice. Vitest grew by one
+  test (731 → 732), the browser suite by three (165 → 168 passed, 198 skipped).
 
 ## Architecture decisions
 
 | Finding | Before | After |
 |---|---|---|
-| F-15 | Webview watch matcher turns every line into a Problem; ends on `watching for file changes`, which Vite prints before the first build | Never-matching problem pattern; begins on `build started`, ends on `built in` or `Build failed` (checked against a pty capture) |
-| F-38 | No test for `createArtboard` over an existing artboard | One temp-dir test: a file is `ARTBOARD_EXISTS`, a symlink is refused, nothing changes |
-| F-83 | Host `comment:create` rejects test misses 12 guards | One broken variant per guard in the same array; the four shared-`size` rows each pin one field's wiring |
-| F-143 | Deleting the stale-skip generation check fails nothing | A replaced hash at the same generation merges and reloads (asserted on `hash`, `html`, `documentVersion`) |
-| F-149 | No case for a step answer that lost to a newer `canvas:updated` | One browser test: one reload, still announced; no second reload, proved by the iframe `src` staying put once the announcement shows |
-| F-112 | Flag icons counted, hint pill and spinner untested, frame ring on click undocumented | Icon asserted by its path, hint `aria-hidden` asserted, spinner stops under reduced motion, a comment accepts the ring |
-| (no id) | Table checked for `cd:*` names only | Also host → chrome and chrome → host names, against typed `Record<…['type'], true>` lists |
+| F-75 | `getComment` read the whole file to check it exists, then read it again; `readCommentsFile` re-typed the helper's one line | Pre-check deleted from `getComment`; `readCommentsFile` calls `commentsTextIfExists` (one owner; the writers keep their no-`.lock` pre-check) |
+| F-139 | `saveCommentUi` carried an old `commentMode: true` forever | The destructure drops it; a browser test seeds the key and sees it gone after the first save |
+| F-142 | A pick of another element ended any invalid draft with `NOT_SAVED_COPY` | `invalidDraftCopy` in `editDrafts.ts` gives the field's own copy on a pick; `notSaved` takes `{ key, message }`; `#commit` takes `ending: 'field' \| 'pick' \| 'step'` |
+| F-141 | Colour cannot be cleared; focus falls to body on a pick-emptying reload; neither marked | Two `ponytail:` comments in `Inspector.svelte`, each with its upgrade path |
+| F-114 | `.actions` right margin re-typed the sm Button padding; the thread line re-typed the entry gap | Theme token `--cd-button-pad-sm` read by Button and by the card's right outdent only; a card-local `--card-entry-gap`, outside `--cd-`, read by the gap and the line |
 
 ## Decisions locked
 
-- **F-14 is wrong, not open.** Real `vp pack --watch` prints `✔ Rebuilt in <n>ms.` on its first
-  cycle, so the pack matcher already ends; its failure line matches too. No change.
-- **F-14 is `invalid` unless the manual check disagrees.** A `watch:pack` that never reaches ready
-  in Cursor reopens it.
-- **F-39 and F-140 (parts 1-2) are `accepted`:** Bombic's decision 2026-11-20. They target archived
-  specs, history is never rewritten, no code impact. F-140 part 3 is resolved by the rules 05/08
-  rewrite.
-- **F-149's no-reload check reads the iframe `src`.** Reload and announcement land in one Svelte
-  flush, so `src` is final once the announcement shows; counting `cd:ready` after one animation
-  frame would miss an out-of-process reload.
-- **Drift guard is names only.** The typed literals make the test's lists complete at type-check
-  time; each type already has a parse test, so parser coverage needs nothing new.
-- **Spinner check lives in `commentsPanel.spec.ts`,** the spec that already renders a pending
-  spinner; `theme.spec.ts` keeps the token checks.
-- **Every new assertion is seen failing once** with its guard removed, then the guard restored;
-  `git diff --stat` after each step proves the product files are back.
-
-## Your actions
-
-- In Cursor: Terminal > Run Task > `watch`. Both watchers reach ready without a file touch and the
-  Problems panel stays clean while `watch:webview` rebuilds. A failure reopens F-15 (Problems) or
-  F-14 (`watch:pack` never ready).
+- **F-142: a pick of another element that ends an invalid draft names the field's own cause,**
+  never `NOT_SAVED_COPY`. Revised by the lead on 2026-11-20 while you were away: in Chromium the
+  field blurs before the frame's pick arrives, so "error already shown" and "clicked straight away"
+  look the same at pick time, and a silent drop would lose the value. You may override; the
+  `ponytail:` names the `relatedTarget` upgrade.
+- **Undo / Redo ends an invalid draft silently** (the step clears the copy; it shows only with a
+  full step queue). Unchanged from before; marked `ponytail:` in `invalidDraftCopy`.
+- **F-114: only the right outdent is the Button's side padding;** the left 6px and the bottom
+  `-4px` stay same-file numbers.
+- **No-visual-change proof was a one-time measurement**, not a committed test (rule 09 bans pixel
+  assertions).
+- **F-75 got no new test:** behaviour is unchanged and existing tests pin the outcomes.
 
 ## Out of scope
 
-- Product code changes (Fix B), including F-149's other two paths (they stay untested) and F-140's
-  untested same-mode guard.
-- The older "never reload" test's same one-frame blind spot (a follow-up).
-- Unverified findings that need triage.
-- Gallery helpers.
+- Unverified findings that need triage (F-16, F-25, F-90, F-125, F-133, F-135, F-137, F-144; still
+  in the ledger).
+- A cheaper existence check for the four comment writers.
+- Other negative margins in the chrome (`Pins.svelte`, `CommentPopover.svelte`).
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Problem matcher | VS Code reads a task's output with regexes: `pattern` makes Problems, `beginsPattern` / `endsPattern` mark a background task busy or ready |
-| Message contract table | The "Message contract (shipped)" table in `system-map.md`, the normative list of every message between host, chrome and frame |
-| Stale pre-write skip | A refresh that read disk before the user's own save is ignored, but only when its generation is older |
+| Draft | One inspector field's uncommitted input, tied to the element it started on |
+| Field error | The per-field "Not saved: …" copy a refused commit (Enter / blur) shows under the field |
+| Request error | The inspector's live-region banner; `NOT_SAVED_COPY` is "Not saved: the frame changed. Try again." |
+| Webview state | The record VS Code keeps for the panel across a tab switch (`getState` / `setState`) |
+
+## Your actions
+
+- Optional: try the two F-142 paths above in the panel (F5 or the browser harness).
+- Optional: `pnpm gallery` to eyeball the comment card and thread.
 
 ## Done means
 
-- `pnpm verify` passes with 731 Vitest tests (passed at completion).
-- `pnpm test:browser` reports 165 passed, 198 skipped (passed at completion).
-- In Cursor, Run Task `watch`: both watchers reach ready and the Problems panel stays empty (yours, above).
-- Ledger: F-15, F-38, F-83, F-112, F-143, F-149 (and F-59, F-91, F-117) `closed`; F-14 `invalid`;
-  F-39 and F-140 `accepted`; all archived with the fix. F-56 and F-57 stay `fixed` in the ledger.
+- `pnpm verify` passed with 732 Vitest tests; `pnpm test:browser` 168 passed, 198 skipped.
+- The step 3 before / after card measurement was identical.
+- Ledger: F-75, F-114, F-139, F-141, F-142, F-155, F-156 `closed` and F-28, F-56, F-57 `accepted`,
+  all archived with this fix.
