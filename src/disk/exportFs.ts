@@ -47,6 +47,7 @@ import {
 	serializeManifest,
 	serializeMeta,
 } from './parse';
+import { withWorkspaceLock } from './workspaceLock';
 
 export type ExportArtboardArgs = {
 	workspaceRoot: string;
@@ -149,10 +150,21 @@ type ExportPlanFrame = CanvasFrame & {
 	html: string;
 	storedMeta: ArtboardMeta | undefined;
 	effective: ArtboardMeta;
+	refreshMeta: boolean;
 };
 
-// All reads (and every read error) happen before the leaf mkdir; the scan's HTML string is the
-// only source for index.html, hashes, and meta.
+// Both scans saw no meta, or both saw the same hash and generation (same file format, so no
+// normalizeHash).
+const isSameStoredMeta = (
+	scanned: ArtboardMeta | undefined,
+	current: ArtboardMeta | undefined,
+): boolean =>
+	scanned === undefined || current === undefined
+		? scanned === current
+		: scanned.hash === current.hash && scanned.generation === current.generation;
+
+// Scan reads (and their errors) happen before the leaf mkdir; the scan's HTML string is the only
+// source for index.html, hashes, and meta.
 export const exportArtboard = async ({
 	workspaceRoot,
 	now,
@@ -178,12 +190,14 @@ export const exportArtboard = async ({
 	for (const frame of resolved) {
 		const html = htmlById.get(frame.id) ?? '';
 		const storedMeta = await readStoredMeta(workspaceRoot, frame.id, { rejectUnparsable: true });
+		const effective = effectiveArtboardMeta({ html, meta: storedMeta, artboardId: frame.id });
 		planned.push({
 			...frame,
 			folder: folders.get(frame.id) ?? UNGROUPED_FOLDER,
 			html,
 			storedMeta,
-			effective: effectiveArtboardMeta({ html, meta: storedMeta, artboardId: frame.id }),
+			effective,
+			refreshMeta: storedMeta === undefined || normalizeHash(storedMeta.hash) !== effective.hash,
 		});
 	}
 	const tokensJson =
@@ -233,19 +247,50 @@ export const exportArtboard = async ({
 			})),
 		],
 	});
-	for (const { id, storedMeta, effective } of planned) {
-		if (storedMeta === undefined || normalizeHash(storedMeta.hash) !== effective.hash) {
-			await writeUtf8({
-				...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(id)),
-				contents: serializeMeta({ ...effective, updatedAt: exportedAt }),
-			});
-		}
-	}
-	await writeManifestLastExport({
+	// The tail re-reads under the lock, all reads before any write, so a locked write that landed
+	// since the scan is never overwritten and a read error writes nothing. An unlocked write (an
+	// editor save) can still land between the re-read and the meta write.
+	await withWorkspaceLock({
 		workspaceRoot,
-		existing: scanned.manifest,
-		artboardId: legacyFrame.artboardId,
-		lastExport,
+		operation: async () => {
+			const metaWrites: { id: string; contents: string }[] = [];
+			for (const { id, html, storedMeta, effective, refreshMeta } of planned) {
+				if (!refreshMeta) {
+					continue;
+				}
+				const currentHtml = await readUtf8IfExists(
+					workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(id)),
+				);
+				if (currentHtml !== html) {
+					continue;
+				}
+				const currentMeta = await readStoredMeta(workspaceRoot, id, { rejectUnparsable: true });
+				if (!isSameStoredMeta(storedMeta, currentMeta)) {
+					continue;
+				}
+				metaWrites.push({
+					id,
+					contents: serializeMeta({ ...effective, updatedAt: exportedAt }),
+				});
+			}
+			const currentManifest = await readManifestFile(workspaceRoot);
+			for (const { id, contents } of metaWrites) {
+				await writeUtf8({
+					...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(id)),
+					contents,
+				});
+			}
+			// ponytail: set_artboard / set_active_artboard (artboardFs.ts:writeManifestActive) take no
+			// lock, so they can land between this re-read and this write, and can write back an older
+			// lastExport; two racing exports stay last-writer-wins on lastExport. This narrows the
+			// manifest window to the locked tail. Upgrade path: take the lock in writeManifestActive.
+			await writeManifestLastExport({
+				workspaceRoot,
+				existing: currentManifest,
+				artboardId: legacyFrame.artboardId,
+				lastExport,
+			});
+		},
 	});
 
 	return {

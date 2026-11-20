@@ -7,18 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-16 [P3] open - Extension Host never proved the new module load or CSP
-
-**File:** src/panel/artboardChromeHtml.ts:206
-**Found:** 2026-10-21 by /audit (scope: current; lens: tests)
-**Why it matters:** Unit tests cover the shell HTML (nonce, `asWebviewUri` stubs, `#svelte-root`, module-after-inline). Verify built `dist/webview/chrome.js` (22 kB) + `chrome.css` with no `eval` / `new Function`. The compiled Svelte runtime assigns a static template via `template.innerHTML` (not user HTML). Spec Testing and step 4 done-when still require F5: hello root present, zero CSP violations, 0.2 parity, and a missing-bundle failure path. Implement recorded F5 not run. Without that, a webview CSP or `type=module` miss would not have been caught.
-**Suggested fix:** Run F5 against `fixtures/dev-workspace` as the spec Testing section lists. Record the hello marker, CSP console, 0.2 toolbar/zoom/pan/edit, and the deleted-`chrome.js` path. No product change unless F5 fails.
-**Resolution:**
-2026-10-22 /audit (scope: current; 8c) user-reported F5 in `fixtures/dev-workspace` (B1-B13 plus retests, not re-run by this audit) reports no CSP errors in the webview console, with zoom tracking, drag/resize persistence and watcher updates working. That covers the module-load, CSP console and 0.2 parity parts of this lead. Still unproven: the deleted-`chrome.js` failure path. Stays `unverified` (never gates `/complete`); close it when that one path is exercised.
-2026-11-20 /audit current (9g; two fresh subagents, claude-opus-5-5 docs vs code and claude-sonnet-5-5 evidence integrity; evidence under the 9g session scratchpad `9g/`, summarized in the 9g spec Testing section): confirmed. The module-load and CSP parts pass on the installed `.vsix` in Cursor 3.29.9 (case A: `hero` renders, 0 CSP violations, no `chrome.js` error, chrome assets loaded from the installed extension). The deleted-`chrome.js` path (launch 4) opens a blank Artboard tab: `#svelte-root` is empty, `body.innerText` is `""`, there is no notification toast, and the "Cursor Design" Output channel is empty. The only trace is a webview-console 404. Not repaired; a visible "panel failed to load" fallback in the shell (for example `<noscript>` or a module `onerror`) is a separate `/fix`, or Bombic may accept it (the trigger is a broken package, which the `.vsix` listing check guards).
-2026-11-20 accepted by Bombic ("no fix F-16, F-137 and F-161", then "maybe update the skill to fix some issues"): no code fix. The trigger is a broken package, which the `.vsix` listing check guards. The skill cannot see a blank panel.
-2026-11-20 reopened by Bombic ("alright lets do both"): the acceptance is withdrawn and a `/fix` follows after 9g lands.
-
 ### F-90 [P3] unverified - The open panel rebuilds every item on each cd:anchor-rects and drag move
 
 **File:** src/webview/App.svelte:186
@@ -48,22 +36,3 @@
 **Suggested fix:** Measure in the F5 check (type into Padding with a large section picked). If noticeable, keep the cached `text` excerpt in `refreshCurrent` after a `style` apply and recompute only `styles` and `edit`. Otherwise accept under a `ponytail:` note.
 **Resolution:**
 2026-11-20 /audit current (9g; two fresh subagents, claude-opus-5-5 docs vs code and claude-sonnet-5-5 evidence integrity; evidence under the 9g session scratchpad `9g/`, summarized in the 9g spec Testing section): case N in real Cursor, on a `<main>` with 2,800 descendants and 72k characters of `innerText`. The spec's listener-pair method read 0 ms, because on `window` Chromium fires listeners in registration order. With `t0` taken from the runtime's own `setAttribute('style')` and `t1` from a later listener, on the Margin field with the same keystrokes: 20 previews, median 5.5 ms, max 7.5 ms, 0 long tasks, 0 long animation frames. Measured on an M4. This is evidence for `accepted` under a `ponytail:` note, which needs Bombic's decision.
-
-### F-161 [P3] open - Export writes artboard meta and manifest.json outside the workspace lock
-
-**File:** src/disk/exportFs.ts:236 (meta refresh loop; `writeManifestLastExport` around :244)
-**Found:** 2026-11-20 by /audit current (9g; lens: quality; from the 9g step 2 code read, confirmed by fresh subagent claude-sonnet-5-5); code fact, not reproduced
-**Why it matters:**
-- `exportArtboard` scans the artboards and metas, writes the handoff leaf across many awaits, then rewrites `artboards/<id>.meta.json` when the stored meta is missing or stale, and rewrites `manifest.json` from the earlier scan.
-- Neither write holds `withWorkspaceLock`: `runQueued` serializes only within one MCP process, and `commands/exportHandoff.ts` takes no lock.
-- A locked `update_artboard`, panel edit or Undo can land between the scan and the meta write. The export then writes a meta computed from the older HTML: the generation the Agent was handed is no longer current, so its next update gets a spurious `conflict`.
-- The manifest write can revert a concurrent `activeArtboardId` change.
-- HTML is never lost. The window is narrow: the meta must already be stale and then race a locked write.
-**Suggested fix:**
-- Put the meta refresh and the manifest write in one short `withWorkspaceLock` block.
-- Inside it, re-read and write only if the meta is still stale, and skip it when a newer generation has already landed. The leaf writes stay outside the lock.
-- Add one colocated test.
-- This is a separate `/fix`, or Bombic may accept it as documented in README Limits.
-**Resolution:**
-2026-11-20 accepted by Bombic ("no fix F-16, F-137 and F-161", then "maybe update the skill to fix some issues"): no code fix. Its only Agent-visible effect, a spurious `conflict` on the next `update_artboard`, is already handled by the skill's conflict rule (re-read, re-apply, retry once). Documented in README Limits.
-2026-11-20 reopened by Bombic ("alright lets do both"): the acceptance is withdrawn and a `/fix` follows after 9g lands.

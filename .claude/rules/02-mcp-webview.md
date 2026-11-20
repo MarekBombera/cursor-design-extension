@@ -27,8 +27,8 @@ Changing a tool, its args, an Agent-visible error code, an artboard runtime limi
 
 `.cursor-design/`: `manifest.json`, `canvas.json`, `comments.json`, `artboards/<id>.html`, optional meta, `assets/`, `tokens.json`, `handoff/<exportId>/`. Multi-artboard, one active, no gallery. Users gitignore it.
 
-- MCP serializes its writes (`enqueueDiskOp`). Every `canvas.json` / `comments.json` read-modify-write and `updateArtboard`'s HTML + meta read-compare-write runs under the cross-process `withWorkspaceLock` (`.cursor-design/.lock`, `WORKSPACE_BUSY` after 2 s), shared by MCP and the panel.
-- The lock is not re-entrant: never call a disk-lib function that takes it (`updateArtboard`, `editArtboard`, `placeFrame`, `addComment`, `replyToComment`, `setCommentStatus`, `markCommentsSent`, `resolveComment`) inside `withWorkspaceLock`.
+- MCP serializes its writes (`enqueueDiskOp`). Every `canvas.json` / `comments.json` read-modify-write, `updateArtboard`'s HTML + meta read-compare-write and the export tail (meta refresh + manifest write, after a re-read) run under the cross-process `withWorkspaceLock` (`.cursor-design/.lock`, `WORKSPACE_BUSY` after 2 s), shared by MCP and the panel.
+- The lock is not re-entrant: never call a disk-lib function that takes it (`updateArtboard`, `editArtboard`, `exportArtboard`, `placeFrame`, `addComment`, `replyToComment`, `setCommentStatus`, `markCommentsSent`, `resolveComment`) inside `withWorkspaceLock`.
 - MCP denied: edit `.cursor-design/**` directly; tell the user to allowlist the tools.
 
 ## Webview CSP and messages

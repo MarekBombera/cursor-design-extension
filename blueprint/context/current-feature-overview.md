@@ -1,4 +1,4 @@
-# 9g Verify - Overview for review
+# Fix: Chrome load error and export lock - Overview for review
 
 > **Generated file.** Human-facing steering summary of the active work item:
 > same content as `current-feature.md`, trimmed. Written at `/feature` when the
@@ -6,94 +6,64 @@
 > polish this into the archive-ready one-pager; it is not the first write.
 > Open in Markdown preview to render the diagrams.
 
-Source of truth: `blueprint/history/features/09g-verify.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/fixes/chrome-load-error-and-export-lock.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-0.4 Edit-lite was verified without a human at the keyboard. Agents drove a separate, isolated Cursor 3.29.9 running the packaged `.vsix`, edited all five fields on a real frame, undid and redid them, and diffed the file after each step. They also acted as the Agent over MCP, exported the handoff and checked comment staleness. All cases A–K pass. Eight leads got a measured verdict. README and the Agent skill now match shipped code. No product code changed; one test line guards a new skill number.
+This fix closes two findings the 9g audit confirmed.
+- **F-16:** opening the panel when `dist/webview/chrome.js` or `chrome.css` is missing now shows a Cursor error notification naming the file, instead of a silent blank tab.
+- **F-161:** export's final meta refresh and manifest write now run under the workspace lock and re-read the files first, so they no longer overwrite a meta that a panel edit, Undo or Agent update just saved.
 
-## Flow
-
-```mermaid
-flowchart LR
-  Spec["/feature → dual review → spec fix"] --> Docs["Docs checked vs code"]
-  Docs --> Pack["pnpm vsix + listing"]
-  Pack --> Run["Real Cursor run A–K + L/M/N"]
-  Run --> Leads["Leads: F-135 / F-16 / F-15 launches, F-137 / F-90 / F-133 probes"]
-  Leads --> Gates["verify · test:browser · knip"]
-  Gates --> Audit["/audit: 2 reviewers → doc repairs → closure review"]
-```
-
-## System map
-
-No new flows. The rig used only shipped calls:
+## Key loop (export tail, shipped)
 
 ```mermaid
-flowchart LR
-  subgraph Cursor["Scratch Cursor (own HOME + profile, CDP)"]
-    Chrome["Panel chrome"]
-    Frame["Artboard frame"]
-    Host["Extension host"]
-  end
-  Agent["Stand-in Agent (stdio → packaged mcp.js)"]
-  Disk[(".cursor-design/")]
-  Chrome -- "artboard:edit / artboard:history" --> Host
-  Host -- "artboard:edited (own edit: adopt; undo/redo step: reload)" --> Chrome
-  Host -- "canvas:updated" --> Chrome
-  Chrome -- "cd:edit-apply" --> Frame
-  Frame -- "cd:pick" --> Chrome
-  Host -- "editArtboard → updateArtboard (lock)" --> Disk
-  Agent -- "read / update (lock) / comments / export" --> Disk
-  Disk -- "watcher: outside change reloads, clears history" --> Host
+sequenceDiagram
+  participant Ex as exportArtboard (MCP export_artboard or Export Handoff command)
+  participant L as .cursor-design/.lock
+  participant D as artboards/*.html + *.meta.json, manifest.json
+  Ex->>D: scan HTML, metas, manifest (no lock)
+  Ex->>D: write handoff/<exportId>/ (no lock)
+  Ex->>L: withWorkspaceLock (2 s timeout)
+  Ex->>D: re-read each stale frame's HTML + strict meta, then the manifest
+  Note over Ex,D: skip a frame whose HTML or meta changed since the scan
+  Ex->>D: write queued metas, then manifest (fresh copy + lastExport)
+  Ex-->>L: release
 ```
 
 ## What you will see
 
-- README:
-  - a 0.4 status line and an **Edit mode** section;
-  - Limits now say artboard writes are locked since 9c;
-  - after an extension update, quit and reopen Cursor (a toggle or window reload keeps the old MCP server running);
-  - a new smoke line (2026-11-20, Cursor 3.29.9).
-- Agent skill:
-  - **Tool descriptions can be out of date** (follow the skill and ask the user once to quit and reopen Cursor);
-  - **File size** (keep each artboard under 1,500,000 characters).
-- System map: `artboard:edited` shows `canUndo` / `canRedo`.
-- Notion 0.4 page: shipped status, four Done-when lines ticked with case letters, 9f/F-135/fingerprint notes.
+- When the chrome bundle is missing, this notification appears: "Cursor Design could not load its panel: dist/webview/chrome.js is missing. Reinstall the extension, or run pnpm compile in a development checkout." Nothing changes when the files exist.
+- Exports look the same. A rare `WORKSPACE_BUSY` means retry; the tool description and the Agent skill both say so.
 
 ## Decisions locked
 
-- Evidence is real or marked **not run: reason**. Nothing was handed to Bombic.
-- Three checks were corrected mid-run:
-  - J's regex needs a digit (the runtime's own selector code matched).
-  - F-144 is timed from the runtime's own `setAttribute` (a capture listener on `window` runs after the runtime).
-  - The launch line needs `env -i`, a short profile path, `--use-mock-keychain` and `--classic`.
-- F-16 and F-161 were reopened for a follow-up `/fix` (Bombic). F-137 is accepted, mitigated by the skill's size bullet.
+- **F-16:**
+  - A host-side check reuses `fileExists`, and the shell only exports the asset paths. A fallback text in the shell would flash on every open.
+  - Known gap: a `chrome.js` that loads but crashes before mounting still shows a blank panel (`ponytail:`).
+- **F-161:**
+  - Inside the lock, all reads come before any write.
+  - The meta comparison is raw equality with the scan.
+  - The manifest race with the unlocked `set_artboard` / `set_active_artboard` is narrowed, not closed (`ponytail:`).
 
-## Results
+## Evidence
 
-| Area | Outcome |
+| Check | Result |
 |---|---|
-| A–K on the installed `.vsix` | all pass (one-line diffs, exact undo/redo shas, Agent `conflict` then edits kept, clean export, comment stale → fresh) |
-| Closed by evidence | F-25 (live region always mounted), F-133 (every frame-HTML producer goes through `panelFrames`), F-15 (watch task) |
-| Supports accepting (Bombic to decide) | F-90 (0 long tasks at 500 pins), F-125 (weak), F-144 (5.5 ms per keystroke) |
-| Confirmed | F-16 blank panel (reopened), F-135 old server until quit (docs + skill), F-137 ~180 ms text edit near the cap (accepted) |
-| New | F-161 export writes meta/manifest without the lock (reopened for `/fix`) |
-| Gates | `pnpm verify` 732 tests, `pnpm test:browser` 168 passed, `pnpm knip` clean |
+| `handoff.test.ts` race cases (a)–(d), plus a test that a corrupt second meta writes nothing | pass; each guard, the lock and the read-before-write order fail their tests when removed |
+| `hostFs.test.ts` | pass; the stat-error case fails without the `.catch` |
+| Real Cursor, package without `chrome.js` | the toast shows the exact message; the tab stays blank |
+| Real Cursor, full package | the `hero` frame renders; no toast within 5 s; the Notifications center is empty |
+| `pnpm verify` / `pnpm test:browser` | 742 tests / 168 passed |
+| `/audit` (Opus + Sonnet) and closure review | no P0–P2; F-16, F-161 and F-165–F-167 closed; F-168 invalid |
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Scratch Cursor | A second Cursor with its own `HOME`, profile and extensions, so agents can test without touching yours |
-| CDP | Chrome DevTools Protocol: how Playwright drives Cursor's windows and webviews |
-| Stand-in Agent | A small Node MCP client that makes the same tool calls Cursor's Agent would |
-| Lead | An `unverified` finding: a suspected risk waiting for evidence |
-| Source tag | `data-cd-src="N"`, numbering elements in the panel's copy only, never on disk |
+| Export tail | The last part of an export, which refreshes stale metas and records `lastExport` |
+| Workspace lock | `.cursor-design/.lock`, which keeps the panel and every MCP process from writing at the same moment |
+| Chrome bundle | `dist/webview/chrome.js` and `chrome.css`: the panel's UI code |
 
 ## Your actions
 
-None required. Optional: decide on accepting F-90, F-125 and F-144.
-
-## Done means
-
-All four Notion "Done when" lines and every 9g plan clause have real-run evidence (cases B–K). The `.vsix` installs and runs. The docs match the code. Every lead has a recorded verdict.
+None.

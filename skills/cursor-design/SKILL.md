@@ -24,7 +24,7 @@ Argument names differ between tools. Use these exact shapes:
 - `update_artboard({ artboardId, html, baseGeneration })`: replaces the whole document and returns the new `generation`. It waits for the workspace lock; `WORKSPACE_BUSY` means another Cursor Design write holds it.
 - `place_frame({ id, x, y, width, label, group })`: positions one frame. It takes `id`, not `artboardId`. Omitted fields keep their value. Width is clamped to 120–3840. `group: ""` clears the group. Height is never stored. It returns every frame.
 - `set_active_artboard({ artboardId })`: picks the default artboard for `read_artboard` and `handoff_status`.
-- `export_artboard()`: exports every frame and returns `exportId` and `handoffPath`. It takes no arguments.
+- `export_artboard()`: exports every frame and returns `exportId` and `handoffPath`. It takes no arguments. On `WORKSPACE_BUSY`, retry.
 - `handoff_status()`: reports whether the last export is `stale`. It needs an active artboard. Never exported counts as stale.
 - `list_comments({ status })`: lists comments with `stale` and `targetMissing` flags and a `replyCount`; the replies themselves come from `get_comment`. `status` is optional: `open`, `sent` or `resolved`. Omitted, it returns `open` plus `sent`.
 - `get_comment({ id })`: one comment, with its flags checked against the HTML on disk.

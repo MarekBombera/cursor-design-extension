@@ -272,7 +272,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Export artboard',
 			description:
-				'Export every frame on the canvas to .cursor-design/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open.',
+				'Export every frame on the canvas to .cursor-design/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open. WORKSPACE_BUSY when another Cursor Design write holds the lock: retry; after a crashed write it can last up to 30 s. The handoff folder is still written; a retry writes a new one.',
 			inputSchema: exportArtboardInputSchema,
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},

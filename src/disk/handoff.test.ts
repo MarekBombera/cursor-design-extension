@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import * as fc from 'fast-check';
 import { afterEach, expect, test } from 'vite-plus/test';
 
@@ -43,7 +44,16 @@ import {
 	manifestPathSegments,
 	workspaceTokensPathSegments,
 } from './layout';
-import { type ArtboardManifest, type LastExport, parseManifest, serializeManifest } from './parse';
+import {
+	type ArtboardManifest,
+	type ArtboardMeta,
+	type LastExport,
+	parseManifest,
+	parseMeta,
+	serializeManifest,
+	serializeMeta,
+} from './parse';
+import { withWorkspaceLock } from './workspaceLock';
 
 const tempRoots: string[] = [];
 
@@ -564,6 +574,170 @@ test('export with no manifest creates it active on the legacy frame', async () =
 	assert.equal(manifest.activeArtboardId, 'a');
 	assert.equal(manifest.lastExport?.artboardId, 'a');
 	assert.equal(manifest.lastExport?.frames?.length, 4);
+});
+
+const STALE_HERO_HTML = '<p>hero edited</p>';
+const HERO_LEAF_HTML = 'ungrouped/hero/index.html';
+
+const readMetaFile = async (workspaceRoot: string, artboardId: string): Promise<ArtboardMeta> =>
+	parseMeta(
+		JSON.parse(
+			await readFile(join(workspaceRoot, ...artboardMetaPathSegments(artboardId)), 'utf8'),
+		) as unknown,
+	);
+
+const writeMetaFile = async (workspaceRoot: string, meta: ArtboardMeta): Promise<void> => {
+	await writeFile(join(workspaceRoot, ...artboardMetaPathSegments(meta.id)), serializeMeta(meta));
+};
+
+// hero's HTML edited directly, so its stored meta is stale and export refreshes it.
+const createStaleHero = async (workspaceRoot: string): Promise<ArtboardMeta> => {
+	await createFrame(workspaceRoot, 'hero', HERO_HTML);
+	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), STALE_HERO_HTML);
+	return readMetaFile(workspaceRoot, 'hero');
+};
+
+// Holds the lock while the export writes its leaf, checks the export left `targetPath` alone,
+// then plays a locked writer (direct writes; the lock is not re-entrant) and awaits the export.
+// An in-lock failure is reported before the export's own error. The 5 s leaf deadline cannot
+// cause WORKSPACE_BUSY: the export's lock wait starts only after its leaf is written.
+const exportAroundLockedWrite = async ({
+	workspaceRoot,
+	leafLastFile,
+	targetPath,
+	lockedWrite,
+}: {
+	workspaceRoot: string;
+	leafLastFile: string;
+	targetPath: string;
+	lockedWrite: () => Promise<void>;
+}): Promise<void> => {
+	const targetBefore = await readFile(targetPath, 'utf8');
+	const leafLastPath = join(workspaceRoot, ...handoffDirSegments(FIXED_EXPORT_ID), leafLastFile);
+	let exporting: Promise<unknown> = Promise.resolve();
+	let exportSettled: Promise<unknown> = Promise.resolve();
+	await withWorkspaceLock({
+		workspaceRoot,
+		operation: async () => {
+			exporting = exportArtboard({ workspaceRoot, now: FIXED_NOW });
+			// Handled at once, so an export that rejects while this still polls is never unhandled.
+			exportSettled = exporting.catch(() => undefined);
+			const deadline = Date.now() + 5000;
+			while (
+				!(await access(leafLastPath).then(
+					() => true,
+					() => false,
+				))
+			) {
+				assert.ok(Date.now() < deadline, `${leafLastFile} was never written`);
+				await sleep(5);
+			}
+			await sleep(50);
+			assert.equal(await readFile(targetPath, 'utf8'), targetBefore);
+			await lockedWrite();
+		},
+	}).finally(() => exportSettled);
+	await exporting;
+};
+
+test('export keeps a locked HTML + meta write that lands before its tail', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const storedMeta = await createStaleHero(workspaceRoot);
+	// Same hash and generation as the scanned meta, so only the HTML re-read can tell.
+	const lockedMeta = { ...storedMeta, updatedAt: '2026-09-11T18:00:00.000Z' };
+	await exportAroundLockedWrite({
+		workspaceRoot,
+		leafLastFile: HERO_LEAF_HTML,
+		targetPath: join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		lockedWrite: async () => {
+			await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), HERO_HTML);
+			await writeMetaFile(workspaceRoot, lockedMeta);
+		},
+	});
+	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), lockedMeta);
+});
+
+test('export keeps a locked meta-only write that lands before its tail', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const storedMeta = await createStaleHero(workspaceRoot);
+	const lockedMeta = {
+		...storedMeta,
+		title: 'Renamed',
+		hash: hashHtml(STALE_HERO_HTML),
+		generation: storedMeta.generation + 1,
+	};
+	await exportAroundLockedWrite({
+		workspaceRoot,
+		leafLastFile: HERO_LEAF_HTML,
+		targetPath: join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		lockedWrite: async () => writeMetaFile(workspaceRoot, lockedMeta),
+	});
+	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), lockedMeta);
+});
+
+test('export re-reads the manifest so a write before its tail keeps activeArtboardId', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createFrame(workspaceRoot, 'hero', HERO_HTML);
+	await createFrame(workspaceRoot, 'side', '<p>side</p>');
+	const manifestPath = join(workspaceRoot, ...manifestPathSegments);
+	const scannedManifest = await readManifestJson(workspaceRoot);
+	assert.equal(scannedManifest.activeArtboardId, 'side');
+	const { lastExport: _dropped, ...withoutLastExport } = scannedManifest;
+	await exportAroundLockedWrite({
+		workspaceRoot,
+		leafLastFile: 'ungrouped/side/index.html',
+		targetPath: manifestPath,
+		lockedWrite: async () =>
+			writeFile(
+				manifestPath,
+				serializeManifest({ ...withoutLastExport, activeArtboardId: 'hero' }),
+			),
+	});
+	const manifest = await readManifestJson(workspaceRoot);
+	assert.equal(manifest.activeArtboardId, 'hero');
+	assert.equal(manifest.lastExport?.exportId, FIXED_EXPORT_ID);
+	assert.equal(manifest.lastExport?.artboardId, 'side');
+	assert.equal(manifest.lastExport?.frames?.length, 2);
+});
+
+test('export reads every meta before any write, so a corrupt second meta writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createStaleHero(workspaceRoot);
+	await createFrame(workspaceRoot, 'side', '<p>side</p>');
+	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('side')), '<p>side edited</p>');
+	const heroMetaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const manifestPath = join(workspaceRoot, ...manifestPathSegments);
+	const heroMetaBefore = await readFile(heroMetaPath, 'utf8');
+	const manifestBefore = await readFile(manifestPath, 'utf8');
+	await assert.rejects(
+		exportAroundLockedWrite({
+			workspaceRoot,
+			leafLastFile: 'ungrouped/side/index.html',
+			targetPath: heroMetaPath,
+			lockedWrite: async () =>
+				writeFile(join(workspaceRoot, ...artboardMetaPathSegments('side')), '{ not json'),
+		}),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptMetaError);
+			assert.equal(error.code, 'CORRUPT_META');
+			assert.equal(error.artboardId, 'side');
+			return true;
+		},
+	);
+	assert.equal(await readFile(heroMetaPath, 'utf8'), heroMetaBefore);
+	assert.equal(await readFile(manifestPath, 'utf8'), manifestBefore);
+});
+
+test('export with no competing write refreshes a stale meta', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const storedMeta = await createStaleHero(workspaceRoot);
+	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), {
+		...storedMeta,
+		hash: hashHtml(STALE_HERO_HTML),
+		generation: storedMeta.generation + 1,
+		updatedAt: FIXED_NOW.toISOString(),
+	});
 });
 
 test('read failures write no handoff leaf and keep their codes', async () => {

@@ -33,13 +33,13 @@ Grep this and rule 08's chrome catalog before writing a helper; extend the owner
 
 **Host** (`src/host/`; no `vscode` in `chromeMessages`, `panelRequestCopy`, `editHistory`, `commentPrompt`, `panelOutbox`):
 
-- `src/host/hostFs.ts`: `fileExists`, `isFileNotFound`, `firstWorkspaceFolder`, `NO_FOLDER_MESSAGE`, `logDiskError`. `src/host/watchArtboardDisk.ts`: `ensureArtboardWatcher`, `replaceArtboardWatcher`.
+- `src/host/hostFs.ts`: `fileExists`, `isFileNotFound`, `firstWorkspaceFolder`, `NO_FOLDER_MESSAGE`, `logDiskError`, `missingChromeAssets`, `chromeLoadErrorMessage`. `src/host/watchArtboardDisk.ts`: `ensureArtboardWatcher`, `replaceArtboardWatcher`.
 - `src/host/canvasSnapshot.ts`: `canvasSnapshotErrorMessage`, `panelFrames` over the one-frame job `panelFrameHtml`. `src/host/artboardDisk.ts`: `placeFrameFromChrome`; never re-implement disk I/O.
 - `src/host/chromeMessages.ts`: `parseChromeMessage`, `isFramePlaceAttempt`, `isArtboardEditAttempt`, `isArtboardHistoryAttempt`, `commentRequestType`, `claimedRequestId`, `commentRequestId`, `toNewComment`, `toPostedComment`.
 - `src/host/panelRequestCopy.ts`: all panel answer copy, never Agent copy (`editRequestErrorMessage`, `malformedRequestMessage`, `commentRequestErrorMessage`, `*_MESSAGE`, `isCopyType`).
 - `src/host/panelComments.ts` (`postPanelComments`, `answerCommentRequest`), `src/host/panelEdit.ts` (`answerEditRequest`, `answerHistoryRequest`): never reject, one answer per attempt, never wrap the disk lock; copy writes the clipboard before `markCommentsSent`.
 - `src/host/editHistory.ts`: `recordEdit`, `historyStepTarget`, `recordStep`, `forgetHistory`, `keepUnchangedHistories`, `clearEditHistories`, `historyFlags`. `src/host/commentPrompt.ts`: locked prompts `singleCommentPrompt`, `openCommentsPrompt`.
-- `src/host/panelOutbox.ts`: `createPanelOutbox`, holds sends until `artboard:ready`, replays state on reload, never replays `PanelAnswer`. `src/panel/openArtboardPanel.ts`: `openArtboardPanel`, `post*ToPanel`, `setArtboardPanelOn*`; shell `buildArtboardChromeHtml` (`src/panel/artboardChromeHtml.ts`).
+- `src/host/panelOutbox.ts`: `createPanelOutbox`, holds sends until `artboard:ready`, replays state on reload, never replays `PanelAnswer`. `src/panel/openArtboardPanel.ts`: `openArtboardPanel`, `post*ToPanel`, `setArtboardPanelOn*`; shell `buildArtboardChromeHtml` and its asset paths `CHROME_JS_SEGMENTS` / `CHROME_CSS_SEGMENTS` (`src/panel/artboardChromeHtml.ts`).
 
 **MCP** (`src/mcp/`): `enqueueDiskOp` (`src/mcp/mcpQueue.ts`), `resolveWorkspaceRoot`, `src/mcp/toolNames.ts`, `src/mcp/mcpIdentity.ts`; `src/mcp/mcpToolResult.ts`: `toMcpToolError`, `runQueued`, stderr `logMcpError`, `src/mcp/server.ts`.
 

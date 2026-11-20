@@ -63,7 +63,8 @@ const unlinkIfPresent = async (path: string): Promise<void> => {
 };
 
 // ponytail: stale = mtime older than staleMs, no PID or heartbeat; every hold (one JSON
-// read-modify-write or one HTML + meta write) is far below 30 s. Upgrade path: heartbeat the mtime.
+// read-modify-write, one HTML + meta write, or the export tail's N strict meta re-reads, N meta
+// writes and one manifest write) is far below 30 s. Upgrade path: heartbeat the mtime.
 // Only the `.lock.break` holder (wx) removes a stale lock, re-checking under it, so a waiter's
 // fresh lock is never broken. True = retry at once.
 const breakIfStale = async ({

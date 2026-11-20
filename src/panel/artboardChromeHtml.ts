@@ -2,6 +2,9 @@ import { randomBytes } from 'node:crypto';
 
 import * as vscode from 'vscode';
 
+export const CHROME_JS_SEGMENTS = ['dist', 'webview', 'chrome.js'] as const;
+export const CHROME_CSS_SEGMENTS = ['dist', 'webview', 'chrome.css'] as const;
+
 const createCspNonce = (): string => randomBytes(16).toString('hex');
 
 export type ArtboardChromeDocument = {
@@ -21,10 +24,10 @@ export const buildArtboardChromeHtml = ({
 }: BuildArtboardChromeHtmlArgs): ArtboardChromeDocument => {
 	const nonce = createCspNonce();
 	const chromeCssUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'chrome.css'),
+		vscode.Uri.joinPath(extensionUri, ...CHROME_CSS_SEGMENTS),
 	);
 	const chromeJsUri = webview.asWebviewUri(
-		vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'chrome.js'),
+		vscode.Uri.joinPath(extensionUri, ...CHROME_JS_SEGMENTS),
 	);
 	const csp = [
 		"default-src 'none'",

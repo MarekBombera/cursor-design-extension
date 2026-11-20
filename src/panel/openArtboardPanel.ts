@@ -9,6 +9,7 @@ import {
 	parseChromeMessage,
 } from '../host/chromeMessages';
 import { clearEditHistories, historyFlags, keepUnchangedHistories } from '../host/editHistory';
+import { chromeLoadErrorMessage, missingChromeAssets } from '../host/hostFs';
 import { type PanelAnswer, createPanelOutbox } from '../host/panelOutbox';
 import type { CommentsUpdatedMessage } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
@@ -97,6 +98,11 @@ export const openArtboardPanel = ({
 	});
 	chromeCspNonce = chrome.cspNonce;
 	panel.webview.html = chrome.html;
+	void missingChromeAssets(context.extensionUri).then((missing) => {
+		if (missing.length > 0) {
+			void vscode.window.showErrorMessage(chromeLoadErrorMessage(missing));
+		}
+	});
 	panel.webview.onDidReceiveMessage((message: unknown) => {
 		if (isFramePlaceAttempt(message)) {
 			onFramePlace?.(message);
