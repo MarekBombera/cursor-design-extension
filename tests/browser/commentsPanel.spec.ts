@@ -181,6 +181,13 @@ test('Reply opens a focused composer; Enter posts the trimmed body and saved emp
 	await expect(box).not.toBeEditable();
 	const pending = thread(page).getByRole('button', { name: 'Adding…', exact: true });
 	await expect(pending).toHaveAttribute('aria-busy', 'true');
+	// The spinner reads the --cd-spin token, so reduced motion stops it.
+	const spinner = pending.locator('svg.spin');
+	const animationName = async (): Promise<string> =>
+		spinner.evaluate((element) => getComputedStyle(element).animationName);
+	expect(await animationName()).toBe('cd-spin');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await expect.poll(animationName).toBe('none');
 
 	await postToChrome(page, { type: 'comment:saved', requestId: String(request.requestId) });
 	await expect(box).toHaveValue('');

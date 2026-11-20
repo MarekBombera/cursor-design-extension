@@ -25,6 +25,7 @@ import {
 	updateArtboard,
 } from './artboardFs';
 import {
+	ArtboardExistsError,
 	ArtboardNotFoundError,
 	ConflictError,
 	CorruptManifestError,
@@ -252,6 +253,50 @@ test('symlinked html is rejected without touching the target', async () => {
 			return true;
 		},
 	);
+	assert.equal(await readFile(outsidePath, 'utf8'), 'secret');
+});
+
+test('createArtboard over an existing artboard: a file is ARTBOARD_EXISTS, a symlink is refused, nothing changes', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const outsideDir = await makeTempRoot();
+	const outsidePath = join(outsideDir, 'secret.txt');
+	await writeFile(outsidePath, 'secret', 'utf8');
+	const create = async (): Promise<unknown> =>
+		createArtboard({
+			workspaceRoot,
+			artboardId: 'hero',
+			html: '<p>other</p>',
+			writeEnsurePanelMarker: false,
+		});
+	await createArtboard({
+		workspaceRoot,
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const htmlBefore = await readFile(htmlPath, 'utf8');
+	const metaBefore = await readFile(metaPath, 'utf8');
+
+	await assert.rejects(create(), (error: unknown) => {
+		assert.ok(error instanceof ArtboardExistsError);
+		assert.equal(error.code, 'ARTBOARD_EXISTS');
+		return true;
+	});
+	assert.equal(await readFile(htmlPath, 'utf8'), htmlBefore);
+	assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
+
+	await rm(htmlPath);
+	await symlink(outsidePath, htmlPath);
+	await assert.rejects(create(), (error: unknown) => {
+		assert.ok(error instanceof DiskError);
+		assert.equal(
+			error.message,
+			'.cursor-design/artboards/hero.html must be a regular file (symlinks rejected).',
+		);
+		return true;
+	});
 	assert.equal(await readFile(outsidePath, 'utf8'), 'secret');
 });
 

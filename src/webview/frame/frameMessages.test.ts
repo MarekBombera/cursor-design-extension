@@ -9,6 +9,7 @@ import {
 	MAX_PICK_STYLE_CHARS,
 	MAX_SELECTOR_CHARS,
 } from '../../disk/layout';
+import type { ChromeMessage, HostMessage } from '../hostMessages';
 import {
 	FRAME_ANCHORS_MESSAGE,
 	FRAME_ANCHOR_RECTS_MESSAGE,
@@ -449,12 +450,16 @@ test('cd:anchor-rects needs valid rects, and box null with visible null', () => 
 	}
 });
 
-test('system map message contract names exactly the frame messages', () => {
+const contractSection = (): string => {
 	const map = readFileSync(join(process.cwd(), 'blueprint/context/system-map.md'), 'utf8');
 	const start = map.indexOf('## Message contract (shipped)');
 	assert.ok(start >= 0);
 	const next = map.indexOf('\n## ', start + 1);
-	const section = map.slice(start, next < 0 ? undefined : next);
+	return map.slice(start, next < 0 ? undefined : next);
+};
+
+test('system map message contract names exactly the frame messages', () => {
+	const section = contractSection();
 	const constants = Object.entries(frameMessages)
 		.filter(
 			([name, value]) =>
@@ -463,4 +468,45 @@ test('system map message contract names exactly the frame messages', () => {
 		.map(([, value]) => value);
 	assert.ok(constants.length > 0);
 	assert.deepEqual(new Set(section.match(/cd:[a-z-]+/g)), new Set(constants));
+});
+
+// A new message type fails type-checking here as a missing property, a removed one as an excess
+// property, so these lists stay exactly the unions.
+const HOST_TO_CHROME: Record<HostMessage['type'], true> = {
+	'canvas:updated': true,
+	'artboard:error': true,
+	'ui:status': true,
+	'comments:updated': true,
+	'comment:added': true,
+	'comment:saved': true,
+	'ui:copied': true,
+	'artboard:edited': true,
+	'ui:error': true,
+};
+const CHROME_TO_HOST: Record<ChromeMessage['type'], true> = {
+	'artboard:ready': true,
+	'frame:place': true,
+	'comment:create': true,
+	'comment:reply': true,
+	'comment:set-status': true,
+	'comment:copy': true,
+	'comment:copy-open': true,
+	'artboard:edit': true,
+	'artboard:history': true,
+};
+
+test('system map message contract names exactly the host and chrome messages', () => {
+	const named = new Map<string, Set<string>>([
+		['host → chrome', new Set()],
+		['chrome → host', new Set()],
+	]);
+	for (const [, direction, cell] of contractSection().matchAll(
+		/^\| (host → chrome|chrome → host) \| ([^|]+) \|/gm,
+	)) {
+		for (const [, name] of cell.matchAll(/`([^`]+)`/g)) {
+			named.get(direction)?.add(name);
+		}
+	}
+	assert.deepEqual(named.get('host → chrome'), new Set(Object.keys(HOST_TO_CHROME)));
+	assert.deepEqual(named.get('chrome → host'), new Set(Object.keys(CHROME_TO_HOST)));
 });

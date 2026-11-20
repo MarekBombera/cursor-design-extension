@@ -54,14 +54,15 @@
 			"group": "build",
 			"problemMatcher": {
 				"owner": "vite-webview",
+				// Never matches: build errors stay in the terminal, svelte-check reports diagnostics.
 				"pattern": {
-					"regexp": "^.*$",
+					"regexp": "(?!)",
 					"message": 0
 				},
 				"background": {
 					"activeOnStart": true,
-					"beginsPattern": "transforming|building for|vite v",
-					"endsPattern": "built in|watching for file changes"
+					"beginsPattern": "build started",
+					"endsPattern": "built in|Build failed"
 				}
 			},
 			"isBackground": true,

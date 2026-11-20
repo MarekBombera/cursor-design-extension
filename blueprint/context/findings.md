@@ -7,24 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-14 [P2] open - Watch matcher misses the `vp pack` success line
-
-**File:** .vscode/tasks.json:41
-**Found:** 2026-10-20 by /audit (scope: current; lens: quality)
-**Why it matters:** The `npm: watch:pack` matcher is `activeOnStart: true` and ends only on `Rebuilt in <n>ms` or `Build failed`. Both `vp pack` and `vp pack --minify --no-sourcemap` in this pass printed `Build start` then `✔ Build complete in <n>ms` (once per pack config). That success line does not match `endsPattern`. If the first watch cycle uses the same logger as one-shot pack, the VS Code `watch` task never becomes ready until a later incremental `Rebuilt in` (the spec captured that string after a file touch; this pass could not re-run watch outside the sandbox). F5 still uses `preLaunchTask: compile`, so the Extension Host path is not blocked.
-**Suggested fix:** Add `Build complete` to `endsPattern`, or wrap `watch:pack` so it prints the old `[watch] build started` / `[watch] build finished` lines the spec already allowed. Confirm the VS Code `watch` task reaches ready without a file touch.
-**Resolution:** 2026-10-21 /audit (scope: current; 7b vp check) re-read `.vscode/tasks.json:41`. `endsPattern` is still `Rebuilt in \\d+ms|Build failed`. 7b dropped `watch:tsc`, so the VS Code `watch` task now depends only on this matcher. This pass's `pnpm compile` printed `Build start` then `✔ Build complete in 38ms` / `79ms` and no `Rebuilt in`. Defect remains. VS Code watch ready still not observed.
-2026-10-21 /audit (scope: current; 7d Electron suite home) re-read `.vscode/tasks.json:41` after the watch-tests deletion. `endsPattern` is unchanged (`Rebuilt in \\d+ms|Build failed`). 7d left the matcher as the spec required. This pass's `vp pack` printed `✔ Build complete in 36ms` / `78ms` and no `Rebuilt in`. Defect remains. Watch task ready still not observed.
-2026-10-21 /audit (scope: current; 8a Svelte toolchain) re-read `.vscode/tasks.json:41` after `watch` gained `npm: watch:webview`. `endsPattern` is still `Rebuilt in \\d+ms|Build failed`. This pass's `vp pack` printed `Build start` then `✔ Build complete in 31ms` / `70ms` and no `Rebuilt in`. Defect remains. The composite watch task now also waits on this matcher, so 8a's webview watcher cannot make `watch` ready by itself. VS Code watch ready still not observed.
-
-### F-15 [P2] open - Watch:webview matcher reports every Vite line as a problem
-
-**File:** .vscode/tasks.json:59
-**Found:** 2026-10-21 by /audit (scope: current; lens: quality)
-**Why it matters:** 8a added `npm: watch:webview` with `pattern.regexp` `^.*$` and `message: 0`. VS Code applies that pattern to task output, so every Vite log line becomes a Problem (`transforming...`, `built in`, rebuilds). The background `beginsPattern` / `endsPattern` already match this pass's one-shot Vite output (`transforming...`, `built in`). F5 uses `compile`, so the Extension Host path is not blocked, but the new watch task 8a added is noisy as soon as someone runs `watch`.
-**Suggested fix:** Use a never-matching regexp (`^$`) or an error-only pattern. Keep the existing background begins/ends. Confirm the Problems panel stays clean during `watch:webview`.
-**Resolution:**
-
 ### F-16 [P3] unverified - Extension Host never proved the new module load or CSP
 
 **File:** src/panel/artboardChromeHtml.ts:206
@@ -50,22 +32,6 @@
 **Suggested fix:** Either accept it (smallest; one runtime), or move the `installCommentPicking` call into the panel-only stamp path so the export bundles only height/wheel. No current requirement is lost either way.
 **Resolution:**
 
-### F-38 [P3] open - Default-artboard init depends on createArtboard branches no test covers
-
-**File:** src/host/artboardDisk.ts:48
-**Found:** 2026-10-23 by /audit independent (scope: current; lens: tests)
-**Why it matters:** `initializeDefaultArtboard` now falls back to `setActiveArtboard` only when `createArtboard` throws exactly `ArtboardExistsError`, and the spec's first behavior change (a symlinked or non-file `artboard.html` is refused) rests on `createArtboard`'s `layoutEntryKind` check (src/disk/artboardFs.ts:218-224). No unit test calls `createArtboard` on an existing regular file, a symlink, or a directory: no test in `src/` references `ArtboardExistsError` / `ARTBOARD_EXISTS`, and the symlink test (artboardFs.test.ts:221) covers only read and update. If that branch changed (another error class for an existing file, or following the symlink), first panel open in a workspace that has `artboard.html` but no manifest would show an error banner, or write through a link, and nothing in `pnpm verify` would fail. The host glue itself is `vscode`-bound and F5-only (rule 09), so the disk contract is the place to pin it. F5 after the refactor has not run.
-**Suggested fix:** Add one temp-dir test in `src/disk/artboardFs.test.ts`: create `hero`, then `createArtboard` again rejects with `ArtboardExistsError` and leaves html and meta bytes unchanged. Then replace the html with a symlink to an outside file: `createArtboard` rejects with `DiskError` and the target is untouched. No product change.
-**Resolution:**
-
-### F-39 [P3] open - Fix spec lists two init behavior changes; a third is unlisted
-
-**File:** blueprint/context/current-feature.md:52
-**Found:** 2026-10-23 by /audit independent (scope: current; lens: quality)
-**Why it matters:** The spec (and F-30's Resolution) says "Everything else is unchanged" after two stricter init cases. Comparing with the base host code, there are two more. (1) No manifest, `artboard.html` missing, but a valid `artboard.meta.json` (same id) present: the old host kept that meta, so the recreated artboard read at stored generation + 1. `createArtboard` now overwrites it with generation 1, so the generation moves backward (same as MCP `set_artboard`). (2) No manifest, `artboard.html` present, corrupt-JSON meta: the old host rewrote the meta, but the new path leaves the corrupt file. It still reads as missing, so the panel output is the same. Neither is a defect (both match MCP), but this spec is the archived record of what the branch changed. A later generation-conflict report would point at the wrong commit.
-**Suggested fix:** Add one bullet to the spec's Behavior changes: "a leftover meta for a deleted `artboard.html` is replaced (generation restarts at 1), and a corrupt meta beside an existing `artboard.html` is left in place." Docs only.
-**Resolution:**
-
 ### F-56 [P3] fixed - The per-pick description cache never refreshes, so selector, text and styles can go stale
 
 **File:** src/webview/frame/commentPicking.ts:113
@@ -75,6 +41,7 @@
 **Resolution:** 2026-10-25 /implement (audit repair): partly: `postPick` describes a target again when the design removed it (`!isConnected`), so scroll and resize re-posts send `selector: null` with the null rect instead of a stale selector. Not changed: clearing the cache on `resize` would run finder (up to 200 ms) on every resize step of a frame drag-resize; style staleness after a resize stays until 8f1 makes resize inert in Comment mode. ↑ then ↓ reusing the first visit's data is the intended F-41 cache.
 2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests) re-read `commentPicking.ts` `postPick`: the disconnected-target re-describe is present and cheap (no finder for a disconnected element). The resize-staleness part is not repaired and has no recorded user acceptance; stays `fixed` (P3, does not block) until the user accepts that part or 8f1 makes resize inert.
 2026-10-25 /audit (scope: current; lens: quality, security, performance, tests): the removed-target re-describe now runs only while the cached selector is non-null (fix/fewer-pick-re-posts-on-scroll). That keys on the wrong signal for a page pick whose `body` is replaced and for an element that never had a selector; see F-60. The resize-staleness part is unchanged; stays `fixed`.
+2026-11-20 /audit current (fix/backlog-tests-and-dev-tooling, base main 805018a, all lenses): re-examined, stays `fixed`. The removed-target part holds (`postPick` re-describes once via the `removed` set, independent of the selector). The resize-staleness part is not repaired: the resize handle is still live in every mode (`Stage.svelte:386-405`, no mode gate) and the `resize` listener re-posts the cached description; no user acceptance is recorded.
 
 ### F-57 [P3] fixed - Sink room duplicated in CSS, and clampNumber's export widens the canvas.html stageGeometry global
 
@@ -84,14 +51,7 @@
 **Suggested fix:** Export `SCROLL_SINK_ROOM` and set `--scroll-sink-room` on the root from App (or reference the constant in the comment and add a test that parses the two CSS literals). For (2), accept it, or move the clamp into a tiny `src/webview/frame/` helper that `stageGeometry.ts` imports.
 **Resolution:** 2026-10-25 /implement (audit repair): `SCROLL_SINK_ROOM` is exported and `App.svelte` sizes the body from it via CSSOM (`calc(100% + ${SCROLL_SINK_ROOM}px)`, allowed by the nonce CSP); the CSS literal is gone. The `stageGeometry.clampNumber` global in the exported `canvas.html` is accepted (one inert line, no behaviour); the spec note about runtime-only snapshot text is superseded by this resolution.
 2026-10-25 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests): part (1) confirmed repaired (App.svelte sizes the body from the exported constant). Part (2) is described as "accepted" by /implement, which is not a user decision; stays `fixed` (P3, does not block) until the user accepts it or it is moved.
-
-### F-59 [P3] fixed - sameRect is only pinned on x, so a dropped y, width or height comparison passes every test
-
-**File:** src/webview/frame/pickTarget.test.ts:189
-**Found:** 2026-10-25 by /audit (scope: current; lens: tests)
-**Why it matters:** `sameRect` (`pickTarget.ts:42`) now decides whether a scroll re-post is skipped, and it is the only thing that sees a vertical scroll: `point` is relative to the target box, so it stays equal when the anchor and target scroll together. The new test moves only `x` (`rect(11, 20, 30, 40)`), and nothing else imports `sameRect`. In a scratch copy, removing the `y`, the `width` or the `height` comparison left all 12 `pickTarget.test.ts` tests green. With `y` dropped, a vertical page or box scroll would be skipped as "unchanged" and the outline would stay behind the moved element; only the snapshot (which mirrors the source text) would notice a source change, and it is regenerated on purpose.
-**Suggested fix:** In the existing `isUnchangedPick` test, add three lines that change only `y`, only `width` and only `height` of the rect and expect `false`. No product change.
-**Resolution:** 2026-10-25 /implement (audit repair): `isUnchangedPick`'s test now also changes only the rect's `y`, `width` and `height`, each expecting `false`. Dropping `left.y === right.y` from `sameRect` fails it (mutation-checked, file restored byte for byte).
+2026-11-20 /audit current (fix/backlog-tests-and-dev-tooling, base main 805018a, all lenses): re-examined, stays `fixed`. Part (1) holds (`canvasState.svelte.ts:239-242` sizes the body from the exported `SCROLL_SINK_ROOM`; no CSS literal). Part (2) is unchanged: the exported `canvas.html` still sets `exports.clampNumber` on the `stageGeometry` global (`handoffCanvasHtml.test.ts.snap:4604`); no user acceptance is recorded.
 
 ### F-75 [P3] open - getComment reads comments.json twice, and commentsTextIfExists forwards to readUtf8IfExists
 
@@ -99,14 +59,6 @@
 **Found:** 2026-10-26 by independent /audit (scope: current; lens: quality, performance)
 **Why it matters:** `getComment` calls `commentsTextIfExists` (reads and discards the whole file) and then `readCommentsFile` (reads it again). `readCommentsFile` already returns an empty file when `comments.json` is missing, and `findComment` then throws `CommentNotFoundError`, so the pre-check changes no outcome in `getComment`, which takes no lock and creates nothing. The pre-check is needed in the writers only, to avoid creating `.lock` on a workspace with no comments file. `commentsTextIfExists` is itself a one-line forwarder (`readUtf8IfExists(workspaceLayoutFile(root, commentsPathSegments))`) that `readCommentsFile` repeats inline. Up to 500 comments of 2000 chars means a megabyte read twice per `get_comment`.
 **Suggested fix:** Delete the pre-check in `getComment` and drop `commentsTextIfExists` in favour of calling `readUtf8IfExists(workspaceLayoutFile(...))` in the four writers (or keep one tiny helper used by `readCommentsFile` too). No behaviour is lost: a missing file still gives `COMMENT_NOT_FOUND`.
-**Resolution:** open
-
-### F-83 [P3] open - Host comment:create guards for tagName, text, generation, rect size and styles have no test that fails when they go
-
-**File:** src/host/chromeMessages.test.ts:96 (guards at src/host/chromeMessages.ts:30-40)
-**Found:** 2026-10-27 by independent /audit (scope: current; lens: tests, security)
-**Why it matters:** `commentCreateSchema` is the host's only parse of untrusted chrome input before `addComment`. The rejects test covers requestId, selector length and newline, a NaN rect x, a negative point, a missing box and a string isPage. Nothing exercises `tagName` (`isTagName`), `text` (cap and control characters), a negative or fractional `generation`, a negative rect width or height, a point or box above `MAX_FRAME_COORDINATE`, a non-string `styles` value or a non-string `frameId`/`body`. Removing any of those checks keeps every test green (rule 09: a test earns its place when deleting its guard fails it). `addComment` re-validates most of them, so this is a missing check, not an open hole.
-**Suggested fix:** Add the missing broken variants to the existing array in the rejects test (one line each). No product change.
 **Resolution:** open
 
 ### F-90 [P3] unverified - The open panel rebuilds every item on each cd:anchor-rects and drag move
@@ -119,44 +71,6 @@
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 6097011..d72811d): stays `unverified`. Re-read App.svelte `commentItems` and CommentsPanel: unchanged since the finding; no profile was run in this pass.
 2026-11-17 independent /audit (fresh subagent, claude-opus-5-5; scope: current; lens: quality, security, performance, tests; 583bb93..9304fec): stays `unverified`. 8h passes three more props per card (`copyBlocked`, `copied`, `onCopy`) and adds the Copy all open row but leaves `commentItems` / `panelItems` unchanged; no profile was run in this pass.
 2026-11-18 /audit current (fresh reviewer, all lenses): still unverified. App now builds `panelItems` from the committed `frames`, not `displayFrames`, so a drag move no longer rebuilds the list; the per-`cd:anchor-rects` rebuild remains.
-
-### F-91 [P3] fixed - The host's copy-type check twins chromeMessages' private isCopyType
-
-**File:** src/host/panelComments.ts:105 (owner at src/host/chromeMessages.ts:83)
-**Found:** 2026-11-17 by independent /audit (scope: current; lens: quality)
-**Why it matters:** `refuse` re-spells `type === 'comment:copy' || type === 'comment:copy-open'`, while `chromeMessages.ts` already owns that rule as the unexported `isCopyType` (used by `fallbackMessage` and `malformedRequestMessage`). Rule 05 asks for one owner per rule. A future copy request type must be added in both places, or its failures stop being followed by the `comments:updated` refresh while its error copy still says "Could not copy". No current behavior is wrong.
-**Suggested fix:** Export `isCopyType` from `chromeMessages.ts`, use it in `refuse`, and add it to the rule 05 catalog line. Nothing to delete beyond the inline condition; no current requirement is lost.
-**Resolution:**
-2026-11-17 fix/share-the-copy-type-check: `isCopyType` exported from `chromeMessages.ts`, `refuse` in `panelComments.ts` calls it, rule 05 lists it. `pnpm verify` green (512 tests); the copy-failure tests in `panelComments.test.ts` still assert the refresh. Awaits `/audit` to close.
-
-### F-112 [P3] open - Accessibility polish from the critical review
-
-**File:** several (src/webview/ui/Badge.svelte:22, CommentsPanel.svelte:215, CommentCard.svelte:270, :185, zoomChoices.ts, tests/browser/pins.spec.ts)
-**Found:** 2026-11-17 by critical review (accessibility and behavior)
-**Why it matters:**
-- Badge descriptions are exposed twice (title and hidden text).
-- "Copied N comments" renders in the disabled look.
-- The kbd hints are read aloud as symbols.
-- PinChip reads a bare number.
-- A non-preset zoom option sits before 50%, so arrow keys jump.
-- The frame inset ring also shows on mouse click (accept and document).
-- The stale / unchecked pin assertion moved from glyph text to "has an svg".
-- Untested: the reply composer's pending state, the hint pill being `aria-hidden`, and the spinner actually stopping under reduced motion.
-
-**Suggested fix:**
-- Put `title` on an `aria-hidden` wrapper.
-- No disabled look while copied (a click guard instead).
-- `aria-hidden` on the hints.
-- Visually hidden "Comment " before the number.
-- Insert the current zoom in sorted position.
-- Assert the flag icon by name.
-- Add the three missing assertions.
-- Name the zoom select in the inset-ring contrast exception.
-
-**Resolution:**
-2026-11-17 Batch A part: the zoom select slots a non-preset zoom in sorted place (`zoomChoices.test.ts`). The rest (Badge description, Copied look, kbd hints, PinChip context, flag icon, the three missing assertions) is Batch B.
-2026-11-17 Batch B part: Badge's `title` sits on an `aria-hidden` face with the label and description as hidden text (exposed once); "Copied N comments" is never drawn disabled (`handoffCopy`), and `submitCopyOpen` ignores a click while the feedback shows (tested); the composer key hints are `aria-hidden`; PinChip reads "Comment N"; the reply composer's pending "Adding…" with `aria-busy` is asserted. Still open: the flag icon asserted by name, the hint-pill `aria-hidden` and reduced-motion spinner assertions.
-2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for: the stale / unchecked flag icon asserted by name (`pins.spec.ts` still counts `svg`); an assertion that the Comment-mode hint pill is `aria-hidden` (specs only check visible / hidden by text); the spinner itself stopping under reduced motion (`theme.spec.ts` checks the `--cd-dur` / `--cd-spin` tokens, not the spinner's computed animation); the frame inset ring showing on mouse focus is not yet documented as accepted. Confirmed done: Badge description exposed once, Copied never disabled-looking with the `copiedShowing` click guard, `aria-hidden` key hints (Composer, toolbar C), PinChip "Comment N", sorted non-preset zoom, the zoom select named in the step 5 contrast exception, reply pending `aria-busy` asserted.
 
 ### F-114 [P3] open - Architecture polish from the critical review
 
@@ -198,15 +112,6 @@
 2026-11-17 Batch A part: one global `[hidden]` rule and `button` reset, `--cd-stage-zoom`, `--cd-lh-xs` merged into `--cd-lh-sm`, `--cd-shadow-lifted` and kbd tokens, `segment` typed `size?: never`, the IconButton label contract documented, guard exemptions list their properties, meaning colours caught through local custom properties (fixtures for both), `frameSizeText` only for iframes, shared spec locators in `harness.ts`. The CommentCard layout numbers, `?? 0` fallbacks and the status-word twin are Batch B.
 2026-11-17 Batch B part: TargetRef's button reset removed; the card's widget props gone (F-100); no `?? 0` numbers (`commentNumber` from the full list in `layoutPins` / `panelItems`, the thread takes its pin's number); `pinLabel` takes its status word from `statusBadge` (labels unchanged).
 2026-11-18 /audit current (fresh reviewer, all lenses): re-examined; still open for one part: the layout numbers coupled to other components (`CommentCard.svelte` `.actions` negative margins mirror the ghost `Button` padding; `.joined::before` mirrors the entry gap). Confirmed done: one `[hidden]` rule and one `button` reset, `--cd-stage-zoom`, no `--cd-lh-xs`, lifted-shadow and kbd tokens, `segment` `size?: never`, IconButton label contract, no `?? 0` comment numbers, `frameSizeText` iframe-only, exemptions list their properties, meaning colours caught through local custom properties, shared locators in `harness.ts`, pin label words from `statusBadge`.
-
-### F-117 [P3] fixed - Pin stacking only catches tips that round to the same pixel, with no ponytail note
-
-**File:** src/webview/pins.ts:262 (`layoutPins`, the `tip` key)
-**Found:** 2026-11-18 by /audit (scope: current; lens: quality)
-**Why it matters:** The stack key is the tip rounded to whole screen px. Two tips 0.2 px apart that straddle a .5 boundary (10.45 and 10.55) get different keys and still draw one pin over the other; so do nested targets whose corners differ by a 1 px border or a few px of padding (the later 24 px pin covers almost all of the earlier one, at any zoom above 1 more so). Same-element comments (the reported case) always share a key, so F-115 holds; this is the near-coincident remainder. It is a deliberate heuristic with a known ceiling, and rule 03 asks for a `ponytail:` comment naming it and the upgrade path; there is none.
-**Suggested fix:** Add a `ponytail:` note on `pinsAtTip` naming the ceiling (exact-pixel match; near-coincident tips still overlap) and the upgrade path (step a pin whose tip is within one pin width of an earlier placed tip). No behavior change needed unless Bombic wants the wider rule.
-**Resolution:**
-2026-11-18 fix/pin-stacking-and-zero-copy: `ponytail:` note on `pinsAtTip` in `layoutPins` names the exact-pixel ceiling and the upgrade path (step any pin within one pin width of an earlier tip). Comment only; awaits a later `/audit` to close.
 
 ### F-125 [P3] unverified - parse5's tree can differ from the frame's Chromium tree on rare markup
 
@@ -251,14 +156,6 @@
 **Suggested fix:** Add `commentMode: _commentMode,` to the destructure in `saveCommentUi` (one line), or reword the spec's Webview state contract to say only `mode` is dropped. No current requirement is lost either way.
 **Resolution:**
 
-### F-140 [P3] open - Spec and owner catalog drift: computed colour token, stale chooseMode done-when, input rules missing from rule 05
-
-**File:** blueprint/context/current-feature.md:213
-**Found:** 2026-11-19 by /audit independent (scope: current; lens: quality; fresh subagent claude-opus-5-5)
-**Why it matters:** Three places where the archived spec or the owner catalog no longer says what the code does: (1) the spec says the computed colour text uses the placeholder colour (`--cd-placeholder`); `Inspector.svelte:181-184` deliberately uses `--cd-fg-2` (its comment: the placeholder colour misses 4.5:1 on light themes). The code is the better choice, the spec is stale. (2) Step 3 done-when (current-feature.md:185) still asks `commentPick.test.ts` to cover "`chooseMode` ... same mode sends nothing", but the same-mode guard moved to `CommentPicker.#setMode` (spec line 138) and `chooseMode` always sends; no test pins that guard (low stakes: only Interact → Interact reaches it, with no pick or draft to lose). (3) Rule 05's design-system entry lists the host-competing element rules as `kbd`, `textarea`, `select`; `theme.css` now also owns the global `input:not([type])` / `input[type='text']` rules and `textarea:disabled, input:disabled`. Rule 05 says keeping the catalog current is part of the change.
-**Suggested fix:** Docs only: in the spec, say the computed colour text uses `--cd-fg-2` and drop "same mode sends nothing" from the `chooseMode` done-when; in `.claude/rules/05-single-job.md` add the text `input` rules to the host-competing element list. No code change, no requirement lost.
-**Resolution:**
-
 ### F-141 [P3] open - Two ponytail marks the 9e spec requires are missing from the code
 
 **File:** src/webview/Inspector.svelte:178
@@ -275,26 +172,10 @@
 **Suggested fix:** Drop an invalid draft silently on a pick-change commit (its field error already told the user it was not saved), or show the draft's own `FIELD_ERROR_COPY` as the request error instead of `NOT_SAVED_COPY`. One branch in `#commit`; add the case to the browser "dirty field then click another element" test. No current requirement lost.
 **Resolution:** 2026-11-19 /audit independent (9e, fresh subagent claude-opus-5-5, target 5c8a33a): re-examined, still open. `#settleDrafts` (editState.svelte.ts:166) -> `#commit(draft, { keepInvalid: false })` -> `notSaved` (line 118) still sets `NOT_SAVED_COPY` for a draft the chrome itself refused. Same path for an invalid draft carried over a mode switch: App routes every `cd:pick` to `handlePick`, so the first Comment-mode pick of another element drops it with the same copy, shown on the next Edit entry.
 
-### F-143 [P3] open - The stale pre-write skip's generation guard has no test that fails without it
-
-**File:** src/webview/canvasFrames.ts:87
-**Found:** 2026-11-19 by /audit independent (scope: current; lens: tests; fresh subagent claude-opus-5-5)
-**Why it matters:** `isStalePreWrite` skips a post only when its hash is in `replacedHashes` **and** `entry.generation < record.generation`. The generation half is load-bearing: an outside revert to the replaced content (the user undoes the panel save in the editor and saves) posts the replaced hash with the same meta generation (`canvasView.ts:223`, an editor save does not bump meta), and must merge and reload. Without the guard the frame keeps showing the adopted copy while disk holds the reverted bytes, and the next save is refused as a conflict. Every `canvasFrames.test.ts` case that posts a replaced hash uses an older generation (`posted('a', { x: 40 })`, generation 1 against 2/3), so deleting `&& entry.generation < record.generation` fails no test (rule 09: a test earns its place when deleting its guard makes it fail).
-**Suggested fix:** One assertion in `after an adopt, the echo and any late pre-write read change nothing`: merge `posted('a', { generation: 2 })` (replaced hash, same generation) into `echoed` and expect `documentHtml === '<p>a</p>'`, a version bump and `replacedHashes` `[]`. Test only; no requirement lost.
-**Resolution:**
-
 ### F-144 [P3] unverified - A style preview re-reads the picked element's whole innerText on every keystroke
 
 **File:** src/webview/frame/commentPicking.ts:159
 **Found:** 2026-11-19 by /audit independent (scope: current; lens: performance; fresh subagent claude-opus-5-5)
 **Why it matters:** Every `cd:edit-apply` on the picked element runs `refreshCurrent`, which calls `describeContent` (`selector.ts:137`: `element.innerText` of the whole subtree, a forced layout, then `getComputedStyle`) plus `describeEditTarget` (a document-wide `querySelectorAll`), and re-posts the pick. One `input` event = one preview, so typing a padding or font-size value on a large container (a `<main>` with most of the page) repeats that per keystroke, where 9d did it once per click. The text excerpt cannot change from a style-only preview. Not measured; on typical leaf elements the cost is small.
 **Suggested fix:** Measure in the F5 check (type into Padding with a large section picked). If noticeable, keep the cached `text` excerpt in `refreshCurrent` after a `style` apply and recompute only `styles` and `edit`. Otherwise accept under a `ponytail:` note.
-**Resolution:**
-
-### F-149 [P3] unverified - Chrome-side step paths have thin evidence
-
-**File:** src/webview/editState.svelte.ts (`handleEditAnswer`, `handleFramesChanged`), src/webview/canvasState.svelte.ts (`adoptEditAnswer`)
-**Found:** 2026-11-20 by /audit (scope: current; lens: tests; fresh subagent claude-sonnet-5-5)
-**Why it matters:** Only browser specs cover these, and three paths have none: a step answer whose adopt returns `false` (a newer post won: no reload, still announced), `historyFrameId` clearing when its frame leaves, and a repeated announcement re-speaking. The spec's Done-when list does not require them; no failing path found.
-**Suggested fix:** Optional: one browser case posting a `canvas:updated` before the step answer covers the `false` branch.
 **Resolution:**

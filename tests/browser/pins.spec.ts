@@ -5,6 +5,7 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { FRAME_ANCHOR_RECTS_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame, PostedComment } from '../../src/webview/hostMessages';
+import { ICONS } from '../../src/webview/ui/icons';
 import {
 	type Box,
 	boxOf,
@@ -295,11 +296,17 @@ test('stale, unchecked and resolved looks come from the comments:updated flags',
 	await expect(
 		page.getByRole('button', { name: 'Open comment 1, target changed: Title' }),
 	).toBeVisible();
-	await expect(pinOf(page, TITLE.id).locator('.badge.stale svg')).toHaveCount(1);
+	await expect(pinOf(page, TITLE.id).locator('.badge.stale svg path')).toHaveAttribute(
+		'd',
+		ICONS.warning[0].path,
+	);
 	await expect(
 		page.getByRole('button', { name: 'Open comment 2, not checked: Mover' }),
 	).toBeVisible();
-	await expect(pinOf(page, MOVER.id).locator('.badge.unchecked svg')).toHaveCount(1);
+	await expect(pinOf(page, MOVER.id).locator('.badge.unchecked svg path')).toHaveAttribute(
+		'd',
+		ICONS.question[1].path,
+	);
 	await expect(page.getByRole('button', { name: 'Resolved comment 3: Slider' })).toBeVisible();
 	await expect(pinOf(page, SLIDER.id)).toHaveClass(/resolved/);
 	await expect(pinOf(page, SLIDER.id).locator('.badge')).toHaveCount(0);

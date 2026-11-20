@@ -136,7 +136,9 @@
 		background: Canvas;
 		pointer-events: auto;
 	}
-	/* Drawn inside: the frame clips anything outside its box. */
+	/* Drawn inside: the frame clips anything outside its box. The ring follows
+	   document.activeElement (Stage's focusedFrameId), so it also shows after a mouse click into
+	   the frame; accepted. */
 	.frame > iframe.focused {
 		outline: calc(2px / var(--cd-stage-zoom)) solid var(--cd-focus);
 		outline-offset: calc(-2px / var(--cd-stage-zoom));

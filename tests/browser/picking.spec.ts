@@ -321,6 +321,7 @@ test('the mode group follows the mode, Interact is a no-op in Interact mode, and
 	await toggleComment(page, true);
 	await expect(interact).toHaveAttribute('aria-pressed', 'false');
 	await expect(page.getByText('Click an element to comment')).toBeVisible();
+	await expect(page.locator('.mode-hint')).toHaveAttribute('aria-hidden', 'true');
 
 	await clickChrome(interact);
 	await expect(interact).toHaveAttribute('aria-pressed', 'true');

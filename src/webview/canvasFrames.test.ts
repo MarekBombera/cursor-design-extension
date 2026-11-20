@@ -283,6 +283,14 @@ test('after an adopt, the echo and any late pre-write read change nothing', () =
 	assert.equal(kept.hash, answer.hash);
 	assert.equal(kept.documentVersion, base().documentVersion);
 	assert.equal(kept.x, 40);
+	// An outside revert to the replaced bytes keeps the meta generation, so it must reload.
+	const reverted = only(
+		mergeCanvasFrames({ records: [echoed], frames: [posted('a', { generation: 2 })] }),
+	);
+	assert.equal(reverted.hash, 'sha256:a');
+	assert.equal(reverted.html, '<p>a</p>');
+	assert.equal(reverted.documentVersion, base().documentVersion + 1);
+	assert.deepEqual(reverted.replacedHashes, []);
 	// Two adopts in a row: a late read of the first base is still skipped.
 	const twice = adoptEditAnswer({
 		record: echoed,

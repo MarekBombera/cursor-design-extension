@@ -702,6 +702,44 @@ test('Undo posts a step; its answer reloads the restored file, keeps the target 
 	expect((await historyPosted(page)).at(-1)).toMatchObject({ step: 'redo', frameId: 'a' });
 });
 
+test('a canvas:updated before the step answer reloads once; the answer still announces', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	const loads = await loadsOf(page, 'a');
+	await undoButton(page).click();
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
+	const [undo] = await historyPosted(page);
+	// The watcher's refresh of the restored file wins the race and reloads the frame.
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{ ...EDIT_FRAME, hash: 'sha256:restored', generation: 3, canUndo: false, canRedo: true },
+		]),
+	);
+	await expect.poll(() => loadsOf(page, 'a')).toBe(loads + 1);
+	await expect(await inFrame(page, '#title')).toHaveText('Title');
+	// A reload is a new blob URL, set in the same flush as the announcement, so `src` sees it at once.
+	const src = await page.locator('[data-cd-frame-id="a"] iframe').getAttribute('src');
+	await postToChrome(
+		page,
+		stepAnswer({
+			request: undo,
+			html: EDIT_FRAME.html,
+			hash: 'sha256:restored',
+			generation: 3,
+			canUndo: false,
+			canRedo: true,
+		}),
+	);
+	await expect(historyAnnouncement(page)).toHaveText(/^Undone in Edit\.\s?$/);
+	expect(await page.locator('[data-cd-frame-id="a"] iframe').getAttribute('src')).toBe(src);
+	expect(await loadsOf(page, 'a')).toBe(loads + 1);
+	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'false');
+});
+
 test('an open text draft is saved first; the step goes out only after that answer', async ({
 	page,
 }) => {

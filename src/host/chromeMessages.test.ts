@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/commentViews';
-import { MAX_EDIT_TEXT_CHARS } from '../disk/layout';
+import { MAX_EDIT_TEXT_CHARS, MAX_FRAME_COORDINATE, MAX_PICK_TEXT_CHARS } from '../disk/layout';
 import {
 	claimedRequestId,
 	commentRequestId,
@@ -98,15 +98,27 @@ test('accepts a valid comment:create; a 2001-character body is addComment’s to
 	assert.deepEqual(parseChromeMessage(long), long);
 });
 
-test('comment:create rejects bad ids, selectors, numbers and shapes', () => {
+test('comment:create rejects bad ids, tags, text, numbers, styles and shapes', () => {
 	const { box: _box, ...withoutBox } = validCreate;
 	for (const broken of [
 		{ ...validCreate, requestId: 'a b' },
 		{ ...validCreate, requestId: 'a'.repeat(65) },
 		{ ...validCreate, selector: 'a'.repeat(1001) },
 		{ ...validCreate, selector: '.a\n.b' },
+		{ ...validCreate, tagName: 'DIV' },
+		{ ...validCreate, text: 'a'.repeat(MAX_PICK_TEXT_CHARS + 1) },
+		{ ...validCreate, text: 'a\u2028b' },
+		{ ...validCreate, generation: -1 },
+		{ ...validCreate, generation: 1.5 },
 		{ ...validCreate, rect: { ...validCreate.rect, x: Number.NaN } },
+		{ ...validCreate, rect: { ...validCreate.rect, width: -1 } },
+		{ ...validCreate, rect: { ...validCreate.rect, height: -1 } },
 		{ ...validCreate, point: { x: -1, y: 0 } },
+		{ ...validCreate, point: { x: MAX_FRAME_COORDINATE + 1, y: 0 } },
+		{ ...validCreate, box: { width: MAX_FRAME_COORDINATE + 1, height: 40 } },
+		{ ...validCreate, styles: { color: 1 } },
+		{ ...validCreate, frameId: 7 },
+		{ ...validCreate, body: 7 },
 		withoutBox,
 		{ ...validCreate, isPage: 'false' },
 	]) {
