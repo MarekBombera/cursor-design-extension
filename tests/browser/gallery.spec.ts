@@ -244,7 +244,7 @@ for (const theme of THEMES) {
 			labelOf(page, 'pricing'),
 			'[data-cd-frame-label="pricing"]',
 		);
-		// F-99: the pin ring touches the pin's halo (offset 2px), so it is measured against both.
+		// The pin ring touches the pin's halo (offset 2px), so it is measured against both.
 		await focusRing(
 			'focus ring (pin) on the stage',
 			pinOf(page, 'h-title'),
@@ -295,7 +295,6 @@ for (const theme of THEMES) {
 		});
 		await text('button label (secondary)', '[data-cd-copy-open]');
 
-		// The panel with nothing to send: the primary button is disabled.
 		await open({
 			definitions: SHORT.filter((definition) => definition.status === 'resolved'),
 			panel: true,
@@ -354,7 +353,6 @@ for (const theme of THEMES) {
 			'[data-cd-comment-popover] .message.tone-info .text',
 		);
 
-		// Disabled toolbar controls with no artboard.
 		await open({ noCanvas: true });
 		await text(
 			'disabled text (segment, no artboard)',

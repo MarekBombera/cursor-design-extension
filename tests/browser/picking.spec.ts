@@ -112,8 +112,6 @@ const reveal = async ({ stage, ...target }: FrameTarget & { stage: Box }): Promi
 	return screenBox(target);
 };
 
-// The pick's target chip lives in the comment popover.
-
 const toggleComment = async (page: Page, pressed: boolean): Promise<void> => {
 	await clickChrome(commentButton(page));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', String(pressed));
@@ -229,7 +227,7 @@ test('Comment mode: clicks pick instead of acting', async ({ page }) => {
 	await expect(page.locator('.overlay .outline.pick')).toBeVisible();
 	await expect(popoverTarget(page)).toBeVisible();
 
-	// A default action, not a handler: only preventDefault keeps <details> shut (F-61). The
+	// A default action, not a handler: only preventDefault keeps <details> shut. The
 	// Interact-mode test proves the same click opens it.
 	const summary = await reveal({ page, stage, frameId: 'a', selector: 'details > summary' });
 	const summaryPick = await pickInFrame({ page, frameId: 'a', point: centerOf(summary) });
@@ -249,7 +247,7 @@ test('Comment mode: Parent, and ↑/↓ with focus in the popover, step the pick
 		await resolvesTo({ page, selector: await nextPickSelector(page, count), expected: 'parent' }),
 	).toBe(true);
 
-	// Focus is on the popover's Parent button and the box is empty: the popover steps (F-63).
+	// Focus is on the popover's Parent button and the box is empty: the popover steps.
 	count += 1;
 	await page.keyboard.press('ArrowDown');
 	expect(
@@ -352,7 +350,6 @@ test('the mode group follows the mode, Interact is a no-op in Interact mode, and
 	await expect(interact).toHaveAttribute('aria-pressed', 'false');
 	await expect(page.getByText('Click an element to comment')).toBeVisible();
 
-	// Interact leaves Comment mode.
 	await clickChrome(interact);
 	await expect(interact).toHaveAttribute('aria-pressed', 'true');
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'false');
@@ -364,7 +361,6 @@ test('the mode group follows the mode, Interact is a no-op in Interact mode, and
 	await expect(interact).toHaveAttribute('aria-pressed', 'true');
 });
 
-// F-65: the frame list changes under a pick.
 test('Comment mode: a picked frame leaving takes its pick; an empty stage ends Comment mode', async ({
 	page,
 }) => {
@@ -422,7 +418,7 @@ test('Comment mode: an Agent edit reloads the picked frame once, drops the pick,
 	expect(await statusText(page)).toBe('Nothing fired yet.');
 });
 
-// F-69: a design's own script can post any cd:* message from its real window.
+// A design's own script can post any cd:* message from its real window.
 const FORGED_PICK = {
 	type: FRAME_PICK_MESSAGE,
 	selector: '#forged',
@@ -516,7 +512,7 @@ test('a nested iframe inside a design cannot post as its frame', async ({ page }
 
 // Each case: where to click, and the element the selector must resolve to. Fixed locators, never
 // recomputed from the click point. The pick caps are enforced by parseFrameMessage, which
-// picksOf already runs, and are unit-tested there (F-68).
+// picksOf already runs, and are unit-tested there.
 const SELECTOR_CASES: { name: string; click: string; expected: string }[] = [
 	{
 		name: 'identical cards',

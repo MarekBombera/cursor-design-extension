@@ -8,9 +8,7 @@
 	import IconButton from './ui/IconButton.svelte';
 	import Widget from './ui/Widget.svelte';
 
-	// The thread of one comment, opened from its pin: a Widget holding the comment card's parts (its
-	// head, then Close; the thread in the body; Reply, Resolve / Reopen, Copy for Agent in the
-	// footer). This owns placement, Escape and the focus on open; the card's props pass through.
+	// Owns placement, Escape and the focus on open; the rest is CommentCard's.
 	type Props = Omit<ComponentProps<typeof CommentCard>, 'shell' | 'frameShown' | 'onJump'> & {
 		// Viewport-local screen px of the pin.
 		anchor: StagePoint;
@@ -42,8 +40,8 @@
 		element.focus({ preventScroll: true });
 	};
 
-	// Prevented, so App's window keydown (the mode-key rule) ignores this Escape. An Escape the
-	// card's composer already handled (prevented) closes only the composer.
+	// Prevented, so the window's mode keys ignore this Escape. The composer's own Escape arrives
+	// prevented and closes only the composer.
 	const handleKeydown = (event: KeyboardEvent): void => {
 		if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented) {
 			event.preventDefault();

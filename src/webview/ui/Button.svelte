@@ -5,9 +5,8 @@
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons';
 
-	// Every text button in the chrome. `disabled` and `aria-disabled` pass through untouched, so
-	// callers keep their own click guards; rest also carries aria-*, data-cd-*, handlers and
-	// {@attach} attachments onto the native button.
+	// `disabled` and `aria-disabled` pass through untouched, so callers keep their own click guards.
+	// Prefer aria-disabled: a disabled focused button drops focus to body.
 	type CommonProps = Omit<HTMLButtonAttributes, 'class' | 'children'> & {
 		icon?: IconName;
 		pending?: boolean;
@@ -15,9 +14,7 @@
 		children: Snippet;
 	};
 
-	// `segment` is one option of a segmented group (aria-pressed marks the chosen one); it has one
-	// size. The agent tone tints a ghost button's icon only; on a filled button it would fight the
-	// fill.
+	// The agent tone tints only a ghost's icon; on a filled button it would fight the fill.
 	type Size = 'md' | 'sm';
 	type Props = CommonProps &
 		(
@@ -128,7 +125,6 @@
 		border-color: var(--cd-toggle-on-edge);
 		color: var(--cd-toggle-on-fg);
 	}
-	/* One option of a segmented group: quiet until chosen, then a raised card. */
 	.variant-segment {
 		height: var(--cd-control-h-sm);
 		padding: 0 var(--cd-space-8);

@@ -4,9 +4,9 @@
 	import type { BadgeProps } from './badge';
 	import Icon from './Icon.svelte';
 
-	// A status pill. The text stays --cd-fg so it always reads; the tone colours only the icon and
-	// a light tint. `description` explains the label: a tooltip for pointer users on the visible
-	// face (hidden from assistive tech), and hidden text with the label, so it is exposed once.
+	// The text stays --cd-fg so it always reads; the tone colours only the icon and a light tint.
+	// `description` is a tooltip on the aria-hidden face and hidden text with the label, so assistive
+	// tech gets it once.
 	type Props = Omit<HTMLAttributes<HTMLSpanElement>, 'class' | 'children'> & BadgeProps;
 
 	let { tone, icon, label, description, ...rest }: Props = $props();

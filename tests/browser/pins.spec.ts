@@ -91,7 +91,7 @@ const DOOMED = comment({
 	tagName: 'div',
 	text: 'Doomed',
 	// The pick-time rect the missing pin falls back to: a corner no live pin shares (the mover's
-	// pin tip is at 24,200, and coinciding tips line up side by side, F-115).
+	// pin tip is at 24,200, and coinciding tips line up side by side).
 	rect: { x: 104, y: 200, width: 80, height: 24 },
 	pin: { x: 0.5, y: 0.5 },
 	body: 'Doomed',
@@ -133,9 +133,8 @@ const pinTip = async (page: Page, id: string): Promise<Point> =>
 const withinOnePx = (actual: Point, expected: Point): boolean =>
 	Math.abs(actual.x - expected.x) <= 1 && Math.abs(actual.y - expected.y) <= 1;
 
-// "On its element": the pin's tip is within 1px of the element's own screen box's top-left
-// corner (F-108: the body sits in the margin, off the element's words). Polled, since the frame
-// answers asynchronously.
+// "On its element": the pin's tip is within 1px of the element's top-left corner, so the body
+// sits in the margin off its words. Polled: the frame answers asynchronously.
 const expectPinOn = async ({
 	page,
 	id,
@@ -337,10 +336,9 @@ test('after a frame reload the frame answers again and the pin returns', async (
 test('a static page goes quiet after its forced answer', async ({ page }) => {
 	await openPinStage(page);
 	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
-	// Count every measurement the runtime schedules from here (Interact mode: picking schedules
-	// none): a static page triggers nothing. Chromium makes re-observing an observed element a
-	// no-op, so this cannot catch a missing observed-set diff (the observer test below does); it
-	// catches any other self-trigger.
+	// A static page must schedule no measurement (picking schedules none in Interact mode). A
+	// repeated observe() is a no-op in Chromium, so the observer test below covers the observed-set
+	// diff.
 	await inFrame(
 		page,
 		`(() => {
@@ -441,7 +439,7 @@ test('with a draft open, a click at a pin retargets the draft and keeps its text
 	const chip = popoverTarget(page);
 	await expect(chip).toHaveText('Doomed');
 	await page.getByRole('textbox', { name: 'Comment' }).fill('Kept text');
-	// The title pin sits in the body's margin above-left of the title (F-108), so the click there
+	// The title pin sits in the body's margin above-left of the title, so the click there
 	// picks what is under it: the page.
 	await clickAt(page, centerOf(await boxOf(pinOf(page, TITLE.id))));
 	await expect(chip).toHaveText('Whole frame');
@@ -492,7 +490,7 @@ test('two comments on one element get two pins side by side, each opening its ow
 }) => {
 	const second = comment({ id: 'c-title-2', body: 'Second note' });
 	await openPinStage(page, [TITLE, second]);
-	// The first keeps the element corner (F-115: the second lines up to its left).
+	// The first keeps the element corner; the second lines up to its left.
 	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	const first = await boxOf(pinOf(page, TITLE.id));
 	const next = await boxOf(pinOf(page, second.id));

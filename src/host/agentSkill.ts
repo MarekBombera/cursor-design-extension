@@ -21,7 +21,7 @@ const readIfExists = async (uri: vscode.Uri): Promise<Uint8Array | undefined> =>
 	}
 };
 
-// True when the path is a symlink (stat sets the SymbolicLink bit on links), false when absent.
+// workspace.fs.stat follows a link but sets the SymbolicLink bit; false when absent.
 const isSymlink = async (uri: vscode.Uri): Promise<boolean> => {
 	try {
 		return ((await vscode.workspace.fs.stat(uri)).type & vscode.FileType.SymbolicLink) !== 0;
@@ -36,10 +36,10 @@ const isSymlink = async (uri: vscode.Uri): Promise<boolean> => {
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
 	left.length === right.length && left.every((byte, index) => byte === right[index]);
 
-// Copies the shipped Agent skill to ~/.cursor/skills/cursor-design/ (Cursor loads user-level
-// skills there) whenever the installed copy is missing or differs, so it always matches this
-// extension version. ponytail: writes to the extension host's home; in a remote window that is
-// the remote home, which Cursor may not read. Upgrade path: a `ui` helper or a workspace install.
+// Cursor loads user-level skills from ~/.cursor/skills/; rewritten whenever the copy differs, so
+// it always matches this extension version.
+// ponytail: writes to the extension host's home; in a remote window that is the remote home,
+// which Cursor may not read. Upgrade path: a `ui` helper or a workspace install.
 export const syncAgentSkill = async ({
 	extensionUri,
 	outputChannel,

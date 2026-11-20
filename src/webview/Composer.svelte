@@ -6,22 +6,17 @@
 	import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
 	import Button from './ui/Button.svelte';
 
-	// The comment composer, shared by the add popover and the reply in a card or thread: the text
-	// box, any message (error or notice) between it and the actions, then a key hint, Cancel and the
-	// primary action last. Keys stay with the caller (rest carries onkeydown onto the root), and so
-	// does the text: `value` in, `oninput` out. Cancel and the primary are aria-disabled, never
-	// disabled: a disabled focused button would drop focus to the body.
+	// Keys and text stay with the caller: `value` in, `oninput` out, `onkeydown` through rest.
 	type Props = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'children' | 'oninput'> & {
 		value: string;
 		// The text box's accessible name.
 		label: string;
 		placeholder: string;
 		rows: number;
-		// The primary action's words; pending reads "Adding…".
+		// Pending reads "Adding…" instead.
 		primaryLabel: string;
 		pending: boolean;
 		canSubmit: boolean;
-		// The popover's hint: ↑ ↓ step the target while the box is empty.
 		stepHint?: boolean;
 		// Prefix of the data-cd-focus keys (`<key>-text`, `-cancel`, `-send`) the panel restores.
 		focusKey?: string;

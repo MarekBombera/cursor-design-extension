@@ -11,8 +11,7 @@ import { DiskError } from './errors';
 import { artboardHtmlPathSegments } from './layout';
 import { layoutEntryKind, readUtf8IfExists, workspaceJoin, workspaceLayoutFile } from './layoutFs';
 
-// The flag read shared by list_comments, get_comment and the panel: each comment gets stale and
-// targetMissing from its frame's HTML on disk, with a parse cache and a time budget per read.
+// Each comment's stale / targetMissing flags, checked against its frame's HTML on disk.
 
 export type CommentView = Comment & CommentFlags;
 
@@ -22,25 +21,18 @@ const logTargetReadError = (error: unknown): void => {
 	);
 };
 
-// The flag read's time budget: past it, a comment that needs a target match reports unchecked.
+// Per read: past it, a comment that needs a target match reports unchecked.
 const CHECK_BUDGET_MS = 200;
 
-// One parse per workspace and frame, reused only while the HTML text is identical. An unchanged
-// document also keeps matchCommentTarget's per-document match cache, so a re-read of an unchanged
-// frame runs no match at all.
-// ponytail: capped at MAX_PARSED_DOCUMENTS, oldest insert evicted first (FIFO, not LRU), so a
-// deleted frame or a previous workspace stops holding its tree once newer frames arrive; past the
-// cap a read that needs every frame reparses them all. Upgrade path: LRU (re-insert on hit).
-// The panel's source tags share this cache (cachedArtboardDocument) and, on a changed frame,
-// insert into it, so a canvas of more than 32 changed frames evicts comment documents (the host's
-// tagged-copy memo keeps unchanged frames out of it). Trees carry source locations, so memory is
-// about 34 MB for a realistic 1.5M-char frame (about 134 MB for one of bare tiny tags): up to about
-// 1.1 GB across 32 realistic worst-case frames, about 64 MB for typical 20-200 KB artboards.
-// Upgrade path: also cap the cache by total HTML chars.
+// One parse per workspace and frame, reused while the HTML text is identical (which also keeps
+// matchCommentTarget's per-document match cache, so an unchanged frame runs no match).
+// ponytail: FIFO at MAX_PARSED_DOCUMENTS; source tags and edits insert here too, so more than 32
+// changed frames evict comment trees and re-parse. A tree with locations is about 34 MB per
+// realistic 1.5M-char frame, 134 MB for bare tiny tags: 1.1 to 4.3 GB at the cap. Upgrade path:
+// LRU, plus a cap on total HTML chars.
 export const MAX_PARSED_DOCUMENTS = 32;
 const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
 
-// The frame's parse, reused while its HTML text is identical; `html` is the text just read.
 export const cachedArtboardDocument = ({
 	workspaceRoot,
 	frameId,
@@ -114,12 +106,9 @@ const loadFramePresence = async (
 	}
 };
 
-// Parse only frames a fingerprinted element comment needs; every other comment needs only to know
-// whether its frame file still exists.
-// ponytail: parse5 parses the whole file, so parse time grows with HTML size (no byte cap exists).
-// It runs on the extension host thread once per HTML change per frame; each match is bounded by
-// MAX_MATCH_WORK (selectorMatch.ts) and the read by its budget. Upgrade path: a worker thread for
-// the host read.
+// Parse only frames a fingerprinted element comment needs; the rest need only existence.
+// ponytail: a whole-file parse on the extension host thread, once per HTML change per frame; no
+// byte cap. Upgrade path: a worker thread for the host read.
 const documentsFor = async (
 	workspaceRoot: string,
 	comments: readonly Comment[],

@@ -29,9 +29,7 @@ import {
 import { assertLayoutDirsOwned, readStoredMeta } from './layoutFs';
 import { withWorkspaceLock } from './workspaceLock';
 
-// The comment operations (add, reply, set status, mark sent, resolve, list, read, get), each
-// read-modify-write under the workspace lock. The file format lives in commentsFile.ts and the
-// flag read in commentViews.ts.
+// Every write is a read-modify-write of comments.json under the workspace lock; reads take none.
 
 const COMMENT_COUNT_MESSAGE = `comments.json already holds ${MAX_COMMENTS} comments. Remove resolved comments from .cursor-design/comments.json, then retry.`;
 

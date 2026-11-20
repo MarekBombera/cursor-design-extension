@@ -1,5 +1,5 @@
-// Parent/child stepping over a pick path. Index 0 is the clicked element, the last entry is the
-// current pick. Generic and DOM-free; the runtime builds a new path on every click.
+// A pick path: index 0 is the clicked element, the last entry the current pick. Generic and
+// DOM-free.
 
 type StepToParentArgs<T> = {
 	path: readonly T[];

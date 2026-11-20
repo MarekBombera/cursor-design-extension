@@ -20,8 +20,7 @@ import type {
 	PostedComment,
 } from '../webview/hostMessages';
 
-// No `vscode` import: the panel's untrusted chrome → host input is parsed here, and the chrome ↔
-// host mapping lives here, so both stay unit-testable. The answer copy is panelRequestCopy.ts.
+// No `vscode` import, so parsing the panel's untrusted input stays unit-testable.
 
 // z.number() already rejects NaN and ±Infinity.
 const coordinate = z.number().check(z.gte(-MAX_FRAME_COORDINATE), z.lte(MAX_FRAME_COORDINATE));
@@ -62,7 +61,7 @@ const commentReplySchema = z.object({
 	body: z.string(),
 });
 
-// `sent` is the host's to set (8h), so it fails the parse here.
+// `sent` is the host's to set, so it fails the parse here.
 const commentSetStatusSchema = z.object({
 	type: z.literal('comment:set-status'),
 	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
@@ -81,9 +80,8 @@ const commentCopyOpenSchema = z.object({
 	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
 });
 
-// 9c. Shape and size only: text encoding, control characters, style value safety and the live
-// text compare are the edit core's (editArtboardHtml). The frame id charset and exact file name are
-// the disk lib's. liveText is present iff the field is text.
+// Shape and size only: text encoding, control characters, style value safety and the live text
+// compare are the edit core's; the frame id charset and exact file name the disk lib's.
 const artboardEditSchema = z
 	.object({
 		type: z.literal('artboard:edit'),
@@ -97,8 +95,8 @@ const artboardEditSchema = z
 	})
 	.check(z.refine((message) => (message.field === 'text') === (message.liveText !== undefined)));
 
-// 9f. Shape only: the frame id charset is the disk lib's (parseArtboardId); the host owns the
-// bytes an undo or redo writes, so nothing else crosses this boundary.
+// Shape only: the frame id charset is the disk lib's; the host owns the bytes an undo or redo
+// writes, so nothing else crosses this boundary.
 const artboardHistorySchema = z.object({
 	type: z.literal('artboard:history'),
 	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
@@ -136,20 +134,18 @@ const claimsType = (value: unknown, type: string): value is Record<string, unkno
 	'type' in value &&
 	(value as { type: unknown }).type === type;
 
-// True for anything that claims to be frame:place, valid or not, so every attempt gets an answer.
+// Valid or not: every claimed attempt gets an answer.
 export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value, 'frame:place');
 
-// True for anything that claims to be artboard:edit, valid or not, so every attempt gets an answer.
 export const isArtboardEditAttempt = (value: unknown): boolean =>
 	claimsType(value, 'artboard:edit');
 
-// True for anything that claims to be artboard:history (9f), valid or not, so every attempt gets
-// an answer. It shares the edit route.
+// It shares the edit route.
 export const isArtboardHistoryAttempt = (value: unknown): boolean =>
 	claimsType(value, 'artboard:history');
 
-// The request id to answer, read before any parse: a string matching REQUEST_ID_PATTERN, or
-// undefined (nothing to answer to). Shared by comment requests and artboard:edit.
+// Read before any parse, so a request that fails it can still be answered. Undefined: nothing to
+// answer to.
 export const claimedRequestId = (value: unknown): string | undefined => {
 	const requestId =
 		value !== null && typeof value === 'object' && 'requestId' in value
@@ -168,8 +164,8 @@ const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
 	'comment:copy-open',
 ];
 
-// The claimed raw type of a comment request, valid or not (read before any parse), so every attempt
-// gets an answer. Undefined: not a comment request.
+// Valid or not, read before any parse, so every attempt gets an answer. Undefined: not a comment
+// request.
 export const commentRequestType = (value: unknown): CommentRequestMessage['type'] | undefined =>
 	COMMENT_REQUEST_TYPES.find((type) => claimsType(value, type));
 
@@ -177,10 +173,9 @@ export const commentRequestType = (value: unknown): CommentRequestMessage['type'
 export const commentRequestId = (value: unknown): string | undefined =>
 	commentRequestType(value) === undefined ? undefined : claimedRequestId(value);
 
-// The pin is the point as a fraction of the unclipped box, never of the (maybe clipped or null)
-// rect. A zero-size box pins at 0 instead of NaN (addComment clamps the pin to 0..1 but leaves
-// NaN alone). A non-page null rect passes through for
-// addComment to reject; the chrome never sends one.
+// Pin = point / unclipped box, never the (maybe clipped or null) rect. A zero-size box pins at 0,
+// not NaN (addComment clamps 0..1 but leaves NaN). A non-page null rect is left for addComment to
+// reject; the chrome never sends one.
 export const toNewComment = (message: CommentCreateMessage): NewComment => ({
 	frameId: message.frameId,
 	generation: message.generation,

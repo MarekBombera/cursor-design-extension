@@ -179,7 +179,7 @@ test('cd:pick rejects bad selectors, text, styles, points and page labels', () =
 	for (const broken of [{ selector: '.card' }, { selector: null }, { tagName: 'div' }]) {
 		assert.equal(parseFrameMessage({ ...pagePick, ...broken }), undefined, JSON.stringify(broken));
 	}
-	// The 8d1 shape.
+	// An old pick shape, without selector, text, point, box or styles.
 	assert.equal(
 		parseFrameMessage({ type: FRAME_PICK_MESSAGE, tagName: 'div', rect, isPage: false }),
 		undefined,
@@ -231,7 +231,7 @@ test('cd:pick rebuilds its edit fields and drops extra keys inside them', () => 
 	]) {
 		assert.deepEqual(parseFrameMessage({ ...pick, edit: fields }), { ...pick, edit: fields });
 	}
-	// A pick without edit (Comment mode) parses as before.
+	// A Comment-mode pick (no edit) parses without an edit key.
 	assert.equal('edit' in (parseFrameMessage(pick) ?? {}), false);
 });
 
@@ -260,7 +260,7 @@ test('cd:pick with a bad edit field is rejected whole', () => {
 	}
 });
 
-test('cd:key accepts exactly c, Escape, undo and redo (9f)', () => {
+test('cd:key accepts exactly c, Escape, undo and redo', () => {
 	for (const key of ['c', 'Escape', 'undo', 'redo'] as const) {
 		assert.deepEqual(parseFrameMessage({ type: FRAME_KEY_MESSAGE, key, extra: 1 }), {
 			type: FRAME_KEY_MESSAGE,
@@ -334,7 +334,7 @@ test('parseChromeFrameMessage accepts only the mode and step commands', () => {
 	}
 });
 
-test('cd:pick-refresh and cd:edit-apply: one of text or style, a real source number (9e)', () => {
+test('cd:pick-refresh and cd:edit-apply: one of text or style, a real source number', () => {
 	assert.deepEqual(parseChromeFrameMessage({ type: PICK_REFRESH_MESSAGE, extra: 1 }), {
 		type: PICK_REFRESH_MESSAGE,
 	});

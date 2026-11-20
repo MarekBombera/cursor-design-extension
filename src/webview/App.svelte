@@ -20,8 +20,8 @@
 	import Inspector from './Inspector.svelte';
 	import EmptyState from './ui/EmptyState.svelte';
 
-	// The comment UI saved before this webview reloaded (a tab switch). Comment mode and reply text
-	// come back at once; the draft and the open thread are held until what they point at exists.
+	// Saved before this webview reloaded (a tab switch). Mode and reply text come back at once; the
+	// draft and the open thread are held until what they point at exists.
 	const savedCommentUi = readSavedCommentUi();
 	// One module per domain, in dependency order: PinThread's $effect.pre runs on creation and reads
 	// the canvas and the comments.
@@ -40,8 +40,6 @@
 	});
 	const edit = new EditState({ canvas, picker });
 
-	// Frames that left the stage or became tiles take their hover, pick, draft and anchor answers
-	// with them; an empty stage leaves Comment or Edit mode.
 	const keepLiveCommentState = (): void => {
 		const liveFrameIds = liveIframeIds(canvas.frames);
 		picker.keepLiveState(liveFrameIds);
@@ -69,7 +67,8 @@
 			picker.handleCommentAnswer(message);
 			return;
 		}
-		// A ui:error answers a draft, an action or the copy-open request; UUIDs never cross-match.
+		// A ui:error answers a draft, an action, the copy-open request or an edit; UUIDs never
+		// cross-match.
 		if (message.type === 'ui:error') {
 			picker.handleCommentAnswer(message);
 			comments.handleActionAnswer(message);
@@ -151,11 +150,11 @@
 		edit.handleFramesChanged();
 	};
 
-	// The one comment-UI save, on every change (no debounce: setState is cheap, and a debounce would
-	// race the tab hide). Each key is the live value, or the held one while it waits.
-	// ponytail: text whose add or reply was in flight when the tab hid is not restored, because the
-	// host never replays an answer (postAnswer). If that request failed, the text is gone; if it
-	// succeeded, the comment or reply arrives via comments:updated.
+	// No debounce: setState is cheap, and a debounce would race the tab hide. Each key is the live
+	// value, or the held one while it waits.
+	// ponytail: add or reply text in flight when the tab hid is not restored (the host never replays
+	// an answer), so a failed request loses it. Upgrade: save pending text until its answer or the
+	// next comments:updated.
 	$effect(() => {
 		saveCommentUi({
 			mode: picker.picking.mode,
@@ -330,7 +329,6 @@
 <span class="visually-hidden" aria-live="polite">{liveRegionText(comments.announcement)}</span>
 
 <style>
-	/* A row in the #svelte-root column: the panel and the stage share its width. */
 	/* The stage tint also sits behind the empty state while the stage is hidden. */
 	.workspace {
 		display: flex;

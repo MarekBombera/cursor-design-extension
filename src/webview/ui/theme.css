@@ -1,12 +1,3 @@
-/*
- * The chrome's one global stylesheet (rule 08). It is the only file that reads the host's
- * --vscode-* values; every component reads the --cd-* tokens below.
- *
- * No cascade layers: Cursor prepends its own unlayered _defaultStyles to every webview, and a
- * layered rule loses to any unlayered one. This file is unlayered and loads after it (first import
- * in main.ts, bundled into chrome.css), so its plain selectors win by source order.
- */
-
 /* 1. Tokens. On body, not :root: VS Code puts its theme classes on body, and a derived token
    re-resolves against an overridden base token only when both are declared on the same element. */
 body {
@@ -25,17 +16,15 @@ body {
 		color-mix(in srgb, var(--vscode-foreground) 16%, transparent)
 	);
 
-	/* Edges */
 	--cd-divider: var(--vscode-panel-border);
 	--cd-edge: var(--vscode-widget-border, var(--vscode-editorWidget-border));
 	--cd-frame-edge: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
 	--cd-shadow: var(--vscode-widget-shadow, rgb(0 0 0 / 0.25));
 
-	/* Text: three levels built from the body colour, so secondary is secondary in every theme
-	   (Light Modern sets descriptionForeground equal to foreground). 78% keeps --cd-fg-2 at or above
-	   4.5:1 on every chrome surface and hover fill in Default Dark/Light Modern (pnpm gallery
-	   measures it). --cd-fg-3 is never text: icons, dividers, the resize bar (58% = 3:1 on the
-	   light stage). */
+	/* Text: three levels from the body colour, so secondary is secondary in every theme (Light
+	   Modern sets descriptionForeground equal to foreground). 78% keeps --cd-fg-2 at or above 4.5:1
+	   on every chrome surface and hover fill (pnpm gallery measures it). --cd-fg-3 is never text
+	   (58% = 3:1 on the light stage). */
 	--cd-fg: var(--vscode-foreground);
 	--cd-fg-2: color-mix(in srgb, var(--vscode-foreground) 78%, transparent);
 	--cd-fg-3: color-mix(in srgb, var(--vscode-foreground) 58%, transparent);
@@ -43,7 +32,6 @@ body {
 	--cd-link: var(--vscode-textLink-foreground);
 	--cd-focus: var(--vscode-focusBorder);
 
-	/* Buttons */
 	--cd-primary-bg: var(--vscode-button-background);
 	--cd-primary-fg: var(--vscode-button-foreground);
 	--cd-primary-hover: var(--vscode-button-hoverBackground, var(--vscode-button-background));
@@ -60,7 +48,6 @@ body {
 	--cd-toggle-on-edge: var(--vscode-inputOption-activeBorder, transparent);
 	--cd-toggle-on-fg: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 
-	/* Inputs and dropdowns */
 	--cd-input-bg: var(--vscode-input-background);
 	--cd-input-fg: var(--vscode-input-foreground);
 	--cd-input-edge: var(--vscode-input-border, var(--cd-edge));
@@ -69,7 +56,6 @@ body {
 	--cd-dropdown-fg: var(--vscode-dropdown-foreground, var(--cd-input-fg));
 	--cd-dropdown-edge: var(--vscode-dropdown-border, var(--cd-input-edge));
 
-	/* Keybinding hint */
 	--cd-kbd-bg: var(
 		--vscode-keybindingLabel-background,
 		color-mix(in srgb, var(--vscode-foreground) 12%, transparent)
@@ -77,7 +63,6 @@ body {
 	--cd-kbd-edge: var(--vscode-keybindingLabel-border, transparent);
 	--cd-kbd-fg: var(--vscode-keybindingLabel-foreground, var(--vscode-foreground));
 
-	/* Count badge */
 	--cd-count-bg: var(--vscode-activityBarBadge-background, var(--vscode-badge-background));
 	--cd-count-fg: var(--vscode-activityBarBadge-foreground, var(--vscode-badge-foreground));
 
@@ -111,7 +96,7 @@ body {
 	--cd-on-open: var(--vscode-button-foreground);
 	--cd-on-agent: var(--vscode-button-foreground);
 	/* A neutral fill that keeps 3:1 against the pin ring and 4.5:1 for the number on a resolved card
-	   chip in both themes (badge.background was 1.6:1 on white). */
+	   chip in both themes (badge.background is 1.6:1 on white). */
 	--cd-pin-resolved-bg: color-mix(
 		in srgb,
 		var(--vscode-foreground) 70%,
@@ -120,7 +105,6 @@ body {
 	--cd-pin-resolved-fg: var(--vscode-editor-background);
 	--cd-pin-ring: var(--vscode-editor-background);
 
-	/* Type: the editor's UI font. */
 	--cd-font: var(--vscode-font-family, system-ui, sans-serif);
 	--cd-fs-xs: 11px;
 	--cd-fs-sm: 12px;
@@ -129,7 +113,6 @@ body {
 	--cd-lh-md: 18px;
 	--cd-weight-strong: 600;
 
-	/* Space: named by value in px. Every padding, margin and gap in the chrome uses one. */
 	--cd-space-2: 2px;
 	--cd-space-4: 4px;
 	--cd-space-6: 6px;
@@ -139,13 +122,11 @@ body {
 	--cd-space-16: 16px;
 	--cd-space-24: 24px;
 
-	/* Shape */
 	--cd-radius-sm: 4px;
 	--cd-radius-md: 6px;
 	--cd-radius-pill: 999px;
 	--cd-kbd-radius: 3px;
 
-	/* Sizes */
 	--cd-toolbar-h: 36px;
 	--cd-control-h: 26px;
 	--cd-control-h-sm: 22px;
@@ -160,11 +141,10 @@ body {
 	--cd-widget-w: 340px;
 	--cd-widget-max-h: 440px;
 
-	/* The stage zoom. Stage sets it on its scaled layer, so anything drawn inside divides by it to
-	   stay a fixed number of screen px. */
+	/* Stage sets it on its scaled layer, so anything drawn inside divides by it to stay a fixed
+	   number of screen px. */
 	--cd-stage-zoom: 1;
 
-	/* Elevation */
 	--cd-shadow-widget: 0 4px 16px var(--cd-shadow), 0 0 0 1px var(--cd-edge);
 	--cd-shadow-frame: 0 1px 3px var(--cd-shadow), 0 0 0 1px var(--cd-frame-edge);
 	--cd-shadow-lifted: 0 12px 32px var(--cd-shadow), 0 0 0 1px var(--cd-frame-edge);
@@ -174,7 +154,6 @@ body {
 	--cd-focus-ring: 2px solid var(--cd-focus);
 	--cd-focus-offset: 2px;
 
-	/* Motion */
 	--cd-ease: cubic-bezier(0.2, 0, 0, 1);
 	--cd-dur: 120ms;
 	--cd-spin: cd-spin 0.9s linear infinite;
@@ -186,8 +165,7 @@ body.vscode-high-contrast:not(.vscode-high-contrast-light) {
 	--cd-on-agent: var(--vscode-editor-background);
 }
 
-/* High contrast: edges come from contrastBorder, tints drop out. The derived tokens (input edge,
-   shadows) live on the same body element, so they re-resolve against these on their own. */
+/* High contrast: edges come from contrastBorder, tints drop out. */
 body.vscode-high-contrast,
 body.vscode-high-contrast-light {
 	--cd-edge: var(--vscode-contrastBorder);
@@ -206,8 +184,7 @@ body.vscode-high-contrast-light {
 }
 
 /* 3. Reduced motion, from the OS or from Cursor's workbench.reduceMotion setting (a body class
-   that leaves prefers-reduced-motion alone). The spinner stops; a pending control still says
-   "Adding…" in words. */
+   that leaves prefers-reduced-motion alone). */
 @media (prefers-reduced-motion: reduce) {
 	body {
 		--cd-dur: 0ms;
@@ -224,8 +201,7 @@ body.vscode-reduce-motion {
 [hidden] {
 	display: none !important;
 }
-/* Every button starts bare; the primitives (Button, IconButton) and the stage's own controls build
-   on it. Element specificity, so any class rule wins. */
+/* Every button starts bare, at element specificity so any class rule wins. */
 button {
 	margin: 0;
 	padding: 0;
@@ -239,8 +215,8 @@ body {
 	height: 100%;
 	margin: 0;
 }
-/* The root is the stage's scroll sink (frameGesture.ts): App sizes the body with
-   SCROLL_SINK_ROOM of hidden scroll room, while the fixed chrome never moves when it scrolls. */
+/* The root is the stage's scroll sink: CanvasState.installScrollSink gives the body hidden scroll
+   room, and the fixed chrome never moves when it scrolls. */
 html {
 	scrollbar-width: none;
 	overscroll-behavior: none;
@@ -273,7 +249,6 @@ kbd {
 	text-align: center;
 	vertical-align: baseline;
 }
-/* Text fields: the textarea and the text input (the Edit-mode inspector, 9d) share one look. */
 textarea,
 input:not([type]),
 input[type='text'] {

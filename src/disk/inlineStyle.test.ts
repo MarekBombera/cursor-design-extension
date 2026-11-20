@@ -122,7 +122,7 @@ test('a comment before the name is not part of it', () => {
 	assert.equal(set('/* c */ color: red', 'color', '#000000'), '/* c */ color: #000000');
 });
 
-test('a segment value starts after the real colon, never one inside a comment (F-138)', () => {
+test('a segment value starts after the real colon, never one inside a comment', () => {
 	const values = (styleText: string): Array<string | undefined> =>
 		splitStyleDeclarations(styleText).segments.map((segment) => segment.value);
 	assert.deepEqual(values('/* note: brand */ color: #ff0000'), ['#ff0000']);

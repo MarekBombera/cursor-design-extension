@@ -1,9 +1,6 @@
 import { type Page } from '@playwright/test';
 import { type VscodeTheme } from '../vscodeHost';
 
-// WCAG contrast evidence: one in-page measuring function (named pairs and a sweep of every text
-// node) and the rows the gallery writes to contrast.json.
-
 type ContrastRow = {
 	pair: string;
 	theme: VscodeTheme;

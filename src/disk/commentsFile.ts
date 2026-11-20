@@ -27,10 +27,6 @@ import {
 	isTagName,
 } from '../webview/frame/frameMessages';
 
-// comments.json on disk: its types, the zod schema, the lenient prepare step shared with
-// addComment's input, parse, serialize, read and write. The operations live in comments.ts and
-// the flag read in commentViews.ts.
-
 export type CommentStatus = 'open' | 'sent' | 'resolved';
 
 type CommentReply = {

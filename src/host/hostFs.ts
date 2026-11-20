@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-// ponytail: first folder only; multi-root and ambiguous_workspace are Phase 2
+// ponytail: first folder only. Upgrade path: pick the folder holding .cursor-design/, else ask.
 export const firstWorkspaceFolder = (): vscode.WorkspaceFolder | undefined =>
 	vscode.workspace.workspaceFolders?.[0];
 

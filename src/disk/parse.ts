@@ -29,7 +29,7 @@ const exportedFrameSchema = z.object({
 });
 
 // Key order of each shape is the serialized key order; zod strips unknown keys.
-// frames is absent on 0.1 single-artboard exports; when present it is non-empty with unique ids.
+// frames is absent on older single-artboard exports; when present it is non-empty, ids unique.
 const lastExportSchema = z.object({
 	exportId: nonEmptyString,
 	artboardId: artboardIdString,

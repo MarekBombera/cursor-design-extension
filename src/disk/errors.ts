@@ -304,7 +304,7 @@ export class PickOutdatedError extends CursorDesignError {
 // make it) larger than the panel previews.
 export type EditRefusedReason = EditRefusal | 'too-large';
 
-// Panel copy only (the Agent never edits through the panel); the one home of these strings.
+// Panel copy: only the panel's edit path throws EditRefusedError.
 const EDIT_REFUSED_MESSAGES: Record<EditRefusedReason, string> = {
 	'unknown-number': 'This element cannot be edited here. Ask the Agent to change it.',
 	'shared-number': 'This element cannot be edited here. Ask the Agent to change it.',

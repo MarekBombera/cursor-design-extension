@@ -9,9 +9,8 @@ import {
 } from './frameMessages';
 import { installPinAnchors } from './pinAnchors';
 
-// Runs inside the artboard iframe, injected first in head. Consumers import it as a string
-// through `?iife` (scripts/iifeStringPlugin.ts). `parent` is a replaceable global, so it is
-// captured before any artboard script runs.
+// Runs in each artboard iframe ahead of every artboard script: `parent` is a replaceable global, so
+// it is captured first.
 const host = window.parent;
 let lastSentHeight: number | undefined;
 let heightTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,12 +123,11 @@ window.addEventListener(
 	{ passive: false, capture: true },
 );
 
-// C and Escape with focus in the frame reach the chrome as cd:key; the chrome decides what they do.
-// So do Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z as undo / redo (9f; the chrome acts only in Edit mode).
-// Never prevented, so the design still sees them. Separate from Comment mode's input blocking.
-// ponytail: a design with its own bare `c` shortcut also toggles Comment mode in Interact mode;
-// only editable targets are excluded. `event.key` is layout-dependent, so a layout that never
-// produces `c` cannot toggle by key (the Comment button still works).
+// C, Escape and Cmd/Ctrl+(Shift+)Z with focus in the frame reach the chrome as cd:key; the chrome
+// decides what they do. Never prevented, so the design still sees them.
+// ponytail: a design with its own bare `c` shortcut also toggles Comment mode, and `event.key` is
+// layout-dependent, so a layout without `c` cannot toggle by key (the button still works).
+// Upgrade path: match `event.code`, and skip keys the design prevented (bubble phase).
 const frameKey = (event: KeyboardEvent): FrameKey | undefined => {
 	if (event.altKey || event.repeat || event.isComposing) {
 		return undefined;

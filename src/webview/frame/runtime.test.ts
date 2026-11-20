@@ -12,9 +12,8 @@ import {
 	FRAME_WHEEL_MESSAGE,
 } from './frameMessages';
 
-// ponytail: a soft ceiling for the exported canvas.html, which embeds this runtime: the length at
-// the start of 9d (31,039 unminified chars) plus 4,096. A toolchain bump that changes the
-// unminified output may need a re-baseline.
+// ponytail: a soft ceiling on the runtime every exported canvas.html embeds: a 31,039-char
+// unminified baseline plus 4,096. Re-baseline when a toolchain bump changes the unminified output.
 const RUNTIME_SIZE_BUDGET = 35_135;
 
 test('canvas runtime stays within its size budget', () => {
@@ -76,7 +75,7 @@ test('canvas runtime posts only its frame messages and writes the artboard only 
 	]) {
 		assert.ok(!runtimeSource.includes(forbidden), forbidden);
 	}
-	// 9e: the one style write is cd:edit-apply's Edit-mode preview.
+	// The one style write is cd:edit-apply's Edit-mode preview.
 	assert.equal(runtimeSource.split('setAttribute(').length - 1, 1);
 	// Finder is bundled into the runtime string (a dropped import fails here).
 	assert.ok(runtimeSource.includes("Can't generate CSS selector"));

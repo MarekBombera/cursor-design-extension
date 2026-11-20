@@ -2,9 +2,8 @@ import type { Comment } from '../disk/commentsFile';
 import { COMMENT_STYLE_KEYS, MAX_PICK_TEXT_CHARS, MAX_SELECTOR_CHARS } from '../disk/layout';
 import { isSafeStyleValue, toOneLine } from '../webview/frame/frameMessages';
 
-// The Agent prompts behind Copy prompt and Copy all open (8h). No `vscode`: pure text.
-// Both templates are locked word for word (Notion; the batch one by Bombic 2026-11-17), and
-// commentPrompt.test.ts pins each against a literal copy. Never reword a line here.
+// The Copy prompt / Copy all open prompts, locked word for word (commentPrompt.test.ts pins them):
+// never reword a line.
 
 // Every C0/C1 control except the newline the body keeps.
 const BODY_CONTROL_CHARS = /[^\P{Cc}\n]/gu;
@@ -17,8 +16,9 @@ const promptStyles = (styles: Comment['styles']): string =>
 
 // Free-text fields go through toOneLine, so frame-sourced text never forges a template line.
 // id, frameId and version are filled verbatim: the comments.json parse already validated them.
-// ponytail: the body is the user's own text and keeps its newlines; a hand-edited or cloned
-// comments.json can put any words there. The user reads the prompt when pasting it.
+// ponytail: the body is the user's own text and keeps its newlines, so a hand-edited or cloned
+// comments.json can put any words there; the user reads the prompt when pasting it. Upgrade path:
+// one-line the body too.
 export const singleCommentPrompt = (comment: Comment): string =>
 	[
 		`Handle cursor-design comment ${comment.id} only.`,

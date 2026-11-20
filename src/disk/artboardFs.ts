@@ -59,8 +59,7 @@ import {
 } from './parse';
 import { withWorkspaceLock } from './workspaceLock';
 
-// Artboard create / update / read / place / setActive. Also the one import path for the split
-// disk jobs: canvas scan and panel view (canvasView.ts), export and handoff status (exportFs.ts).
+// Re-exported so callers import the disk jobs from one path.
 export {
 	FRAME_READ_ERROR_MESSAGE,
 	listArtboards,
@@ -131,7 +130,7 @@ export type PlaceFrameArgs = {
 	width?: unknown;
 	label?: unknown;
 	group?: unknown;
-	// Host-only (panel drag): the frame's x/y/width when the gesture started. The MCP tool never passes it.
+	// Panel drag only: the frame's x/y/width when the gesture started; MCP never passes it.
 	base?: Pick<CanvasFrame, 'x' | 'y' | 'width'>;
 };
 
@@ -242,7 +241,9 @@ export const createArtboard = async ({
 		viewport: resolvedViewport,
 		updatedAt: new Date().toISOString(),
 	};
-	// ponytail: no journal; if meta/manifest/marker fails after wx HTML, Agent re-reads
+	// ponytail: no journal. A failed meta write after the wx HTML leaves default meta
+	// (effectiveArtboardMeta); a failed manifest or marker write leaves it inactive and unopened.
+	// Upgrade path: unlink the HTML when a later write fails.
 	await writeUtf8({ ...metaLayout, contents: serializeMeta(meta) });
 	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing: existingManifest });
 
@@ -303,10 +304,9 @@ export const updateArtboard = async ({
 	await requireHtmlFile(htmlLayout.filePath, resolvedId);
 	await requireExactHtmlFileName(workspaceRoot, resolvedId);
 
-	// ponytail: one global lock, a 2 s wait then WORKSPACE_BUSY. MCP and the panel both write
-	// through here; a write that skips the lock (the Agent's direct file edit, an editor save) can
-	// still land between the compare and the rename and be overwritten. Upgrade path: none
-	// planned; such writers are outside the extension.
+	// ponytail: a write that skips the lock (the Agent's direct file edit, an editor save) can land
+	// between the compare and the rename and be overwritten. Upgrade path: re-hash right before the
+	// rename (narrows the window; writers outside the extension can never be locked out).
 	return withWorkspaceLock({
 		workspaceRoot,
 		operation: async () => {
@@ -399,7 +399,7 @@ const requireOptionalFiniteNumber = (value: unknown, fieldName: string): number 
 	return value;
 };
 
-// Validate args, require the artboard, then write only this frame's entry to canvas.json. Backs the place_frame MCP tool and the panel drag commit.
+// Backs place_frame and the panel drag commit; writes only this frame's canvas.json entry.
 export const placeFrame = async ({
 	workspaceRoot,
 	id,
@@ -476,7 +476,8 @@ export const setActiveArtboard = async ({
 	try {
 		existing = await readManifestFile(workspaceRoot);
 	} catch (error: unknown) {
-		// ponytail: corrupt manifest is overwritten on set_active; Agent can restore from git
+		// ponytail: a corrupt manifest is overwritten here (git can restore it). Upgrade path:
+		// keep a .bak copy before overwriting.
 		if (!(error instanceof CorruptManifestError)) {
 			throw error;
 		}

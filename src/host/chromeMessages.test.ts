@@ -303,7 +303,7 @@ test('a malformed artboard:edit is still an attempt with an answerable requestId
 	assert.equal(commentRequestType(styleEdit), undefined);
 });
 
-test('9f: artboard:history parses its shape only; every claim is an attempt', () => {
+test('artboard:history parses its shape only; every claim is an attempt', () => {
 	const undo = { type: 'artboard:history', requestId: 'step-1', frameId: 'hero', step: 'undo' };
 	assert.deepEqual(parseChromeMessage(undo), undo);
 	assert.deepEqual(parseChromeMessage({ ...undo, step: 'redo', extra: 1 }), {

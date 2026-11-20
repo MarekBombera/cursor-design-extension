@@ -7,9 +7,8 @@
 
 	type Tone = 'info' | 'warning' | 'error';
 
-	// Icon + readable text on VS Code's validation tint: the meaning is in the icon and the tint,
-	// never in the text colour. `banner` is a full-width row under the toolbar; `inline` sits in a
-	// card or widget. Rest carries role, hidden and data-cd-* onto the root.
+	// The meaning is in the icon and VS Code's validation tint, never the text colour. `banner` is a
+	// full-width row under the toolbar; `inline` sits in a card or widget.
 	type Props = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'children'> & {
 		tone: Tone;
 		variant?: 'inline' | 'banner';

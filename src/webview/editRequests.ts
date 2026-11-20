@@ -9,13 +9,11 @@ import type {
 } from './hostMessages';
 import { canStep } from './undoRedo';
 
-// Edit-mode saves (9e) and undo / redo steps (9f): one request in flight per panel, the rest wait
-// in order; a save goes out with the hash the previous answer brought (9c: two commits on one base
-// would conflict with the user's own save). Pure; EditState (editState.svelte.ts) holds the state
-// and does the I/O.
-// ponytail: one in flight per panel, not per frame (the simplest form of the 9c rule), and no
-// timeout: an answer that never arrives (a dropped post) blocks later requests until the webview
-// reloads.
+// Saves and undo / redo steps: one request in flight, the rest wait in order; a save goes out with
+// the hash the previous answer brought (two commits on one base would conflict with the user's own
+// save).
+// ponytail: one in flight per panel, not per frame, and no timeout: a lost answer blocks later
+// requests until the webview reloads. Upgrade path: per-frame queues and an answer timeout.
 // ponytail: a written step reloads its frame (scroll and page state reset): the restored file is
 // not in the live page. Upgrade path: the answer carries the restored text or style for
 // cd:edit-apply.
@@ -40,7 +38,6 @@ type QueuedRequest =
 	| { kind: 'edit'; commit: EditCommit }
 	| { kind: 'step'; frameId: string; step: HistoryStep };
 
-// The request as it was queued, plus its id and the hash it was sent against.
 type InFlight = QueuedRequest & { requestId: string; baseHash: string };
 
 // `key`: the edit the copy is about, so a pick of another element clears it; undefined for a
@@ -74,8 +71,8 @@ export const enqueueEdit = (state: EditRequestsState, commit: EditCommit): EditR
 });
 
 // A step clears the error too. At most MAX_HISTORY_STEPS steps wait: a design script posting
-// cd:key undo / redo in a loop (F-145) cannot grow the queue or the writes it causes past what a
-// history can hold; a further step is ignored.
+// cd:key undo / redo in a loop cannot grow the queue or the writes it causes past what a history
+// can hold; a further step is ignored.
 export const enqueueStep = (
 	state: EditRequestsState,
 	{ frameId, step }: { frameId: string; step: HistoryStep },
@@ -101,13 +98,12 @@ const isSendableEdit = (commit: EditCommit, frame: SendFrame | undefined): frame
 const isSendableStep = (step: HistoryStep, frame: SendFrame | undefined): frame is SendFrame =>
 	frame !== undefined && frame.kind === 'iframe' && canStep(frame, step);
 
-// InFlight extends QueuedRequest, so this one helper serves both.
 const requestFrameId = (request: QueuedRequest): string =>
 	request.kind === 'step' ? request.frameId : request.commit.key.frameId;
 
-// The next request, when nothing is in flight. An edit whose frame left, became a tile or reloaded
-// since its draft started is dropped with "Not saved" (its preview is gone); a step whose frame
-// left, is a tile or has nothing to undo / redo any more is dropped silently. The loop goes on.
+// An edit whose frame left, became a tile or reloaded since its draft started is dropped with "Not
+// saved" (its preview is gone); a step whose frame left, is a tile or has nothing to undo / redo
+// any more is dropped silently. The loop goes on.
 export const nextSend = ({
 	state,
 	frames,
@@ -170,11 +166,11 @@ export const nextSend = ({
 
 export type EditAnswerStep = {
 	state: EditRequestsState;
-	// Success: what CanvasState.adoptEditAnswer takes.
+	// Success only.
 	adopt: { answer: ArtboardEditedMessage; baseHash: string } | undefined;
 	// Refusal: frames whose previews must go (an in-flight edit's and every dropped waiting edit's).
 	reloadFrameIds: string[];
-	// A written step (9f): EditState reloads the frame if the adopt applied, and announces it.
+	// A written step: the caller reloads the frame if the adopt applied, and announces it.
 	stepDone: { frameId: string; step: HistoryStep } | undefined;
 };
 

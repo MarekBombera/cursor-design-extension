@@ -5,7 +5,7 @@
 	type Props = {
 		hover: StageRect | undefined;
 		pick: StageRect | undefined;
-		// Click to jump: the target's outline, shown for JUMP_FLASH_MS.
+		// After a jump, for JUMP_FLASH_MS.
 		flash: StageRect | undefined;
 	};
 

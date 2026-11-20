@@ -2,9 +2,8 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter, html } from 'parse5';
 
 import { MAX_SELECTOR_CHARS } from './layout';
 
-// The finder grammar (what @medv/finder and the frame's nth-of-type fallback emit), matched over
-// parse5's tree with Chromium's rules for an HTML document in no-quirks mode, which the frame copy
-// always is (stampArtboardHtml). selectorMatch.cases.ts holds the rules, proven in Chromium.
+// The grammar @medv/finder and the frame's nth-of-type fallback emit, with Chromium's no-quirks
+// rules (the frame copy always is). selectorMatch.cases.ts holds the rules, proven in Chromium.
 
 type TreeDocument = DefaultTreeAdapterMap['document'];
 type TreeElement = DefaultTreeAdapterMap['element'];
@@ -27,10 +26,9 @@ type Step = { compound: Compound; child: boolean };
 // case-insensitive value's length (a fold reads the whole attribute value).
 type Selector = { steps: Step[]; checks: number };
 
-// ponytail: one match is uninterruptible up to MAX_MATCH_WORK units (one compound or simple-selector
-// check, an attribute read, or a folded value character; about 0.3-0.7 s measured), past which the comment reads
-// unchecked; a read with N distinct selectors walks the document N times. Upgrade path: one walk for
-// all of a document's selectors, or the read on a worker thread.
+// ponytail: a match runs uninterrupted up to MAX_MATCH_WORK checks (about 0.3-0.7 s measured), then
+// reads unchecked; N distinct selectors walk the document N times. Upgrade path: one walk for all
+// of a document's selectors, or a worker thread.
 export const MAX_MATCH_WORK = 10_000_000;
 
 // HTML spec "case-sensitivity of selectors": values compared ASCII case-insensitively on HTML
@@ -47,11 +45,9 @@ const CASE_INSENSITIVE_ATTRIBUTES = new Set(
 const asciiFold = (value: string): string =>
 	value.replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
 
-// An escape is `\` + 1-6 hex digits + one optional space, or `\` + any other character but a
-// newline. Every character of a token has exactly one reading: a hex escape takes all the hex
-// digits it can and always the space after them (a tab there fails, as the spec asks), so a token
-// that fails gives up in linear time. Two readings per escape (`\31 ` as escape + space, or escape
-// then a literal space in a value) backtracked 2^n.
+// Each escape has exactly one reading (a hex escape takes every hex digit and always the one space
+// after; a tab there fails, as the spec asks), so a failing token gives up in linear time. Two
+// readings per escape (`\31 ` as escape + space, or escape then a literal space) backtracked 2^n.
 const ESCAPE = String.raw`\\(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{1,5}(?![0-9A-Fa-f]))(?: |(?![ \t]))|\\[^\n\r\f0-9A-Fa-f]`;
 const IDENT = String.raw`(?:[\w-]|${ESCAPE}|[^\x00-\x7F])+`;
 const TOKEN_SOURCE = String.raw`( > | )|([#.]?)(${IDENT})|\[(${IDENT})="((?:[^"\\\n\r\f]|${ESCAPE})*)"\]|:nth-(child|of-type)\((\d+)\)`;
@@ -85,10 +81,8 @@ const simpleCount = (compound: Compound): number =>
 const isEmpty = (compound: Compound): boolean =>
 	compound.tag === undefined && simpleCount(compound) === 0;
 
-// null for anything outside the grammar. Never throws. A raw NUL or lone surrogate is null too:
-// Chromium reads it as U+FFFD, so answering here would claim a missing target. Past
-// MAX_SELECTOR_CHARS (the pick and comments.json cap) it is null before any work: V8's regexp
-// stack throws on a token of about 8M characters.
+// A raw NUL or lone surrogate is null: Chromium reads it as U+FFFD, so answering here would claim a
+// missing target. The length cap runs first: V8's regexp stack throws on a token near 8M chars.
 const parseSelector = (selector: string): Selector | null => {
 	if (selector.length > MAX_SELECTOR_CHARS || /\0|[\uD800-\uDFFF]/u.test(selector)) {
 		return null;
@@ -139,9 +133,7 @@ const parseSelector = (selector: string): Selector | null => {
 	return { steps, checks };
 };
 
-// What one element offers every compound: its folded tag and indexes up front, its attributes and
-// classes read once on first use, so each check after that is one Map or Set lookup (plus, for a
-// case-insensitive value of the same length, one fold, charged by its length).
+// Attributes and classes are read once on first use, so each later check is one Map or Set lookup.
 type Target = {
 	element: TreeElement;
 	tag: string;
@@ -233,9 +225,8 @@ const typeIndexes = (children: readonly TreeElement[]): number[] => {
 type Frame = { completed: Uint8Array; children: TreeElement[]; types: number[]; next: number };
 
 // One top-down walk. An element completes step i when it matches compound i and its prefix holds:
-// for " > " its parent completed step i-1, for " " some strict ancestor did. ancestorCount is raised
-// only after the element's own steps are set, so a lone div never matches "div div". Memory is
-// depth × steps bytes, bounded by MAX_MATCH_WORK.
+// for " > " its parent completed step i-1, for " " some strict ancestor did. Memory is depth ×
+// steps bytes, bounded by MAX_MATCH_WORK.
 const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[] | null => {
 	const usesTypes = steps.some(({ compound }) => compound.nthOfType.length > 0);
 	const frameOf = (completed: Uint8Array, parent: TreeParent): Frame => {
@@ -281,7 +272,8 @@ const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[
 				completed[index] = 1;
 			}
 		}
-		// Only now: this element must not count as its own ancestor for its later steps.
+		// Only now: this element must not count as its own ancestor for its later steps (a lone div
+		// never matches "div div").
 		for (let index = 0; index < steps.length; index += 1) {
 			ancestorCount[index] += completed[index] ?? 0;
 		}
@@ -293,9 +285,8 @@ const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[
 	return matches;
 };
 
-// Every element `selector` matches, in document order; null when the selector is outside the
-// finder grammar, longer than MAX_SELECTOR_CHARS, or the match would cost more than MAX_MATCH_WORK.
-// Never throws. The work ceiling counts every check, so it bounds a match whatever the page's size.
+// Document order. null outside the finder grammar, past MAX_SELECTOR_CHARS or past MAX_MATCH_WORK
+// (which counts every check, so it bounds a match on any page size). Never throws.
 export const selectMatches = (document: TreeDocument, selector: string): TreeElement[] | null => {
 	const parsed = parseSelector(selector);
 	return parsed === null ? null : walk(document, parsed);

@@ -1,9 +1,7 @@
-// Test-only host emulation (never imported by src/): what Cursor gives every webview, so browser
-// specs can run the chrome the way Cursor renders it.
-//
-// The --vscode-* values are Cursor's bundled Default Dark Modern / Light Modern themes plus the
-// VS Code registry defaults. DEFAULT_STYLES is the unlayered
-// _defaultStyles sheet Cursor prepends to every webview, copied verbatim from
+// Test-only host emulation (never imported by src/): what Cursor gives every webview. The
+// --vscode-* values are Cursor's bundled Default Dark Modern / Light Modern themes plus the VS Code
+// registry defaults. DEFAULT_STYLES is the unlayered _defaultStyles sheet Cursor prepends to every
+// webview, copied verbatim from
 // Cursor.app/Contents/Resources/app/out/vs/workbench/contrib/webview/browser/pre/index.html.
 
 export type VscodeTheme = 'dark' | 'light';

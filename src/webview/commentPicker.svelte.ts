@@ -40,34 +40,28 @@ const popoverHasFocus = (): boolean =>
 const inspectorHasFocus = (): boolean =>
 	document.activeElement?.closest('[data-cd-inspector]') != null;
 
-// Shared with EditState's undo / redo keys (9f).
 export const isTextEntry = (target: EventTarget | null): boolean =>
 	target instanceof HTMLElement &&
 	(target.isContentEditable || target.matches('input, textarea, select'));
 
-// The mode (Interact, Comment, Edit), the hover and pick Comment and Edit mode share, the
-// add-comment draft a Comment-mode pick opens (and the one held across a reload), and the C /
-// Escape mode keys. The rules live in commentPick.ts and commentPopover.ts.
+// Despite the name, also owns Edit mode: the mode, and the hover and pick both picking modes share.
 export class CommentPicker {
 	readonly #canvas: CanvasState;
 	readonly #pinThread: PinThread;
-	// The mode, hover and pick; the rules live in commentPick.ts.
 	picking: CommentPickState;
-	// The open comment popover's target and request state; the rules live in commentPopover.ts.
 	draft: CommentDraft | undefined = $state();
 	popover: { focusBody: (caretAtEnd?: boolean) => void } | undefined = $state();
-	// The held restore (resolveHeldDraft), apart from the live state so the live rules never see it.
-	// It waits for the first canvas:updated.
+	// A draft restored after a reload, kept apart so the live rules never see it. It waits for the
+	// first canvas:updated.
 	heldDraft: CommentDraft | undefined;
-	// A restored draft's popover takes focus when it mounts (canTakeFocus). Read by an effect that
-	// reruns on `popover`, so not reactive.
+	// A restored draft's popover takes focus once it mounts (the constructor's effect).
 	#focusRestoredDraft = false;
 
-	// $derived.by where a derived reads a field the constructor sets: TypeScript allows that read
-	// only inside a function (TS2729). Both forms compile to the same lazy derived.
+	// $derived.by, not $derived: a derived that reads a constructor-set field must be a function
+	// (TS2729). Both compile to the same lazy derived.
 
-	// Outlines use the drawn frame position (including a drag preview) and the committed view,
-	// the same inputs that place the frame wrapper, so an outline stays glued to its element.
+	// The same inputs that place the frame (drawn position with any drag preview, committed view),
+	// so an outline stays glued to its element.
 	readonly hoverOutline = $derived.by(() =>
 		frameOutline({
 			view: this.#canvas.committedView,
@@ -145,9 +139,8 @@ export class CommentPicker {
 		}
 	};
 
-	// The inspector unmounts when Edit mode ends: focus inside it moves to the stage viewport first,
-	// never to body. On an empty stage the viewport is hidden, so focus falls to body there (no
-	// frame, nothing to focus; the mode buttons are disabled).
+	// The inspector unmounts when Edit mode ends: focus in it moves to the stage viewport first.
+	// On an empty stage the viewport is hidden, so focus falls to body (nothing to focus).
 	#leaveInspectorFocus = (next: FrameMode): void => {
 		if (this.picking.mode === 'edit' && next !== 'edit' && inspectorHasFocus()) {
 			this.#pinThread.stage?.focusViewport();
@@ -165,8 +158,8 @@ export class CommentPicker {
 		});
 	};
 
-	// The one path that changes the mode. Changing it discards any draft, pending or not; a late
-	// answer is ignored. The same mode changes nothing.
+	// The one path that changes the mode. It discards any draft, pending or not; a late answer is
+	// ignored.
 	#setMode = (next: FrameMode): void => {
 		if (next === this.picking.mode) {
 			return;
@@ -177,13 +170,12 @@ export class CommentPicker {
 		this.#applyPickStep(chooseMode({ mode: next, frameIds: this.#canvas.iframes.keys() }));
 	};
 
-	// A toolbar mode button: pressing the active mode returns to Interact.
 	handleChooseMode = (pressed: FrameMode): void => {
 		this.#setMode(pressedMode(this.picking.mode, pressed));
 	};
 
-	// Typed text goes with the draft. The frame forgets its pick too, and gets focus back when
-	// asked, so ↑/↓ and a second Escape reach its runtime.
+	// Typed text goes with the draft. The frame gets focus back when asked, so ↑/↓ and a second
+	// Escape reach its runtime.
 	#closeDraft = (focusFrame: boolean): void => {
 		const frameId = this.draft?.frameId;
 		this.draft = undefined;
@@ -294,7 +286,6 @@ export class CommentPicker {
 		}
 	};
 
-	// C presses Comment; Escape leaves Comment or Edit mode, or cancels the draft.
 	#applyModeKey = (action: ModeKeyAction | undefined): void => {
 		if (action === 'toggle') {
 			this.handleChooseMode('comment');
@@ -305,7 +296,6 @@ export class CommentPicker {
 		}
 	};
 
-	// The chrome's own keydown and a frame's cd:key share one rule, with the live state.
 	#modeKey = (
 		key: Omit<ModeKeyInput, 'mode' | 'hasFrames' | 'popoverOpen'>,
 	): ModeKeyAction | undefined =>

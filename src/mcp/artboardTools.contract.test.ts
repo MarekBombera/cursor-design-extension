@@ -1,5 +1,3 @@
-// Proven import path: `{ Client, InMemoryTransport }` from `@modelcontextprotocol/client`.
-// Both pair halves come from `InMemoryTransport.createLinkedPair()` on that same import.
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
@@ -461,7 +459,7 @@ test('wrong-typed html, baseGeneration, and rootPath are observed at the client'
 	});
 });
 
-// 9c: update_artboard's read-compare-write runs under the cross-process lock, like the panel's.
+// update_artboard's read-compare-write runs under the cross-process lock, like the panel's.
 test('update_artboard under a fresh foreign lock returns WORKSPACE_BUSY and writes nothing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await withWorkspaceEnv(workspaceRoot, async () => {

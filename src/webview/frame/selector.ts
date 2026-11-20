@@ -8,7 +8,7 @@ import {
 	isSafeStyleValue,
 } from './frameMessages';
 
-// Pick data for one element (8d2). Part of the frame runtime; it only reads the design DOM.
+// Part of the frame runtime; it only reads the design DOM.
 
 // Finder runs synchronously in the click handler; its 1000 ms default would freeze the frame.
 // Past the timeout it returns its :nth-of-type fallback path.
@@ -67,9 +67,9 @@ export const buildSelector = (
 	try {
 		selector = runFinder(element, timeoutMs);
 	} catch (error) {
-		// Finder expands every candidate path up front, so class-heavy markup overflows the stack
-		// (RangeError) before its timeout is checked, even with a negative timeout (about 50
-		// classes per element). Build its :nth-of-type fallback path directly instead.
+		// Finder expands every candidate path up front, so class-heavy markup (about 50 classes per
+		// element) overflows the stack (RangeError) before any timeout is checked. Build its
+		// :nth-of-type fallback directly.
 		// ponytail: any other finder throw (nothing unique, element left the document) means no
 		// selector, silently: the frame has no log channel and the chip says so.
 		if (!(error instanceof RangeError)) {
@@ -83,7 +83,6 @@ export const buildSelector = (
 };
 
 export const textExcerpt = (raw: string): string => {
-	// One pass: control characters and whitespace runs become one space.
 	const text = raw
 		.replaceAll(/[\p{Cc}\s]+/gu, ' ')
 		.trim()
@@ -112,14 +111,13 @@ export const readStyles = (read: (property: string) => string): CommentStyles =>
 // The pick fields that depend only on the element, not on the click or scroll position.
 export type PickDescription = Pick<FramePickMessage, 'selector' | 'tagName' | 'text' | 'styles'>;
 
-// Everything but the selector: cheap enough to recompute after an Edit-mode preview (9e), which
-// reuses the cached selector instead of running finder again.
+// Everything but the selector: cheap enough to recompute after an Edit-mode preview.
 export const describeContent = (
 	element: Element,
 	isPage: boolean,
 ): Omit<PickDescription, 'selector'> => {
 	if (isPage) {
-		// The whole page's text is noise; 8e checks page comments by generation.
+		// The whole page's text is noise; a page comment has no target to check.
 		const body = element.ownerDocument.body ?? element;
 		return {
 			tagName: 'body',

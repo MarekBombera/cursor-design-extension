@@ -5,8 +5,7 @@ import { iifeStringPlugin } from './scripts/iifeStringPlugin';
 // Outside `shared` so `as const` does not make the array readonly (tsdown wants Plugin[]).
 const packPlugins: Plugin[] = [iifeStringPlugin()];
 
-// Two CJS bundles for VS Code. The .vsix ships without node_modules, so runtime deps are bundled.
-// Production: `vp pack --minify --no-sourcemap`.
+// The .vsix ships without node_modules, so runtime deps are bundled.
 const shared = {
 	format: 'cjs',
 	platform: 'node',
@@ -24,7 +23,6 @@ const shared = {
 // Regexes so subpath imports (`zod/mini`, `@modelcontextprotocol/server/stdio`) are bundled too.
 const alwaysBundle = [/^@modelcontextprotocol\/server(\/|$)/, /^zod(\/|$)/, /^parse5(\/|$)/];
 
-// Libraries the rules say not to add (.claude/rules/00-cursor-design-core.md, 02, 06).
 const bannedLibraries = [
 	{
 		name: '@modelcontextprotocol/sdk',
@@ -54,21 +52,20 @@ export default defineConfig({
 		plugins: ['typescript', 'unicorn', 'import', 'node'],
 		categories: { correctness: 'error' },
 		rules: {
-			// Arrows and full names (04-code-conventions). `z` is the zod/mini namespace, `T` a type parameter.
+			// `z` is the zod/mini namespace, `T` a type parameter.
 			'func-style': ['error', 'expression'],
 			'prefer-arrow-callback': 'error',
 			'unicorn/catch-error-name': ['error', { name: 'error' }],
 			'id-length': ['error', { min: 2, exceptions: ['_', 'x', 'y', 'z', 'T'] }],
 			'id-denylist': ['error', 'err', 'res', 'resp', 'req', 'opts', 'ctx', 'cb', 'val', 'abId'],
 
-			// Errors (06-error-handling). MCP stdout is the protocol; log through the OutputChannel or stderr.
+			// MCP stdout is the protocol: log through the OutputChannel or stderr, never console.
 			'no-throw-literal': 'error',
 			'no-empty': 'error',
 			'no-console': 'error',
 			'typescript/no-explicit-any': 'error',
 			'typescript/ban-ts-comment': 'error',
 
-			// Sacred constraints (00-cursor-design-core).
 			'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],
 			'no-restricted-properties': [
 				'error',
@@ -106,7 +103,7 @@ export default defineConfig({
 				},
 			},
 			{
-				// Host side of MCP: registers the stdio server with VS Code.
+				// Host side of MCP: it may import vscode.
 				files: ['src/mcp/registerCursorDesignMcp.ts'],
 				rules: {
 					'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],

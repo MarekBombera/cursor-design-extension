@@ -3,14 +3,9 @@ import { EDIT_STYLE_FIELDS, RAW_TEXT_ELEMENTS, VOID_ELEMENTS } from '../disk/lay
 import type { ChromePick } from './commentPick';
 import type { EditStyleField, FrameMode, PickEditFields } from './frame/frameMessages';
 
-// Inspector view rules (9d): what the Edit-mode inspector shows for the chrome's pick, and the
-// toolbar's pick announcement. Pure; the view is Inspector.svelte. The field drafts are
-// editDrafts.ts, Undo / Redo undoRedo.ts. The host stays the authority on every save (9c), so these
-// rules only decide what to show.
-
 type Editability = 'editable' | 'no-number' | 'shared-number';
 
-// The style fields shown as text inputs; colour has its own swatch.
+// Colour has its own swatch.
 export type InputField = Exclude<EditStyleField, 'color'>;
 
 const INPUT_FIELDS = EDIT_STYLE_FIELDS.filter((field): field is InputField => field !== 'color');
@@ -19,13 +14,12 @@ type EditableView = {
 	kind: 'editable';
 	target: string;
 	text:
-		// value: what the field shows; liveText: the frame's raw text, which 9e sends.
+		// value: what the field shows (trimmed); liveText: the raw text node a save sends.
 		| { state: 'plain'; value: string; liveText: string }
 		| { state: 'children' | 'too-long' }
 		// The element can never hold text (void or raw-text): no field, no hint.
 		| { state: 'none' };
-	// 'too-long': the style attribute is over MAX_PICK_STYLE_CHARS (edit.style null): a hint, no
-	// style fields.
+	// 'too-long': edit.style is null (over MAX_PICK_STYLE_CHARS): a hint, no style fields.
 	style: 'editable' | 'too-long';
 	fields: Array<{ field: InputField; value: string; placeholder: string }>;
 	color: { hex: string; value: string; computed: boolean };
@@ -46,9 +40,8 @@ export const editability = (edit: PickEditFields): Editability => {
 	return edit.sharedNumber ? 'shared-number' : 'editable';
 };
 
-// The value of the last declaration of `property` in a style attribute, as typed (trimmed): the
-// same tokenizer and the same "last one" the edit core replaces, read after the tokenizer's own
-// colon. A longhand never fills its shorthand.
+// The last declaration's value, as typed (trimmed): the same tokenizer and "last one" the edit
+// core replaces. A longhand never fills its shorthand.
 export const inlineValue = (style: string | null, property: string): string => {
 	if (style === null) {
 		return '';
@@ -121,8 +114,6 @@ export const inspectorView = (pick: ChromePick | undefined): InspectorView => {
 		: { kind: 'not-editable', reason, target };
 };
 
-// The toolbar's announcement for a pick: what was selected, plus whether the inspector can edit
-// it in Edit mode. '' in Interact mode or without a pick.
 export const pickAnnouncementText = ({
 	mode,
 	pick,

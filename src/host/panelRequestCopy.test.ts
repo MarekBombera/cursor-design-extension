@@ -95,7 +95,7 @@ test('editRequestErrorMessage is an allowlist: Agent copy never reaches the pane
 	assert.match(refused.message, /Ask the Agent/);
 });
 
-test('9f: history copy differs from edit copy for conflict, malformed and fallback only', () => {
+test('history copy differs from edit copy for conflict, malformed and fallback only', () => {
 	const busy = new LockTimeoutError();
 	const disk = new DiskError();
 	const rows: [unknown, string][] = [

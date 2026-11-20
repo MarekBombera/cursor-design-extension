@@ -159,7 +159,6 @@ test('Resolve posts one set-status, and the saved answer turns it into a focused
 		status: 'open',
 	});
 
-	// A sent comment offers Resolve.
 	await clickChrome(pinOf(page, SENT.id));
 	await expect(thread(page)).toContainText('Mover');
 	await expect(threadButton(page, 'Resolve')).toBeVisible();
@@ -172,7 +171,6 @@ test('Reply opens a focused composer; Enter posts the trimmed body and saved emp
 	await openThread(page, TITLE.id);
 	await openComposer(page);
 	const box = replyBox(page);
-	// Enter on blank text posts nothing.
 	await page.keyboard.press('Enter');
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:reply')).toHaveLength(0);
@@ -186,7 +184,6 @@ test('Reply opens a focused composer; Enter posts the trimmed body and saved emp
 	const request = await nthRequest(page, 'comment:reply', 1);
 	expect(request).toMatchObject({ id: TITLE.id, body: 'Make it \nbolder' });
 	await expect(box).not.toBeEditable();
-	// Pending: the primary says so in words and is busy.
 	const pending = thread(page).getByRole('button', { name: 'Adding…', exact: true });
 	await expect(pending).toHaveAttribute('aria-busy', 'true');
 
@@ -205,7 +202,6 @@ test('a matching ui:error keeps the text and shows a linked, announced error', a
 	await page.keyboard.press('Enter');
 	const request = await nthRequest(page, 'comment:reply', 1);
 
-	// An answer to another request changes nothing.
 	await postToChrome(page, {
 		type: 'ui:error',
 		message: 'Unrelated failure.',
@@ -299,8 +295,6 @@ test('a reply body with markup shows as literal text', async ({ page }) => {
 	await expect(thread(page).locator('li .body')).toHaveText(body);
 	await expect(thread(page).locator('img')).toHaveCount(0);
 });
-
-// Step 4: the Comments panel.
 
 const panelReplyBox = (page: Page, id: string): Locator =>
 	panelItem(page, id).getByRole('textbox', { name: 'Reply' });
@@ -611,7 +605,7 @@ test('with the panel open, the thread of a pin stays clear of the panel', async 
 	expect(threadBox.x + threadBox.width).toBeLessThanOrEqual(panelBox.x);
 });
 
-// A frame wheel opens the scroll sink's 1 s gesture window (F-52), so a panel wheel that chained
+// A frame wheel opens the scroll sink's 1 s gesture window, so a panel wheel that chained
 // to the root scroller inside that window would pan the stage; the aside's overscroll-behavior
 // stops it.
 test('a wheel over the open panel right after a frame wheel leaves the saved stage view', async ({
@@ -639,7 +633,7 @@ test('a wheel over the open panel right after a frame wheel leaves the saved sta
 	expect((await savedRecord(page)).stageView).toEqual(before);
 });
 
-// F-94: the list scrolls under a header that is outside it, so the browser never scrolls a focused
+// The list scrolls under a header that is outside it, so the browser never scrolls a focused
 // control behind the header.
 test('Shift+Tab up a long list keeps every focused control below the panel header', async ({
 	page,
@@ -679,10 +673,8 @@ test('the panel shows the empty state and the error state', async ({ page }) => 
 	await openHarness(page);
 	await postToChrome(page, { type: 'comments:updated', comments: [] });
 	await expect(panelToggle(page)).toHaveAccessibleName('Comments');
-	// No unresolved comments: no count badge.
 	await expect(panelToggle(page)).toHaveText('');
 	await openPanel(page);
-	// The header stays; the empty state is its title, then the sentence with the C key.
 	await expect(panel(page).getByText('Comments', { exact: true })).toBeVisible();
 	await expect(panel(page).getByText('No comments yet', { exact: true })).toBeVisible();
 	await expect(panel(page)).toContainText('Press C, then click an element to add one.');
@@ -720,8 +712,7 @@ const JUMP_TARGET = comment({
 
 const flashOutline = (page: Page): Locator => page.locator('[data-cd-flash]');
 
-// Opens the jump fixture with the panel open, once the frame answered its element comments. The
-// panel opens before the frame exists: an out-of-process frame that spanned the panel's area a
+// The panel opens before the frame exists: an out-of-process frame that spanned the panel's area a
 // moment ago can still take a click there until the compositor's hit-test data catches up.
 const openJumpStage = async (
 	page: Page,
@@ -848,8 +839,8 @@ test('jumping to a page comment flashes the whole frame and keeps the zoom', asy
 	expectBoxNear(await boxOf(flashOutline(page)), await frameBox(page, JUMP_FRAME.id));
 });
 
-// 8h: Copy for Agent (one comment) and the copy-open button. The host side (clipboard, markCommentsSent) is unit-tested;
-// here the chrome posts the requests, blocks a second copy and renders the answers.
+// Copy for Agent and copy-open: the host side (clipboard, markCommentsSent) is unit-tested; here
+// the chrome posts the requests, blocks a second copy and renders the answers.
 
 const OPEN_SECOND = comment({ id: 'c-second', body: 'Second' });
 const RESOLVED = comment({ id: 'c-done', body: 'Done', status: 'resolved' });
@@ -903,7 +894,6 @@ test('a copy answer keeps an open reply draft; a matching ui:error is linked to 
 
 	await clickChrome(panelButton(page, TITLE.id, 'Copied'));
 	const second = await nthRequest(page, 'comment:copy', 2);
-	// An answer to another request changes nothing.
 	await postToChrome(page, { type: 'ui:error', message: 'Unrelated.', requestId: 'another' });
 	await nextAnimationFrame(page);
 	await expect(page.getByText('Unrelated.')).toHaveCount(0);
@@ -935,7 +925,6 @@ test('Copy open counts open comments only, posts once, and announces the marked 
 	await clickChrome(button);
 	const request = await nthRequest(page, 'comment:copy-open', 1);
 	expect(request).toMatchObject({ type: 'comment:copy-open' });
-	// The batch blocks card copies too.
 	await clickChrome(panelButton(page, TITLE.id, 'Copy for Agent'));
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:copy')).toHaveLength(0);

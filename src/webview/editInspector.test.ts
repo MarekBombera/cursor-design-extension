@@ -78,7 +78,7 @@ test('an editable pick fills the fields from the style attribute with computed p
 		return;
 	}
 	assert.equal(view.target, 'h1');
-	// The field shows the trimmed text; liveText keeps the frame's raw text for 9e.
+	// The field shows the trimmed text; liveText keeps the frame's raw text for artboard:edit.
 	assert.deepEqual(view.text, { state: 'plain', value: 'Title', liveText: '\n    Title\n  ' });
 	assert.deepEqual(view.fields, [
 		{ field: 'font-size', value: '32px', placeholder: '32px' },
@@ -130,7 +130,7 @@ test('inlineValue reads the last declaration of that exact property, as typed', 
 	assert.equal(inlineValue('margin: 0 auto !important', 'margin'), '0 auto !important');
 	assert.equal(inlineValue('margin: /* gap */ 1.5rem ', 'margin'), '/* gap */ 1.5rem');
 	assert.equal(inlineValue('font-size:\n  var(--title)', 'font-size'), 'var(--title)');
-	// F-138: a colon inside a comment never starts the value.
+	// A colon inside a comment never starts the value.
 	assert.equal(inlineValue('/* note: brand */ color: #ff0000', 'color'), '#ff0000');
 	assert.equal(inlineValue('color/*a:b*/: red', 'color'), 'red');
 });

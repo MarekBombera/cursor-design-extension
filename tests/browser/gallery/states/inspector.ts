@@ -31,7 +31,6 @@ const pick = async (page: Page, selector: string, x = 0.5): Promise<void> => {
 	await expect(inspector(page).getByText(/^Edit fixture › /)).toBeVisible();
 };
 
-// 9. Inspector (Edit mode)
 const inspectorState = (
 	state: string,
 	setup: string,

@@ -2,11 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
 
-	// The floating editor-widget shell (add popover, comment thread): a header row, a body that
-	// scrolls, an optional fixed footer. `left` / `top` place it in viewport px; `width` / `height`
-	// report the measured size so the caller can place it (placePopover). Rest carries role, aria-*,
-	// tabindex, data-cd-*, handlers and attachments onto the root. Neither a pointerdown nor a wheel
-	// on a widget reaches the stage's pan and zoom, so callers cannot set those two handlers.
+	// `left` / `top` in viewport px; `width` / `height` report the measured size for placePopover.
+	// Pointerdown and wheel stop here so the stage never pans or zooms; callers cannot set those two.
 	type Props = Omit<
 		HTMLAttributes<HTMLDivElement>,
 		'class' | 'children' | 'onpointerdown' | 'onwheel'

@@ -5,9 +5,8 @@ import type { Comment } from '../disk/commentsFile';
 import { MAX_PICK_TEXT_CHARS } from '../disk/layout';
 import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
 
-// The expected prompts below are typed out by hand from the locked templates (Notion 0.3 "Prompt
-// template (locked word for word)"; batch wording confirmed by Bombic 2026-11-17). Never build
-// them from the module, never snapshot them.
+// The expected prompts are typed by hand from the locked templates. Never build them from the
+// module or snapshot them.
 
 const comment = (overrides: Partial<Comment> = {}): Comment => ({
 	id: 'c-1',

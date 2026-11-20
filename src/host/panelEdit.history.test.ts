@@ -21,9 +21,8 @@ import {
 } from './panelRequestCopy';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
 
-// 9f, end to end over a real temp workspace: the panel's edits and undo / redo steps through the
-// real edit core, checked write and history store. Only the vscode glue is stubbed.
-// (panelEdit.test.ts mocks the disk lib for the 9c answer contract.)
+// End to end over a real temp workspace: only the vscode glue is stubbed (panelEdit.test.ts mocks
+// the disk lib instead).
 
 const host = vi.hoisted(() => ({ isTrusted: true, root: '', logs: 0 }));
 
@@ -195,7 +194,7 @@ test('a held lock answers busy and keeps the history', async () => {
 	assert.equal(await diskHtml(), ORIGINAL);
 }, 10_000);
 
-// F-147: a request still awaiting the lock when the panel closes (or the folders change) is
+// A request still awaiting the lock when the panel closes (or the folders change) is
 // written, but records nothing: it read the epoch before its first await.
 const clearWhileLocked = async <T>(start: () => Promise<T>): Promise<T> => {
 	let pending: Promise<T> | undefined;

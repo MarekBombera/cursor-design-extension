@@ -1,13 +1,11 @@
 import { MAX_HISTORY_STEPS } from '../disk/layout';
 import type { HistoryStep } from '../webview/hostMessages';
 
-// Undo / redo for the panel's own Edit-mode writes (9f): whole-file snapshots per frame, in
-// extension memory for the panel session, never on disk. No `vscode` import: the store and its
-// rules stay unit-testable; panelEdit.ts writes, the outbox reads the flags and checks snapshots.
-// ponytail: up to 21 whole files per frame (20 steps plus the current copy), each at most
-// MAX_POSTED_ARTBOARD_HTML_CHARS, and no cap on the number of frames, so the total is unbounded
-// across frames. Upgrade path: per-element inverses instead of whole files, or a global byte
-// budget that evicts the oldest steps.
+// Undo / redo for the panel's own Edit-mode writes: whole-file snapshots per frame, in extension
+// memory for the panel session, never on disk.
+// ponytail: up to 21 whole files per frame (20 steps plus current), each at most
+// MAX_POSTED_ARTBOARD_HTML_CHARS, and no cap on frames. Upgrade path: per-element inverses, or a
+// global byte budget that evicts the oldest steps.
 
 // hash = hashHtml(html): sha256: plus lowercase hex.
 export type HistoryEntry = { html: string; hash: string };
@@ -30,7 +28,6 @@ let epoch = 0;
 
 export const historyEpoch = (): number => epoch;
 
-// The entry a step restores: the top of its stack.
 const stepEntry = (history: FrameHistory, step: HistoryStep): HistoryEntry | undefined =>
 	(step === 'undo' ? history.undo : history.redo).at(-1);
 
@@ -124,6 +121,7 @@ export const forgetHistory = (frameId: string): void => {
 // is a change from elsewhere and forgets that frame's history. Frames not listed are left alone.
 // ponytail: an outside write that recreates exactly a held state (an editor undo in the .html, a
 // git checkout) is caught only by the next step's checked write, which then forgets the history.
+// Upgrade path: store each entry's generation; a held hash at a newer generation is outside.
 export const keepUnchangedHistories = (
 	frames: ReadonlyArray<{ id: string; hash: string }>,
 ): void => {

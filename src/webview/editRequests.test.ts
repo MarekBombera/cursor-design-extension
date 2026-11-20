@@ -34,7 +34,6 @@ const frame = (
 	...overrides,
 });
 
-// The artboard:edit a send carries, or undefined for none or a step.
 const editSent = (send: ReturnType<typeof nextSend>['send']) =>
 	send?.type === 'artboard:edit' ? send : undefined;
 
@@ -184,7 +183,7 @@ test('the copy clears on a new pick of another element only; a commit clears it 
 	assert.equal(enqueueEdit(failed, commit()).error, undefined);
 });
 
-// 9f: undo / redo steps share the queue.
+// Undo / redo steps share the queue.
 const edited = (requestId: string, frameId = 'a') =>
 	({
 		type: 'artboard:edited',
@@ -308,7 +307,7 @@ test('enqueueStep clears the copy', () => {
 	assert.equal(enqueueStep(failed, { frameId: 'a', step: 'undo' }).error, undefined);
 });
 
-test('F-145: at most MAX_HISTORY_STEPS steps wait; a further one is ignored', () => {
+test('at most MAX_HISTORY_STEPS steps wait; a further one is ignored', () => {
 	let state = INITIAL_EDIT_REQUESTS;
 	for (let index = 0; index < MAX_HISTORY_STEPS + 5; index += 1) {
 		state = enqueueStep(state, { frameId: 'a', step: index % 2 === 0 ? 'undo' : 'redo' });

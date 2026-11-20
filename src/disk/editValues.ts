@@ -1,9 +1,8 @@
 import { asciiTrim, leadingWhitespaceLength, trailingWhitespaceLength } from './inlineStyle';
 import { type EDIT_STYLE_FIELDS, MAX_EDIT_TEXT_CHARS, MAX_STYLE_VALUE_CHARS } from './layout';
 
-// Edit-mode value rules (0.4), shared by the edit core (artboardEdit.ts, the authority on every
-// save) and the chrome's inspector (preview and pre-checks). No parse5, no DOM: the webview bundle
-// imports this file.
+// Shared by the edit core (the authority on every save) and the chrome's inspector. No parse5, no
+// DOM: the webview bundle imports this file.
 
 export type StyleField = (typeof EDIT_STYLE_FIELDS)[number];
 
@@ -21,7 +20,6 @@ const BARE_NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 
 export const hasLoneSurrogate = (text: string): boolean => LONE_SURROGATE.test(text);
 
-// C0 controls other than tab, and DEL, are refused in edited text.
 const hasRefusedControl = (text: string): boolean => {
 	for (let index = 0; index < text.length; index += 1) {
 		const code = text.charCodeAt(index);
@@ -32,20 +30,18 @@ const hasRefusedControl = (text: string): boolean => {
 	return false;
 };
 
-// The text an edit writes: a newline becomes a space, ASCII edges trimmed.
 export const normalizeEditText = (value: string): string =>
 	asciiTrim(value.replaceAll(NEWLINES, ' '));
 
-// Checked on the normalized text: over the cap, a refused control character or a lone surrogate.
+// Takes the normalized text.
 export const isRefusedEditText = (text: string): boolean =>
 	text.length > MAX_EDIT_TEXT_CHARS || hasRefusedControl(text) || hasLoneSurrogate(text);
 
-// The element's whole text node after a text edit, as the frame should show it: the source keeps
-// its leading and trailing whitespace and only the trimmed middle changes (all-whitespace text is
-// all leading).
+// The element's whole text node after a text edit, as the frame shows it: only the trimmed middle
+// changes (all-whitespace text is all leading).
 // ponytail: edge whitespace written as a reference (`&#32;Hi`) is whitespace in the DOM but not in
-// the source span, so the next text save after such a preview reads text-changed. Upgrade: the
-// host answers with the new text node.
+// the source span, so the next text save after such a preview reads text-changed. Upgrade path:
+// the host answers with the new text node.
 export const previewText = ({ liveText, value }: { liveText: string; value: string }): string => {
 	const leading = liveText.slice(0, leadingWhitespaceLength(liveText));
 	const rest = liveText.slice(leading.length);

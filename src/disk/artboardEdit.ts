@@ -21,14 +21,11 @@ import {
 import { EDIT_FIELDS, MAX_EDIT_TEXT_CHARS, RAW_TEXT_ELEMENTS } from './layout';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
-// Edit core (0.4): one Edit-mode change to an artboard's disk HTML. The element is named by its
-// source number (sourceTags.ts); the result changes only its text or its inline declarations of
-// one property, through string splices at parse5 source offsets, byte for byte the same
-// elsewhere. Pure: 9c's checked write calls it under the lock.
+// One Edit-mode change to disk HTML, by source number: string splices at parse5 offsets change
+// only the element's text or one inline property; every other byte stays. Pure.
 
 type EditField = (typeof EDIT_FIELDS)[number];
 
-// Owned by editValues.ts (parse5-free, shared with the chrome); re-exported for the core's callers.
 export type { StyleField };
 
 export type ArtboardEdit =
@@ -139,12 +136,12 @@ const spliceText = ({
 	};
 };
 
-// The re-parse check: the edit must keep every source number on the same element (offsets after
-// the splice move by the length change) and leave the text inside the element. Catches text
-// that changes the page structure: <head> (the implied <body> takes over), empty table parts
-// (foster-parenting), void elements, template, and self-closing foreign elements.
-// ponytail: one full re-parse per text edit (files up to the 1.5 MB posting cap). Upgrade path:
-// hand the new document to 9c's parse cache instead of discarding it.
+// Re-parse: every source number must stay on its element (offsets after the splice shift by the
+// length change) and the text inside it. Catches text that restructures the page: <head> (the
+// implied <body> takes over), empty table parts (foster-parenting), void elements, template,
+// self-closing foreign elements.
+// ponytail: one full re-parse per text edit (up to MAX_POSTED_ARTBOARD_HTML_CHARS). Upgrade path:
+// seed cachedArtboardDocument's cache with the new document instead of discarding it.
 const keepsStructure = ({
 	html,
 	entries,
@@ -323,9 +320,9 @@ const editStyle = ({
 		: { ok: true, html: `${html.slice(0, quoted.start)}${styleText}${html.slice(quoted.end)}` };
 };
 
-// `document` must be parseArtboardDocument(html) (9c passes the cached parse); another document
-// throws. The first failing check wins: input shape, number lookup, then the field's rules.
-// `ok: true` with the input HTML unchanged is a no-op; the caller decides whether to write.
+// `document` must be parseArtboardDocument(html); another document throws. The first failing
+// check wins: input shape, number lookup, then the field's rules. `ok: true` with the input HTML
+// unchanged is a no-op; the caller decides whether to write.
 export const editArtboardHtml = ({
 	html,
 	document,
@@ -335,7 +332,7 @@ export const editArtboardHtml = ({
 	document: ArtboardDocument;
 	edit: ArtboardEdit;
 }): EditResult => {
-	// The edit comes from the panel: its fields are checked here even though 9c parses it too.
+	// Untrusted panel input: re-checked here although parseChromeMessage checks its shape too.
 	const untrusted: Record<string, unknown> = edit;
 	const { field, value, liveText, sourceNumber } = untrusted;
 	if (

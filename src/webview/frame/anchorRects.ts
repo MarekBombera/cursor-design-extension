@@ -17,8 +17,8 @@ const rectMoved = (last: FrameRect | null, next: FrameRect | null): boolean => {
 	);
 };
 
-// True when the chrome's pins would move: a different ordered id list, a rect appearing or
-// disappearing, or any edge moving more than 0.5px. Nothing posted yet always counts.
+// A different ordered id list, a rect appearing or disappearing, or a rect moving past
+// MOVE_THRESHOLD_PX. Nothing posted yet always counts.
 export const anchorsMoved = ({
 	last,
 	next,

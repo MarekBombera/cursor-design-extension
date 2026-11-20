@@ -11,22 +11,15 @@ import {
 import type { BadgeTone } from './ui/badge';
 import type { IconName } from './ui/icons';
 
-// Comments panel view rules (8g): the items, the summary line, the handoff block, relative times
-// and the one live-region rule. Pure: CommentsPanel and CommentCard render what these return.
-
 export type PanelItem = {
 	comment: PostedComment;
-	// The comment's number (commentNumber), shared with its pin.
 	number: number;
 	badge: PinBadge | undefined;
-	// frameLabel: the drawn frame's label, or the frame id.
 	frameLabel: string;
-	// The frame is a live iframe, so the stage can jump to it.
 	canJump: boolean;
 };
 
-// The one rule for a frame's display name: its label, or its id when the frame is absent or its
-// label is empty.
+// `||`, not `??`: an empty label falls back to the id too.
 export const frameLabel = (frames: readonly FrameRecord[], frameId: string): string =>
 	frames.find((frame) => frame.id === frameId)?.label || frameId;
 
@@ -56,8 +49,6 @@ export const panelItems = ({
 
 export type PanelSummary = Record<PostedComment['status'], number>;
 
-// The comments per status: the panel header's summary and the handoff button. The toolbar's
-// unresolved count is open + sent, added up in App.
 export const panelSummary = (comments: readonly PostedComment[]): PanelSummary => ({
 	open: comments.filter((comment) => comment.status === 'open').length,
 	sent: comments.filter((comment) => comment.status === 'sent').length,
@@ -70,8 +61,7 @@ const SUMMARY_WORDS: Record<PostedComment['status'], string> = {
 	resolved: 'resolved',
 };
 
-// The panel header's summary line, open, sent, resolved: each count with its status icon and tone
-// (statusBadge). A zero count is left out, so all zero is an empty list and no line.
+// A zero count is left out, so all zero gives no line.
 export const summaryParts = (
 	summary: PanelSummary,
 ): { text: string; icon: IconName; tone: BadgeTone }[] =>
@@ -83,15 +73,12 @@ export const summaryParts = (
 			tone: statusBadge(status).tone,
 		}));
 
-// "1 comment" / "N comments": the one count wording, shared with the copy announcements.
 export const commentsText = (count: number): string =>
 	count === 1 ? '1 comment' : `${String(count)} comments`;
 
-// The panel's handoff block. `copied` is the count of the copy-open answer still showing
-// (undefined = no feedback). Feedback wins over everything, but "Copied 0 comments" never shows:
-// it reads as nothing to send. `disabled` only at zero open with no feedback showing: the feedback
-// is never drawn disabled, and submitCopyOpen ignores a click while it shows. A pending copy blocks
-// on top of it.
+// `copied`: the copy-open count still showing (undefined = none). Feedback wins and is never drawn
+// disabled; a count of 0 is no feedback (it would read as nothing to send). A pending copy blocks
+// on top.
 export const handoffCopy = ({
 	open,
 	sent,
@@ -109,7 +96,6 @@ export const handoffCopy = ({
 			copied: true,
 		};
 	}
-	// A copied count of 0 is no feedback: it never draws an enabled "Nothing new to send".
 	const disabled = open === 0;
 	if (open > 0) {
 		return {
@@ -155,7 +141,7 @@ export const relativeTime = ({ iso, now }: { iso: string; now: number }): string
 	return relativeFormat.format(-Math.floor(days / 365), 'year');
 };
 
-// The one alternating live-region rule: equal text is not re-announced, so every even sequence
-// ends in a no-break space and a repeat still speaks.
+// Equal text is not re-announced, so every even sequence ends in a no-break space and a repeat
+// still speaks.
 export const liveRegionText = ({ text, sequence }: { text: string; sequence: number }): string =>
 	sequence % 2 === 0 ? `${text} ` : text;

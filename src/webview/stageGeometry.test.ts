@@ -649,7 +649,7 @@ test('property: fit-all contains every chrome box', () => {
 					(viewportWidth - 2 * 48) / layout.bounds.width,
 					(viewportHeight - 2 * 48) / layout.bounds.height,
 				);
-				// Current fit clamps zoom up to MIN_STAGE_ZOOM, so oversized bounds overflow.
+				// Fit clamps zoom up to MIN_STAGE_ZOOM, so oversized bounds overflow.
 				if (neededZoom < geometry.MIN_STAGE_ZOOM) {
 					return;
 				}

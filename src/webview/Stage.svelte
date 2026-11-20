@@ -24,7 +24,7 @@
 
 	type Props = {
 		frames: StageFrame[];
-		// `size` is the label's width × height text (frameSizeText; empty on a tile).
+		// size: frameSizeText, '' on a tile.
 		labels: Array<FrameLabelBox & { text: string; size: string }>;
 		headings: GroupHeadingBox[];
 		activeId: string;
@@ -43,7 +43,7 @@
 		onIframe: (id: string, iframe: HTMLIFrameElement | undefined) => void;
 		onRenderError: (id: string) => void;
 		onFrameGesture: (gesture: StageFrameGesture) => void;
-		// Viewport-local chrome above the frames and outlines (the comment popover).
+		// Viewport-local chrome above the frames and outlines: pins, the thread, the add popover.
 		children?: Snippet;
 	};
 
@@ -70,14 +70,11 @@
 		children,
 	}: Props = $props();
 
-	// The stage hint per picking mode: its icon and verb, spelled out rather than read from the wire
-	// mode value.
 	const MODE_HINTS = {
 		comment: { icon: 'comment', verb: 'comment' },
 		edit: { icon: 'edit', verb: 'edit' },
 	} as const satisfies Record<Exclude<FrameMode, 'interact'>, { icon: IconName; verb: string }>;
 
-	// The resize handle is a fixed 8 screen px wide, centered on the frame's right edge.
 	const HANDLE_SCREEN_WIDTH = 8;
 
 	type GestureTarget = { id: string; kind: FrameGestureKind };
@@ -85,21 +82,16 @@
 	let dragging = $state(false);
 	let lastPointerX = 0;
 	let lastPointerY = 0;
-	// Read by pointer handlers only, so not reactive.
 	let viewportElement: HTMLDivElement | undefined;
-	// The label or handle holding pointer capture. Cleared before any 'end' or 'cancel' is
-	// reported, so a lostpointercapture that follows pointerup reports nothing. Like Figma, only
-	// Escape reverts: a release outside the panel (no pointerup, capture lost) or a browser
+	// Cleared before 'end' / 'cancel' is reported, so the lostpointercapture after pointerup
+	// reports nothing. Only Escape reverts: a release outside the panel (capture lost) or a
 	// pointercancel commits the last preview.
 	let captured: (GestureTarget & { pointerId: number; element: Element }) | undefined =
 		$state();
-	// The artboard iframe holding focus. An out-of-process frame's iframe element (Cursor's blob
-	// frames are) never matches :focus or :focus-visible and gets no focus events; the chrome window
-	// blurs with that iframe as its activeElement, and refocuses when focus comes back.
-	// ponytail: focus leaving the webview from inside a frame reaches no chrome event, so the ring
-	// stays until the chrome is focused again.
+	// An out-of-process iframe (Cursor's blob frames) never matches :focus and gets no focus events;
+	// the chrome window blurs with it as activeElement and refocuses when focus returns. Frame to
+	// frame fires no chrome event at all, so the effect below polls while a frame holds focus.
 	let focusedFrameId: string | undefined = $state();
-	// Frame to frame (a click or Tab from one iframe into another) fires no chrome event at all.
 	const FRAME_FOCUS_POLL_MS = 200;
 
 	const trackFrameFocus = (): void => {
@@ -110,11 +102,9 @@
 				: undefined;
 	};
 
-	// While a frame holds focus the chrome window stays blurred, so re-read activeElement until focus
-	// comes back to the chrome (trackFrameFocus clears the id) or the stage unmounts.
-	// ponytail: a 200ms poll, so the ring can trail a frame-to-frame move by one tick, and it keeps
-	// polling while focus sits in a frame and the user is in another app. Upgrade path: a cd:focus
-	// message from the frame runtime.
+	// ponytail: the ring trails a frame-to-frame move by up to one poll, polls while the user is in
+	// another app, and stays after focus leaves the webview from a frame. Upgrade: a cd:focus message
+	// from the frame runtime.
 	$effect(() => {
 		if (focusedFrameId === undefined) {
 			return;
@@ -125,7 +115,6 @@
 		};
 	});
 
-	// Arrow keys held on the focused label or handle; blur clears them.
 	const heldArrows = new Set<string>();
 
 	const viewportPoint = (event: PointerEvent): { screenX: number; screenY: number } => {
@@ -169,7 +158,6 @@
 		onFrameGesture({ ...target, source: 'pointer', phase: 'end', ...viewportPoint(event) });
 	};
 
-	// Escape cancels a pointer gesture; the listener exists only while capture is held.
 	$effect(() => {
 		const current = captured;
 		if (current === undefined) {
@@ -198,20 +186,18 @@
 		};
 	});
 
-	// A label or handle removed mid-gesture (the Agent deleted its frame) never runs its own
-	// lostpointercapture handler, so its teardown drops the capture: otherwise every later drag
-	// returns early until Escape. App already dropped its gesture (settleFrameGesture).
+	// A label or handle removed mid-gesture (its frame was deleted) never gets lostpointercapture,
+	// so teardown drops the capture, or every later drag returns early until Escape.
+	// CanvasState's settleFrameGesture already dropped the gesture.
 	const releaseOnRemove: Attachment<Element> = (element) => () => {
 		if (captured?.element === element) {
 			captured = undefined;
 		}
 	};
 
-	// Focus may land on a label or handle that is off screen (Tab, or a nudge). Pan the stage,
-	// not the viewport, until it is visible; a label wider than the viewport aligns its start.
+	// Keyboard focus on an off-screen label or handle pans the stage, never scrolls the viewport.
 	const revealFocused = (event: FocusEvent & { currentTarget: Element }): void => {
-		// Keyboard focus only: a pointerdown also focuses the label or handle, and panning then
-		// would jump the camera under a starting drag.
+		// A pointerdown also focuses it; panning then would jump the camera under a starting drag.
 		if (!event.currentTarget.matches(':focus-visible')) {
 			return;
 		}
@@ -275,10 +261,8 @@
 		onFrameGesture({ ...target, source: 'keyboard', phase: 'end' });
 	};
 
-	// Stage gestures land on the chrome document, not the runtime. Wheel events inside the
-	// iframe never bubble here, so the two paths cannot double-zoom. Non-passive, so this is a
-	// listener and not an onwheel attribute (Svelte makes those passive). Props are read at
-	// event time only, so neither attachment re-subscribes.
+	// Wheel inside an iframe never bubbles here, so this and cd:frame-wheel cannot double-zoom.
+	// A listener, not onwheel: Svelte makes onwheel passive, and preventDefault needs non-passive.
 	const attachWheel: Attachment<HTMLDivElement> = (element) => {
 		const handleWheel = (event: WheelEvent): void => {
 			event.preventDefault();
@@ -297,8 +281,7 @@
 		};
 	};
 
-	// Where focus goes when the chrome closes something focus was in (the comment thread), so it
-	// never falls to body. tabindex -1: focusable by script only, never a Tab stop.
+	// Focus fallback when the chrome closes or unmounts what held focus, so it never falls to body.
 	export const focusViewport = (): void => {
 		viewportElement?.focus({ preventScroll: true });
 	};
@@ -325,14 +308,13 @@
 		if (event.button !== 0) {
 			return;
 		}
-		// Empty stage only: the viewport itself or its one child, the layer.
+		// Empty stage: the viewport or any direct child of it (Pins wraps its buttons for this).
 		const onEmptyStage =
 			event.target === event.currentTarget ||
 			(event.target instanceof Element && event.target.parentElement === event.currentTarget);
 		if (!onEmptyStage) {
 			return;
 		}
-		// Labels and handles move or resize their frame; they never pan.
 		if (
 			event.target instanceof Element &&
 			event.target.closest('[data-cd-frame-label], [data-cd-frame-resize]') !== null
@@ -459,7 +441,6 @@
 				onblur={() => handleFrameBlur(target)}
 			>
 				<span class="label-chip">
-					<!-- The frame icon turns into a gripper on hover: the label is a drag handle. -->
 					<span class="label-icon"><Icon name="frame" size={12} /></span>
 					<span class="label-grip"><Icon name="gripper" size={12} /></span>
 					<span class="label-name">{label.text}</span>
@@ -483,7 +464,7 @@
 		{/each}
 	</div>
 	<Overlay hover={hoverOutline} pick={pickOutline} flash={flashOutline} />
-	<!-- The toolbar's live region already announces the mode; this is the visible reminder. -->
+	<!-- aria-hidden: the toolbar's live region already announces the mode. -->
 	{#if mode !== 'interact'}
 		{@const hint = MODE_HINTS[mode]}
 		<div class="mode-hint" aria-hidden="true">
@@ -506,7 +487,7 @@
 		touch-action: none;
 		cursor: grab;
 	}
-	/* Focused by script only (focusViewport), as a fallback; it is not a control. */
+	/* Script-only focus target (focusViewport), not a control. */
 	.viewport:focus {
 		outline: none;
 	}
@@ -527,8 +508,7 @@
 		overflow: hidden;
 		box-sizing: border-box;
 	}
-	/* The button keeps the whole band above its frame as the drag target; the chip inside hugs the
-	   text, so the hover fill matches what the label shows. */
+	/* The button is the whole band (the drag target); the chip hugs the text for the hover fill. */
 	.label {
 		display: flex;
 		align-items: center;
@@ -601,7 +581,7 @@
 		pointer-events: auto;
 		cursor: ew-resize;
 	}
-	/* The bar shows on hover and focus; the handle stays a fixed 4 × 36 screen px at any zoom. */
+	/* The bar: 4 × 36 screen px at any zoom, shown on hover and focus. */
 	.resize-handle::after {
 		content: '';
 		position: absolute;
@@ -619,7 +599,6 @@
 	.resize-handle:focus-visible::after {
 		opacity: 1;
 	}
-	/* The layer is scaled, so divide by zoom to keep the ring 2 screen px at any zoom. */
 	.label:focus-visible,
 	.resize-handle:focus-visible {
 		outline: calc(2px / var(--cd-stage-zoom)) solid var(--cd-focus);
@@ -642,7 +621,6 @@
 		transform: translateX(-50%);
 		pointer-events: none;
 	}
-	/* Only the icon takes the mode colour. */
 	.hint-icon {
 		display: flex;
 		color: var(--cd-accent);

@@ -27,7 +27,6 @@ const add = (definition: StateDefinition): void => {
 	panelStates.push(definition);
 };
 
-// 7. Comments panel
 const panelState = (
 	state: string,
 	setup: string,

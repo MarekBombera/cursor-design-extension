@@ -14,7 +14,8 @@ const parseRootsJson = (raw: string): string[] | undefined => {
 		}
 		return parsed;
 	} catch {
-		// ponytail: invalid ROOTS JSON falls back to ROOT env; malformed is not a crash
+		// ponytail: invalid ROOTS JSON silently falls back to the ROOT env. Upgrade path: log it to
+		// stderr.
 		return undefined;
 	}
 };

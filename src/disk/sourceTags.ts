@@ -3,24 +3,19 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter, html as parse5Html } fr
 import type { ArtboardDocument, ArtboardElement } from './commentTarget';
 import { SOURCE_TAG_ATTRIBUTE } from './layout';
 
-// Source numbers (0.4): the frame copy the host posts gives every element written in the file a
-// data-cd-src="N", so an edit can name the element and the host can find its characters on disk.
-// Disk, export and comment selectors never see them.
+// data-cd-src="N" on the panel's frame copy only, so an edit can name an element and the host can
+// find its characters on disk; disk, export and comment selectors never see it.
 
 type TreeNode = DefaultTreeAdapterMap['node'];
 
 // Text-like elements an edit never targets, in every namespace (SVG script, style and title too).
 const UNTAGGED_NAMES = new Set(['script', 'style', 'title', 'textarea']);
 
-// Where a start tag's name ends: the tokenizer's tag-name boundary.
 const TAG_NAME_END = new Set(['\t', '\n', '\f', '\r', ' ', '/', '>']);
 
-// The one numbering both the frame copy's tags and the edit core read: entry N holds every
-// element whose start tag sits at the Nth distinct start offset in the source, ascending. Walked
-// through childNodes only (a template's content is never walked) with an explicit stack so a
-// deep file cannot overflow the call stack. Implied and fake elements (stray </p>, </br>) have
-// no start tag. Elements reconstructed after misnesting share their source start tag, so they
-// share one entry (in walk order) and one number.
+// Entry N = every element whose start tag is the Nth distinct start offset. Implied and fake
+// elements (stray </p>, </br>) have none; elements rebuilt after misnesting share their tag's
+// entry (in walk order). Explicit stack: deep files cannot overflow; template content is skipped.
 export const numberedElements = (document: ArtboardDocument): ArtboardElement[][] => {
 	const byOffset = new Map<number, ArtboardElement[]>();
 	const stack: TreeNode[] = [document];

@@ -23,8 +23,6 @@ const ok = (html: string): EditResult => ({ ok: true, html });
 
 const refused = (refusal: string): EditResult => ({ ok: false, refusal }) as EditResult;
 
-// Text
-
 test('a text edit replaces only the trimmed middle of the one text node', () => {
 	assert.deepEqual(text('<div><p>Old</p></div>', 1, 'New', 'Old'), ok('<div><p>New</p></div>'));
 	assert.deepEqual(text('<p>\n  Old\n</p>', 0, 'New', '\n  Old\n'), ok('<p>\n  New\n</p>'));
@@ -141,8 +139,6 @@ test('a document parsed from other HTML throws', () => {
 		}),
 	);
 });
-
-// Styles
 
 test('a style edit adds, sets or removes one declaration in any attribute form', () => {
 	assert.deepEqual(style('<p>a</p>', 0, 'font-size', '12'), ok('<p style="font-size: 12px">a</p>'));

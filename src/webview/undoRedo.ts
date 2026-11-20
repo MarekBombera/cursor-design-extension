@@ -3,12 +3,8 @@ import { frameLabel } from './commentsPanel';
 import type { FrameMode } from './frame/frameMessages';
 import type { HistoryStep } from './hostMessages';
 
-// Undo / Redo rules (9f): the frame the inspector's buttons act on, whether a step is available,
-// and which keys ask for one. Pure; EditState (editState.svelte.ts) holds the history frame and
-// sends the steps; the host holds the history itself (src/host/editHistory.ts).
-
-// The frame the Undo / Redo buttons act on (the latest Edit-mode pick's, kept after the pick
-// drops), with its display name and the host's flags. Undefined disables both buttons.
+// The frame the Undo / Redo buttons act on: the latest Edit-mode pick's, kept after the pick drops.
+// Undefined disables both buttons.
 export type HistoryTarget = { frameId: string; label: string; canUndo: boolean; canRedo: boolean };
 
 export const historyTarget = ({
@@ -85,7 +81,6 @@ export const forwardedHistoryStep = ({
 }): HistoryStep | undefined =>
 	mode === 'edit' && senderFrameId === historyFrameId && senderHasFocus ? key : undefined;
 
-// Whether the host holds a step of that kind, from the flags it last posted or answered.
 export const canStep = (
 	flags: Pick<HistoryTarget, 'canUndo' | 'canRedo'>,
 	step: HistoryStep,

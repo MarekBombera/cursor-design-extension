@@ -32,17 +32,13 @@ import {
 	historyTarget,
 } from './undoRedo';
 
-// Edit-mode saves (9e) and undo / redo (9f): the inspector's field drafts, their live previews in
-// the frame, the artboard:edit and artboard:history requests with their answers, and the frame
-// Undo / Redo act on. Rules: editDrafts.ts (drafts), undoRedo.ts (history target and keys) and
-// editRequests.ts (one in flight). Created after CanvasState and CommentPicker.
 export class EditState {
-	// One draft per field; only the focused field gets input, but an invalid commit keeps its draft.
+	// Only the focused field gets input, but an invalid commit keeps its draft, so several can exist.
 	drafts: Partial<Record<EditField, EditDraft>> = $state({});
 	requests: EditRequestsState = $state(INITIAL_EDIT_REQUESTS);
-	// 9f: the frame of the latest accepted Edit-mode pick from a frame that held focus (F-146). It
-	// outlives the pick (a step's reload drops it) and mode switches, and clears when the frame
-	// leaves; a webview reload loses it.
+	// The frame of the latest accepted Edit-mode pick from a frame that held focus. It outlives the
+	// pick (a step's reload drops it) and mode switches; it clears when the frame leaves, and a
+	// webview reload loses it.
 	historyFrameId: string | undefined = $state(undefined);
 	#announcement = $state({ text: '', sequence: 0 });
 
@@ -50,7 +46,7 @@ export class EditState {
 	readonly #picker: CommentPicker;
 
 	readonly requestError = $derived(this.requests.error?.message);
-	// The polite announcement after a written step; a repeat still speaks (liveRegionText).
+	// After a written step; a repeat still speaks (liveRegionText).
 	readonly historyAnnouncement = $derived(liveRegionText(this.#announcement));
 
 	constructor({ canvas, picker }: { canvas: CanvasState; picker: CommentPicker }) {
@@ -150,8 +146,8 @@ export class EditState {
 
 	// After every pick message the picker accepted: drafts of another element commit, drafts of an
 	// element that is no longer editable end, and a new pick of another element clears the copy.
-	// `senderHasFocus`: the sending frame holds focus. Only such a pick moves the history frame
-	// (F-146): a design's script can post a pick without focus, but not retarget Undo / Redo with it.
+	// Only a pick from the frame holding focus moves the history frame: a design's script can post a
+	// pick without focus, but must not retarget Undo / Redo with it.
 	handlePick = (message: FramePickMessage, frameId: string, senderHasFocus: boolean): void => {
 		const pick = this.#picker.picking.pick;
 		if (pick === undefined || pick.frameId !== frameId) {
@@ -179,7 +175,6 @@ export class EditState {
 		}
 	};
 
-	// After the frame list changed (canvas:updated, a render error, a forced reload).
 	handleFramesChanged = (): void => {
 		if (
 			this.historyFrameId !== undefined &&
@@ -190,8 +185,8 @@ export class EditState {
 		this.#settleDrafts();
 	};
 
-	// 9f: Undo or Redo on the history frame. Open drafts commit first (valid ones are saved, the
-	// rest end), so a step always follows the saves the user made.
+	// Open drafts commit first (valid ones are saved, the rest end), so a step always follows the
+	// saves the user made.
 	handleHistoryStep = (step: HistoryStep): void => {
 		const target = this.history;
 		if (target === undefined || !canStep(target, step)) {
@@ -204,8 +199,8 @@ export class EditState {
 		this.#pump();
 	};
 
-	// 9f: the capture-phase window keydown. A Cmd/Ctrl+Z it takes stops here, before VS Code's own
-	// webview keydown routing on the window, even when nothing can be undone.
+	// Capture phase: a Cmd/Ctrl+Z it takes stops here, before VS Code's own webview keydown routing
+	// on the window, even when nothing can be undone.
 	handleHistoryKeydown = (event: KeyboardEvent): void => {
 		const step = historyKeyStep({
 			key: event.key,
@@ -228,7 +223,7 @@ export class EditState {
 		this.handleHistoryStep(step);
 	};
 
-	// 9f: a cd:key undo / redo from a frame; a request to check, not a keypress.
+	// A frame's cd:key undo / redo is a request to check, not a keypress.
 	handleFrameHistoryKey = (frameId: string, key: HistoryStep, senderHasFocus: boolean): void => {
 		const step = forwardedHistoryStep({
 			key,

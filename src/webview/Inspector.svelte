@@ -9,15 +9,9 @@
 	import Message from './ui/Message.svelte';
 	import type { HistoryTarget } from './undoRedo';
 
-	// The Edit-mode inspector (9d, live since 9e): the picked element's text and inline styles.
-	// Input previews in the frame; Enter or blur commits text and lengths, the picker's change
-	// commits colour (EditState decides what is saved). Undo / Redo (9f) act on the frame of the
-	// latest pick, also after the pick drops. Rendered only in Edit mode, first in the workspace
-	// DOM (Tab order inspector → comments panel → stage); CSS `order` draws it at the right edge.
 	// Frame data reaches the DOM only as field values and text, never {@html}.
 	type Props = {
 		pick: ChromePick | undefined;
-		// The picked frame's display name; '' without a pick.
 		frameLabel: string;
 		drafts: Partial<Record<EditField, EditDraft>>;
 		// The last save's refusal or "Not saved" copy; shown in every view.
@@ -28,9 +22,8 @@
 		onFieldFocus: () => void;
 		onFieldInput: (field: EditField, value: string) => void;
 		onFieldCommit: (field: EditField) => void;
-		// 9f: the frame Undo / Redo act on; undefined disables both.
+		// The frame Undo / Redo act on; undefined disables both.
 		history: HistoryTarget | undefined;
-		// The polite announcement after a written step ('' before the first).
 		historyAnnouncement: string;
 		onUndo: () => void;
 		onRedo: () => void;
@@ -78,9 +71,8 @@
 	const STYLE_TOO_LONG_COPY =
 		"This element's style attribute is too long to edit here: ask the Agent.";
 
-	// The head buttons use aria-disabled, not disabled: a frame reload that clears the pick, or a
-	// step's reload that clears a flag, can disable the button under focus, and focus stays on it
-	// instead of falling to body. So a click checks the same flag itself.
+	// The head buttons are aria-disabled because a reload can disable the one under focus, so a
+	// click checks the same flag itself.
 	const runIf = (enabled: boolean, send: () => void): void => {
 		if (enabled) {
 			send();
@@ -198,7 +190,6 @@
 						{#if error !== undefined}
 							<Message tone="error" id={errorId(field.field)}>{error}</Message>
 						{/if}
-						<!-- Color sits with the type fields, after Font size; a computed value reads secondary. -->
 						{#if field.field === 'font-size'}
 							{@const colorDraft = drafts.color}
 							<label for="{fieldId}-color">Color</label>
@@ -261,7 +252,6 @@
 		display: inline-flex;
 		gap: var(--cd-space-2);
 	}
-	/* Undo / Redo, then a gap, then the element steps. */
 	.history {
 		margin-inline-end: var(--cd-space-6);
 	}

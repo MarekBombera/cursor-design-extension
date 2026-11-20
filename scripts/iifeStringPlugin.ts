@@ -2,10 +2,9 @@ import { basename, extname } from 'node:path';
 
 import { build, type Plugin } from 'vite-plus';
 
-// `import source from './runtime.ts?iife'` yields that module bundled as an IIFE string, so the
-// iframe runtime and stage geometry have one TS source each but can still be inlined into
-// documents (blob frames, exported canvas.html). The IIFE global is the file stem; a module
-// with no exports is a bare IIFE. Unminified, so the export bytes do not depend on --minify.
+// `import source from './runtime.ts?iife'` yields that module bundled as an IIFE string, so one TS
+// source can be inlined into documents (blob frames, exported canvas.html). The IIFE global is the
+// file stem; a module with no exports is a bare IIFE. Unminified, so export bytes ignore --minify.
 const IIFE_SUFFIX = '?iife';
 const VIRTUAL_PREFIX = '\0iife:';
 
@@ -64,6 +63,7 @@ export const iifeStringPlugin = (): Plugin => ({
 		}
 		// Inlined into <script> text, so it must never close the element.
 		// ponytail: only `</` is escaped; a `<!--` + `<script` pair in source would need more.
+		// Upgrade path: escape `<!--` too.
 		const code = chunk.code.replaceAll('</', '<\\/');
 		return `export default ${JSON.stringify(code)};`;
 	},

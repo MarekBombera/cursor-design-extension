@@ -1,5 +1,4 @@
-// Frame ↔ chrome message contract. Pure constants and guards, no DOM types: the export
-// (src/disk/handoffCanvasHtml.ts) imports this under the root tsconfig, which has no DOM lib.
+// No DOM types: the disk and host code import this under the root tsconfig, which has no DOM lib.
 
 import {
 	COMMENT_ID_PATTERN,
@@ -34,13 +33,13 @@ export const PICK_PARENT_MESSAGE = 'cd:pick-parent';
 
 export const PICK_CHILD_MESSAGE = 'cd:pick-child';
 
-// Chrome → frame (9e, Edit mode only): preview one element's whole text node or style attribute.
+// Chrome → frame, Edit mode only: preview one element's whole text node or style attribute.
 export const EDIT_APPLY_MESSAGE = 'cd:edit-apply';
 
-// Chrome → frame (9e, Edit mode only): re-describe the current pick and re-post it.
+// Chrome → frame, Edit mode only: re-describe the current pick and re-post it.
 export const PICK_REFRESH_MESSAGE = 'cd:pick-refresh';
 
-// Chrome → frame: the element comments of this frame to measure (8f2 pins).
+// Chrome → frame: the element comments of this frame to measure for pins.
 export const FRAME_ANCHORS_MESSAGE = 'cd:anchors';
 
 // Frame → chrome: where those comments' targets are now.
@@ -53,7 +52,6 @@ export const FRAME_MODES = ['interact', 'comment', 'edit'] as const;
 
 export type FrameMode = (typeof FRAME_MODES)[number];
 
-// cd:mode's guard, shared with the saved webview state (savedState.ts).
 export const isFrameMode = (value: unknown): value is FrameMode =>
 	(FRAME_MODES as readonly unknown[]).includes(value);
 
@@ -63,8 +61,7 @@ export type EditStyleField = (typeof EDIT_STYLE_FIELDS)[number];
 
 const PICK_TEXT_STATES = ['plain', 'children', 'too-long'] as const;
 
-// What an Edit-mode pick reports about its target (9d): what the edit core needs to know. The
-// computed values are the pick's own `styles`.
+// The computed values are the pick's own `styles`.
 export type PickEditFields = {
 	// The target's data-cd-src as a canonical non-negative integer; null when absent, malformed or
 	// the target is disconnected.
@@ -77,7 +74,7 @@ export type PickEditFields = {
 	// The text node's full, unmodified data iff 'plain'; '' otherwise.
 	text: string;
 	// The style attribute as the live page holds it: '' when absent, null only over
-	// MAX_PICK_STYLE_CHARS (9e shows a hint instead of the style fields).
+	// MAX_PICK_STYLE_CHARS.
 	style: string | null;
 };
 
@@ -116,7 +113,7 @@ export type FramePickMessage = {
 };
 
 // The keys a frame forwards so they work with focus inside it: the mode keys C and Escape, and
-// (9f) undo / redo for Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
+// undo / redo for Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
 const FRAME_KEYS = ['c', 'Escape', 'undo', 'redo'] as const;
 
 export type FrameKey = (typeof FRAME_KEYS)[number];
@@ -129,13 +126,13 @@ type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: FrameKey };
 export type AnchorRequest = { id: string; selector: string };
 
 // `box`: the target's unclipped border box; null when the selector matched 0 or 2+ elements or
-// threw. `visible`: that box clipped by scrolling ancestors and the frame viewport; null when fully
-// clipped, zero-area, or `box` is null.
+// threw. `visible`: that box after visibleRect's clipping; null when fully clipped, zero-area, or
+// `box` is null.
 export type AnchorRect = { id: string; box: FrameRect | null; visible: FrameRect | null };
 
 type FrameAnchorsMessage = { type: typeof FRAME_ANCHORS_MESSAGE; anchors: AnchorRequest[] };
 
-// 9e live preview: exactly one of `text` (the element's whole new text node) or `style` (its whole
+// Live preview: exactly one of `text` (the element's whole new text node) or `style` (its whole
 // new style attribute). Display only: nothing reaches disk from it.
 export type EditApplyMessage =
 	| { type: typeof EDIT_APPLY_MESSAGE; sourceNumber: number; text: string }
@@ -168,7 +165,6 @@ const isFiniteNumber = (value: unknown): value is number => Number.isFinite(valu
 const isCoordinate = (value: unknown): value is number =>
 	isFiniteNumber(value) && Math.abs(value) <= MAX_FRAME_COORDINATE;
 
-// Longest element tag name a frame may report in cd:pick.
 const MAX_TAG_NAME_CHARS = 64;
 
 const TAG_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -188,9 +184,7 @@ const ONE_LINE_BREAKERS = /[\p{Cc}\p{Cf}\s]+/gu;
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
 
-// One line of at most `cap` UTF-16 code units for an Agent prompt (8h): every run of control,
-// format or white-space characters becomes one space, trimmed, and a cut never leaves a lone
-// high surrogate.
+// One Agent-prompt line of at most `cap` UTF-16 units; a cut never leaves a lone high surrogate.
 export const toOneLine = (value: string, cap: number): string => {
 	const collapsed = value.replace(ONE_LINE_BREAKERS, ' ').trim();
 	const cut = collapsed.slice(0, cap);
@@ -208,7 +202,6 @@ export const isSafeStyleValue = (value: string): boolean =>
 const asRecord = (data: unknown): Record<string, unknown> | undefined =>
 	data === null || typeof data !== 'object' ? undefined : (data as Record<string, unknown>);
 
-// Also guards the rects in comments:updated (hostMessages.ts).
 export const parseFrameRect = (value: unknown): FrameRect | undefined => {
 	const record = asRecord(value);
 	if (record === undefined) {
@@ -246,7 +239,6 @@ const parseFrameWheel = (record: Record<string, unknown>): FrameWheelMessage | u
 	return { type: FRAME_WHEEL_MESSAGE, deltaX, deltaY, ctrlKey, x, y };
 };
 
-// `null` is a valid "no selector"; undefined means the guard failed.
 const parseSelector = (value: unknown): string | null | undefined => {
 	if (value === null) {
 		return null;
@@ -304,8 +296,7 @@ const parseStyles = (value: unknown): CommentStyles | undefined => {
 	return styles;
 };
 
-// The pick's own fields, without `type`, `repost` and `edit`: cd:pick and a saved comment draft
-// (the chrome's webview state) share these guards.
+// cd:pick and a saved comment draft share these guards.
 export const parsePickFields = (
 	record: Record<string, unknown>,
 ): Omit<FramePickMessage, 'type' | 'repost' | 'edit'> | undefined => {
@@ -324,7 +315,7 @@ export const parsePickFields = (
 	if (selector === undefined || !isPickText(text) || point === undefined || styles === undefined) {
 		return undefined;
 	}
-	// A page pick is labelled body (8e locates it by point inside the documentElement box).
+	// A page pick is labelled body; its pin comes from `point`, never the selector.
 	if (isPage && (selector !== 'body' || tagName !== 'body')) {
 		return undefined;
 	}
@@ -430,9 +421,8 @@ const parseAnchorRect = (record: Record<string, unknown>): AnchorRect | undefine
 	return box === null && visible !== null ? undefined : { id: record.id, box, visible };
 };
 
-// Frame → chrome posts are untrusted (rule 02). The bridge has already matched event.source
-// to a live frame; this only checks the payload and rebuilds it, dropping extra fields.
-// Anything else returns undefined.
+// Untrusted. The bridge already matched event.source to a live frame; this checks and rebuilds the
+// payload, dropping extra fields.
 export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
 	const record = asRecord(data);
 	if (record === undefined) {

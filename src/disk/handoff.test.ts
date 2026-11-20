@@ -157,8 +157,6 @@ const lastExportOf = (
 	return lastExport;
 };
 
-// --- pure planning -------------------------------------------------------------------------
-
 test('makeCanvasExportId strips ISO punctuation', () => {
 	assert.equal(makeCanvasExportId({ now: FIXED_NOW }), FIXED_EXPORT_ID);
 });
@@ -440,8 +438,6 @@ test('property: legacy lastExport behaves as a one-frame set', () => {
 	);
 });
 
-// --- disk export ---------------------------------------------------------------------------
-
 test('canvas export writes one tree, pristine frames, and lastExport.frames', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
@@ -703,8 +699,6 @@ test('unparsable or invalid meta fails export with CORRUPT_META and writes nothi
 	}
 });
 
-// --- writers keep lastExport.frames --------------------------------------------------------
-
 test('setActiveArtboard and updateArtboard preserve lastExport.frames byte-for-byte', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
@@ -719,8 +713,6 @@ test('setActiveArtboard and updateArtboard preserve lastExport.frames byte-for-b
 	const raw = await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8');
 	assert.ok(raw.includes('"frames": ['));
 });
-
-// --- handoff_status ------------------------------------------------------------------------
 
 test('status is stale=false right after a canvas export and keeps active fields', async () => {
 	const workspaceRoot = await makeTempRoot();

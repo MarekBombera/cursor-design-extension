@@ -7,10 +7,7 @@ import {
 	parseFrameRect,
 } from './frame/frameMessages';
 
-// Host ↔ chrome message contract, defined once. The host `import type`s these; the chrome
-// parses every posted value through `parseHostMessage` first, and the host parses chrome
-// messages with `parseChromeMessage` (src/host/chromeMessages.ts). DOM-free on purpose: the root
-// tsconfig (no DOM lib) type-checks this file through the host imports.
+// DOM-free: the root tsconfig (no DOM lib) type-checks this file through the host's imports.
 
 export type PostedCanvasFrame = {
 	id: string;
@@ -22,12 +19,11 @@ export type PostedCanvasFrame = {
 	// This frame's artboard meta generation (0 when meta is absent).
 	generation: number;
 	// hashHtml of the disk HTML (never the tagged copy); '' when the file was not readable. The
-	// base an Edit-mode change is checked against (9c).
+	// base an Edit-mode change is checked against.
 	hash: string;
 	html: string;
 	errorMessage?: string;
-	// 9f: whether the host holds an undo / redo step of the panel's own writes to this frame, read
-	// when the outbox sends (first send and every replay).
+	// The host's undo history for the panel's own writes, read at every send (replays too).
 	canUndo: boolean;
 	canRedo: boolean;
 };
@@ -84,22 +80,21 @@ export type CommentsUpdatedMessage = {
 	error?: string;
 };
 
-// The answers to one comment:create, matched by its requestId.
+// Success answer to comment:create.
 export type CommentAddedMessage = { type: 'comment:added'; requestId: string };
 
-// Success answer to comment:reply and comment:set-status (comment:create keeps comment:added).
+// Success answer to comment:reply and comment:set-status.
 export type CommentSavedMessage = { type: 'comment:saved'; requestId: string };
 
 export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: string };
 
-// Success answer to comment:copy and comment:copy-open (8h). `count` = comments this copy moved
-// from open to sent (0 for a re-copy, or when the Agent resolved them first).
+// Success answer to comment:copy and comment:copy-open. `count` = comments this copy moved from
+// open to sent (0 for a re-copy, or when the Agent resolved them first).
 export type CopiedMessage = { type: 'ui:copied'; requestId: string; count: number };
 
-// 9c: the success answer to one artboard:edit, and (9f) to one artboard:history. `html` is the new
-// frame copy (tagged), the exact string the watcher echo's canvas:updated will carry for this
-// frame. The chrome adopts it (9e); after a step it also reloads the frame (9f). The flags are the
-// frame's history after this write.
+// Success answer to artboard:edit and artboard:history. `html` is the new tagged frame copy, the
+// exact string the watcher echo's canvas:updated will carry. The chrome adopts it; after a step it
+// also reloads the frame. The flags are the frame's history after this write.
 export type ArtboardEditedMessage = {
 	type: 'artboard:edited';
 	requestId: string;
@@ -166,10 +161,9 @@ export type CommentSetStatusMessage = {
 	status: 'open' | 'resolved';
 };
 
-// 8h: the host builds the prompt from disk, writes the clipboard, then marks the comment sent.
 export type CommentCopyMessage = { type: 'comment:copy'; requestId: string; id: string };
 
-// 8h: one prompt for every open comment, in comments.json order.
+// One prompt for every open comment, in comments.json order.
 export type CommentCopyOpenMessage = { type: 'comment:copy-open'; requestId: string };
 
 // Every chrome → host comment write; each attempt with a valid requestId is answered once.
@@ -180,8 +174,8 @@ export type CommentRequestMessage =
 	| CommentCopyMessage
 	| CommentCopyOpenMessage;
 
-// 9c: one Edit-mode change to the element numbered `sourceNumber` (9a data-cd-src) in the frame
-// whose disk HTML had `hash`. Answered once: artboard:edited or ui:error { requestId }.
+// One Edit-mode change to the element numbered `sourceNumber` (data-cd-src) in the frame whose disk
+// HTML had `hash`. Answered once: artboard:edited or ui:error { requestId }.
 export type ArtboardEditMessage = {
 	type: 'artboard:edit';
 	requestId: string;
@@ -196,7 +190,7 @@ export type ArtboardEditMessage = {
 
 export type HistoryStep = (typeof HISTORY_STEPS)[number];
 
-// 9f: undo or redo the panel's own last write to the frame. The host writes only bytes it holds.
+// Undo or redo the panel's own last write to the frame. The host writes only bytes it holds.
 // Answered once: artboard:edited or ui:error { requestId }.
 export type ArtboardHistoryMessage = {
 	type: 'artboard:history';

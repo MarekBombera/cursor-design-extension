@@ -13,8 +13,6 @@ import {
 	zoomStageAt,
 } from './stageGeometry';
 
-// Frame move/resize gesture rules for the chrome. Pure: App owns the state and posts the commit.
-
 export type FrameGestureKind = 'move' | 'resize';
 
 // What Stage reports. Pointer coordinates are viewport-relative screen px, like the wheel path.
@@ -191,9 +189,8 @@ export const settleFrameGesture = ({
 		: gesture;
 };
 
-// Arrow key on a focused label (move) or right-edge handle (resize) -> stage-px step. Anything
-// else returns undefined, so the key is not swallowed: Tab, letters, and ⌘/Ctrl/Alt chords
-// keep their normal meaning.
+// Anything but an arrow returns undefined, so the key is not swallowed: Tab, letters and
+// ⌘/Ctrl/Alt chords keep their normal meaning.
 export const arrowNudge = ({
 	key,
 	shiftKey,
@@ -257,7 +254,7 @@ export type StageWheel = {
 	screenY: number;
 };
 
-// Pinch / ctrl+wheel zooms about the pointer; a plain wheel pans. Both wheel paths share this.
+// A trackpad pinch arrives as ctrl+wheel (`wheel.zoom`).
 export const wheelToView = ({ view, wheel }: { view: StageView; wheel: StageWheel }): StageView =>
 	wheel.zoom
 		? zoomStageAt({
@@ -269,17 +266,17 @@ export const wheelToView = ({ view, wheel }: { view: StageView; wheel: StageWhee
 		: panStage({ view, deltaX: wheel.deltaX, deltaY: wheel.deltaY });
 
 // Scroll sink. Chromium latches a trackpad gesture to the out-of-process frame it started over;
-// once the pan moves that frame out from under the pointer, the frame gets no more wheel events
-// and Chromium hands the rest to the chrome as native scroll of the document root. App pins the
-// chrome with position: fixed and gives the body this much extra width and height, so scrolling
-// the root moves nothing on screen; each root scroll becomes a pan, then scrolls back.
+// once the pan moves that frame out from under the pointer, the rest arrives as native scroll of
+// the chrome's document root. The chrome is fixed (theme.css) over a body this much larger
+// (canvasState.svelte.ts), so each root scroll becomes a pan, then scrolls back.
 export const SCROLL_SINK_ROOM = 10_000;
 export const SCROLL_SINK_CENTER = SCROLL_SINK_ROOM / 2;
 
 // ponytail: a root scroll pans only this soon after a forwarded frame wheel or an earlier sink pan
-// (trackpads, momentum included, send one every frame). Later root scrolls (keys bubbling out of
-// a focused frame, a wheel over the toolbar) are dropped, as before the sink. Ceiling: holding the
-// fingers still for longer mid-gesture, after leaving the frame, ends that pan.
+// (trackpads, momentum included, send one every frame); later ones (keys bubbling out of a focused
+// frame, a wheel over the toolbar) are dropped. Holding the fingers still this long mid-gesture,
+// after leaving the frame, ends that pan. Upgrade path: drop the timeout and end the window on
+// pointer input (a keydown already ends it).
 const SCROLL_SINK_GESTURE_MS = 1000;
 
 // A gesture delivers small per-frame offsets. A jump this large is End/Home, a reset scroll

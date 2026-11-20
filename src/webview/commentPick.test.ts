@@ -169,7 +169,7 @@ test('picking in another frame resets the old frame; re-picking the same frame s
 	assert.deepEqual(applyPickMessage({ state, frameId: 'a', message }).sends, []);
 });
 
-test('a re-post moves only a pick chrome still holds for that frame (F-80)', () => {
+test('a re-post moves only a pick chrome still holds for that frame', () => {
 	const message = {
 		type: 'cd:pick',
 		...pickFields,
@@ -193,7 +193,7 @@ test('a re-post moves only a pick chrome still holds for that frame (F-80)', () 
 	assert.deepEqual(same.state.pick?.rect, { ...rect, y: 9 });
 });
 
-test('a re-post keeps the pick sequence, so the toolbar does not re-announce it (9e)', () => {
+test('a re-post keeps the pick sequence, so the toolbar does not re-announce it', () => {
 	const held = commenting({ pick: { ...pickIn('a'), sequence: 4 } });
 	const reposted = applyPickMessage({
 		state: held,

@@ -15,7 +15,6 @@ const add = (definition: StateDefinition): void => {
 	pinsStates.push(definition);
 };
 
-// 5. Pins and badges
 const pinsState = (
 	state: string,
 	setup: string,

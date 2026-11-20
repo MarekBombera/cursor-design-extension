@@ -4,9 +4,8 @@
 	import { flagBadge, type PlacedPin, statusBadge } from './pins';
 	import Icon from './ui/Icon.svelte';
 
-	// Viewport-local screen px, so a pin is the same size at any zoom. Layout, number, badge and
-	// label come from pins.ts; this only draws them. A pin is a teardrop whose tip (bottom-right
-	// corner) sits on the point, so the body never covers the spot being discussed.
+	// Viewport-local screen px, so a pin keeps its size at any zoom. A teardrop whose tip
+	// (bottom-right) sits on the point, so the body never covers the spot being discussed.
 	type Props = {
 		pins: PlacedPin[];
 		// A comment draft is open: a click at a pin goes through to the frame and retargets it.
@@ -18,7 +17,6 @@
 
 	let { pins, inert, openId, onOpen }: Props = $props();
 
-	// Read by focusPin only, so not reactive.
 	let wrapper: HTMLDivElement | undefined;
 
 	const attachWrapper: Attachment<HTMLDivElement> = (element) => {
@@ -28,7 +26,7 @@
 		};
 	};
 
-	// App calls this when the thread closes by Escape or Close.
+	// PinThread calls this when the thread closes by Escape or Close.
 	export const focusPin = (id: string): void => {
 		wrapper
 			?.querySelector<HTMLButtonElement>(`[data-cd-pin="${CSS.escape(id)}"]`)
@@ -149,8 +147,7 @@
 			0 0 0 4px var(--cd-fg),
 			0 2px 8px var(--cd-shadow);
 	}
-	/* The flag sits on the body's far corner, away from the tip; only its icon takes the meaning
-	   colour. */
+	/* On the body's far corner, away from the tip. */
 	.badge {
 		position: absolute;
 		top: calc(-1 * var(--cd-space-6));

@@ -4,9 +4,7 @@
 	import Icon from './ui/Icon.svelte';
 	import type { IconName } from './ui/icons';
 
-	// Where a comment points: [icon] frame › element, in the UI font. With `onjump` it is a button
-	// that shows the target on the canvas (named by `jumpLabel`); without it, plain text. Rest
-	// carries title, data-cd-focus and attachments onto the root.
+	// With `onjump`, a button named by `jumpLabel` that shows the target; without it, plain text.
 	type Props = Omit<HTMLAttributes<HTMLElement>, 'class' | 'children'> & {
 		frame: string;
 		element: string;
@@ -38,7 +36,6 @@
 {/if}
 
 <style>
-	/* Fills the row it sits in (card head, widget header); the element text ellipsizes. */
 	.target {
 		display: flex;
 		flex: 1 1 auto;
@@ -51,7 +48,6 @@
 		line-height: var(--cd-lh-sm);
 		text-align: start;
 	}
-	/* The frame name keeps its width up to half the row; the element text takes the rest. */
 	.frame {
 		flex: none;
 		max-width: 50%;

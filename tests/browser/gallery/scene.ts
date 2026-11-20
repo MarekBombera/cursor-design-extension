@@ -15,9 +15,6 @@ import {
 } from '../harness';
 import { type VscodeTheme } from '../vscodeHost';
 
-// The gallery's scene: the three artboards, the comment definitions, the session types and the
-// one scene opener every state starts from.
-
 const ARTBOARDS = join(__dirname, '..', '..', '..', 'fixtures', 'gallery');
 
 const artboard = (name: string): string => readFileSync(join(ARTBOARDS, `${name}.html`), 'utf8');
@@ -343,7 +340,8 @@ export type StateDefinition = {
 	run: (session: Session) => Promise<void>;
 };
 
-// A frame of animation plus the longest transition (120ms), so the shot is at rest.
+// Paints, pauses 220 ms and paints again before a shot. openScene turns transitions off in the
+// chrome document only, not inside artboard frames.
 export const settle = async (page: Page): Promise<void> => {
 	await nextAnimationFrame(page);
 	await page.waitForTimeout(220);

@@ -31,19 +31,17 @@ import { parseArtboardId } from '../disk/parse';
 import { postAnswerToPanel } from '../panel/openArtboardPanel';
 import type { ArtboardEditMessage } from '../webview/hostMessages';
 
-// vscode glue only (9c): chromeMessages.ts parses, panelRequestCopy.ts words the copy, the disk lib decides and
-// writes, the outbox times the post, editHistory.ts (9f) holds the undo steps. Never rejects.
-// ponytail: no host guard of its own against two requests in flight: the chrome sends one at a
-// time. A webview reload while a step awaits the lock lets the new chrome send a second step on
-// the same target; it conflicts with the first's write and forgets a valid history, with the
-// "changed on disk" copy. No data loss.
+// vscode glue only. Neither export ever rejects.
+// ponytail: no host guard against two requests in flight (the chrome sends one at a time). A
+// webview reload while a step awaits the lock lets the new chrome send a second step on the same
+// target; it conflicts and forgets a valid history ("changed on disk" copy), no data loss. Upgrade
+// path: a per-frame in-flight latch here.
 
 const EDIT_SCOPE = 'panelEdit.answer';
 const HISTORY_SCOPE = 'panelEdit.history';
 
 type Refuse = (message: string, error: unknown) => void;
 
-// Logs the failure; answers it with the copy when the attempt has a requestId to answer to.
 const refuser =
 	({
 		requestId,
@@ -61,8 +59,7 @@ const refuser =
 		}
 	};
 
-// The checks both panel writes run first: a usable requestId (else logged, never answered), a
-// trusted workspace and a folder (else refused). Undefined: already logged or refused.
+// Undefined: already logged or refused.
 const checkedWorkspaceRoot = ({
 	type,
 	requestId,
@@ -139,9 +136,7 @@ const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit => {
 	};
 };
 
-// One artboard:edit attempt, answered exactly once (artboard:edited, else ui:error) unless it has
-// no usable requestId to answer to. editArtboard's updateArtboard takes withWorkspaceLock itself:
-// never wrap it.
+// Answered exactly once unless it has no usable requestId.
 export const answerEditRequest = async ({
 	value,
 	outputChannel,
@@ -172,15 +167,11 @@ export const answerEditRequest = async ({
 			edit: toArtboardEdit(message),
 		});
 		// ponytail: no await from here to the post, so the answer beats the watcher echo's 200 ms
-		// debounce. Two ceilings: the HTML write, meta write and lock release (read + unlink) taking
-		// over 200 ms lets the echo arrive first, and a refresh (watcher or frame:place) that read disk
-		// before this write can post the old hash and generation after this answer. Neither loses
-		// data. The chrome (9e, canvasFrames.ts): an echo first reloads the frame and the answer is
-		// a no-op (a waiting save says "Not saved"); a stale pre-write post is skipped
-		// (replacedHashes). Third ceiling (9f): the echo's snapshot arriving before recordEdit
-		// forgets this frame's older undo steps (its new hash is not held yet), this edit then
-		// starts a fresh history, and the chrome may show Undo disabled until the next post. No
-		// data loss.
+		// debounce. None of these ceilings loses data: a write plus lock release over 200 ms lets
+		// the echo arrive first (the chrome reloads; the answer is a no-op); a refresh that read
+		// disk before the write can post the old hash after it (the chrome skips it via
+		// replacedHashes); an echo before recordEdit forgets older undo steps, so this edit starts
+		// a fresh history. Upgrade path: keepUnchangedHistories skips a frame mid-edit.
 		if (edited.html !== edited.baseHtml) {
 			recordEdit({
 				frameId: edited.artboardId,
@@ -195,12 +186,12 @@ export const answerEditRequest = async ({
 	}
 };
 
-// One artboard:history attempt (9f), answered exactly once like an edit. It writes only bytes the
-// history holds (disk reads and edit-core outputs), never HTML from the chrome, through the same
-// checked write: updateArtboard compares the history's current hash under the lock (never wrap
+// Answered exactly once like an edit. Writes only bytes the history holds, never HTML from the
+// chrome, through updateArtboard with the history's current hash (it takes the lock: never wrap
 // it). A conflict or a missing file forgets the frame's history; busy or a disk error keeps it.
 // ponytail: after a conflict whose disk hash the last snapshot already carried, no new post
-// arrives, so Undo stays enabled in the chrome and answers "Nothing to undo" until the next post.
+// arrives, so Undo stays enabled and answers "Nothing to undo" until the next post. Upgrade path:
+// post a refresh after forgetHistory.
 export const answerHistoryRequest = async ({
 	value,
 	outputChannel,
@@ -241,7 +232,7 @@ export const answerHistoryRequest = async ({
 			html: restore.target.html,
 			baseHash: restore.base.hash,
 		});
-		// No await from here to the post (the 9c ceiling in answerEditRequest applies).
+		// No await from here to the post (answerEditRequest's ceilings apply).
 		recordStep({ frameId, step: message.step, baseHash: restore.base.hash, epoch });
 		postEdited({
 			requestId,

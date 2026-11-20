@@ -37,18 +37,15 @@ export const setArtboardPanelOnVisible = (handler: () => void): void => {
 	onPanelBecameVisible = handler;
 };
 
-// Gets every frame:place attempt raw, valid or not; the handler owns the one answer.
+// Each handler gets every attempt raw, valid or not, and owns its one answer.
 export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void): void => {
 	onFramePlace = handler;
 };
 
-// Gets every comment request attempt (create, reply, set-status, copy, copy-open) raw, valid or not; the handler owns the one answer.
 export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => void): void => {
 	onCommentRequest = handler;
 };
 
-// Gets every artboard:edit (9c) and artboard:history (9f) attempt raw, valid or not; the handler
-// owns the one answer.
 export const setArtboardPanelOnEditRequest = (handler: (value: unknown) => void): void => {
 	onEditRequest = handler;
 };
@@ -130,7 +127,7 @@ export const openArtboardPanel = ({
 	panel.onDidDispose(() => {
 		currentPanel = undefined;
 		outbox.reset();
-		// 9f: undo history lives for the panel session only.
+		// Undo history lives for the panel session only.
 		clearEditHistories();
 	});
 	currentPanel = panel;

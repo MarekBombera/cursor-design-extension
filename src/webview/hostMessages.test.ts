@@ -227,7 +227,7 @@ test('comment:added needs a string requestId; ui:error a string message and opti
 	});
 });
 
-test('artboard:edited needs every field with its canvas:updated guard (9e)', () => {
+test('artboard:edited needs every field with its canvas:updated guard', () => {
 	const edited = {
 		type: 'artboard:edited',
 		requestId: 'r1',

@@ -628,7 +628,6 @@ test('an unchanged frame is parsed once across reads, and again after an edit', 
 	assert.equal(parseCount() - before, 2);
 });
 
-// The panel's source tags and the flag read share one parse of an unchanged frame.
 test('cachedArtboardDocument and a later flag read share one parse', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);

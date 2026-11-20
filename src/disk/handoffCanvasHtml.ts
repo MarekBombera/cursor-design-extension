@@ -7,13 +7,10 @@ import {
 } from '../webview/frame/frameMessages';
 import { FIT_PADDING, layoutCanvasChrome } from '../webview/stageGeometry';
 
-// View-only canvas.html for a handoff: every frame at its layout position, at scale 1, growing
-// to its measured height. Frame index.html files stay pristine; only the srcdoc copies here carry
-// the measuring runtime.
-// ponytail: canvas.html carries every frame's HTML a second time, with no size cap.
-// ponytail: if scripts are off or a frame never reports, it stays PROVISIONAL_FRAME_HEIGHT tall.
-// ponytail: assets/ is not copied into the handoff, so relative images may be missing.
-// ponytail: an empty artboard file previews as an empty frame (no error tile).
+// Frame index.html files stay pristine; only the srcdoc copies here carry the measuring runtime.
+// ponytail: no size cap (every frame's HTML twice), assets/ not copied (relative images may be
+// missing), a frame that never reports stays PROVISIONAL_FRAME_HEIGHT tall, an empty file previews
+// empty. Upgrade path: copy assets/ and cap per frame once a real handoff hits these.
 
 const PROVISIONAL_FRAME_HEIGHT = 800;
 

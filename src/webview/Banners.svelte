@@ -10,7 +10,7 @@
 	let { errorMessage, commentsError, mcpUnavailable }: Props = $props();
 </script>
 
-<!-- Every live region stays mounted and toggles hidden: it must exist before its content. -->
+<!-- A live region must exist before its content, so each stays mounted and toggles hidden. -->
 <Message tone="error" variant="banner" role="alert" hidden={errorMessage === undefined}
 	>{errorMessage ?? ''}</Message
 >

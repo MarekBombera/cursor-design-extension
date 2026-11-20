@@ -36,9 +36,8 @@ const taggedFrames = new Map<string, { html: string; posted: string }>();
 
 const memoKey = (workspaceRoot: string, frameId: string): string => `${workspaceRoot}\0${frameId}`;
 
-// The posted copy of one frame's disk HTML: the size cap, then source tags. Seeds the memo, so the
-// next panelFrames call with the same disk HTML (9c: the watcher echo after an edit) posts this
-// exact string. A tagging failure is reported once per HTML and returns the untagged copy.
+// Seeds the memo, so the next panelFrames call with the same disk HTML (the watcher echo after an
+// edit) posts this exact string. A tagging failure is reported once per HTML and posts untagged.
 export const panelFrameHtml = ({
 	workspaceRoot,
 	frameId,
@@ -71,8 +70,7 @@ export const panelFrameHtml = ({
 	return { html: posted };
 };
 
-// What the panel gets for each frame (panelFrameHtml over every readable frame); the stage keeps
-// every frame. Memo entries of frames no longer posted are dropped.
+// Every frame stays on the stage; memo entries of frames no longer posted are dropped.
 export const panelFrames = ({
 	workspaceRoot,
 	frames,
@@ -85,8 +83,7 @@ export const panelFrames = ({
 	const keys = new Set<string>();
 	const posted = frames.map((frame) => {
 		keys.add(memoKey(workspaceRoot, frame.id));
-		// The size cap comes first, as before the panelFrameHtml split: an over-cap frame is the
-		// too-large tile whatever else it carries.
+		// Size cap first: an over-cap frame is the too-large tile whatever else it carries.
 		if (
 			frame.html.length <= MAX_POSTED_ARTBOARD_HTML_CHARS &&
 			(frame.errorMessage !== undefined || frame.html === '')
@@ -106,7 +103,7 @@ export const panelFrames = ({
 	return posted;
 };
 
-// A posted frame before the outbox adds the history flags at send time (9f).
+// The outbox adds the history flags at send time.
 export type UnflaggedPostedFrame = Omit<PostedCanvasFrame, 'canUndo' | 'canRedo'>;
 
 // Frames arrive capped and tagged by panelFrames; this only maps the fields.

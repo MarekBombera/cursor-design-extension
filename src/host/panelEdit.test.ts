@@ -144,7 +144,7 @@ test('an attempt without a usable requestId is logged once and never answered', 
 	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
 });
 
-test('9f: a same-bytes edit records nothing and answers the current flags', async () => {
+test('a same-bytes edit records nothing and answers the current flags', async () => {
 	const sameBytes = {
 		artboardId: 'hero',
 		generation: 4,

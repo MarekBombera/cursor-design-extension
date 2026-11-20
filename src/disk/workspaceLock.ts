@@ -20,7 +20,6 @@ const logLockError = (action: string, error: unknown): void => {
 	);
 };
 
-// `wx` create: true when this caller now holds the lock, false when another holder exists.
 const tryCreateLock = async (lockPath: string, token: string): Promise<boolean> => {
 	let handle: FileHandle;
 	try {
@@ -37,7 +36,7 @@ const tryCreateLock = async (lockPath: string, token: string): Promise<boolean> 
 	} catch (error: unknown) {
 		// A half-made lock must not wait out the stale age: drop it and fail now.
 		// ponytail: cleanup failures are logged, not thrown, so the original error wins; a lock
-		// that could not be unlinked is broken as stale after staleMs.
+		// left behind is broken as stale after staleMs. Upgrade path: retry the unlink.
 		await handle.close().catch((closeError: unknown) => {
 			logLockError('close', closeError);
 		});
@@ -49,7 +48,6 @@ const tryCreateLock = async (lockPath: string, token: string): Promise<boolean> 
 	return true;
 };
 
-// Age of a lock file in ms, or undefined when it is gone.
 const lockAgeMs = async (path: string): Promise<number | undefined> => {
 	try {
 		return Date.now() - (await lstat(path)).mtimeMs;
@@ -71,12 +69,10 @@ const unlinkIfPresent = async (path: string): Promise<void> => {
 	}
 };
 
-// ponytail: stale = mtime older than staleMs, no PID liveness or heartbeat. A hold is one small
-// JSON read-modify-write or one artboard HTML + meta write, far below 30s.
-// Upgrade path: heartbeat the mtime during long holds.
-// Only the holder of `.lock.break` (wx) may remove a stale lock, and it re-checks staleness
-// under it. Nothing else removes a lock it does not own, so the re-check cannot race: a fresh
-// lock a waiter just created is never broken. True when the next attempt should run at once.
+// ponytail: stale = mtime older than staleMs, no PID or heartbeat; every hold (one JSON
+// read-modify-write or one HTML + meta write) is far below 30 s. Upgrade path: heartbeat the mtime.
+// Only the `.lock.break` holder (wx) removes a stale lock, re-checking under it, so a waiter's
+// fresh lock is never broken. True = retry at once.
 const breakIfStale = async ({
 	lockPath,
 	token,
@@ -96,7 +92,7 @@ const breakIfStale = async ({
 	const breakPath = `${lockPath}.break`;
 	if (!(await tryCreateLock(breakPath, token))) {
 		// ponytail: a break lock left by a process that crashed mid-break is removed once it is
-		// staleMs old; that removal can race only after such a crash.
+		// staleMs old; that removal can race only after such a crash. Upgrade path: a PID check.
 		const breakAge = await lockAgeMs(breakPath);
 		if (breakAge !== undefined && breakAge > staleMs) {
 			await unlinkIfPresent(breakPath);
@@ -117,7 +113,8 @@ const breakIfStale = async ({
 };
 
 // ponytail: check-then-unlink is not atomic; a breaker could replace the file between the read
-// and the unlink. Only possible after a 30s+ hold, which a canvas write never reaches.
+// and the unlink, only after a 30 s+ hold, which no locked write reaches. Upgrade path: rename to
+// a unique name first, then check the token.
 const releaseLock = async (lockPath: string, token: string): Promise<void> => {
 	try {
 		if ((await readFile(lockPath, 'utf8')) === token) {
@@ -128,7 +125,7 @@ const releaseLock = async (lockPath: string, token: string): Promise<void> => {
 			return;
 		}
 		// ponytail: release failure is logged and swallowed so the operation's own result wins; a
-		// leftover lock is broken as stale after staleMs.
+		// leftover lock is broken as stale after staleMs. Upgrade path: retry the unlink.
 		logLockError('release', error);
 	}
 };

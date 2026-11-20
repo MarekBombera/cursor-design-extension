@@ -1,4 +1,5 @@
-// ponytail: one process-wide queue (coarser than per-id); upgrade if a second writer is proven
+// ponytail: one process-wide queue for every tool, reads included. Upgrade path: let read-only
+// tools skip it; writes stay serialized (they share the one workspace lock anyway).
 let diskOpQueue: Promise<void> = Promise.resolve();
 
 export const enqueueDiskOp = <T>(operation: () => Promise<T>): Promise<T> => {

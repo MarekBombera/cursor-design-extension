@@ -243,7 +243,7 @@ test('a frame label shows the width alone until the first height report, and a t
 	assert.equal(frameSizeText(demoteToTile(reported)), '');
 });
 
-// 9e: the user's own edit. Base: hash h0, generation 1; the answer: h1, generation 2.
+// The user's own edit. Base: hash h0, generation 1; the answer: h1, generation 2.
 const base = (): FrameRecord => measured('a');
 const answer = {
 	html: '<p>edited</p>',
@@ -322,7 +322,7 @@ test('a forced reload rebuilds from the latest adopted copy, once', () => {
 	assert.equal(reloadFrame(tile), tile);
 });
 
-test('9f: undo / redo flags follow posts and answers; a stale pre-write post keeps them', () => {
+test('undo / redo flags follow posts and answers; a stale pre-write post keeps them', () => {
 	const fresh = only(mergeCanvasFrames({ records: [], frames: [posted('a')] }));
 	assert.deepEqual([fresh.canUndo, fresh.canRedo], [false, false]);
 	const record = adopted();

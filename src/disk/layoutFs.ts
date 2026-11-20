@@ -26,8 +26,6 @@ import {
 } from './layout';
 import { type ArtboardManifest, type ArtboardMeta, parseManifest, parseMeta } from './parse';
 
-// Layout-safe fs primitives and the manifest / meta / canvas.json reads every disk job shares.
-
 export const workspaceJoin = (workspaceRoot: string, segments: readonly string[]): string =>
 	join(workspaceRoot, ...segments);
 
@@ -49,8 +47,10 @@ type LayoutEntryKind = 'missing' | 'symlink' | 'file' | 'other';
 
 // lstat (never stat) at every level: the id charset already blocks `..`, so rejecting
 // symlinks here keeps layout I/O under {workspaceRoot}/.cursor-design/ without realpath.
-// ponytail: reads still check-then-act; writeUtf8 unlinks tmp then wx-writes so a leftover
-// symlink tmp cannot redirect the payload; rename replaces the dest name (does not follow it).
+// ponytail: reads check then act, so a symlink swapped in between is followed. Writes are safe:
+// writeUtf8 unlinks the tmp then wx-writes (a leftover symlink tmp cannot redirect the payload),
+// and rename replaces the name without following it. Upgrade path: open reads with O_NOFOLLOW and
+// fstat the handle.
 export const layoutEntryKind = async (filePath: string): Promise<LayoutEntryKind> => {
 	const fileStats = await lstatOrUndefined(filePath);
 	if (fileStats === undefined) {
@@ -211,7 +211,7 @@ export const readManifestFileLenient = async (
 	}
 };
 
-// Reads the stored canvas.json; a missing file is an empty layout, a bad one throws and is never overwritten.
+// A missing file is an empty layout; a bad one throws and is never overwritten.
 export const readCanvasLayoutFile = async (workspaceRoot: string): Promise<CanvasLayout> => {
 	const text = await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, canvasPathSegments));
 	if (text === undefined) {

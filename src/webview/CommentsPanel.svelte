@@ -9,10 +9,8 @@
 	import Icon from './ui/Icon.svelte';
 	import Message from './ui/Message.svelte';
 
-	// Every comment in comments.json, unresolved first. Always mounted (the toolbar toggle's
-	// aria-controls must resolve); its content renders only while open, so a closed panel costs
-	// nothing on each cd:anchor-rects. First in the DOM so Tab reaches it before the stage; CSS
-	// `order` draws it on the right.
+	// Always mounted (the toolbar toggle's aria-controls must resolve); its content renders only
+	// while open, so a closed panel costs nothing on each cd:anchor-rects.
 	type Props = {
 		open: boolean;
 		items: { unresolved: PanelItem[]; resolved: PanelItem[] };
@@ -26,12 +24,11 @@
 		onReplyCancel: (id: string) => void;
 		onReplySubmit: (id: string) => void;
 		onToggleStatus: (id: string) => void;
-		// copyPending: a copy is in flight, so every Copy button waits (one copy at a time).
+		// A copy is in flight, so every Copy button waits (one copy at a time).
 		copyBlocked: boolean;
 		// The button whose copy just succeeded, while its "Copied" shows.
 		copied: CopiedButton | undefined;
 		copyOpen: CopyOpenState;
-		// Open / sent / resolved counts: the summary line and the handoff button.
 		summary: PanelSummary;
 		onCopy: (id: string) => void;
 		onCopyOpen: () => void;
@@ -75,7 +72,6 @@
 		}
 	};
 
-	// Read by the focus effects only, so not reactive.
 	let aside: HTMLElement | undefined;
 	type KeptFocus = { id: string; key: string | undefined };
 	// The focused item and control before a list update; set by the pre-pass, cleared after.
@@ -204,7 +200,6 @@
 						{/each}
 					</p>
 				{/if}
-				<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
 				<div class="handoff">
 					<Button
 						variant={handoff.copied ? 'secondary' : 'primary'}
@@ -241,8 +236,7 @@
 </aside>
 
 <style>
-	/* A column: the header, then the list, which is the scroller. No display rule fights [hidden]:
-	   the global rule wins. */
+	/* display: flex is safe: the global [hidden] rule is !important. */
 	aside {
 		order: 1;
 		display: flex;
@@ -257,7 +251,7 @@
 		border-left: 1px solid var(--cd-divider);
 		background: var(--cd-bg-chrome);
 	}
-	/* Focused by script only, as a fallback when focus would drop to body; it is not a control. */
+	/* Script-only focus fallback (restoreFocus), not a control. */
 	aside:focus {
 		outline: none;
 	}
@@ -302,7 +296,6 @@
 		align-items: center;
 		gap: var(--cd-space-4);
 	}
-	/* Each count's status icon in its meaning colour; the text stays --cd-fg-2. */
 	.summary-icon {
 		display: inline-flex;
 	}

@@ -1,7 +1,6 @@
-// Pure stage math for the chrome and, through `?iife`, the exported canvas.html. Every function
-// takes one object and returns new values, with no DOM and nothing global except Math.
-// View { x, y, zoom } maps stage px to screen px: screen = stage * zoom + (x, y), which is
-// CSS translate(x, y) scale(zoom) with transform-origin 0 0.
+// Stage math for the chrome and, through `?iife`, the exported canvas.html: no DOM, nothing global
+// except Math. View: screen = stage * zoom + (x, y), i.e. CSS translate(x, y) scale(zoom) with
+// transform-origin 0 0.
 
 import {
 	MAX_FRAME_COORDINATE,
@@ -35,7 +34,7 @@ export const MIN_STAGE_ZOOM = 0.05;
 export const MAX_STAGE_ZOOM = 10;
 const ZOOM_STEP_CAP = 0.2;
 const ZOOM_SENSITIVITY = 0.01;
-// Also the exported canvas.html page padding (handoffCanvasHtml.ts).
+// Also the exported canvas.html page padding.
 export const FIT_PADDING = 48;
 const KEEP_VISIBLE = 48;
 
@@ -391,12 +390,11 @@ export const jumpStageView = ({
 	};
 };
 
-// Frame drag/resize gestures land on whole stage px (no grid, like Figma's pixel snap).
 const GESTURE_THRESHOLD_PX = 3;
 export const NUDGE_STEP = 8;
 export const NUDGE_STEP_LARGE = 64;
 
-// `+ 0` turns -0 into 0 so a rounded value never serializes as -0.
+// Gestures land on whole stage px (no grid). `+ 0` turns -0 into 0 so it never serializes as -0.
 export const roundToPixel = (value: number): number => Math.round(value) + 0;
 
 const clampCoordinate = (value: number): number =>

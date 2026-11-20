@@ -44,7 +44,7 @@ export type ListArtboardsResult = {
 
 export type CanvasViewFrame = CanvasFrame & {
 	generation: number;
-	// hashHtml of the disk HTML as read (9c: the panel's edit base); '' when it was not readable.
+	// hashHtml of the disk HTML as read (the panel's edit base); '' when it was not readable.
 	hash: string;
 	html: string;
 	errorMessage?: string;
@@ -130,7 +130,6 @@ const pushUnreadableMeta = ({
 	artboards.push(entry);
 };
 
-// Shared artboard scan for list_artboards (strict HTML) and the panel canvas view (tolerant HTML).
 export const scanArtboardFiles = async ({
 	workspaceRoot,
 	tolerateHtmlDiskError,
@@ -196,8 +195,9 @@ export const scanArtboardFiles = async ({
 			storedMeta = await readStoredMeta(workspaceRoot, candidateId);
 		} catch (error: unknown) {
 			if (error instanceof DiskError || error instanceof CorruptMetaError) {
-				// ponytail: list is scan-tolerant; symlink / foreign-id meta omits generation
-				// instead of failing the whole list (read_artboard still errors on those ids).
+				// ponytail: an unreadable meta (symlink, corrupt, foreign id) lists the artboard
+				// without a generation instead of failing the list; read_artboard still errors on
+				// it. Upgrade path: carry the meta error on the listed entry.
 				pushUnreadableMeta({
 					artboards,
 					candidateId,
@@ -250,8 +250,8 @@ export const scanArtboardFiles = async ({
 	return scanned;
 };
 
-// The one hash rule per scanned artboard: hashHtml of the disk HTML as read, never the stored meta
-// hash (its hex case is as written); undefined when the file was not readable.
+// hashHtml of the disk HTML as read, never the stored meta hash (its hex case is as written);
+// undefined when the file was not readable.
 const scannedHashes = (scanned: ScannedArtboards): Map<string, string | undefined> =>
 	new Map(
 		scanned.artboards.map(({ artboardId, html, errorMessage }) => [
@@ -260,8 +260,7 @@ const scannedHashes = (scanned: ScannedArtboards): Map<string, string | undefine
 		]),
 	);
 
-// One compare for handoff_status and the panel badge. An unreadable frame has no hash, so it
-// counts as changed (fail closed). readCanvasView passes the hashes it already computed.
+// An unreadable frame has no hash, so it counts as changed (fail closed).
 export const compareScannedHandoff = (
 	scanned: ScannedArtboards,
 	hashes: ReadonlyMap<string, string | undefined> = scannedHashes(scanned),
@@ -287,7 +286,6 @@ const resolveLayoutOrEmpty = async (
 	}
 };
 
-// Lists artboard ids plus resolved stage frames (stored canvas.json entries, then auto-placed). Read-only.
 export const listArtboards = async ({
 	workspaceRoot,
 }: ListArtboardsArgs): Promise<ListArtboardsResult> => {
@@ -304,7 +302,6 @@ export const listArtboards = async ({
 	return { activeArtboardId: scanned.activeArtboardId, artboards, frames };
 };
 
-// Panel canvas snapshot: same resolved frames as list_artboards, plus each artboard's HTML. Never writes.
 export const readCanvasView = async ({
 	workspaceRoot,
 }: ReadCanvasViewArgs): Promise<CanvasView> => {

@@ -14,9 +14,7 @@ export type BuildArtboardChromeHtmlArgs = {
 	extensionUri: vscode.Uri;
 };
 
-// The webview shell: CSP, the Svelte chrome bundle, and its mount point. Everything else is
-// rendered by src/webview/ (Svelte). The nonce also stamps artboard script/style tags in the
-// blob frames, which inherit this CSP.
+// The nonce also stamps artboard script and style tags in the blob frames, which inherit this CSP.
 export const buildArtboardChromeHtml = ({
 	webview,
 	extensionUri,

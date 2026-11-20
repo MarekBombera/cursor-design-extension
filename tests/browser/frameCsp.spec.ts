@@ -171,7 +171,7 @@ test('under the chrome CSP, a styled frame and its pin log no violation', async 
 	expect(violations).toEqual([]);
 });
 
-// The chrome CSP's style-src-attr lets an artboard's style attributes render (Edit-lite writes
+// The chrome CSP's style-src-attr lets an artboard's style attributes render (Edit mode writes
 // them), whether written in the file or set by its script, while an inline on* handler stays
 // blocked by script-src and a url() inside a style attribute stays blocked by FRAME_CSP.
 const STYLE_ATTRIBUTE_PAGE = `<!doctype html><html><head>
@@ -234,8 +234,6 @@ test('under the chrome CSP, style attributes render, inline handlers and style u
 			getComputedStyle(document.querySelector('.b')!).color,
 		]),
 	).toEqual(['rgb(4, 5, 6)', 'rgb(7, 8, 9)']);
-	// clickAt, not frame.click: its scroll-into-view pans the stage (harness.ts). The stage fits
-	// the frame at its zoom, so the button's box is scaled to screen px.
 	await clickAt(page, centerOf(await frameElementBox({ page, frameId: 'a', selector: 'button' })));
 	await expect
 		.poll(() => frame.evaluate(() => (window as { __listener?: boolean }).__listener))

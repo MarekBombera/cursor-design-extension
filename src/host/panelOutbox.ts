@@ -42,12 +42,10 @@ type PanelOutbox = {
 	reset: () => void;
 };
 
-// What the chrome sees, and when: nothing before artboard:ready, then the latest view, status and
-// comments. Answers to a chrome request are never held: a chrome that reloaded has no request.
-// The vscode glue (openArtboardPanel.ts) owns the panel; this owns only the pending state.
-// 9f: every new snapshot is checked against the undo history (keepUnchangedHistories) whatever
-// its caller, and each canvas:updated reads the history flags when it is sent, so a replay after a
-// webview reload is never stale.
+// Nothing before artboard:ready, then the latest view, status and comments. Answers are never
+// held: a chrome that reloaded has no request. Every new snapshot goes through
+// keepUnchangedHistories whatever its caller, and each canvas:updated reads the history flags when
+// sent, so a replay after a webview reload is never stale.
 export const createPanelOutbox = ({
 	post,
 	readCspNonce,
@@ -56,7 +54,7 @@ export const createPanelOutbox = ({
 }: {
 	post: (message: HostMessage) => void;
 	readCspNonce: () => string;
-	// editHistory.ts's own, injected so the outbox stays testable without the module store.
+	// Injected so the outbox stays testable without editHistory's module store.
 	readHistoryFlags: typeof editHistory.historyFlags;
 	keepUnchangedHistories: typeof editHistory.keepUnchangedHistories;
 }): PanelOutbox => {

@@ -4,14 +4,12 @@
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons';
 
-	// Every icon-only button (toolbar, widget headers). `label` is the accessible name and, unless
-	// rest sets a title, the tooltip. aria-pressed / aria-expanded render VS Code's toggle style.
-	// The count badge is visual only (aria-label replaces the content), so a `label` must say any
-	// count it shows: "Comments, 3 unresolved".
+	// `label` is the accessible name and, unless rest sets a title, the tooltip. The count badge is
+	// visual only (aria-label replaces the content), so `label` must say any count it shows:
+	// "Comments, 3 unresolved".
 	type Props = Omit<HTMLButtonAttributes, 'class' | 'children' | 'aria-label'> & {
 		icon: IconName;
 		label: string;
-		// Shown as a badge when above zero.
 		count?: number;
 	};
 

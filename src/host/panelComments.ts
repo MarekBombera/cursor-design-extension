@@ -29,8 +29,7 @@ import {
 import { InvalidArgsError, NoWorkspaceError, toSafeArtboardErrorMessage } from '../disk/errors';
 import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
 
-// vscode glue only: chromeMessages.ts maps, the disk lib decides, the outbox times the posts.
-// Neither export ever rejects.
+// vscode glue only. Neither export ever rejects.
 
 const READ_FALLBACK_MESSAGE = 'Could not read comments. Check the Output panel: Cursor Design.';
 
@@ -74,14 +73,12 @@ const LOG_SCOPES = {
 	'comment:copy-open': 'panelComments.copyOpen',
 } as const;
 
-// One comment request attempt, answered exactly once (comment:added, comment:saved or ui:copied,
-// else ui:error) unless it has no usable requestId to answer to. replyToComment, setCommentStatus
-// and markCommentsSent take withWorkspaceLock themselves: never wrap them.
-// Copy (8h): clipboard first, then markCommentsSent, so a failed write never marks anything sent;
-// every copy answer, success or error, is followed by a refresh (a stale Copy all open count
-// corrects itself).
-// ponytail: getComment / listComments compute flags the prompt never uses, bounded by the shared
-// 200 ms target-check budget and the parse cache. Upgrade path: a flag-free disk read.
+// Answered exactly once unless it has no usable requestId. The disk writes take
+// withWorkspaceLock themselves: never wrap them.
+// Copy: clipboard first, then markCommentsSent, so a failed write marks nothing sent; every copy
+// answer, success or error, is followed by a refresh (a stale Copy all open count corrects itself).
+// ponytail: getComment / listComments compute flags the prompt never uses, bounded by the 200 ms
+// check budget and the parse cache. Upgrade path: a flag-free disk read.
 export const answerCommentRequest = async ({
 	value,
 	outputChannel,

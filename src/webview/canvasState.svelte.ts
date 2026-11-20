@@ -45,11 +45,7 @@ import {
 	zoomStageTo,
 } from './stageGeometry';
 
-// The artboard on the stage: the frames as the host last posted them, the pan / zoom view, a frame
-// move or resize in progress, the iframe registry and the root scroll sink. The rules live in
-// canvasFrames.ts, frameGesture.ts and stageGeometry.ts.
 export class CanvasState {
-	// First-seen order; never reordered (moving an iframe in the DOM reloads it).
 	frames: FrameRecord[] = $state([]);
 	artboardId = $state('');
 	generation = $state('');
@@ -59,20 +55,18 @@ export class CanvasState {
 	handoffStale = $state(false);
 	committedView: StageView | undefined = $state();
 	gesture: FrameGesture | undefined = $state();
-	// A canvas:updated arrived (resolveHeldThread).
+	// Set by the first canvas:updated, even one with no frames.
 	framesKnown = $state(false);
-	// The popover places itself inside the viewport.
+	// $state: the popover and the thread place themselves inside the viewport.
 	viewportWidth = $state(0);
 	viewportHeight = $state(0);
 
-	// Not reactive: the iframe registry is matched against event.source at message time, and
-	// the view is read by handlers when they run.
+	// Not $state: read at message or handler time only.
 	readonly iframes = new Map<string, HTMLIFrameElement>();
 	readonly #savedView = readSavedStageView();
 	#stageView: StageView = this.#savedView ?? { x: 0, y: 0, zoom: 1 };
 	#initialViewApplied = false;
-	// Scroll sink (frameGesture.ts): where the last scroll back landed, and when the last frame
-	// wheel or sink pan happened.
+	// Scroll sink: where the last recentre landed, and the last frame wheel or sink pan.
 	#sinkRestX = 0;
 	#sinkRestY = 0;
 	#lastSinkGestureAt = Number.NEGATIVE_INFINITY;
@@ -97,13 +91,12 @@ export class CanvasState {
 			: `translate(${this.committedView.x}px, ${this.committedView.y}px) scale(${this.committedView.zoom})`,
 	);
 
-	// The drawn frame a comment can jump to: only a live iframe, never a tile or an absent frame.
 	jumpFrame = (comment: PostedComment): FrameRecord | undefined =>
 		liveIframeIds(this.frames).has(comment.frameId)
 			? this.displayFrames.find((frame) => frame.id === comment.frameId)
 			: undefined;
 
-	// The single write path for the view: clamp, transform the layer, readout, save.
+	// The view's one write path.
 	commitStageView = (nextView: StageView): void => {
 		const bounds = this.layout.bounds;
 		if (bounds === null || this.viewportWidth === 0 || this.viewportHeight === 0) {
@@ -119,8 +112,7 @@ export class CanvasState {
 		saveStageView(this.#stageView);
 	};
 
-	// Runs once per webview load: the saved view, or a fit on first open. Later edits and
-	// artboard switches keep whatever view the user has.
+	// Once per webview load: later edits and artboard switches keep the user's view.
 	#applyInitialView = (): void => {
 		if (this.#initialViewApplied) {
 			return;
@@ -143,8 +135,6 @@ export class CanvasState {
 	applyCanvasUpdated = (message: CanvasUpdatedMessage): void => {
 		this.artboardId = message.activeArtboardId;
 		this.nonce = message.cspNonce;
-		// A deleted artboard file (or an entry that failed validation) leaves the stage; its
-		// Frame unmounts and revokes its blob URL.
 		this.frames = mergeCanvasFrames({ records: this.frames, frames: message.frames });
 		// From the merged record, so a skipped stale pre-write post cannot move the label back.
 		const active = this.frames.find((frame) => frame.id === message.activeArtboardId);
@@ -170,7 +160,6 @@ export class CanvasState {
 		this.gesture = failFrameGesture(this.gesture);
 	};
 
-	// Every chrome → frame send goes to a registered iframe (the `iframes` map).
 	sendToFrame = (frameId: string, message: ChromeFrameMessage): void => {
 		const iframe = this.iframes.get(frameId);
 		if (iframe !== undefined) {
@@ -198,7 +187,6 @@ export class CanvasState {
 	): void => {
 		// The gesture may leave this frame and continue as root scroll (handleSinkScroll).
 		this.#lastSinkGestureAt = performance.now();
-		// The frame reports frame-local coordinates; the wheel anchor is the viewport point under it.
 		const anchor = stageToScreen({
 			view: this.#stageView,
 			stageX: frame.x + message.x,
@@ -242,13 +230,13 @@ export class CanvasState {
 		}
 	};
 
-	// A key with chrome focus ends any frame gesture, so the root scroll it causes (PageDown,
-	// Space, arrows) never pans through the scroll sink.
+	// A key with chrome focus ends the sink gesture, so the root scroll it causes (PageDown, Space,
+	// arrows) never pans the stage.
 	endSinkGesture = (): void => {
 		this.#lastSinkGestureAt = Number.NEGATIVE_INFINITY;
 	};
 
-	// The body's hidden scroll room comes from the one constant (CSSOM, allowed by the nonce CSP).
+	// Here, not in theme.css, so SCROLL_SINK_ROOM stays the one constant (CSSOM passes the CSP).
 	installScrollSink = (): void => {
 		document.body.style.width = `calc(100% + ${SCROLL_SINK_ROOM}px)`;
 		document.body.style.height = `calc(100% + ${SCROLL_SINK_ROOM}px)`;
@@ -316,8 +304,8 @@ export class CanvasState {
 		this.#updateFrame(id, demoteToTile);
 	};
 
-	// 9e: the host's answer to the user's own edit (9f: or undo / redo), based on `baseHash`; no
-	// reload. False when a newer post already won and the record was left as it was.
+	// The host's answer to an edit or undo / redo based on `baseHash`; no reload. False when a newer
+	// post already won and the record is unchanged.
 	adoptEditAnswer = (answer: ArtboardEditedMessage, baseHash: string): boolean => {
 		const record = this.frames.find((frame) => frame.id === answer.frameId);
 		if (record === undefined) {
@@ -334,8 +322,8 @@ export class CanvasState {
 		return true;
 	};
 
-	// 9e: a refused edit drops its preview by rebuilding the iframe from the latest adopted copy;
-	// 9f: a written undo / redo shows the restored file the same way.
+	// Rebuilds the iframe from the latest adopted copy: drops a refused edit's preview, and shows the
+	// file a written undo / redo restored.
 	reloadFrame = (id: string): void => {
 		this.#updateFrame(id, reloadFrame);
 	};

@@ -135,8 +135,8 @@ test('two callers racing on the same stale lock both finish, one at a time', asy
 	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
 });
 
-// F-18: several callers racing one stale lock. The old rename + inode + link-back break let two
-// callers hold at once here; the `.lock.break` sub-lock must not.
+// A rename + inode + link-back break lets two of several racing callers hold a stale lock at
+// once; the `.lock.break` sub-lock must not.
 test('many rounds of several callers racing a stale lock never overlap', async () => {
 	for (let round = 0; round < 15; round += 1) {
 		const workspaceRoot = await makeTempRoot();
@@ -151,7 +151,7 @@ test('many rounds of several callers racing a stale lock never overlap', async (
 	}
 });
 
-// F-23: a breaker that crashed mid-break leaves `.lock.break`; once it is stale too, the next
+// A breaker that crashed mid-break leaves `.lock.break`; once it is stale too, the next
 // waiter must clear it and break the stale lock, or every writer stays WORKSPACE_BUSY forever.
 test("a stale lock plus a crashed breaker's stale .lock.break is cleared and the operation runs", async () => {
 	const workspaceRoot = await makeTempRoot();

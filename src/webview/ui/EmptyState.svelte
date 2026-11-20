@@ -5,8 +5,7 @@
 	import Icon from './Icon.svelte';
 	import type { IconName } from './icons';
 
-	// VS Code's welcome-view look: centred in whatever space its parent gives it (auto margins), an
-	// icon, a title, what to do next, and optionally an example of what to ask for.
+	// VS Code's welcome-view look, centred by auto margins in whatever space its parent gives it.
 	type Props = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'children' | 'title'> & {
 		icon: IconName;
 		title: string;

@@ -25,7 +25,6 @@ import {
 } from './pickTarget';
 import { describeContent, describeElement, type PickDescription } from './selector';
 
-// A pick's description, with the edit target's fields in Edit mode.
 type Described = PickDescription & Pick<FramePickMessage, 'edit'>;
 
 const isRoot = (element: Element): boolean =>
@@ -38,9 +37,8 @@ const toFrameRect = (box: DOMRect): FrameRect => ({
 	height: box.height,
 });
 
-// Frame-local client px, clipped to scrolling ancestors and the frame viewport. html and body
-// are not clip boxes: their overflow applies to the viewport, which is clipped last. Shared by
-// picking and the pin anchors (pinAnchors.ts).
+// Frame-local client px, clipped by every ancestor whose overflow is not visible, then the
+// viewport. html and body are not clip boxes: their overflow applies to the viewport.
 export const visibleRect = (element: Element): FrameRect | null => {
 	if (!element.isConnected) {
 		return null;
@@ -64,14 +62,11 @@ export const visibleRect = (element: Element): FrameRect | null => {
 	return clipRect(toFrameRect(element.getBoundingClientRect()), clips);
 };
 
-// Comment mode (8d1) and Edit mode (9d) share this picker. Chrome sends cd:mode /
-// cd:pick-parent / cd:pick-child; outside Interact mode the runtime blocks the design's own input
-// and reports what a click picks, plus the edit target's fields in Edit mode. It writes to the
-// design DOM only through cd:edit-apply, in Edit mode (9e preview). Part of the frame runtime: runtime.ts calls this after capturing `host`, before
-// cd:ready.
+// Outside Interact mode the runtime blocks the design's own input and reports what a click picks.
+// It writes the design DOM only through cd:edit-apply, in Edit mode.
 export const installCommentPicking = (host: Window): void => {
 	let mode: FrameMode = 'interact';
-	// Index 0 is the clicked element, the last entry the current pick; empty means no pick.
+	// Empty means no pick.
 	let path: readonly Element[] = [];
 	// The click inside path[0]'s unclipped box, so the pick point follows the element.
 	let anchorOffset = { x: 0, y: 0 };
@@ -95,7 +90,6 @@ export const installCommentPicking = (host: Window): void => {
 		| undefined;
 	let pendingRepost: number | undefined;
 
-	// SVG internals resolve to the outermost <svg>.
 	const resolve = (element: Element): Element => {
 		let current = element;
 		while (current instanceof SVGElement && current.ownerSVGElement !== null) {
@@ -154,8 +148,8 @@ export const installCommentPicking = (host: Window): void => {
 			: described;
 	};
 
-	// 9e: the current pick's description after a preview or on request, reusing the cached
-	// selector (a text or inline-style change cannot move the element, and finder is slow).
+	// Reuses the cached selector: a text or inline-style change cannot move the element, and finder
+	// is slow.
 	const refreshCurrent = (): void => {
 		const current = path.at(-1);
 		const cached = current === undefined ? undefined : descriptions.get(current);
@@ -188,9 +182,8 @@ export const installCommentPicking = (host: Window): void => {
 			: { x: 0, y: 0 };
 
 	// Every post recomputes rect and point; the descriptions are kept, so scrolls skip finder.
-	// A click or step forces the post; a re-post is skipped when chrome already has this pick.
-	// force skips the unchanged check; repost is the flag the chrome reads (a re-post never starts a
-	// new pick there).
+	// `force` skips the unchanged check; `repost` is the flag the chrome reads (a re-post never
+	// starts a new pick there).
 	const postPick = ({ force, repost }: { force: boolean; repost: boolean }): void => {
 		const anchor = path[0];
 		const current = path.at(-1);
@@ -243,7 +236,6 @@ export const installCommentPicking = (host: Window): void => {
 		lastPosted = next;
 	};
 
-	// Posts only when the hovered element or its rect changed.
 	const postHover = (element: Element | undefined): void => {
 		const rect = element === undefined ? null : visibleRect(element);
 		if (hover !== undefined && hover.element === element && sameRect(hover.rect, rect)) {
@@ -390,17 +382,14 @@ export const installCommentPicking = (host: Window): void => {
 		}
 	};
 
-	// At most one re-post per animation frame, however many boxes scroll in it.
 	const repostRects = (): void => {
 		if (mode !== 'interact' && pendingRepost === undefined) {
 			pendingRepost = requestAnimationFrame(repostFrame);
 		}
 	};
-	// 9e preview: the one element numbered N gets the text or style attribute the chrome computed
-	// (the edit core's own rules). Text only where the element holds plain text, as the core
-	// requires. The chrome never sends text for void or raw-text elements (inspectorView gives them
-	// no text field) and script / style / title / textarea carry no number, so the tag sets stay out
-	// of the runtime's size budget.
+	// The live preview. Text only where the element holds plain text, as the edit core requires.
+	// The chrome never sends text for void or raw-text elements, and script / style / title /
+	// textarea carry no number, so the tag sets stay out of the runtime's size budget.
 	const applyEdit = (message: EditApplyMessage): void => {
 		const matches = document.querySelectorAll(
 			`[${SOURCE_TAG_ATTRIBUTE}="${message.sourceNumber}"]`,

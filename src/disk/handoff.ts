@@ -30,8 +30,8 @@ const groupFolderSlug = (group: string): string => {
 	return slug.length > 0 ? slug : EMPTY_SLUG_FOLDER;
 };
 
-// Frame id -> handoff folder. Group names never become paths verbatim: they are slugged,
-// and `ungrouped` is reserved first when any frame has no group.
+// Group names never become paths verbatim: they are slugged, and `ungrouped` is reserved first
+// when any frame has no group.
 export const assignGroupFolders = (
 	frames: readonly { id: string; group?: string }[],
 ): Map<string, string> => {

@@ -9,7 +9,6 @@ const add = (definition: StateDefinition): void => {
 	stageStates.push(definition);
 };
 
-// 3. Stage
 const stageState = (
 	state: string,
 	setup: string,

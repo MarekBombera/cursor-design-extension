@@ -38,9 +38,6 @@ import {
 	untilHeightReported,
 } from './harness';
 
-// 9d Edit mode + selection: the frame reports edit fields in Edit mode, and the inspector shows
-// them in disabled fields.
-
 const EDIT_FRAME = editFrame({ id: 'a', label: 'Edit' });
 
 const openEditStage = async (page: Page): Promise<void> => {
@@ -319,8 +316,6 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 	await expect(inspector(page)).toHaveCount(0);
 	await expect(boxOf(page.locator('.viewport'))).resolves.toBeDefined();
 });
-
-// ---- 9e Edit fields + save ----------------------------------------------------------------------
 
 const editsPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((data): data is Record<string, unknown> =>
@@ -622,8 +617,6 @@ test('C typed in a field stays in Edit mode', async ({ page }) => {
 	await expect(inspector(page)).toBeVisible();
 });
 
-// ---- 9f Undo / redo ------------------------------------------------------------------------------
-
 const historyPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((data): data is Record<string, unknown> =>
 		isMessageOfType(data, 'artboard:history'),
@@ -778,7 +771,7 @@ test('Undo without history ignores a click and keeps focus; a post without the f
 	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
 });
 
-// ---- 9f keyboard (kept only for the paths the F5 spike passes) ----------------------------------
+// Keyboard steps: only the paths that work in Cursor under F5 are tested here.
 
 const focusFrame = (page: Page, frameId: string): Promise<void> =>
 	page.locator(`[data-cd-frame-id="${frameId}"] iframe`).focus();
@@ -848,7 +841,7 @@ test('Cmd/Ctrl+Z in the Text field stays the field’s own undo', async ({ page 
 	expect(await historyPosted(page)).toHaveLength(0);
 });
 
-test('F-146: a pick from a frame without focus never retargets Undo / Redo', async ({ page }) => {
+test('a pick from a frame without focus never retargets Undo / Redo', async ({ page }) => {
 	await openHarness(page, { savedView: { x: 0, y: 0, zoom: 1 } });
 	await postToChrome(
 		page,

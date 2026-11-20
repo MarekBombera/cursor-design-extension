@@ -19,7 +19,6 @@ const add = (definition: StateDefinition): void => {
 	focusStates.push(definition);
 };
 
-// 8. Keyboard focus
 const focusState = ({
 	state,
 	setup,

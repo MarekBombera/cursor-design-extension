@@ -1,6 +1,4 @@
-// In-house inline-style editing (0.4): find where each declaration of a style attribute starts
-// and ends, as written in the HTML, so an edit changes or appends only the declarations it
-// touches and every other character stays as it was.
+// An edit changes or appends only the declarations it touches; every other character stays.
 
 const longhandsOf = (shorthand: string): readonly string[] =>
 	[
@@ -27,9 +25,9 @@ const LONGHANDS = new Map<string, readonly string[]>([
 ]);
 
 // Named references that spell CSS syntax; numeric references are always decoded.
-// ponytail: any other named reference, and any reference without its `;` (legacy `&quot`, `&#59`),
-// reads as ordinary text, so a style that spells CSS syntax that way may mis-split. Upgrade path:
-// the full HTML entity table and HTML's no-semicolon rules.
+// ponytail: any other named reference, or one without its `;` (`&quot`, `&#59`), reads as text,
+// so CSS syntax spelled that way may mis-split. Upgrade path: the full HTML entity table and its
+// no-semicolon rules.
 const NAMED_SYNTAX = new Map([
 	['quot', '"'],
 	['apos', "'"],
@@ -117,7 +115,6 @@ type ScannedSegment = {
 
 type ScannedStyle = { segments: ScannedSegment[]; endsOpen: boolean };
 
-// The value span after the colon: surrounding whitespace and a trailing !important left out.
 const valueSpan = ({
 	styleText,
 	start,
@@ -206,7 +203,6 @@ const scanStyle = (styleText: string): ScannedStyle => {
 };
 
 export type StyleSegment = {
-	// Raw text from after the previous separator up to this one.
 	text: string;
 	// The raw separator (`;`, `&semi;`, `&#59;`, ...), or '' for the last segment.
 	separator: string;
@@ -254,8 +250,7 @@ const removeProperties = (styleText: string, properties: ReadonlySet<string>): s
 	return output;
 };
 
-// Removes every declaration of `property` and, for padding or margin, of its longhands. An
-// absent property gives back the input unchanged; an emptied attribute stays `style=""`.
+// An absent property gives back the input unchanged; an emptied attribute stays `style=""`.
 export const removeStyleProperty = (styleText: string, property: string): string =>
 	removeProperties(styleText, new Set([property, ...(LONGHANDS.get(property) ?? [])]));
 
@@ -293,10 +288,9 @@ const lastIndexOfProperty = (segments: ScannedSegment[], property: string): numb
 	return -1;
 };
 
-// Sets `property` to `value` (already validated: no quote, `;`, comment or other syntax): the
-// last occurrence's value changes in place, keeping its spacing and `!important`; otherwise one
-// declaration is appended. Padding and margin then drop their longhands. undefined: the value
-// would have to be appended onto text that ends open (see appendDeclaration).
+// `value` must already pass normalizeStyleValue. The last occurrence's value changes in place,
+// keeping its spacing and `!important`; otherwise one declaration is appended. Padding and margin
+// then drop their longhands. undefined: the value would be appended onto text that ends open.
 // ponytail: earlier duplicates stay, so an earlier `!important` duplicate still wins in the
 // browser. Upgrade path: drop earlier duplicates on set.
 export const setStyleProperty = ({

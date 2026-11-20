@@ -7,11 +7,9 @@ import type {
 	FrameRect,
 } from './frame/frameMessages';
 
-// Picking rules for the chrome, shared by Comment mode and Edit mode (9d). Pure: CommentPicker
-// owns the state, posts the sends, and App draws the outlines.
+// Picking rules for both Comment and Edit mode.
 
-// The chrome's pick: frame data, untrusted, shown only as text. sequence counts picks since the
-// last reset (1, 2, ...).
+// Frame data, untrusted: shown only as text.
 export type ChromePick = { frameId: string; sequence: number } & Omit<FramePickMessage, 'type'>;
 
 export type CommentPickState = {
@@ -35,13 +33,10 @@ export const INITIAL_COMMENT_PICK: CommentPickState = {
 
 const frameModeMessage = (mode: FrameMode): ChromeFrameMessage => ({ type: 'cd:mode', mode });
 
-// A mode button (or the C key, which presses Comment): pressing the active mode returns to
-// Interact; Interact itself stays Interact.
 export const pressedMode = (current: FrameMode, pressed: FrameMode): FrameMode =>
 	pressed === current ? 'interact' : pressed;
 
-// A new mode forgets hover and pick and tells every live frame. The caller skips the same mode
-// (CommentPicker's #setMode), so a repeat never drops a draft either.
+// Callers skip a repeat of the current mode, so a repeat never drops a pick or draft.
 export const chooseMode = ({
 	mode,
 	frameIds,
@@ -56,9 +51,8 @@ export const chooseMode = ({
 	};
 };
 
-// Whether a cd:hover or cd:pick counts in this mode. A design script can post them any time, and
-// a pick can be in flight across a mode change: an Edit-mode pick carries `edit`, a Comment-mode
-// pick never does. The one verdict for the pick state and the comment draft alike.
+// A design script can post cd:hover / cd:pick any time, and a pick can be in flight across a mode
+// change: an Edit-mode pick carries `edit`, a Comment-mode pick never does.
 export const pickCounts = ({
 	mode,
 	message,
@@ -75,8 +69,6 @@ export const pickCounts = ({
 	return (message.edit !== undefined) === (mode === 'edit');
 };
 
-// After canvas:updated: frames that left the stage take their hover and pick with them, and an
-// empty stage leaves Comment or Edit mode.
 export const keepLiveFrames = ({
 	state,
 	liveFrameIds,
@@ -122,7 +114,8 @@ export const applyPickMessage = ({
 	}
 	// One pick across frames: the previous frame forgets its path (cd:mode resets it).
 	// ponytail: a cd:pick already in flight from that frame can still flip the pick back; after
-	// the reset it posts nothing, so the window is one message.
+	// the reset it posts nothing, so the window is one message. Upgrade path: a pick epoch sent in
+	// cd:mode and echoed in cd:pick.
 	const previous = state.pick;
 	// A re-post only moves a pick chrome still holds. One already in flight when the draft closed
 	// (clearPick) would otherwise put the outline back on a frame that forgot its path.
@@ -135,13 +128,13 @@ export const applyPickMessage = ({
 			: [];
 	const { type: _type, ...fields } = message;
 	// Counts picks so the Toolbar's live region text changes even when two picks read the same. A
-	// re-post (scroll, 9e preview) is the same pick: it keeps the count, so nothing is re-announced.
+	// re-post (scroll, edit preview) is the same pick: it keeps the count, so nothing re-announces.
 	const sequence =
 		message.repost && previous !== undefined ? previous.sequence : (previous?.sequence ?? 0) + 1;
 	return { state: { ...state, pick: { frameId, sequence, ...fields } }, sends };
 };
 
-// One pick at a time: the draft closed, so its frame forgets the path too (cd:mode resets it).
+// The frame forgets its path too (cd:mode resets it).
 export const clearPick = (state: CommentPickState): CommentPickStep => ({
 	state: { ...state, pick: undefined },
 	sends:
@@ -155,8 +148,7 @@ export type ModeKeyAction = 'toggle' | 'exit' | 'cancel';
 // C and Escape, from the chrome's own keydown or a frame's cd:key (`forwarded`, already filtered
 // by the runtime). First match wins. While the popover is open it owns keys: only a chrome Escape
 // that reaches here (focus had left the popover) cancels it, so neither C nor a forged cd:key
-// discards a draft. 'toggle' presses Comment (pressedMode(mode, 'comment')); 'exit' returns to
-// Interact from Comment or Edit mode.
+// discards a draft. 'toggle' presses Comment.
 export type ModeKeyInput = {
 	key: string;
 	ctrlKey: boolean;

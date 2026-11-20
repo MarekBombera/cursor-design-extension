@@ -56,7 +56,6 @@ const refreshWatchedArtboard = async ({
 	if (!hasCurrentArtboardPanel()) {
 		return;
 	}
-	// ponytail: last clean writer wins; no cross-window lock
 	const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
 	if (token !== watchGeneration) {
 		return;
@@ -173,7 +172,8 @@ export const replaceArtboardWatcher = ({
 		return;
 	}
 
-	// Re-arm from disk: a marker written while the previous watcher was disposed must still open the panel.
+	// Re-arm from disk: a marker written while the previous watcher was disposed must still open
+	// the panel.
 	void fileExists(markerUri)
 		.then((markerStillThere) => {
 			if (markerStillThere) {

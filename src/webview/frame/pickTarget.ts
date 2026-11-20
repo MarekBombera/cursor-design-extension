@@ -1,5 +1,4 @@
-// Pure hit-test rules for Comment-mode picking. Generic over the element type, so the runtime
-// passes DOM predicates and tests pass plain objects. No DOM types: the runtime bundles this.
+// Generic over the element type, with no DOM types, so tests pass plain objects.
 
 import { MAX_FRAME_COORDINATE } from '../../disk/layout';
 import { clampNumber } from '../stageGeometry';
@@ -16,8 +15,8 @@ type PickTargetArgs<T> = {
 	contains: (ancestor: T, element: T) => boolean;
 };
 
-// Returns the element a click picks, or undefined for a page pick. An element that paints
-// nothing is skipped when a non-ancestor lies under it (a transparent overlay over a sibling).
+// Undefined is a page pick. An element that paints nothing is skipped when a non-ancestor lies
+// under it (a transparent overlay over a sibling).
 export const pickTarget = <T>({
 	stack,
 	resolve,
@@ -55,7 +54,6 @@ type PostedPick<T> = {
 	point: { x: number; y: number };
 };
 
-// True when a re-post would send chrome the same pick it already has.
 export const isUnchangedPick = <T>({
 	last,
 	next,
@@ -69,7 +67,6 @@ export const isUnchangedPick = <T>({
 	last.point.x === next.point.x &&
 	last.point.y === next.point.y;
 
-// Intersects rect with each clip in turn; zero area is null.
 export const clipRect = (rect: FrameRect, clips: readonly FrameRect[]): FrameRect | null => {
 	let left = rect.x;
 	let top = rect.y;
@@ -87,9 +84,8 @@ export const clipRect = (rect: FrameRect, clips: readonly FrameRect[]): FrameRec
 	return { x: left, y: top, width: right - left, height: bottom - top };
 };
 
-// The click point relative to the current target's unclipped border box, clamped into it (and
-// into the coordinate cap, so a pick never fails its own guard). The anchor is the clicked
-// element; the offset is the click inside its box at click time.
+// Clamped into the target's unclipped border box and the coordinate cap, so a pick never fails
+// its own guard. `offset` is the click inside the clicked element's box at click time.
 export const pointInTarget = ({
 	anchorBox,
 	offset,

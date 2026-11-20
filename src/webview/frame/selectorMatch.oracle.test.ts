@@ -10,7 +10,7 @@ import { selectMatches } from '../../disk/selectorMatch';
 // happy-dom gets right: plain HTML tags with no implied end tags, word idents, case-sensitive
 // attributes. Escapes, foreign elements and case-insensitive values are covered against real
 // Chromium by selectorMatch.cases.ts; digit-start idents are accepted on purpose (Chromium throws
-// on them; see the spec). A failing seed becomes a literal case there.
+// on them). A failing seed becomes a literal case there.
 
 type TreeNode = {
 	tag: string;

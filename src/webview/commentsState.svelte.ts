@@ -31,32 +31,21 @@ import type {
 	UiErrorMessage,
 } from './hostMessages';
 
-// The comments as the host last read them, the Comments panel, and the requests a card or a
-// thread makes (reply, status, copy) with their answers. The rules live in commentActions.ts and
-// commentsPanel.ts.
 export class CommentsState {
-	// comments.json as the host last read it, pins drawn from it; its own banner on failure.
 	comments: PostedComment[] = $state([]);
 	commentsError: string | undefined = $state();
-	// A comments:updated without `error` arrived (resolveHeldThread).
+	// The last comments:updated carried no error.
 	commentsKnown = $state(false);
-	// Reply composers and status requests by comment id; the rules live in commentActions.ts.
-	// Restored reply text opens its composer; keepLiveActions drops ids no longer listed.
+	// By comment id. Restored reply text opens its composer.
 	actions: CommentActions;
-	// The copy-open button's request state; the rules live in commentActions.ts.
 	copyOpen: CopyOpenState = $state({});
-	// The Copy button that reads "Copied". The sequence restarts the timer on a repeat; cleared after
-	// COPY_FEEDBACK_MS.
 	copyFeedback: (CopiedButton & { sequence: number }) | undefined = $state.raw();
 	// The comments live region's text; the sequence makes a repeat speak again (liveRegionText).
 	announcement = $state({ text: '', sequence: 0 });
-	// The Comments panel; closed by default, restored from webview state.
 	commentsPanelOpen = $state(readSavedCommentsPanelOpen());
-	// Epoch ms for relative times, refreshed every minute.
 	now = $state(Date.now());
 
-	// One copy at a time across the chrome. $derived.by: `actions` is set by the constructor, and
-	// TypeScript allows that read only inside a function (TS2729); both forms compile the same.
+	// One copy at a time across the chrome.
 	readonly copyBlocked = $derived.by(() =>
 		copyPending({ actions: this.actions, copyOpen: this.copyOpen }),
 	);
@@ -69,7 +58,6 @@ export class CommentsState {
 			),
 		);
 
-		// Each copy success restarts the "Copied" timer; the cleanup cancels the previous one.
 		$effect(() => {
 			if (this.copyFeedback === undefined) {
 				return;
@@ -181,7 +169,7 @@ export class CommentsState {
 		}
 	};
 
-	// A new success replaces any other button's "Copied" and restarts the timer.
+	// A new success replaces any other button's "Copied" and restarts its timer (sequence).
 	#showCopied = (button: CopiedButton): void => {
 		this.copyFeedback = { ...button, sequence: (this.copyFeedback?.sequence ?? 0) + 1 };
 	};

@@ -13,8 +13,7 @@ import {
 } from './layoutFs';
 import { parseArtboardId } from './parse';
 
-// One Edit-mode change from the panel (0.4), written through updateArtboard's checked write. Not
-// re-exported from artboardFs.ts: this module imports updateArtboard from there.
+// Not re-exported from artboardFs.ts: this module imports updateArtboard from there.
 
 export type EditArtboardArgs = {
 	workspaceRoot: string;
@@ -30,8 +29,8 @@ export type EditArtboardResult = {
 	hash: string;
 	// The disk HTML after the edit (never tagged).
 	html: string;
-	// 9f: the disk HTML the edit was checked against (the string already read, never a re-read) and
-	// its normalized hash, for the undo history. Equal to `html` when the edit changed no byte.
+	// The disk HTML the edit was checked against (the string already read, never a re-read) and its
+	// normalized hash, for the undo history. Equal to `html` when the edit changed no byte.
 	baseHtml: string;
 	baseHash: string;
 };

@@ -1,9 +1,9 @@
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS, SOURCE_TAG_ATTRIBUTE } from '../../disk/layout';
 import type { PickEditFields } from './frameMessages';
 
-// What an Edit-mode pick reports about its target (9d). Part of the frame runtime, embedded in the
-// exported canvas.html, so it stays small and only reads the design DOM: attributes through
-// getAttribute, children through childNodes. Never a setter, `.style` or `.dataset`.
+// Part of the frame runtime, embedded in the exported canvas.html, so it stays small and only reads
+// the design DOM: attributes through getAttribute, children through childNodes. Never a setter,
+// `.style` or `.dataset`.
 
 const CANONICAL_NUMBER = /^(?:0|[1-9]\d*)$/;
 
@@ -40,7 +40,6 @@ export const describeEditTarget = (element: Element): PickEditFields => {
 			element.ownerDocument.querySelectorAll(`[${SOURCE_TAG_ATTRIBUTE}="${sourceNumber}"]`).length >
 				1,
 		...textOf(element),
-		// '' for no attribute; null only over the cap (9e: a hint instead of the style fields).
 		style: style === null ? '' : style.length > MAX_PICK_STYLE_CHARS ? null : style,
 	};
 };

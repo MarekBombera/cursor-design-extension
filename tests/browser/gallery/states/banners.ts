@@ -15,7 +15,6 @@ const add = (definition: StateDefinition): void => {
 	bannersStates.push(definition);
 };
 
-// 2. Banners
 const bannerState = (
 	state: string,
 	setup: string,

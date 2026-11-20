@@ -4,8 +4,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
 	testDir: '.',
 	fullyParallel: false,
-	// One worker: the stability quiet window and the CDP pan gesture (F-52) must not share CPU
-	// with the other spec file (F-71).
+	// One worker: the stability quiet window and the CDP pan gesture must not share CPU with
+	// another spec.
 	workers: 1,
 	retries: 0,
 	forbidOnly: true,
@@ -19,7 +19,7 @@ export default defineConfig({
 				viewport: { width: 1280, height: 800 },
 				deviceScaleFactor: 1,
 				// Full Chromium in new headless mode, not the default headless shell: only here are the
-				// sandboxed blob frames out of process, as in Cursor, which the F-52 pan test needs.
+				// sandboxed blob frames out of process, as in Cursor, which the trackpad pan test needs.
 				channel: 'chromium',
 			},
 		},

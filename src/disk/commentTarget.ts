@@ -3,11 +3,11 @@ import { type DefaultTreeAdapterMap, defaultTreeAdapter, parse, serializeOuter }
 import { hashHtml } from './hash';
 import { selectMatches } from './selectorMatch';
 
-// With source locations: the panel's source tags (sourceTags.ts) share this parse through the
-// commentViews cache. serializeOuter ignores locations, so fingerprints are unchanged.
-// ponytail: one parse config for every caller, so the MCP process and addComment's uncached check
-// pay about 1.7x parse time and 1.8x memory for offsets only the host's tagging reads. Upgrade
-// path: a locations flag passed only by cachedArtboardDocument's host callers.
+// With source locations, read by source tags and the edit core; serializeOuter ignores them, so
+// fingerprints are unchanged.
+// ponytail: one parse config, so comment reads (the MCP process, addComment's uncached check) pay
+// about 1.7x parse time and 1.8x memory for offsets they never read. Upgrade path: a locations
+// flag for source tags and the edit core, keyed into the commentViews cache.
 export const parseArtboardDocument = (html: string): DefaultTreeAdapterMap['document'] =>
 	parse(html, { sourceCodeLocationInfo: true });
 
@@ -114,7 +114,7 @@ export const matchCommentTarget = ({
 };
 
 // selectMatches never throws (property-tested), so there is no catch here: a throw is a bug and
-// fails the read loudly (rule 06). null = outside the finder grammar or past MAX_MATCH_WORK.
+// fails the read loudly. null = outside the finder grammar or past MAX_MATCH_WORK.
 const runCommentMatch = (document: ArtboardDocument, selector: string): CommentMatch => {
 	const matches = selectMatches(document, selector);
 	if (matches === null) {

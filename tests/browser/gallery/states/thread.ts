@@ -28,7 +28,6 @@ const add = (definition: StateDefinition): void => {
 	threadStates.push(definition);
 };
 
-// 6. Thread
 const threadState = ({
 	state,
 	setup,

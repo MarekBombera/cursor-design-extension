@@ -1,6 +1,5 @@
-// The chrome's icons as typed SVG shapes on a 16px grid, drawn by Icon.svelte (`path` is a path's
-// `d`, `radius` a circle's `r`). Shapes are stroked with currentColor; `fill: true` fills instead.
-// An icon is added in the change that first renders it.
+// 16px grid, stroked with currentColor unless `fill: true` (`path` is a path's `d`, `radius` a
+// circle's `r`). An icon is added in the change that first renders it.
 export type IconShape =
 	| { kind: 'path'; path: string; fill?: true }
 	| { kind: 'circle'; cx: number; cy: number; radius: number; fill?: true }
@@ -32,7 +31,6 @@ export const ICONS = {
 	],
 	cursor: [{ kind: 'path', path: 'M3.5 2.5l9.5 5.3-4.2 1.1-1.9 4.1z' }],
 	dot: [{ kind: 'circle', cx: 8, cy: 8, radius: 4, fill: true }],
-	// A pencil: Edit mode (9d).
 	edit: [{ kind: 'path', path: 'M10.5 2.5l3 3-8 8H2.5v-3zM9 4l3 3' }],
 	element: [{ kind: 'path', path: 'M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5' }],
 	error: [
@@ -61,7 +59,6 @@ export const ICONS = {
 		{ kind: 'path', path: 'M6.3 6.4a1.8 1.8 0 1 1 2.5 1.6c-.5.25-.8.6-.8 1.1v.3' },
 		{ kind: 'circle', cx: 8, cy: 11.3, radius: 0.85, fill: true },
 	],
-	// A curved arrow forward: Redo (9f), the mirror of undo.
 	redo: [{ kind: 'path', path: 'M9 3.5l3 3-3 3M12 6.5H6a3 3 0 0 0 0 6h3' }],
 	reopen: [
 		{ kind: 'path', path: 'M2.8 8a5.2 5.2 0 1 0 1.6-3.7' },
@@ -89,7 +86,6 @@ export const ICONS = {
 		{ kind: 'circle', cx: 8, cy: 8, radius: 4.5 },
 		{ kind: 'path', path: 'M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3' },
 	],
-	// A curved arrow back: Undo (9f).
 	undo: [{ kind: 'path', path: 'M7 3.5l-3 3 3 3M4 6.5h6a3 3 0 0 1 0 6H7' }],
 	warning: [
 		{ kind: 'path', path: 'M8 2.3l6.3 11H1.7zM8 6.6v3' },

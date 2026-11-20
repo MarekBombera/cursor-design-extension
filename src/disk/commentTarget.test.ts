@@ -124,8 +124,8 @@ test('2+ matches is targetMissing', () => {
 	});
 });
 
-// The old matcher's caps refused these pages (64 deep, 20,000 elements, 5,000 siblings) and any
-// selector with more than 2 descendant steps; the linear matcher answers them.
+// Each size is past a cap an earlier matcher needed (64 deep, 20,000 elements, 5,000 siblings,
+// 2 descendant steps).
 test('deep, wide and large pages and longer descendant chains are checkable', () => {
 	const deep = parseArtboardDocument(`${'<div>'.repeat(100)}leaf${'</div>'.repeat(100)}`);
 	assert.deepEqual(matchCommentTarget({ document: deep, selector: 'p div div div' }), {
@@ -169,9 +169,7 @@ test('a selector outside the grammar or past MAX_MATCH_WORK reads unchecked', ()
 	);
 });
 
-// The old tree format keyed attributes by local name, so an element with both xlink:href and
-// href serialized only one of them and an edit to the other never changed the fingerprint.
-// Spreading 130,000 children into one push() overflowed the call stack (RangeError).
+// Spreading this many children into one push() overflows the call stack (RangeError).
 test('a target with a very wide subtree is read without throwing', () => {
 	const html = `<div id="w"><ul>${'<li>x</li>'.repeat(200_000)}</ul></div>`;
 	const match = matchCommentTarget({ document: parseArtboardDocument(html), selector: '#w' });
@@ -179,6 +177,8 @@ test('a target with a very wide subtree is read without throwing', () => {
 	assert.equal(match.checkable && match.text?.length, 200_000);
 });
 
+// Attributes keyed by local name alone keep only one of xlink:href and href, so an edit to the
+// other would not change the fingerprint.
 test('editing a namespaced SVG attribute inside the target changes the fingerprint', () => {
 	assert.notEqual(
 		fingerprintOf('<svg><a xlink:href="#x" href="#y">l</a></svg>', 'svg'),

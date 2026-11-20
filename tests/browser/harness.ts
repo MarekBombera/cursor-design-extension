@@ -342,7 +342,6 @@ export const clickChrome = async (locator: Locator): Promise<void> => {
 export const nextAnimationFrame = (page: Page): Promise<void> =>
 	page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
-// Shared locators: by role and data-cd-* hooks, one definition per control.
 export const commentButton = (page: Page): Locator =>
 	page.getByRole('button', { name: 'Comment', exact: true });
 

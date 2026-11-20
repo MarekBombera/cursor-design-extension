@@ -19,9 +19,6 @@ import {
 } from '../harness';
 import { settle } from './scene';
 
-// Gallery page helpers: the 2x close-up capture, locators and the clicks, hovers and gestures the
-// states use.
-
 const cdpSessions = new WeakMap<Page, CDPSession>();
 
 // A 2x clip through CDP (clip.scale re-rasterises, so text is crisp). The clip is in document
@@ -133,7 +130,7 @@ export const pickElement = async (page: Page, frameId: string, selector: string)
 export const openThread = async (page: Page, id: string): Promise<void> => {
 	await expect(pinOf(page, id)).toBeVisible();
 	// Near the tip, the part on its target's corner: a target at the frame's left edge puts the
-	// pin's body off the stage edge at the gallery view (F-108).
+	// pin's body off the stage edge at the gallery view.
 	const pin = await boxOf(pinOf(page, id));
 	await clickAt(page, { x: pin.x + pin.width - 4, y: pin.y + pin.height - 4 });
 	await expect(thread(page)).toBeVisible();

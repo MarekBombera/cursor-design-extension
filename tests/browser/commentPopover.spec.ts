@@ -167,7 +167,7 @@ test('C typed into a design input in Interact mode stays in the input', async ({
 	expect(await messagesOfType({ page, frameId: 'a', type: FRAME_KEY_MESSAGE })).toEqual([]);
 });
 
-test('C with a modifier, a held C, or C in a shadow-root input never posts cd:key (F-82)', async ({
+test('C with a modifier, a held C, or C in a shadow-root input never posts cd:key', async ({
 	page,
 }) => {
 	await openTwoFrames(page);
@@ -202,7 +202,7 @@ test('C with a modifier, a held C, or C in a shadow-root input never posts cd:ke
 	expect(await messagesOfType({ page, frameId: 'a', type: FRAME_KEY_MESSAGE })).toHaveLength(2);
 });
 
-test('a target taller than the coordinate cap still opens the popover (F-79)', async ({ page }) => {
+test('a target taller than the coordinate cap still opens the popover', async ({ page }) => {
 	await openTwoFrames(page);
 	await (
 		await frameOf(page, 'a')
@@ -259,7 +259,6 @@ const lastRequestId = async (page: Page): Promise<string> => {
 	return requestId;
 };
 
-// Comment mode on, then a click on the element; resolves with the popover open on it.
 const openPopoverOn = async ({
 	page,
 	frameId = 'a',
@@ -418,7 +417,7 @@ test('Escape closes the popover and returns focus to the frame; a second Escape 
 	});
 });
 
-test('Add pressed from the button keeps focus in the popover; on success focus goes to the frame (F-77)', async ({
+test('Add pressed from the button keeps focus in the popover; on success focus goes to the frame', async ({
 	page,
 }) => {
 	await openTwoFrames(page);
@@ -504,7 +503,7 @@ test('scroll re-posts move an open popover and never open a closed one', async (
 	await nextAnimationFrame(page);
 	await nextAnimationFrame(page);
 	await expect(popover(page)).toHaveCount(0);
-	// F-80: an in-flight re-post does not put the outline back either.
+	// An in-flight re-post does not put the outline back either.
 	await expect(page.locator('.overlay .outline.pick')).toHaveCount(0);
 });
 

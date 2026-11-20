@@ -34,7 +34,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
 		postUiStatusToPanel({ mcpAvailable });
 		if (mcpAvailable) {
-			// Cursor only (the skill documents the MCP tools). Never rejects: failures are logged inside.
+			// Cursor only: the skill documents the MCP tools.
 			void syncAgentSkill({ extensionUri: context.extensionUri, outputChannel });
 		}
 		replaceArtboardWatcher({ context, outputChannel, rearmMarker });
@@ -55,12 +55,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	});
 
 	setArtboardPanelOnCommentRequest((value) => {
-		// Never rejects: every failure is logged and answered inside.
 		void answerCommentRequest({ value, outputChannel });
 	});
 
 	setArtboardPanelOnEditRequest((value) => {
-		// Never rejects: every failure is logged and answered inside.
 		void (isArtboardHistoryAttempt(value) ? answerHistoryRequest : answerEditRequest)({
 			value,
 			outputChannel,
@@ -78,7 +76,8 @@ export const activate = (context: vscode.ExtensionContext): void => {
 			syncHostRuntime(false);
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
-			// ponytail: any folder change clears all undo history (9f), not only a new first folder.
+			// ponytail: any folder change clears all undo history, not only a new first folder.
+			// Upgrade path: clear only when firstWorkspaceFolder changes.
 			clearEditHistories();
 			if (!vscode.workspace.isTrusted) {
 				postUiStatusToPanel({ mcpAvailable: false });

@@ -10,9 +10,7 @@ import {
 
 const CAPTURED_TRIGGERS = ['scroll', 'transitionend', 'animationend'] as const;
 
-// Pins (8f2). Chrome sends cd:anchors with this frame's element comments; the runtime answers with
-// cd:anchor-rects whenever a target moves, at most once per animation frame. It only reads layout:
-// it never writes to the design DOM. With no anchors, nothing is observed.
+// Reads layout only; observes nothing while chrome has sent no anchors.
 // ponytail: every measurement re-resolves every selector (≤ MAX_COMMENTS querySelectorAll per
 // frame). Upgrade path: re-resolve only after a mutation.
 // ponytail: a pin does not follow its element during a CSS transition or animation; it catches up

@@ -21,7 +21,6 @@
 		unresolvedCount: number;
 		onPreset: (zoom: number) => void;
 		onFit: () => void;
-		// A mode button was pressed (CommentPicker applies pressedMode).
 		onChooseMode: (pressed: FrameMode) => void;
 		onToggleCommentsPanel: () => void;
 	};
@@ -42,10 +41,7 @@
 		onToggleCommentsPanel,
 	}: Props = $props();
 
-	// The live region stays mounted, so a new pick is announced, not just inserted (the chip is in
-	// the comment popover). It reads the tag, not a selector of up to 1000 characters. Equal text is
-	// not re-announced, so every other pick ends in a no-break space: two div picks in a row still
-	// both speak.
+	// liveRegionText, so two picks of the same tag in a row both speak.
 	const pickAnnouncement = $derived.by(() => {
 		const text = pickAnnouncementText({ mode, pick });
 		return text === '' || pick === undefined ? '' : liveRegionText({ text, sequence: pick.sequence });
@@ -71,7 +67,7 @@
 			<span class="generation">gen {generation}</span>
 		{/if}
 	</span>
-	<!-- The live region stays mounted and toggles hidden: it must exist before its content. -->
+	<!-- A live region must exist before its content, so it stays mounted and toggles hidden. -->
 	<span aria-live="polite" hidden={!handoffStale}>
 		{#if handoffStale}
 			<Badge

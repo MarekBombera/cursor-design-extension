@@ -18,9 +18,8 @@
 
 	type Props = {
 		draft: CommentDraft;
-		// The draft's typed text; App owns it, so it lives and dies with the draft.
+		// draft.body, owned by CommentPicker, so it lives and dies with the draft.
 		body: string;
-		// The draft frame's display name (frameLabel).
 		frameLabel: string;
 		// Viewport-local screen px of the pick point.
 		anchor: StagePoint;
@@ -52,7 +51,6 @@
 
 	let width = $state(0);
 	let height = $state(0);
-	// Read by handlers only, so not reactive.
 	let textarea: HTMLTextAreaElement | undefined;
 
 	const position = $derived(
@@ -72,8 +70,8 @@
 		};
 	};
 
-	// App calls this after the pick that opened or retargeted the draft, and after a restore (the
-	// caret then goes to the end of the restored text).
+	// CommentPicker calls this after a pick opens or retargets the draft, and after a restore (caret
+	// at the end of the restored text).
 	export const focusBody = (caretAtEnd = false): void => {
 		textarea?.focus();
 		if (caretAtEnd) {
@@ -95,7 +93,7 @@
 		if (action === undefined) {
 			return;
 		}
-		// Prevented keys are ignored by App's window keydown, so this Escape never also leaves
+		// Prevented keys are ignored by the window's mode keys, so this Escape never also leaves
 		// Comment mode.
 		event.preventDefault();
 		if (action === 'add') {
@@ -144,7 +142,6 @@
 			onclick={canStep ? onChild : undefined}
 		/>
 	{/snippet}
-	<!-- Cancel, then Add: Tab from the box reaches Cancel first. -->
 	<Composer
 		value={body}
 		label="Comment"

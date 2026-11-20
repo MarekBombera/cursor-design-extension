@@ -123,7 +123,7 @@ test('the timeout fallback still round-trips; a fallback over the cap is null', 
 
 test('a finder stack overflow falls back to an nth-of-type path; other finder throws give null', () => {
 	// In a real browser, class-heavy markup makes finder expand more candidate paths than the
-	// stack holds (RangeError, F-40 / F-55), even with a negative timeout. happy-dom is too slow
+	// stack holds (RangeError), even with a negative timeout. happy-dom is too slow
 	// to get there, so finder is made to throw here.
 	const doc = parseFixture();
 	const card = at(doc, '.card', 2);

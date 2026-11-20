@@ -29,7 +29,7 @@ import {
 	zoomSelect,
 } from './harness';
 
-// Frame A: a 1200 px tall body that never scrolls internally. Frame B: a short page.
+// Frame A's 1200 px body never scrolls internally.
 const TALL_PAGE = `<!doctype html><html><head><style>body{margin:0;height:1200px;background:#eef}</style></head><body><p>Frame A</p></body></html>`;
 const SHORT_PAGE = `<!doctype html><html><head><style>body{margin:0}</style></head><body><p>Frame B</p></body></html>`;
 
@@ -101,8 +101,7 @@ const savedView = async (page: Page): Promise<StageView | undefined> => {
 	);
 };
 
-// Seeds the view, posts both frames, waits for both height reports, and checks the seeded view
-// is what the stage shows. Returns the stage viewport's offset in the page.
+// Returns the stage viewport's offset in the page.
 const openSeededStage = async (page: Page): Promise<Point> => {
 	await openHarness(page, { savedView: SEEDED_VIEW });
 	await postToChrome(page, canvasUpdated([frameA(), frameB()]));
@@ -118,7 +117,7 @@ const openSeededStage = async (page: Page): Promise<Point> => {
 
 const quietWindow = (page: Page): Promise<void> => page.waitForTimeout(QUIET_WINDOW_MS);
 
-test('frames load once and reload only when their html changes (F-51)', async ({ page }) => {
+test('frames load once and reload only when their html changes', async ({ page }) => {
 	await openSeededStage(page);
 	await quietWindow(page);
 	expect(await loadsOf(page, 'a')).toBe(1);
@@ -238,7 +237,7 @@ test('an artboard iframe with focus draws an inset ring, gone when focus returns
 	await expect.poll(async () => (await ring())[0]).toBe('none');
 });
 
-// F-98: frame to frame fires no chrome event (the chrome window stays blurred), so the ring must
+// Frame to frame fires no chrome event (the chrome window stays blurred), so the ring must
 // still follow focus from one artboard into the next, by click and by Tab.
 test('the artboard ring follows focus from frame to frame, by click and by Tab', async ({
 	page,
@@ -275,7 +274,7 @@ test('the artboard ring follows focus from frame to frame, by click and by Tab',
 
 // Frame B sits at stage x 1000, and a pan first moves the view off identity, so its frame-local
 // wheel point differs from the viewport point: the anchor must add the frame offset and map
-// through the view (F-62).
+// through the view.
 test('ctrl+wheel over a frame off the stage origin zooms at the cursor', async ({ page }) => {
 	const stage = await openSeededStage(page);
 	const panned = await frameBox(page, 'b');
@@ -308,7 +307,7 @@ test('ctrl+wheel over the empty stage zooms at the cursor', async ({ page }) => 
 // precise-scroll gesture latches to the out-of-process frame it starts in, like a trackpad, and
 // its remainder reaches the chrome only as root scroll. CDP distance sign is the reverse of wheel
 // delta: -600 moves the content left.
-test('a trackpad pan keeps panning after the pointer leaves the frame (F-52)', async ({ page }) => {
+test('a trackpad pan keeps panning after the pointer leaves the frame', async ({ page }) => {
 	await openSeededStage(page);
 	const before = await frameBox(page, 'a');
 	const viewBefore = await savedView(page);
@@ -423,7 +422,7 @@ test('dragging a label posts one whole-pixel frame:place; after the host answer 
 	expect(await loadsOf(page, 'a')).toBe(1);
 	expect(await framePlaces(page)).toHaveLength(1);
 
-	// The answer settled the gesture, so a second drag starts from the new disk placement (F-66).
+	// The answer settled the gesture, so a second drag starts from the new disk placement.
 	await startLabelDrag(page);
 	await page.mouse.up();
 	await expect.poll(() => framePlaces(page)).toHaveLength(2);
@@ -456,8 +455,8 @@ test('resizing below the minimum clamps the width and keeps the position', async
 	});
 });
 
-// At zoom 1 a constant view offset cancels out, so this pins the view the gesture maps through
-// (F-67): 53 screen px at 50% are 106 stage px.
+// At zoom 1 a constant view offset cancels out, so this pins the view the gesture maps through:
+// 53 screen px at 50% are 106 stage px.
 test('drag and resize at 50% zoom move by stage px, not screen px', async ({ page }) => {
 	await openSeededStage(page);
 	const zoom = 0.5;
@@ -516,7 +515,7 @@ test('an Agent placement mid-drag wins and the release posts nothing', async ({ 
 	expect((await frameBox(page, 'a')).x).toBeCloseTo(stage.x + 200, 0);
 });
 
-// A failed write: the host answers with canvas:updated at base, then artboard:error (F-64).
+// A failed write: the host answers with canvas:updated at base, then artboard:error.
 test('a refused frame:place returns the frame, shows the error, and the next drag posts', async ({
 	page,
 }) => {
@@ -628,7 +627,7 @@ test('Escape mid-nudge reverts and the release posts nothing', async ({ page }) 
 });
 
 // The removed label or handle never sees its own lostpointercapture, so without the teardown in
-// Stage every later drag stayed dead until Escape (F-26).
+// Stage every later drag stayed dead until Escape.
 const expectNextDragOnB = async (page: Page): Promise<void> => {
 	await expect(page.locator('[data-cd-frame-id="a"]')).toHaveCount(0);
 	await page.mouse.up();

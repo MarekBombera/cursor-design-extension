@@ -16,14 +16,13 @@
 		tileKind: StageFrame['tileKind'];
 		tileText: string;
 		// What the iframe is built from; a new version (a forced reload) rebuilds it even when the
-		// HTML is the same. The latest adopted copy is not a prop: adopting never reloads (9e).
+		// HTML is the same. The latest adopted copy is not a prop: adopting never reloads.
 		documentHtml: string;
 		documentVersion: number;
 		nonce: string;
 		runtimeSource: string;
-		// Under a move or resize gesture: raised above its neighbours.
 		lifted: boolean;
-		// The iframe holds keyboard focus (Stage tracks it; CSS cannot see it).
+		// From Stage: CSS cannot see an out-of-process iframe's focus.
 		focused: boolean;
 		onIframe: (id: string, iframe: HTMLIFrameElement | undefined) => void;
 		onRenderError: (id: string) => void;
@@ -50,18 +49,16 @@
 	}: Props = $props();
 
 	// Stage passes props from its {#each} item, a new record object on every height report, drag
-	// preview and canvas:updated. A direct prop read below would subscribe to that whole record,
-	// and every re-run sets a new blob URL: the document reloads, its runtime reports its height
-	// again, and the frame reload-loops. These deriveds only notify when the value changes.
+	// preview and canvas:updated. A direct prop read below would subscribe to that whole record, and
+	// every re-run sets a new blob URL: the document reloads, reports its height again, and the frame
+	// reload-loops. These deriveds only notify when the value changes.
 	const frameId = $derived(id);
 	const frameHtml = $derived(documentHtml);
 	const frameVersion = $derived(documentVersion);
-	// An empty file is just empty; the other tile kind is a failure (canvasFrames.ts decides).
 	const emptyTile = $derived(tileKind === 'empty');
 
-	// Registers before src is set, so the first cd:frame-height is never dropped. The nested
-	// effect reads only the document html, its version and nonce (kind is the {#if} around it):
-	// label, position, width or lifted changes never reload the document.
+	// Registers before src is set, so the first cd:frame-height is never dropped. The nested effect
+	// reads only the document html, its version and nonce, so nothing else reloads the document.
 	const attachIframe: Attachment<HTMLIFrameElement> = (iframe) => {
 		onIframe(frameId, iframe);
 		$effect(() => {
@@ -72,7 +69,8 @@
 				const document = stampArtboardHtml({ html: frameHtml, nonce, runtimeSource });
 				blobUrl = URL.createObjectURL(new Blob([document], { type: 'text/html' }));
 			} catch {
-				// ponytail: stamp/blob throw is per-frame tile copy only; no chrome log
+				// ponytail: a stamp or blob failure shows only the tile and is never logged. Upgrade:
+				// post it to the host's Output channel.
 				onRenderError(frameId);
 				return;
 			}
@@ -138,8 +136,7 @@
 		background: Canvas;
 		pointer-events: auto;
 	}
-	/* The focus ring, drawn inside: the frame clips anything outside its box. Kept 2 screen px at
-	   any zoom, like the label ring. */
+	/* Drawn inside: the frame clips anything outside its box. */
 	.frame > iframe.focused {
 		outline: calc(2px / var(--cd-stage-zoom)) solid var(--cd-focus);
 		outline-offset: calc(-2px / var(--cd-stage-zoom));
@@ -171,7 +168,6 @@
 		font-size: var(--cd-fs-md);
 		font-weight: var(--cd-weight-strong);
 	}
-	/* The meaning colours the icon only: the text stays readable. */
 	.tile-icon {
 		display: flex;
 		color: var(--cd-fg-3);

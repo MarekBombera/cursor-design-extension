@@ -223,8 +223,8 @@ test('MAX_MATCH_WORK counts every check: long selectors and attribute-heavy page
 		[heavy, '#a'.repeat(499), 4000],
 		[heavy, '[b199="1"]'.repeat(99), 4000],
 		[parse('<i class="a">x</i>'.repeat(30_000)), '.a'.repeat(499), null],
-		// Each check folds a 10-char value that matches only case-insensitively (7.6 s when a fold
-		// counted 1 unit); the value's length is now charged.
+		// Each check folds a 10-char value that matches only case-insensitively, so a fold is charged
+		// by the value's length (7.6 s when it counted 1 unit).
 		[parse('<i type=AAAAAAAAAa>x</i>'.repeat(181_808)), '[type="AAAAAAAAAA"]'.repeat(52), null],
 	] as const) {
 		const { result, ms } = timed(() => selectMatches(document, selector));

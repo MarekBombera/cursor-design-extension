@@ -526,7 +526,7 @@ test('setActiveArtboard requires an exact html file name', async () => {
 	assert.equal(manifest.activeArtboardId, 'hero');
 });
 
-// 9c: without the lock both calls read generation 1 before either writes, and both succeed.
+// Without the lock both calls read generation 1 before either writes, and both succeed.
 test('two unqueued updateArtboard calls on one base: one wins, the other conflicts', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({

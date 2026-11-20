@@ -1,8 +1,5 @@
-// Agent adapter layout check, run by `pnpm verify`.
-// Claude Code reads only `.claude/rules/*.md` (scoped by `paths:`) and skips a symlink whose target
-// is not `.md`. Cursor reads `.cursor/rules/*.mdc` (scoped by `globs:`) and follows symlinks.
-// So the real file is `.claude/rules/<name>.md` and `.cursor/rules/<name>.mdc` links to it.
-// Skills and agents are authored once under `.cursor` and linked into `.claude` and `.agents`.
+// Agent adapter layout check (pnpm verify); the layout is AGENTS.md, Agent files. Claude Code skips
+// a symlink whose target is not `.md`, so the real file is `.claude/rules/<name>.md`.
 import { lstat, readFile, readdir, readlink } from 'node:fs/promises';
 
 const CLAUDE_RULES = '.claude/rules';

@@ -11,18 +11,12 @@ import type {
 } from './hostMessages';
 import { commentsText } from './commentsPanel';
 
-// Comment-action rules (8g, 8h): reply, status and copy requests, one in flight per comment and one
-// copy at a time, and the host's answers to them. Pure: App holds `actions` and posts the returned
-// messages.
-
 export type CommentAction = {
 	// Composer text; undefined = composer closed.
 	reply?: string;
-	// The one request in flight for this comment.
-	// ponytail: a lost answer (the host dies between the request and its answer) keeps `pending`
-	// set until the webview reloads, which resets `actions`. The host always answers while the
-	// chrome is ready, so there is no timeout. Upgrade path: a host-level answer timeout. A lost copy
-	// answer also blocks every Copy button (one copy at a time) until that reload.
+	// One request in flight per comment.
+	// ponytail: a lost answer (the host dies mid-request) keeps `pending`, and for a copy every Copy
+	// button, blocked until the webview reloads. Upgrade path: a host-level answer timeout.
 	pending?:
 		| { requestId: string; kind: 'reply' }
 		| { requestId: string; kind: 'status'; status: 'open' | 'resolved' }
@@ -31,10 +25,10 @@ export type CommentAction = {
 	error?: string;
 };
 
-// Keyed by comment id. An entry with no reply, pending or error is deleted.
+// Keyed by comment id.
 export type CommentActions = ReadonlyMap<string, CommentAction>;
 
-// Also App's reply-text save: a reply in flight is not saved.
+// Also gates the saved reply drafts: a reply in flight is not saved.
 export const replyPending = (action: CommentAction | undefined): boolean =>
 	action?.pending?.kind === 'reply';
 
@@ -140,7 +134,6 @@ export const submitReply = ({
 	};
 };
 
-// Resolve for open and sent, Reopen for resolved.
 export const submitStatus = ({
 	actions,
 	comment,
@@ -165,14 +158,12 @@ export const submitStatus = ({
 	};
 };
 
-// The panel's batch Copy for Agent: its one request in flight and its last failure (8h).
+// The panel's batch Copy for Agent: the request id in flight and the last failure.
 export type CopyOpenState = { pending?: string; error?: string };
 
-// The Copy button that reads "Copied": one comment's card, or the copy-open button with the
-// count its answer marked sent.
+// The Copy button showing "Copied"; `count` is how many the batch answer marked sent.
 export type CopiedButton = { kind: 'comment'; id: string } | { kind: 'open'; count: number };
 
-// How long a Copy button reads "Copied" after its own success.
 export const COPY_FEEDBACK_MS = 1500;
 
 // One copy at a time across the chrome, so the clipboard always holds the last answered copy.
@@ -250,8 +241,7 @@ export const submitCopyOpen = ({
 	};
 };
 
-// The host's answer to the batch Copy for Agent. A non-matching answer returns the same state. A success
-// names how many comments the host marked sent, for the button's "Copied N comments".
+// A non-matching answer returns the same state. `copiedCount` feeds "Copied N comments".
 export const answerCopyOpen = ({
 	state,
 	answer,
@@ -272,8 +262,8 @@ export const answerCopyOpen = ({
 		: { state: {}, announcement };
 };
 
-// The host's answer to one request. An answer to no pending request, or of the wrong kind
-// (ui:copied only answers a copy, comment:saved only a reply or status), returns the same object.
+// An answer to no pending request, or of the wrong kind (ui:copied only answers a copy,
+// comment:saved only a reply or status), returns the same object.
 export const answerAction = ({
 	actions,
 	answer,
@@ -323,9 +313,8 @@ export const answerAction = ({
 	};
 };
 
-// On comments:updated. An update with `error` lists nothing usable, so every action (and its typed
-// text) survives a transient read failure. Otherwise ids no longer listed are dropped, so a late
-// answer finds nothing.
+// An update with `error` lists nothing usable, so every action (and its typed text) survives a
+// transient read failure. Otherwise unlisted ids drop, so a late answer finds nothing.
 export const keepLiveActions = ({
 	actions,
 	comments,

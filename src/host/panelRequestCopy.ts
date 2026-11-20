@@ -11,9 +11,7 @@ import {
 } from '../disk/errors';
 import type { CommentRequestMessage } from '../webview/hostMessages';
 
-// The panel's answer copy for a failed chrome request (comment requests, artboard:edit and, 9f,
-// artboard:history): allowlists that keep the disk lib's Agent copy out of the panel. No `vscode`
-// import; chromeMessages.ts parses the requests, panelComments.ts / panelEdit.ts answer them.
+// Allowlists that keep the disk lib's Agent copy out of the panel.
 
 export const CREATE_FALLBACK_MESSAGE =
 	'Could not add the comment. Check the Output panel: Cursor Design.';
@@ -27,7 +25,7 @@ export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 
 export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
 
-// The copy types' fallback (a clipboard rejection lands here) and their malformed copy (8h).
+// The copy types' fallback (a clipboard rejection lands here) and their malformed copy.
 export const COPY_FAILED_MESSAGE =
 	'Could not copy the prompt. Check the Output panel: Cursor Design.';
 
@@ -37,8 +35,6 @@ export const COPIED_NOT_MARKED_MESSAGE =
 
 export const NOTHING_OPEN_MESSAGE = 'There are no open comments to copy.';
 
-// The one copy-type rule (8h): the copy fallback and malformed copy here, and the refresh after
-// every copy ui:error in panelComments.ts.
 export const isCopyType = (type: CommentRequestMessage['type']): boolean =>
 	type === 'comment:copy' || type === 'comment:copy-open';
 
@@ -77,7 +73,6 @@ export const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the ed
 
 export const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
 
-// 9f: artboard:history copy.
 export const NOTHING_TO_UNDO_MESSAGE = 'Nothing to undo in this frame.';
 
 export const NOTHING_TO_REDO_MESSAGE = 'Nothing to redo in this frame.';

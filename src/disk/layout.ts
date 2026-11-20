@@ -44,28 +44,26 @@ export const FRAME_GAP = 24;
 // Bound on chrome-sent frame:place coordinates (the MCP tool stays unbounded).
 export const MAX_FRAME_COORDINATE = 100_000;
 
-// Frame → chrome pick fields (8d2); 8e reuses them for comments.json. Chars are UTF-16 code units.
+// cd:pick field caps, also enforced on comments.json. Chars are UTF-16 code units.
 export const MAX_SELECTOR_CHARS = 1000;
 
 export const MAX_PICK_TEXT_CHARS = 200;
 
 export const MAX_STYLE_VALUE_CHARS = 200;
 
-// Edit-mode style fields (0.4): the inline declarations an edit can change; the inspector derives
-// its fields from them.
+// The inline properties an edit can change; the inspector derives its fields from them.
 export const EDIT_STYLE_FIELDS = ['font-size', 'color', 'padding', 'margin'] as const;
 
-// Edit-mode fields (0.4): the edit core's allowlist, shared with the panel's artboard:edit type.
+// The edit core's allowlist, shared with the panel's artboard:edit type.
 export const EDIT_FIELDS = ['text', ...EDIT_STYLE_FIELDS] as const;
 
-// Undo / redo steps (9f): shared by the panel's artboard:history type and the host's zod enum.
+// Shared by the panel's artboard:history type and the host's zod enum.
 export const HISTORY_STEPS = ['undo', 'redo'] as const;
 
-// Undo steps held per frame (9f), shared by the host's history store and the chrome's queue cap.
+// Undo steps held per frame, shared by the host's history store and the chrome's queue cap.
 export const MAX_HISTORY_STEPS = 20;
 
-// Source numbers (0.4): the attribute the host splices into the frame copy (sourceTags.ts). Here,
-// not there, so the frame runtime and the chrome never import parse5.
+// Here, not in sourceTags.ts, so the frame runtime and the chrome never import parse5.
 export const SOURCE_TAG_ATTRIBUTE = 'data-cd-src';
 
 // Elements whose text parse5 reads as raw text: an encoded edit would show its entities. The edit
@@ -79,7 +77,7 @@ export const RAW_TEXT_ELEMENTS: ReadonlySet<string> = new Set([
 	'plaintext',
 ]);
 
-// HTML void elements: they can never hold text, so the inspector shows no Text field.
+// They can never hold text, so the inspector shows no Text field.
 export const VOID_ELEMENTS: ReadonlySet<string> = new Set([
 	'area',
 	'base',
@@ -99,13 +97,13 @@ export const VOID_ELEMENTS: ReadonlySet<string> = new Set([
 // An Edit-mode pick's style attribute as the frame reports it; a longer one is reported as null.
 export const MAX_PICK_STYLE_CHARS = 5000;
 
-// Edit-mode text (0.4): the new text and the frame's live text of an edited element.
+// Cap on an edit's new text and its liveText.
 export const MAX_EDIT_TEXT_CHARS = 5000;
 
-// ponytail: 1.5M char ceiling per frame on the disk HTML; the posted copy is larger, since source
-// tags add about 17 or more chars per element: up to about 8x for a file of bare tiny tags
-// (1.5M chars of `<p>` posts about 12M). No total payload cap across frames. An Edit-mode change
-// on a file over it, or one that would push it over, is refused (9c).
+// ponytail: caps only the disk HTML per frame; source tags add about 17+ chars per element, so the
+// posted copy can be about 8x larger (1.5M chars of bare `<p>` post about 12M), and nothing caps
+// the total across frames. Edits that start or end over it are refused. Upgrade path: cap the
+// tagged copy and the total per snapshot.
 export const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
 
 export const COMMENT_STYLE_KEYS = [
@@ -139,7 +137,6 @@ export const COMMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 // User replies stop at MAX - 1; the last slot is the resolve note's.
 export const MAX_COMMENT_REPLIES = 100;
 
-// Cross-process write lock inside .cursor-design/ (see disk/workspaceLock.ts).
 export const LOCK_FILE = '.lock' as const;
 
 export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>

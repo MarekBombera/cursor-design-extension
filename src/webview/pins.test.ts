@@ -146,7 +146,7 @@ test('pinPoint: an element pin at its box corner (live, then stored rect), a pag
 		x: box.x,
 		y: box.y,
 	});
-	// The stored fraction no longer moves an element pin.
+	// The stored fraction never moves an element pin.
 	assert.deepEqual(
 		pinPoint({
 			comment: comment({ pin: { x: 0.9, y: 0.9 } }),

@@ -17,8 +17,7 @@ import {
 } from './pins';
 import { fitZoom, jumpStageView } from './stageGeometry';
 
-// A restored item takes focus only when nothing else has it, so it never steals focus from
-// something the user is already typing in.
+// A restore takes focus only when nothing has it, so it never steals focus from typing.
 export const canTakeFocus = (): boolean =>
 	document.hasFocus() &&
 	(document.activeElement === null || document.activeElement === document.body);
@@ -26,31 +25,24 @@ export const canTakeFocus = (): boolean =>
 const threadHasFocus = (): boolean =>
 	document.activeElement?.closest('[data-cd-comment-thread]') != null;
 
-// The comments on the stage: each live frame's anchor answers, the pins and panel items drawn
-// from them, the read-only thread a pin opens (and the one held across a reload), and the jump to
-// a comment's target with its flash. The rules live in pins.ts.
+// Pins, the open thread, and what shares their anchor answers: panel items and the jump + flash.
 export class PinThread {
 	readonly #canvas: CanvasState;
 	readonly #comments: CommentsState;
-	// Where each live frame last said its comments' targets are (cd:anchor-rects); rules in pins.ts.
+	// Each live frame's last cd:anchor-rects.
 	anchors: AnchorState = $state.raw(new Map());
-	// The comment whose read-only thread is open; it closes when its pin is no longer placed.
 	openThreadId: string | undefined = $state();
 	// False only for a restored thread that found focus elsewhere (canTakeFocus).
 	threadFocusOnOpen = $state(true);
-	// The held restore (resolveHeldThread), apart from the live state so the live rules never see
-	// it. It waits for its pin.
+	// A thread restored after a reload, kept apart so the live rules never see it. It waits for its
+	// pin.
 	heldThreadId: string | undefined;
 	pinsView: { focusPin: (id: string) => void } | undefined = $state();
 	stage: { focusViewport: () => void } | undefined = $state();
-	// The comment whose target flashes after a jump; cleared after JUMP_FLASH_MS.
 	flash: { commentId: string; sequence: number } | undefined = $state.raw();
 
-	// $derived.by where a derived reads a field the constructor sets: TypeScript allows that read
-	// only inside a function (TS2729). Both forms compile to the same lazy derived.
-
-	// Pins follow the same drawn frames and committed view as the outlines. Both number the comments
-	// from the full list, so a pin, its card and its thread share one number.
+	// The drawn frames, like the outlines. Pins and panel items number from the full list, so a pin,
+	// its card and its thread share one number.
 	readonly pins = $derived.by(() =>
 		layoutPins({
 			comments: this.#comments.comments,
@@ -68,7 +60,6 @@ export class PinThread {
 			frames: this.#canvas.frames,
 		}),
 	);
-	// The flash follows pan, zoom, a drag preview and the frame's latest cd:anchor-rects.
 	readonly flashOutline = $derived.by(() => {
 		const comment = this.#comments.comments.find((entry) => entry.id === this.flash?.commentId);
 		const frame = comment === undefined ? undefined : this.#canvas.jumpFrame(comment);
@@ -104,16 +95,14 @@ export class PinThread {
 		this.#comments = comments;
 		this.heldThreadId = $state(heldThreadId);
 
-		// Closes the open thread whenever its pin is no longer placed, whatever moved it (comments,
-		// a frame's answer, its height, a reload, a drag preview or its settle). Pre: it runs before
-		// the thread leaves the DOM, so focus inside it still moves to the stage viewport, never body.
+		// Closes the open thread whenever its pin is no longer placed, whatever moved it. Pre: it runs
+		// before the thread leaves the DOM, so focus inside it moves to the stage viewport, not body.
 		$effect.pre(() => {
 			if (keepOpenThread({ openThreadId: this.openThreadId, pins: this.pins }) === undefined) {
 				this.closeThreadImplicitly();
 			}
 		});
 
-		// A held thread opens once its pin is placed, or is dropped once it cannot be.
 		$effect.pre(() => {
 			if (this.heldThreadId === undefined) {
 				return;
@@ -141,7 +130,7 @@ export class PinThread {
 			}
 		});
 
-		// Each jump restarts the flash timer; the cleanup cancels the previous one.
+		// Each jump restarts the flash timer.
 		$effect(() => {
 			if (this.flash === undefined) {
 				return;
@@ -192,8 +181,6 @@ export class PinThread {
 		}
 	};
 
-	// A pin opens its thread, swaps to it from another, or closes it when it is the open one. A
-	// user open ends any restore still held (App drops the held draft too).
 	handlePinOpen = (id: string): void => {
 		this.heldThreadId = undefined;
 		this.threadFocusOnOpen = true;

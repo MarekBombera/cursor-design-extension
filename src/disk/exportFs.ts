@@ -76,7 +76,7 @@ type HandoffLeafFile = {
 	contents: string;
 };
 
-// Creates handoff/<exportId>/ (never reused) and writes files in order, creating subfolders as needed.
+// The leaf is never reused: an existing handoff/<exportId>/ fails the export.
 const writeHandoffLeaf = async ({
 	workspaceRoot,
 	exportId,
@@ -107,7 +107,8 @@ const writeHandoffLeaf = async ({
 			contents,
 		});
 	}
-	// ponytail: no journal / rollback; orphan dirs are harmless and never deleted
+	// ponytail: no rollback; a failed write leaves an orphan leaf (harmless, never deleted).
+	// Upgrade path: remove the leaf when a write fails.
 };
 
 const writeManifestLastExport = async ({
@@ -150,8 +151,8 @@ type ExportPlanFrame = CanvasFrame & {
 	effective: ArtboardMeta;
 };
 
-// Exports every resolved canvas frame. All reads (and every read error) happen before the
-// leaf mkdir; the scan's HTML string is the only source for index.html, hashes, and meta.
+// All reads (and every read error) happen before the leaf mkdir; the scan's HTML string is the
+// only source for index.html, hashes, and meta.
 export const exportArtboard = async ({
 	workspaceRoot,
 	now,

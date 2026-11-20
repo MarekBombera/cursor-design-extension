@@ -1,4 +1,4 @@
-// First, so the global layer precedes every component's scoped styles in chrome.css.
+// First, so theme.css precedes every component's scoped styles in chrome.css.
 import './ui/theme.css';
 
 import { mount } from 'svelte';

@@ -4,7 +4,7 @@ import { test } from 'vite-plus/test';
 import { mergeCanvasFrames } from './canvasFrames';
 import { forwardedHistoryStep, historyKeyStep, historyTarget } from './undoRedo';
 
-test('9f: historyTarget names the frame and its flags, or nothing without one', () => {
+test('historyTarget names the frame and its flags, or nothing without one', () => {
 	const frames = mergeCanvasFrames({
 		records: [],
 		frames: ['a', 'b'].map((id) => ({
@@ -32,7 +32,7 @@ test('9f: historyTarget names the frame and its flags, or nothing without one', 
 	assert.equal(historyTarget({ frames, frameId: 'left' }), undefined);
 });
 
-test('9f: Cmd/Ctrl+Z is undo and with Shift redo, in Edit mode only, never from a text field', () => {
+test('Cmd/Ctrl+Z is undo and with Shift redo, in Edit mode only, never from a text field', () => {
 	const press = (overrides: Partial<Parameters<typeof historyKeyStep>[0]> = {}) =>
 		historyKeyStep({
 			key: 'z',
@@ -64,7 +64,7 @@ test('9f: Cmd/Ctrl+Z is undo and with Shift redo, in Edit mode only, never from 
 	}
 });
 
-test('9f: a forwarded undo counts only from the focused history frame in Edit mode', () => {
+test('a forwarded undo counts only from the focused history frame in Edit mode', () => {
 	const forwarded = (overrides: Partial<Parameters<typeof forwardedHistoryStep>[0]> = {}) =>
 		forwardedHistoryStep({
 			key: 'undo',

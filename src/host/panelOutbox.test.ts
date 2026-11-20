@@ -9,8 +9,8 @@ import { createPanelOutbox } from './panelOutbox';
 const setup = () => {
 	const posted: HostMessage[] = [];
 	const nonce = { value: 'nonce-1' };
-	// A stand-in for the 9f history store: flags per frame id, and every frame list it was asked
-	// to check.
+	// A stand-in for the history store: flags per frame id, and every frame list it was asked to
+	// check.
 	const flags = new Map<string, HistoryFlags>();
 	const checked: string[][] = [];
 	const outbox = createPanelOutbox({
@@ -167,7 +167,7 @@ test('reset drops the cached comments', () => {
 	assert.deepEqual(types(), []);
 });
 
-test('9f: every new snapshot is checked against the history; a replay is not', () => {
+test('every new snapshot is checked against the history; a replay is not', () => {
 	const { outbox, checked } = setup();
 	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:a')] }));
 	outbox.markReady();
@@ -176,7 +176,7 @@ test('9f: every new snapshot is checked against the history; a replay is not', (
 	assert.deepEqual(checked, [['hero@sha256:a'], ['hero@sha256:b', 'card@']]);
 });
 
-test('9f: canvas:updated reads the history flags when sent, so a replay sees later changes', () => {
+test('canvas:updated reads the history flags when sent, so a replay sees later changes', () => {
 	const { outbox, posted, flags } = setup();
 	const sentFlags = (): unknown =>
 		posted

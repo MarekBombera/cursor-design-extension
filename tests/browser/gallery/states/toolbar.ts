@@ -16,7 +16,6 @@ const add = (definition: StateDefinition): void => {
 	toolbarStates.push(definition);
 };
 
-// 1. Toolbar
 const toolbarState = (
 	state: string,
 	setup: string,

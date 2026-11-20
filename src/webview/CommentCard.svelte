@@ -15,23 +15,19 @@
 	import Button from './ui/Button.svelte';
 	import Message from './ui/Message.svelte';
 
-	// One comment as a view, shared by the Comments panel and the pin thread. Every field is
-	// comments.json data, rendered as text only. The composer state lives in App's `actions` (keyed
-	// by comment id), so a composer open in the panel is open in the thread too. Without `shell` it
-	// is the panel's framed article; with it, the caller places the parts (head, thread, footer):
-	// the thread puts them in its Widget.
+	// Shared by the Comments panel and the pin thread; comments.json fields render as text only.
+	// Composer state is CommentsState.actions (by comment id), so a composer open in the panel is
+	// open in the thread too. Without `shell` it is the panel's framed article.
 	type Props = {
 		shell?: Snippet<[{ head: Snippet; thread: Snippet; footer: Snippet }]>;
 		comment: PostedComment;
-		// The comment's number (commentNumber), shared with its pin.
 		number: number;
 		badge: PinBadge | undefined;
-		// Epoch ms, for the relative times.
+		// Epoch ms.
 		now: number;
 		action: CommentAction | undefined;
-		// The frame's display name (frameLabel).
 		frameLabel: string;
-		// The frame is drawn (a live iframe); false says "Frame not shown" in the status badge's place.
+		// A live iframe; false says "Frame not shown" in the status badge's place.
 		frameShown: boolean;
 		// Show the target on the canvas: the panel's card for a shown frame only; never the thread.
 		onJump?: () => void;
@@ -40,9 +36,9 @@
 		onReplyCancel: () => void;
 		onReplySubmit: () => void;
 		onToggleStatus: () => void;
-		// Another copy is in flight somewhere in the chrome (copyPending); one copy at a time.
+		// Another copy is in flight somewhere in the chrome: one copy at a time.
 		copyBlocked: boolean;
-		// This card's own copy just succeeded (copyFeedback is live).
+		// This card's own copy just succeeded.
 		copied: boolean;
 		onCopy: () => void;
 	};
@@ -71,7 +67,6 @@
 	const uid = $props.id();
 	const errorId = `${uid}-error`;
 
-	// Read by handlers only, so not reactive.
 	let textarea: HTMLTextAreaElement | undefined;
 	let replyButton: HTMLButtonElement | undefined;
 
@@ -127,9 +122,9 @@
 		}
 	};
 
-	// One handler for the textarea and both composer buttons. Prevented keys are ignored by App's
-	// window keydown and the thread's Escape handler, so the first Escape closes only the composer.
-	// Enter adds from the textarea only; on a button it activates that button natively.
+	// For the textarea and both composer buttons. Prevented keys are ignored by the window's mode
+	// keys and the thread's Escape, so the first Escape closes only the composer. Enter adds from the
+	// textarea only; on a button it activates that button natively.
 	const handleComposerKeydown = (event: KeyboardEvent): void => {
 		const key = popoverKeyAction({
 			key: event.key,
@@ -168,7 +163,6 @@
 		{#if frameShown}
 			<Badge {...statusBadge(comment.status)} />
 		{:else}
-			<!-- In the status badge's place: the absent frame is what this card needs to say. -->
 			<span class="note">Frame not shown.</span>
 		{/if}
 	</div>
@@ -184,15 +178,12 @@
 	</span>
 {/snippet}
 
-<!-- The last failed request's host copy: under the reply box while the composer is open, else
-     after the thread. -->
 {#snippet error()}
 	{#if action?.error !== undefined}
 		<Message tone="error" id={errorId}>{action.error}</Message>
 	{/if}
 {/snippet}
 
-<!-- The comment, then its replies: each entry but the last draws the line to the next avatar. -->
 {#snippet thread()}
 	<div class="thread">
 		<div class={['entry', { joined: comment.replies.length > 0 }]}>
@@ -229,10 +220,8 @@
 	{/if}
 {/snippet}
 
-<!-- aria-disabled, not disabled: a disabled focused button would drop focus to the body. -->
 {#snippet footer()}
 	{#if composerOpen}
-		<!-- Its root catches the keys bubbling from the textarea and both buttons. -->
 		<Composer
 			value={action?.reply ?? ''}
 			label="Reply"
@@ -333,7 +322,6 @@
 		padding: 0;
 		list-style: none;
 	}
-	/* The avatar, then author and time with the body (and any flags) under them. */
 	.entry {
 		position: relative;
 		display: grid;

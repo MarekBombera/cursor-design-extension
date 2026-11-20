@@ -4,12 +4,10 @@ import { type FrameMode, isFrameMode, parsePickFields } from './frame/frameMessa
 import { isFiniteNumber, isRecord } from './hostMessages';
 import type { StageView } from './stageGeometry';
 
-// What the chrome keeps in VS Code webview state (getState / setState) across a tab switch, which
-// reloads the webview: the stage view and the comment UI. Read through these parsers only; the
-// host never sees this state.
+// Webview state (getState / setState) survives a tab switch, which reloads the webview. Read it
+// through these parsers only; the host never sees it.
 
-// Webview state survives hide/show (the webview reloads), so the view is restored from it.
-// Anything malformed is rejected and the first layout fits instead.
+// Malformed: rejected, so the first layout fits instead.
 export const parseSavedStageView = (value: unknown): StageView | undefined => {
 	if (
 		!isRecord(value) ||
@@ -23,8 +21,6 @@ export const parseSavedStageView = (value: unknown): StageView | undefined => {
 	return { x: value.x, y: value.y, zoom: value.zoom };
 };
 
-// The comment UI kept in webview state across a tab switch (the webview reloads), with the mode
-// (Comment or Edit, 9d).
 export type SavedCommentUi = {
 	mode: FrameMode;
 	// Never pending and never with an error.
@@ -41,7 +37,6 @@ const isSavedBody = (value: unknown): value is string =>
 	typeof value === 'string' && value.length <= MAX_COMMENT_BODY_CHARS;
 
 // The frame id is only compared against live frame ids, so any non-empty string will do.
-// `pendingRequestId` and `error` are never restored.
 const parseSavedDraft = (value: unknown): CommentDraft | undefined => {
 	if (!isRecord(value) || !isRecord(value.target)) {
 		return undefined;

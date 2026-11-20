@@ -18,7 +18,6 @@ const add = (definition: StateDefinition): void => {
 	popoverStates.push(definition);
 };
 
-// 4. Comment mode and the popover
 add({
 	surface: 'comment',
 	state: 'hover-outline',

@@ -105,7 +105,7 @@ test('keyboard nudges step from the last preview; end commits', () => {
 	assert.equal(ended.commit?.x, 82);
 });
 
-test('F-17: auto-repeat never starts a gesture after Agent-wins cleared one', () => {
+test('auto-repeat never starts a gesture after Agent-wins cleared one', () => {
 	const held = step(undefined, nudge(8)).gesture;
 	const afterAgent = settleFrameGesture({
 		gesture: held,

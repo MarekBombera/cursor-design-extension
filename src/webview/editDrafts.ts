@@ -16,10 +16,7 @@ import { editability, inlineValue } from './editInspector';
 import type { EditCommit, EditField, EditKey } from './editRequests';
 import type { EditApplyMessage, EditStyleField } from './frame/frameMessages';
 
-// Field drafts (9e): one field's uncommitted input in the Edit-mode inspector, its live preview in
-// the frame and its commit verdict. Pure; the drafts live in EditState (editState.svelte.ts), the
-// view is Inspector.svelte. The host stays the authority on every save (9c), so these rules only
-// decide what to preview and whether to send.
+// The host stays the authority on every save; these rules only decide what to preview and send.
 
 export type FieldErrorKind = 'invalid-length' | 'complex-style' | 'control-text';
 
@@ -42,8 +39,8 @@ export type EditDraft = {
 	error: FieldErrorKind | undefined;
 };
 
-// The draft for the first input in a field: only on an editable pick (a number, not shared), and
-// for a style field only when the style attribute is within the cap.
+// Only on an editable pick (a number, not shared), and for a style field only when the style
+// attribute is within the cap.
 export const startDraft = ({
 	pick,
 	documentVersion,
@@ -134,7 +131,6 @@ export const draftPreview = (draft: EditDraft): EditApplyMessage | undefined => 
 	return 'style' in preview ? applyMessage(draft.key.sourceNumber, preview) : undefined;
 };
 
-// Puts the frame back to the draft's baseline.
 export const baselinePreview = (draft: EditDraft): EditApplyMessage =>
 	applyMessage(
 		draft.key.sourceNumber,
@@ -182,10 +178,8 @@ export const commitDraft = (draft: EditDraft): CommitVerdict => {
 
 export type DraftFate = 'keep' | 'commit' | 'drop';
 
-// What happens to an open draft when the stage changes (the lifecycle table in the 9e spec):
-// - its frame left, became a tile or reloaded: drop (the preview is gone with the document);
-// - a new pick of another element: commit against the draft's own key;
-// - a refreshed pick of the draft's element that is no longer editable: drop.
+// Drop when the frame left, became a tile or reloaded (the preview went with the document), or the
+// draft's element is no longer editable; commit when the user picked another element.
 export const draftFate = ({
 	draft,
 	frame,

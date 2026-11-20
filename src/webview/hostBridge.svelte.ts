@@ -15,9 +15,6 @@ import {
 import { parseSavedCommentUi, parseSavedStageView, type SavedCommentUi } from './savedState';
 import type { StageView } from './stageGeometry';
 
-// The one place that talks to the host: acquireVsCodeApi once, one message listener, webview
-// state. Components never call postMessage or add message listeners (rule 08).
-
 type VsCodeApi = {
 	postMessage: (message: unknown) => void;
 	getState: () => unknown;
@@ -28,8 +25,7 @@ declare const acquireVsCodeApi: () => VsCodeApi;
 
 const vscodeApi = acquireVsCodeApi();
 
-// Webview state is one record, {stageView, commentsPanelOpen, mode, commentDraft, openThreadId,
-// replyDrafts}; each save keeps the other keys, so no save erases another's.
+// Webview state is one record; each save keeps the other keys, so no save erases another's.
 const savedRecord = (): Record<string, unknown> => {
 	const state = vscodeApi.getState();
 	return state !== null && typeof state === 'object' ? { ...state } : {};
@@ -42,7 +38,6 @@ export const saveStageView = (stageView: StageView): void => {
 	vscodeApi.setState({ ...savedRecord(), stageView });
 };
 
-// A missing or non-boolean value reads as closed.
 export const readSavedCommentsPanelOpen = (): boolean => savedRecord().commentsPanelOpen === true;
 
 export const saveCommentsPanelOpen = (open: boolean): void => {
@@ -51,9 +46,8 @@ export const saveCommentsPanelOpen = (open: boolean): void => {
 
 export const readSavedCommentUi = (): SavedCommentUi => parseSavedCommentUi(vscodeApi.getState());
 
-// Snapshot: a deep $state proxy cannot be cloned. A key at its default (Interact mode, no draft,
-// no thread, no reply text) is left out, so a closed comment UI leaves only the other keys; the
-// previous record's `mode` is dropped first, so leaving a mode is saved too.
+// Snapshot: a deep $state proxy cannot be cloned. A key at its default is left out; the previous
+// record's `mode` is dropped first, so leaving a mode is saved too.
 export const saveCommentUi = (ui: SavedCommentUi): void => {
 	const {
 		mode: _mode,
@@ -83,23 +77,20 @@ export const postCommentRequest = (message: CommentRequestMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
-// 9e: one Edit-mode save, or (9f) one undo / redo step; the host answers artboard:edited or
-// ui:error with its requestId.
 export const postEditRequest = (message: ArtboardEditMessage | ArtboardHistoryMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
-// The only chrome → frame send. '*' because a sandboxed frame has an opaque origin, so there is
-// nothing to target; the frame can only navigate to blob: (chrome CSP frame-src), a document its
-// own script made. The payload is a mode, a step or refresh command, this frame's own comment ids
-// and selectors (cd:anchors), or an Edit-mode preview of this frame's own element (cd:edit-apply),
+// The only chrome → frame send. '*' because a sandboxed frame has an opaque origin; the frame can
+// only navigate to blob: (chrome CSP frame-src), a document its own script made. The payload is a
+// command or this frame's own data (its comment ids and selectors, its element's edit preview),
 // never comment bodies or another frame's data.
 export const postToFrame = (iframe: HTMLIFrameElement, message: ChromeFrameMessage): void => {
 	iframe.contentWindow?.postMessage(message, '*');
 };
 
 type HostBridgeArgs = {
-	// Live frame iframes by frame id, matched against event.source at message time.
+	// Matched against event.source at message time, so it may change after connecting.
 	iframes: ReadonlyMap<string, HTMLIFrameElement>;
 	onHostMessage: (message: HostMessage) => void;
 	onFrameMessage: (frameId: string, message: FrameMessage) => void;
@@ -115,8 +106,9 @@ export const connectHostBridge = ({
 		const handleMessage = (event: MessageEvent): void => {
 			const route = routeMessage({ source: event.source, origin: event.origin, iframes });
 			if (route.kind === 'frame') {
-				// ponytail: rejects are not logged; wheel fires at 60+ Hz, so logging would spam.
-				// Late cd:frame-height / cd:frame-wheel from a previous document is accepted.
+				// ponytail: rejects are not logged (wheel fires at 60+ Hz), and a late cd:frame-height or
+				// cd:frame-wheel from a previous document is accepted. Upgrade: a sampled reject count
+				// posted to the host log; a document id on frame messages.
 				const message = parseFrameMessage(event.data);
 				if (message !== undefined) {
 					onFrameMessage(route.frameId, message);
