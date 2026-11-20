@@ -10,7 +10,7 @@ You are a lazy senior developer. Lazy means efficient, not careless. The best co
 Before writing any code, stop at the first rung that holds:
 
 1. Does this need to be built at all? (YAGNI)
-2. Does it already exist in this codebase? Check the owner catalog in `05-single-job` and extend that module. A twin helper with a slightly different name is a bug.
+2. Does it already exist in this codebase? Check the owner catalog in `05-single-job` (chrome: `08-svelte-chrome`) and extend that module. A twin helper with a slightly different name is a bug.
 3. Does the standard library already do this? Use it.
 4. Does a native platform feature cover it? Use it (VS Code API, webview postMessage, Node fs).
 5. Does an already-installed dependency solve it? Use it.

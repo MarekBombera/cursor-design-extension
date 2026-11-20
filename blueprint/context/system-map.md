@@ -767,12 +767,13 @@ settles the gesture to disk (the Agent wins).
 | frame → chrome | `cd:hover` | `{rect \| null}` (frame-local CSS px) |
 | frame → chrome | `cd:pick` | `{selector \| null, tagName, text, rect \| null, point, box, styles, isPage, repost, edit?}` (selector from finder inside the frame; `point` relative to the target's box, `box` its unclipped size; `repost` true for a scroll or resize re-post; `edit` `{sourceNumber \| null, sharedNumber, textState, text, style \| null}` only in Edit mode, 9d; `style` `''` when absent, `null` only over the cap, 9e) |
 | frame → chrome | `cd:key` | `{key: 'c' \| 'Escape' \| 'undo' \| 'redo'}` (frame focus, not editable, no Alt or repeat; C / Escape without Ctrl/Meta; undo / redo are Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z, 9f, acted on only from the focused history frame in Edit mode) |
-| frame → chrome | `cd:anchor-rects` | `{anchors: [{id, box \| null, visible \| null}]}` (frame-local CSS px; `box` unclipped, `visible` clipped by scrolling ancestors and the frame viewport; `box: null` requires `visible: null`) |
+| frame → chrome | `cd:anchor-rects` | `{anchors: [{id, box \| null, visible \| null}]}` (frame-local CSS px; `box` unclipped, `visible` clipped by every ancestor whose overflow is not visible (html and body excluded) and the frame viewport; `box: null` requires `visible: null`) |
 | chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment' \| 'edit'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 | chrome → frame | `cd:anchors` | `{anchors: [{id, selector}]}` (the frame's element comments, every status; replaces its previous list) |
 | chrome → frame | `cd:pick-refresh` | none (9e, Edit mode only; the frame re-describes its pick, selector reused, and re-posts it with `repost: true`) |
 | chrome → frame | `cd:edit-apply` | `{sourceNumber, text}` or `{sourceNumber, style}` (9e, Edit mode only; the live preview of the one element with that number; display only) |
 
-Rule 02 is the normative contract. If this table and rule 02 disagree, fix whichever no longer
-matches the code.
+This table is the normative message contract; rule 02 keeps only the cross-cutting invariants.
+If the table and the code disagree, fix whichever is wrong. `frameMessages.test.ts` fails when
+this section's `cd:*` names differ from the frame message constants.

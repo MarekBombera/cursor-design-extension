@@ -1,70 +1,54 @@
 ---
 description: VS Code extension host practices - activation, disposables, panel, URIs, trust
-globs: src/**,package.json
+globs: src/extension.ts,src/host/**,src/panel/**,src/commands/**,src/mcp/registerCursorDesignMcp.ts,src/disk/**,package.json,vite.config.ts
 paths:
-  - src/**
+  - src/extension.ts
+  - src/host/**
+  - src/panel/**
+  - src/commands/**
+  - src/mcp/registerCursorDesignMcp.ts
+  - src/disk/**
   - package.json
+  - vite.config.ts
 alwaysApply: false
 ---
 
 # VS Code extension host
 
-Platform rules for the extension host. Product constraints: 00. MCP / CSP / disk contract: 02. Module ownership: 05. Error channels: 06.
-
 ## Activation
 
-- Never `"activationEvents": ["*"]`. Contributed `commands` already activate (engines `^1.136`). Add `onWebviewPanel:<viewType>` only if you register a serializer.
-- `activate` registers commands, MCP, watchers, then returns. No workspace walk, no network, no waiting on MCP handshake.
-- Do not open the panel on activate, on update, or for every window. Open from the command / MCP `set_artboard`.
-- `activate` runs once. `deactivate` returns a `Promise` only when cleanup is async.
+- Never `"activationEvents": ["*"]`. Activation is `onStartupFinished` (MCP registers on activate); contributed `commands` already activate. Add `onWebviewPanel:<viewType>` only if you register a serializer.
+- `activate` registers commands, MCP and watchers, then returns: no workspace walk, network or waiting on the MCP handshake.
+- Never open the panel on activate, update or per window; only from the command or MCP `set_artboard`.
+- `deactivate` returns a `Promise` only when cleanup is async.
 
 ## Disposables
 
-Push every command, watcher, `OutputChannel`, status item, and MCP registration to `context.subscriptions`. Panel-local timers/listeners die in `onDidDispose`; no leaked `setInterval`.
+Push every command, watcher, `OutputChannel`, status item and MCP registration to `context.subscriptions`. Panel-local timers and listeners die in `onDidDispose`; no leaked `setInterval`. One panel: a second open reveals it, never creates another.
 
-```ts
-// ❌ BAD: second Open Artboard creates another panel; timer survives close
-vscode.window.createWebviewPanel(viewType, title, column, options)
-setInterval(() => panel.webview.postMessage(payload), 200)
-
-// ✅ GOOD: one panel; reveal; dispose with the panel
-if (currentPanel) {
-  currentPanel.reveal(column)
-  return currentPanel
-}
-const panel = vscode.window.createWebviewPanel(viewType, title, column, options)
-panel.onDidDispose(() => {
-  clearInterval(refreshTimer)
-  currentPanel = undefined
-})
-```
-
-## Commands / chrome UX
+## Commands
 
 - Every command: `contributes.commands` **and** `registerCommand`. IDs `cursor-design.*`, `category: "Cursor Design"`.
-- Hide with `when` / `enablement`; still guard the handler (palette can invoke anyway).
+- Hide with `when` / `enablement`; still guard the handler (the palette can invoke it anyway).
 - Prefer Command Palette / QuickPick over custom wizard UI.
-- Chrome reads the `--cd-*` tokens from `src/webview/ui/theme.css` (the only file that reads `var(--vscode-*)`), keyboard order, and ARIA. Artboard HTML is user content; do not theme it as chrome.
 
-## Webview host (CSP contract is 02)
+## Webview host
 
 - `webview.html` is a **complete** HTML document, not a fragment.
-- `acquireVsCodeApi()` **once** in chrome; keep the return value.
-- `enableScripts: true` for chrome. `localResourceRoots` = extension resources only (`dist/webview`), never the workspace (artboard is nested iframe `srcdoc`).
-- Chrome CSP: `default-src 'none'` plus nonce'd `script-src` and `style-src` via `webview.cspSource`, and `style-src-attr 'unsafe-inline'` (style attributes in artboard frames, 0.4). No `http:` resources.
-- Prefer `getState` / `setState` over `retainContextWhenHidden` (high memory). Use retain only if iframe state cannot be restored from disk SoT.
+- `enableScripts: true` for chrome. `localResourceRoots` = extension resources only (`dist/webview`), never the workspace (artboards are nested iframes).
+- Prefer `getState` / `setState` over `retainContextWhenHidden` (high memory); retain only if iframe state cannot be restored from disk SoT.
 
 ## URIs, FS, processes
 
 - `vscode.Uri.joinPath` + `webview.asWebviewUri`. Never string-concat paths or put `file://` in webview HTML.
-- Host: `vscode.workspace.fs` for workspace files (remote / WSL / Codespaces). MCP disk lib: `node:fs` is fine (separate process). Workspace-kind host may call disk `node:fs` helpers for `.cursor-design/` SoT (panel read and init, drag commit, export/handoff) so MCP and the host cannot drift.
-- `import * as vscode` only in the extension host. Not in webview JS, not in the MCP process.
+- Host: `vscode.workspace.fs` for workspace files (remote / WSL / Codespaces). The MCP disk lib uses `node:fs` (separate process); the workspace-kind host calls the same disk helpers for `.cursor-design/` so MCP and host cannot drift.
+- `import * as vscode` only in the extension host, never in webview or MCP process code (lint).
 
 ## Trust, remote, bundle
 
-Artboard HTML is executable workspace code. Declare `capabilities.untrustedWorkspaces` (`false` or `limited` + description, never `true`). Do not write `.cursor-design/` or load artboard scripts until `vscode.workspace.isTrusted`.
+Artboard HTML is executable workspace code. `capabilities.untrustedWorkspaces` is `false` or `limited` + description, never `true`. Do not write `.cursor-design/` or load artboard scripts until `vscode.workspace.isTrusted`.
 
 - `extensionKind: ["workspace"]`: needs the folder, not the local UI host.
-- `vp pack` `deps.neverBundle: ['vscode']`. Never depend on the `vscode` npm package. Only host code imports `vscode` (lint).
+- `vp pack` `deps.neverBundle: ['vscode']`. Never depend on the `vscode` npm package.
 - No proposed APIs unless `enabledApiProposals` + matching `engines`.
-- Watch with `createFileSystemWatcher` + debounce (~200ms). Do not poll. No sync fs/CPU on the extension host thread.
+- Watch with `createFileSystemWatcher` + debounce (~200 ms). Do not poll. No sync fs / CPU on the extension host thread.

@@ -336,7 +336,8 @@ shipped data flow:
   took out.
 - Check each changed arrow against the **built code**, not the spec, using the
   map's **Chart checklist**.
-- Keep the message table in step with rule 02.
+- Keep rule 02's message invariants and the map's message contract table in
+  step with the code.
 - Set **Last verified against code** to this work item.
 - When the work item changed no cross-process or cross-document flow, change
   only that line.

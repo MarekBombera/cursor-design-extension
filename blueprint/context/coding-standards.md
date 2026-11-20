@@ -25,23 +25,11 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 
 ## Testing
 
-The Blueprint test gate is on via `pnpm test` (`vp test`, declared as `Test` in `AGENTS.md` Commands). Logic-bearing steps use that command. `/ci` still owns a `Verify` command. There is no Electron suite (plain VS Code lacks the Cursor API). A coverage script (`pnpm coverage`) exists for a local report; it has no thresholds and is not part of Verify.
-
-Do not run `/tests` to add or replace the runner; Vitest via `vp test` is it. Test-writing details: `.claude/rules/09-tests.md`.
-
-- **What to test:** pure logic where a wrong answer is possible (parsers, disk schema, generation/hash, conflict handling). Assert inputs/outputs and edge cases (empty, missing, malformed).
-- **What not to test:** Svelte chrome and the artboard iframe as unit tests. The browser tests prove those (`.claude/rules/09-tests.md`); F5 covers Cursor-only checks.
-- When a runner is configured: a step that adds in-scope logic ships a passing test in the same diff. Empty suite should fail, not pass.
-- Test files live next to source (`feature.test.ts`). `*.test.ts` covers the extracted util, not the VS Code `activate` wrapper.
-- Stack binding: TypeScript extension. If/when a test command is declared, mock disk/MCP boundaries, not a web-app ORM or React tree.
+Test gate on: `pnpm test` (`vp test`, Vitest; the `Test` command in `AGENTS.md`). A step that adds in-scope logic (parsers, disk schema, generation/hash, conflict handling) ships a passing test in the same diff. Vitest is the runner; do not run `/tests` to add or replace it. `/ci` owns `Verify`. What and how to test: `.claude/rules/09-tests.md`.
 
 ## Browser Verification
 
-There is no web app on `localhost:3000`. Chrome and iframe behavior is proven by `Browser tests` (`AGENTS.md`): `pnpm test:browser` drives the built chrome bundle in `tests/browser/harness.ts` with a stubbed VS Code host and real sandboxed blob frames.
-
-- Browser tests assert behavior through roles, `data-cd-*` hooks, captured messages and boxes, never pixels or timing sleeps beyond the one stability quiet window. Reuse the one harness.
-- **F5** in Cursor stays for Cursor-only checks: webview CSP, MCP registration, Extension Host, webview hide/show, Cursor focus.
-- Browser tests are not part of default Verify/CI unless chosen separately.
+No app server: `Browser tests` in `AGENTS.md` (`pnpm test:browser`, local only) prove chrome and iframe behavior; F5 covers Cursor-only checks. How to write them: `.claude/rules/09-tests.md`.
 
 ## Code Quality
 
@@ -51,12 +39,7 @@ There is no web app on `localhost:3000`. Chrome and iframe behavior is proven by
 
 ## Comments
 
-Write code that explains itself; comment only what the code cannot say.
-
-- Comment the **why**, not the **what**. Delete any comment that restates the code.
-- No banner/header blocks or step-by-step narration of obvious code.
-- A comment earns its place for a non-obvious decision, a gotcha, why a value is what it is, or a link to the spec. Use `ponytail:` when cutting a known corner.
-- Prefer self-documenting names. Keep doc comments to a one-line purpose on exported helpers.
+See `.claude/rules/04-code-conventions.md` Comments.
 
 ## Writing
 

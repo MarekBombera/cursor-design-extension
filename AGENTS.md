@@ -2,139 +2,109 @@
 
 **cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`.
 
-**Notion:**
+**Notion:** hub (locks, MCP/disk, Interact vs Edit) https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4 ; active 0.4 Edit-lite (its Decisions section is the plan) https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d
 
-- Hub (locks, MCP/disk, Interact vs Edit): https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
-- 0.4 Edit-lite (active; Decisions section is the plan): https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d
-- 0.3 Comments for Agent (shipped): https://app.notion.com/p/3fd500344e088171925dd51bc542c00c
-- 0.2 Interact (shipped): https://app.notion.com/p/3da500344e0881c5a245e9b912559b8e
-- 0.1 archive (shipped, don’t re-litigate): https://app.notion.com/p/3da500344e0881e884dcc828fc49a395
-
-**Status:** 0.3 Comments for Agent shipped (build-plan item 8, plan in `blueprint/reference/0.3-comments-plan.md`). Active: 0.4 Edit-lite (build-plan item 9, 9a-9g).
-
-**After work:** run `pnpm verify`. Do not skip it.
+**After work:** run `pnpm verify`; never skip it.
 
 **Agent skill:** changing MCP tools or their args, error codes, artboard runtime limits, or the frame CSP updates `skills/cursor-design/SKILL.md` (shipped to users' `~/.cursor/skills/`) in the same change. `src/mcp/agentSkill.test.ts` guards names, codes and limits; the prose is on you.
 
 Claude Code, Codex, and every other AI tool must not add AI attribution to
 commits or pull requests, including AI `Co-Authored-By` trailers or generated-by
-signatures. Preserve genuine human attribution. See
-[Commit and PR attribution](blueprint/context/ai-interaction.md#commit-and-pr-attribution)
-for optional tool settings.
+signatures. Preserve genuine human attribution. Tool settings:
+[Commit and PR attribution](blueprint/context/ai-interaction.md#commit-and-pr-attribution).
 
 ## Agent files
 
 One copy of everything; never copy files between adapter trees.
 
-- **Rules:** author `.claude/rules/<name>.md` (Claude Code reads only `.md`, scoped by `paths:`). `.cursor/rules/<name>.mdc` is a relative symlink to it (Cursor, scoped by `globs:`). A scoped rule lists the same patterns in both keys. Always-on rules: `00-cursor-design-core`, `03-ponytail`. The rest load when matching files are touched. Codex does not read rules; this file and the skills carry the workflow there.
-- **Skills and agents:** author under `.cursor/{skills,agents}`. `.claude/{skills,agents}` and `.agents/skills` are symlinks into `.cursor`.
-- `pnpm verify` runs `scripts/check-agent-rules.mjs`, which fails on a plain `.mdc` file (Cursor's "New rule" creates one), a broken link, or `globs:` / `paths:` drift.
+- **Rules:** author `.claude/rules/<name>.md` (`paths:`); `.cursor/rules/<name>.mdc` is a relative symlink to it (`globs:`, same patterns). Always-on: `00`, `03`; the rest load on matching files. Codex loads no rules: read `00`, `03` and the rule matching each file you edit.
+- **Skills and agents:** author under `.cursor/{skills,agents}`; `.claude/{skills,agents}` and `.agents/skills` symlink into it.
+- Verify's `scripts/check-agent-rules.mjs` fails on a plain `.mdc` (Cursor's "New rule" makes one), a broken link, or `globs:` / `paths:` drift.
 
-This repo also uses [AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint)
-1.16.1 as a file-backed workflow overlay (plans, specs, review gates). Blueprint
-does not define the product stack. Never run a framework scaffolder inside this
-directory; the extension scaffold already exists. The official updater refuses the
-symlinked adapter trees, so Blueprint updates are a manual three-way merge.
+[AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint) 1.16.1 is the workflow
+overlay, not the product stack. Never run a framework scaffolder here. Its updater
+refuses the symlinked adapter trees: updates are a manual three-way merge.
 
 ## Proportional engineering
 
-Build for established requirements, not hypothetical scale, threats, or future
-flexibility. Reuse existing code, the standard library, native platform features,
-and installed dependencies before adding machinery.
+Build for established requirements, not hypothetical scale, threats, or flexibility.
+Reuse existing code, the standard library, platform features, and installed
+dependencies before adding machinery.
 
-- Unknown scale or extensibility defaults to the smaller reversible design. Do
-  not infer enterprise, multi-tenant, hostile-user, or compliance requirements.
+- Unknown scale or extensibility defaults to the smaller reversible design; do not
+  infer enterprise, multi-tenant, hostile-user, or compliance requirements.
 - Derive trust and data-integrity boundaries from actual reachability: untrusted
-  input, auth/session/ownership, shared persisted data, destructive operations,
-  payments, secrets, and sensitive data.
+  input, auth/ownership, shared persisted data, destructive operations, payments,
+  secrets, sensitive data.
 - Ask only when an unknown materially changes behavior, architecture, persisted
-  data, interoperability, a real security boundary, or cost. Otherwise choose the
-  simplest repository-native implementation.
-- Add an abstraction, dependency, service, configuration surface, compatibility
-  layer, or security mechanism only for a current requirement.
+  data, interoperability, a real security boundary, or cost; otherwise pick the
+  simplest repo-native option.
+- Add an abstraction, dependency, service, config surface, compatibility layer,
+  or security mechanism only for a current requirement.
 - Simplicity never removes real trust-boundary validation, data-loss prevention,
   accessibility, explicit security requirements, configured tests, or project rules.
-- Stack-specific template standards apply only when the project uses that stack.
+- Stack-specific template standards apply only to this project's stack.
 
 ## Read these when relevant
 
-- `blueprint/config.json` - workflow policy: review cadence, quality gates, branch prefixes, `git.landing`. Skills read it themselves; an invalid file stops mutating commands and points to `/blueprint-doctor`. Configuration never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
-- `blueprint/workflow.md` - managed workflow reference (configuration, each skill, dashboard activity, checks)
-- `blueprint/context/project-overview.md` - durable product context from the plans
-- `blueprint/context/system-map.md` - shipped data flow (processes, messages, disk) with the chart checklist; read before changing a cross-process flow
-- `blueprint/context/coding-standards.md` - stack, testing, and writing standards (code rules live in `.claude/rules/`)
-- `blueprint/context/ai-interaction.md` - read when running the Blueprint workflow
-- `blueprint/context/current-feature.md` - the one feature or fix being built in this checkout
-
-Reuse relevant context already loaded in the session; skills load the rest on demand.
+- `blueprint/config.json` - workflow policy (gates, `git.landing`); if invalid, run `/blueprint-doctor`. It never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
+- `blueprint/workflow.md` - managed workflow reference
+- `blueprint/context/project-overview.md` - product context
+- `blueprint/context/system-map.md` - processes, messages, disk; read before changing a cross-process flow
+- `blueprint/context/coding-standards.md` - stack, testing, writing
+- `blueprint/context/ai-interaction.md` - Blueprint workflow
+- `blueprint/context/current-feature.md` - the active spec
 
 ## Workflow
 
-Build one feature or fix at a time, behind review gates:
+One feature or fix at a time:
+`/feature` (or `/fix`) -> `/feature-review` -> `/feature-review-fix` -> `/implement` -> `/check` -> `/audit current` -> `/complete`
 
-`/feature` (or `/fix`) -> `/feature-review` -> `/feature-review-fix` ->
-`/implement` -> `/check` -> `/audit current` -> `/complete`
-
-Approve the spec `/feature-review-fix` rewrote before Implement. Check proves
-behavior; Audit reviews code and records findings in `blueprint/context/findings.md`
-(open P0/P1 findings block `/complete`). Audit is not mandatory unless the
-configured gates select it. `/check guide` only generates manual instructions.
-`/explore`, `/brief`, `/blueprint-status`, and `/blueprint-doctor` are read-only
-orientation. To remove a shipped feature, use `/fix`.
-
-In Codex, invoke skills as `$feature`; in Claude Code and Cursor, as `/feature`.
-These are chat commands, not terminal commands.
+Approve the spec `/feature-review-fix` rewrote before Implement. Open P0/P1 findings
+in `blueprint/context/findings.md` block `/complete`. `/explore`, `/brief`,
+`/blueprint-status`, `/blueprint-doctor` and `/check guide` are read-only. Remove a
+shipped feature with `/fix`. Skills are chat commands (`$feature` in Codex, `/feature`
+elsewhere).
 
 Approval boundaries:
 
 - `autopilot` and `continuous` are explicit-only. Autopilot stops before
   `/complete`; Continuous works locally and never pushes, deploys, or publishes.
 - `/complete` follows `git.landing` (`local-merge`): squash merge needs an
-  explicit yes, and pushing needs a separate yes.
-- This product ships as a `.vsix`; never deploy, publish, or push without a separate yes in the current chat.
-- Parallel work uses one Git worktree or clone per work item, each on its own
-  branch. Never replace another worker's active spec.
+  explicit yes, pushing a separate yes.
+- The product ships as a `.vsix`; never deploy, publish, or push without a separate yes in the current chat.
+- Parallel work: one Git worktree or clone per work item, each on its own branch.
+  Never replace another worker's active spec.
 
 ## Dashboard activity
 
-Tracked commands record progress in `blueprint/.state/run.json` (generated, ignored
-by Git) through `node .cursor/skills/blueprint-doctor/scripts/run-state.mjs`, never
-by hand. The contract (which commands, first-action rule, fields) is
-`blueprint/workflow.md` → Dashboard activity. Here `feature-review` and
-`feature-review-fix` are tracked too.
+Tracked commands (plus `feature-review`, `feature-review-fix`) write
+`blueprint/.state/run.json` only via `node .cursor/skills/blueprint-doctor/scripts/run-state.mjs`,
+never by hand. Contract: `blueprint/workflow.md` → Dashboard activity.
 
 ## Automatic verification
 
 `.github/workflows/verify.yml` runs `pnpm verify` on pull requests and pushes to
-the default branch, with `contents: read` only. `/ci` owns changes to it. Branch
-protection is a separate remote setting.
+`main` (`contents: read`). `/ci` owns it.
 
 ## Commands
 
 - Install: `pnpm install`
-- Check: `pnpm run check` (`vp check`: format, lint, type check; then the agent rules layout check)
+- Check: `pnpm run check` (`vp check`, then the agent rules check)
 - Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && tsc -p tsconfig.webview-tests.json && vp test && vp pack && vp build -c vite.webview.config.ts`)
-- Test: `pnpm test` (`vp test`: unit suite via Vite+ / Vitest, runs once)
-- Coverage: `pnpm coverage` (`vp test --coverage`; report only, no thresholds; not Verify)
+- Test: `pnpm test` (`vp test`: Vitest over `src/**/*.test.ts`). No Electron suite (plain VS Code lacks the Cursor API).
+- Coverage: `pnpm coverage` (report only, no thresholds)
 - Fix: `pnpm exec vp check --fix`
-- Compile: `pnpm compile` (`vp check --no-fmt` for lint + type check, no format gate, then `vp pack && vp build -c vite.webview.config.ts`; writes `dist/extension.js`, `dist/mcp.js`, and `dist/webview/chrome.js` + `chrome.css`)
-- Watch: `pnpm watch` (`pnpm run --parallel "/^watch:/"` — `watch:pack` and `watch:webview`)
-- Debug: **F5** (Run Extension): Extension Development Host opens `fixtures/dev-workspace`
-- Package: `pnpm package` (`vp check --no-fmt && vp pack --minify --no-sourcemap && vp build -c vite.webview.config.ts --sourcemap false`)
-- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint / type-aware check still run on TS 7 via tsrs (bundled with vite-plus)
+- Compile: `pnpm compile` (lint, type check, build `dist/`)
+- Watch: `pnpm watch` (pack + webview)
+- Debug: **F5** opens `fixtures/dev-workspace` in the Extension Development Host for Cursor-only checks (CSP, MCP registration, webview hide/show, Cursor focus). Confirm `dist/mcp.js` exists first.
+- Package: `pnpm package`
+- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint and type-aware check run TS 7 (tsrs, in vite-plus)
 - Package `.vsix`: `pnpm vsix`
 - Knip: `pnpm knip` (unused files/deps; not Verify)
 
-Lint config lives in `vite.config.ts` and enforces the mechanical code conventions
-(arrow functions, names, `catch (error)`, return types, banned libraries, `vscode`
-only in host code). Fix the code, not the rule.
+Lint (`vite.config.ts`) enforces the mechanical conventions. Fix the code, not the rule.
 
-Confirm `dist/mcp.js` exists after compile/watch before testing MCP in the Extension Development Host.
+Browser tests: `pnpm test:browser` (builds chrome, then Playwright Chromium over `tests/browser/` proves chrome and frame behavior; first run needs `pnpm exec playwright install chromium`; local only, not Verify or CI).
 
-The unit Test command is `pnpm test` (`vp test`, Vite+ / Vitest over `src/**/*.test.ts`). There is no Electron suite: plain VS Code lacks the Cursor API, so browser tests cover chrome and frames and F5 covers Cursor-only checks.
-
-Browser tests: `pnpm test:browser` (builds the chrome bundle, then runs Playwright
-Chromium over `tests/browser/`; the first run needs `pnpm exec playwright install chromium`;
-local only, not Verify or CI).
-
-Gallery: `pnpm gallery` (`CD_GALLERY=1 pnpm test:browser gallery`; every chrome state in both Cursor themes plus a WCAG contrast measurement; local only, not Verify or CI; writes to the gitignored `test-results/gallery/`; `pnpm test:browser` skips it).
+Gallery: `pnpm gallery` (every chrome state, both themes, WCAG contrast, into `test-results/gallery/`; local only).
