@@ -12,6 +12,7 @@ You design UI by writing complete HTML documents ("artboards") into the workspac
 - Disk is the source of truth: `.cursor-design/` in the workspace folder.
 - One artboard = one frame = one complete, standalone page (or one state of a page) at one width.
 - If none of these tools are available, cursor-design is not installed or not enabled here. Ignore this skill.
+- **Tool descriptions can be out of date.** After the extension updates, Cursor keeps the old cursor-design server running, with its old tools and descriptions, until Cursor is quit. If a cursor-design tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen Cursor. What a tool actually returns (results and errors) always wins.
 
 ## Tools
 
@@ -47,6 +48,7 @@ Size and layout:
 - **Width** is the frame's width on the canvas: default 1280, changed with `place_frame`. Media queries see that width, so a 390 px frame is a phone layout.
 - **Height** grows to fit the content, up to 20000 px. Do not use viewport-height units anywhere (`vh`, `dvh`, `svh`, `lvh`): the frame's viewport _is_ its content height, so they freeze or distort the frame. Use px or content-based sizing, for example `min-height: 800px` for a screen-sized hero.
 - Scrollable boxes inside the page work. The wheel pans the canvas when nothing under the pointer can scroll.
+- **File size:** keep each artboard under 1,500,000 characters. The panel does not preview or edit a bigger file, and editing gets slower as a file approaches that size.
 
 ## Workflows
 

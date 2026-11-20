@@ -8,6 +8,7 @@ import {
 	FRAME_GAP,
 	MAX_FRAME_HEIGHT,
 	MAX_FRAME_WIDTH,
+	MAX_POSTED_ARTBOARD_HTML_CHARS,
 	MIN_FRAME_WIDTH,
 } from '../disk/layout';
 import { artboardToolInputSchemas } from './artboardTools';
@@ -77,6 +78,9 @@ test('the skill states the current frame limits', () => {
 	assert.ok(skill.includes(`default ${DEFAULT_FRAME_WIDTH}`));
 	assert.ok(skill.includes(`${FRAME_GAP} px gap`));
 	assert.ok(skill.includes(`up to ${MAX_FRAME_HEIGHT} px`));
+	assert.ok(
+		skill.includes(`under ${MAX_POSTED_ARTBOARD_HTML_CHARS.toLocaleString('en-US')} characters`),
+	);
 });
 
 test('the skill states the frame sandbox the panel uses', () => {
