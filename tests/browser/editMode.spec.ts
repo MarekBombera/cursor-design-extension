@@ -4,11 +4,7 @@ import { parseArtboardDocument } from '../../src/disk/commentTarget';
 import { SOURCE_TAG_ATTRIBUTE } from '../../src/disk/layout';
 import { sourceTaggedHtml } from '../../src/disk/sourceTags';
 import { NOT_SAVED_COPY } from '../../src/webview/editRequests';
-import {
-	FRAME_PICK_MESSAGE,
-	type FramePickMessage,
-	parseFrameMessage,
-} from '../../src/webview/frame/frameMessages';
+import { FRAME_PICK_MESSAGE, parseFrameMessage } from '../../src/webview/frame/frameMessages';
 import {
 	boxOf,
 	canvasUpdated,
@@ -23,18 +19,20 @@ import {
 	frameElementBox,
 	frameOf,
 	isMessageOfType,
+	lastPick,
 	inspector,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	picksOf,
 	type Point,
 	popover,
 	posted,
 	postToChrome,
 	readEditFixture,
+	reload,
 	savedRecord,
-	savedState,
 	untilHeightReported,
 } from './harness';
 
@@ -46,15 +44,6 @@ const openEditStage = async (page: Page): Promise<void> => {
 	await untilHeightReported(page, 'a');
 };
 
-// Through the chrome's own guard: a captured pick is a wire value.
-const picksOf = async (page: Page): Promise<FramePickMessage[]> =>
-	(await messagesOfType({ page, frameId: 'a', type: FRAME_PICK_MESSAGE }))
-		.map((data) => parseFrameMessage(data))
-		.filter((message): message is FramePickMessage => message?.type === FRAME_PICK_MESSAGE);
-
-const lastPick = async (page: Page): Promise<FramePickMessage | undefined> =>
-	(await picksOf(page)).at(-1);
-
 // Clicks a point inside the element; `at` picks a spot other than the centre (a fraction of the
 // box), e.g. the right end of a button whose centre is over a child span.
 const clickElement = async (
@@ -62,10 +51,10 @@ const clickElement = async (
 	selector: string,
 	at: Point = { x: 0.5, y: 0.5 },
 ): Promise<void> => {
-	const picks = (await picksOf(page)).length;
+	const picks = (await picksOf(page, 'a')).length;
 	const box = await frameElementBox({ page, frameId: 'a', selector });
 	await clickAt(page, { x: box.x + box.width * at.x, y: box.y + box.height * at.y });
-	await expect.poll(async () => (await picksOf(page)).length).toBeGreaterThan(picks);
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(picks);
 };
 
 const sourceNumberOf = async (page: Page, selector: string): Promise<number> =>
@@ -84,7 +73,7 @@ test('Edit mode shows the inspector and the hint, and only then does the frame p
 	const title = await frameElementBox({ page, frameId: 'a', selector: '#title' });
 	await clickAt(page, centerOf(title));
 	await nextAnimationFrame(page);
-	expect(await picksOf(page)).toHaveLength(0);
+	expect(await picksOf(page, 'a')).toHaveLength(0);
 	await enterEditMode(page);
 	await expect(inspector(page)).toBeVisible();
 	await expect(inspector(page).getByText('No element selected')).toBeVisible();
@@ -95,7 +84,7 @@ test('a plain-text pick reports its edit fields and fills enabled fields', async
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	const pick = await lastPick(page);
+	const pick = await lastPick(page, 'a');
 	expect(pick?.edit).toEqual({
 		sourceNumber: await sourceNumberOf(page, '#title'),
 		sharedNumber: false,
@@ -137,12 +126,12 @@ test('text: trimmed in the field, raw on the wire; mixed content and void elemen
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#spaced');
-	expect((await lastPick(page))?.edit?.text).toBe('\n    Spaced text\n');
+	expect((await lastPick(page, 'a'))?.edit?.text).toBe('\n    Spaced text\n');
 	await expect(field(page, 'Text')).toHaveValue('Spaced text');
 
 	for (const selector of ['#mixed', '#commented']) {
 		await clickElement(page, selector, { x: 0.9, y: 0.5 });
-		expect((await lastPick(page))?.edit?.textState).toBe('children');
+		expect((await lastPick(page, 'a'))?.edit?.textState).toBe('children');
 		await expect(
 			inspector(page).getByText('Contains other elements: ask the Agent to change this text.'),
 		).toBeVisible();
@@ -164,7 +153,7 @@ test('script-made and script-copied elements read not editable; a page click sel
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#made');
-	expect((await lastPick(page))?.edit?.sourceNumber).toBeNull();
+	expect((await lastPick(page, 'a'))?.edit?.sourceNumber).toBeNull();
 	await expect(
 		inspector(page).getByText(
 			"Not editable here: this element can't be matched to the artboard file.",
@@ -175,7 +164,7 @@ test('script-made and script-copied elements read not editable; a page click sel
 	).toHaveCount(1);
 	for (const selector of ['#cloned', '#cloned-copy']) {
 		await clickElement(page, selector);
-		expect((await lastPick(page))?.edit?.sharedNumber).toBe(true);
+		expect((await lastPick(page, 'a'))?.edit?.sharedNumber).toBe(true);
 		await expect(
 			inspector(page).getByText('Not editable: a script copied this element'),
 		).toBeVisible();
@@ -184,10 +173,10 @@ test('script-made and script-copied elements read not editable; a page click sel
 	// Right of the button and its counter is the body's own line box: a page pick.
 	const frame = await frameBox(page, 'a');
 	const row = await frameElementBox({ page, frameId: 'a', selector: '#mixed' });
-	const picks = (await picksOf(page)).length;
+	const picks = (await picksOf(page, 'a')).length;
 	await clickAt(page, { x: frame.x + 600, y: row.y + row.height / 2 });
-	await expect.poll(async () => (await picksOf(page)).length).toBeGreaterThan(picks);
-	const pagePick = await lastPick(page);
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(picks);
+	const pagePick = await lastPick(page, 'a');
 	expect(pagePick?.isPage).toBe(true);
 	expect(pagePick?.edit?.textState).toBe('children');
 	await expect(inspector(page).getByText('Edit › page')).toBeVisible();
@@ -199,18 +188,20 @@ test('↑ in the frame and Select parent step to the parent with fresh edit fiel
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#go');
-	expect((await lastPick(page))?.tagName).toBe('span');
-	const picks = (await picksOf(page)).length;
+	expect((await lastPick(page, 'a'))?.tagName).toBe('span');
+	const picks = (await picksOf(page, 'a')).length;
 	await page.keyboard.press('ArrowUp');
-	await expect.poll(async () => (await picksOf(page)).length).toBeGreaterThan(picks);
-	expect((await lastPick(page))?.tagName).toBe('button');
-	expect((await lastPick(page))?.edit?.sourceNumber).toBe(await sourceNumberOf(page, '#mixed'));
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(picks);
+	expect((await lastPick(page, 'a'))?.tagName).toBe('button');
+	expect((await lastPick(page, 'a'))?.edit?.sourceNumber).toBe(
+		await sourceNumberOf(page, '#mixed'),
+	);
 
 	await clickElement(page, '#go');
-	const before = (await picksOf(page)).length;
+	const before = (await picksOf(page, 'a')).length;
 	await clickChrome(selectParent(page));
-	await expect.poll(async () => (await picksOf(page)).length).toBeGreaterThan(before);
-	expect((await lastPick(page))?.tagName).toBe('button');
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBeGreaterThan(before);
+	expect((await lastPick(page, 'a'))?.tagName).toBe('button');
 	await expect(inspector(page).getByText('Edit › button')).toBeVisible();
 });
 
@@ -240,7 +231,7 @@ test('C in Edit mode enters Comment mode, whose picks carry no edit fields', asy
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(inspector(page)).toHaveCount(0);
 	await clickElement(page, '#title');
-	expect((await lastPick(page))?.edit).toBeUndefined();
+	expect((await lastPick(page, 'a'))?.edit).toBeUndefined();
 	await expect(popover(page)).toBeVisible();
 });
 
@@ -270,7 +261,7 @@ test('Comment mode: a forged pick carrying edit fields opens no popover and draw
 	).evaluate((message) => {
 		window.parent.postMessage(message, '*');
 	}, forged);
-	await expect.poll(async () => (await picksOf(page)).length).toBe(1);
+	await expect.poll(async () => (await picksOf(page, 'a')).length).toBe(1);
 	await nextAnimationFrame(page);
 	await expect(popover(page)).toHaveCount(0);
 	await expect(page.locator('.overlay .outline.pick')).toHaveCount(0);
@@ -300,7 +291,7 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 	await enterEditMode(page);
 	await clickElement(page, '#title');
 	expect((await savedRecord(page)).mode).toBe('edit');
-	await openHarness(page, { state: await savedState(page) });
+	await reload(page);
 	await postToChrome(page, canvasUpdated([EDIT_FRAME]));
 	await untilHeightReported(page, 'a');
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
@@ -309,7 +300,7 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 	await clickChrome(page.getByRole('button', { name: 'Interact', exact: true }));
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'false');
 	expect('mode' in (await savedRecord(page))).toBe(false);
-	await openHarness(page, { state: await savedState(page) });
+	await reload(page);
 	await postToChrome(page, canvasUpdated([EDIT_FRAME]));
 	await untilHeightReported(page, 'a');
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'false');
@@ -370,19 +361,19 @@ test('cd:edit-apply previews text and style in Edit mode only, and re-posts the 
 	await expect(await inFrame(page, '#title')).toHaveText('Title');
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	const picks = (await picksOf(page)).length;
+	const picks = (await picksOf(page, 'a')).length;
 	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: title, text: 'Preview' });
 	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: title, style: 'color: #00ff00' });
 	await expect(await inFrame(page, '#title')).toHaveText('Preview');
 	await expect(await inFrame(page, '#title')).toHaveAttribute('style', 'color: #00ff00');
-	await expect.poll(async () => (await lastPick(page))?.edit?.style).toBe('color: #00ff00');
-	const after = await picksOf(page);
+	await expect.poll(async () => (await lastPick(page, 'a'))?.edit?.style).toBe('color: #00ff00');
+	const after = await picksOf(page, 'a');
 	expect(after.length).toBeGreaterThan(picks);
 	expect(after.at(-1)?.repost).toBe(true);
 	expect(after.at(-1)?.edit?.text).toBe('Preview');
 	// An element without a style attribute reports '' (null means over the cap).
 	await clickElement(page, '#spaced');
-	expect((await lastPick(page))?.edit?.style).toBe('');
+	expect((await lastPick(page, 'a'))?.edit?.style).toBe('');
 });
 
 test('a page pick refreshes after a preview of body', async ({ page }) => {
@@ -390,10 +381,10 @@ test('a page pick refreshes after a preview of body', async ({ page }) => {
 	await enterEditMode(page);
 	await clickElement(page, '#title');
 	await selectParent(page).click();
-	await expect.poll(async () => (await lastPick(page))?.isPage).toBe(true);
+	await expect.poll(async () => (await lastPick(page, 'a'))?.isPage).toBe(true);
 	const body = await sourceNumberOf(page, 'body');
 	await postToFrame(page, { type: 'cd:edit-apply', sourceNumber: body, style: 'margin: 4px' });
-	await expect.poll(async () => (await lastPick(page))?.edit?.style).toBe('margin: 4px');
+	await expect.poll(async () => (await lastPick(page, 'a'))?.edit?.style).toBe('margin: 4px');
 });
 
 test('typing previews; blur saves once with the raw liveText; the answer and echo never reload', async ({

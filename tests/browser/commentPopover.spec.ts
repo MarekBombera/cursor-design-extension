@@ -1,11 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
-import {
-	FRAME_KEY_MESSAGE,
-	FRAME_PICK_MESSAGE,
-	type FramePickMessage,
-	parseFrameMessage,
-} from '../../src/webview/frame/frameMessages';
+import { FRAME_KEY_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
 import {
 	type Box,
@@ -16,19 +11,22 @@ import {
 	clickChrome,
 	commentButton,
 	frameBox,
+	frameElementBox,
 	frameOf,
 	isMessageOfType,
+	lastPick,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	picksOf,
 	type Point,
 	popover,
 	popoverTarget,
 	posted,
 	postToChrome,
+	reload,
 	savedRecord,
-	savedState,
 	stageBox,
 	untilHeightReported,
 } from './harness';
@@ -108,26 +106,9 @@ const openTwoFrames = async (page: Page): Promise<void> => {
 	await untilHeightReported(page, 'b');
 };
 
-// Screen point of an element's centre inside a frame at zoom 1.
-const pointInFrame = async (page: Page, frameId: string, selector: string): Promise<Point> => {
-	const frame = await frameBox(page, frameId);
-	const rect = await (
-		await frameOf(page, frameId)
-	).evaluate((wanted) => {
-		const element = document.querySelector(wanted);
-		if (element === null) {
-			throw new Error(`No element matches ${wanted}.`);
-		}
-		const { x, y, width, height } = element.getBoundingClientRect();
-		return { x, y, width, height };
-	}, selector);
-	return centerOf({
-		x: frame.x + rect.x,
-		y: frame.y + rect.y,
-		width: rect.width,
-		height: rect.height,
-	});
-};
+// Screen point of an element's centre inside a frame.
+const pointInFrame = async (page: Page, frameId: string, selector: string): Promise<Point> =>
+	centerOf(await frameElementBox({ page, frameId, selector }));
 
 test('C with chrome focus toggles Comment mode and Escape leaves it', async ({ page }) => {
 	await openTwoFrames(page);
@@ -231,20 +212,6 @@ const commentBox = (page: Page): Locator => popover(page).getByRole('textbox', {
 const cancelButton = (page: Page): Locator => popover(page).getByRole('button', { name: 'Cancel' });
 const addButton = (page: Page): Locator =>
 	popover(page).getByRole('button', { name: 'Add comment' });
-
-// Through the chrome's own guard: a captured pick is a wire value.
-const picksOf = async (page: Page, frameId: string): Promise<FramePickMessage[]> =>
-	(await messagesOfType({ page, frameId, type: FRAME_PICK_MESSAGE }))
-		.map((data) => parseFrameMessage(data))
-		.filter((message): message is FramePickMessage => message?.type === FRAME_PICK_MESSAGE);
-
-const lastPick = async (page: Page, frameId: string): Promise<FramePickMessage> => {
-	const pick = (await picksOf(page, frameId)).at(-1);
-	if (pick === undefined) {
-		throw new Error('No cd:pick was captured.');
-	}
-	return pick;
-};
 
 const creates = async (page: Page): Promise<Record<string, unknown>[]> =>
 	(await posted(page)).filter((message): message is Record<string, unknown> =>
@@ -562,11 +529,6 @@ test('a forged cd:key from the design never discards the open draft', async ({ p
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(commentBox(page)).toHaveValue('Draft');
 });
-
-// A tab switch: Cursor rebuilds the webview, which starts again from the saved state.
-const reload = async (page: Page): Promise<void> => {
-	await openHarness(page, { state: await savedState(page) });
-};
 
 const savedDraftBody = async (page: Page): Promise<unknown> => {
 	const draft = (await savedRecord(page)).commentDraft;

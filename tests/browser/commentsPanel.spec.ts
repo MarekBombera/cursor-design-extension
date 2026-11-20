@@ -15,10 +15,12 @@ import {
 	copyOpenButton,
 	expectBoxNear,
 	frameBox,
+	frameElementBox,
 	frameOf,
 	isMessageOfType,
 	messagesOfType,
 	nextAnimationFrame,
+	openThread,
 	openHarness,
 	panel,
 	panelButton,
@@ -27,8 +29,8 @@ import {
 	pinOf,
 	posted,
 	postToChrome,
+	reload,
 	savedRecord,
-	savedState,
 	stageBox,
 	thread,
 	threadButton,
@@ -114,13 +116,6 @@ const openStage = async (
 				(await messagesOfType({ page, frameId: 'a', type: FRAME_ANCHOR_RECTS_MESSAGE })).length,
 		)
 		.toBeGreaterThan(0);
-};
-
-const openThread = async (page: Page, id: string): Promise<void> => {
-	await expect(pinOf(page, id)).toBeVisible();
-	await clickChrome(pinOf(page, id));
-	await expect(thread(page)).toBeVisible();
-	await expect(threadButton(page, 'Close')).toBeFocused();
 };
 
 const openComposer = async (page: Page): Promise<void> => {
@@ -331,16 +326,11 @@ test('the panel toggle keeps the saved view, narrows the stage, and both keys su
 		.poll(async () => savedRecord(page))
 		.toMatchObject({ stageView: expect.any(Object), commentsPanelOpen: true });
 
-	await openHarness(page, { state: await savedState(page) });
+	await reload(page);
 	await expect(panelToggle(page)).toHaveAttribute('aria-expanded', 'true');
 	await expect(panel(page)).toBeVisible();
 	expect(await savedRecord(page)).toMatchObject({ stageView: expect.any(Object) });
 });
-
-// A tab switch: Cursor rebuilds the webview, which starts again from the saved state.
-const reload = async (page: Page): Promise<void> => {
-	await openHarness(page, { state: await savedState(page) });
-};
 
 test('a tab switch reopens the open pin thread', async ({ page }) => {
 	await openStage(page, [TITLE, SENT]);
@@ -750,13 +740,6 @@ const screenRectOf = async (page: Page, rect: Box): Promise<Box> => {
 	};
 };
 
-// The element's frame-local border box, read inside its own document.
-const elementRect = async (page: Page, selector: string): Promise<Box> =>
-	(await frameOf(page, JUMP_FRAME.id)).evaluate((wanted) => {
-		const box = document.querySelector(wanted)?.getBoundingClientRect();
-		return { x: box?.x ?? 0, y: box?.y ?? 0, width: box?.width ?? 0, height: box?.height ?? 0 };
-	}, selector);
-
 test('jumping to a target that fits centers it, keeps the zoom and flashes its box', async ({
 	page,
 }) => {
@@ -765,7 +748,7 @@ test('jumping to a target that fits centers it, keeps the zoom and flashes its b
 	await jump(page, JUMP_TARGET.id);
 
 	await expect(zoomReadout(page)).toHaveText('100%');
-	const target = await screenRectOf(page, await elementRect(page, '#target'));
+	const target = await frameElementBox({ page, frameId: JUMP_FRAME.id, selector: '#target' });
 	const stageCenter = centerOf(await stageBox(page));
 	expect(Math.abs(centerOf(target).x - stageCenter.x)).toBeLessThanOrEqual(1);
 	expect(Math.abs(centerOf(target).y - stageCenter.y)).toBeLessThanOrEqual(1);
@@ -790,7 +773,7 @@ test('jumping to a target taller than the stage at 200% zooms out until it fits'
 	await jump(page, tall.id);
 
 	await expect(zoomReadout(page)).not.toHaveText('200%');
-	const target = await screenRectOf(page, await elementRect(page, '#tall'));
+	const target = await frameElementBox({ page, frameId: JUMP_FRAME.id, selector: '#tall' });
 	const stage = await stageBox(page);
 	expect(target.height).toBeLessThanOrEqual(stage.height);
 	expect(target.y).toBeGreaterThanOrEqual(stage.y);

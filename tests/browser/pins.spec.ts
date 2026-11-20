@@ -14,11 +14,13 @@ import {
 	clickChrome,
 	commentButton,
 	frameBox,
+	frameElementBox,
 	frameOf,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	openThread,
 	pinOf,
 	popoverTarget,
 	type Point,
@@ -109,21 +111,6 @@ const PAGE = comment({
 
 const ALL = [TITLE, IN_BOX, MOVER, SLIDER, DOOMED, PAGE];
 
-// The element's screen box from the frame locator. Playwright's boundingBox for an element in an
-// out-of-process iframe adds the frame's offset but ignores the stage layer's CSS scale, so the
-// frame-local offset and size are scaled by the frame wrapper's drawn scale (1 at 100%).
-const elementBox = async (page: Page, selector: string): Promise<Box> => {
-	const element = await boxOf(page.frameLocator('[data-cd-frame-id="a"] iframe').locator(selector));
-	const frame = await frameBox(page, 'a');
-	const scale = frame.width / Number(await (await frameOf(page, 'a')).evaluate('innerWidth'));
-	return {
-		x: frame.x + (element.x - frame.x) * scale,
-		y: frame.y + (element.y - frame.y) * scale,
-		width: element.width * scale,
-		height: element.height * scale,
-	};
-};
-
 // A pin is a teardrop whose tip, the bottom-right corner of its box, sits on the comment's point.
 const tipOf = (box: Box): Point => ({ x: box.x + box.width, y: box.y + box.height });
 
@@ -146,7 +133,7 @@ const expectPinOn = async ({
 }): Promise<void> => {
 	await expect
 		.poll(async () => {
-			const element = await elementBox(page, selector);
+			const element = await frameElementBox({ page, frameId: 'a', selector });
 			return withinOnePx(await pinTip(page, id), { x: element.x, y: element.y });
 		})
 		.toBe(true);
@@ -434,7 +421,7 @@ test('with a draft open, a click at a pin retargets the draft and keeps its text
 	await clickChrome(commentButton(page));
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	// Inside the doomed element, clear of its pin (above-left of its corner).
-	const doomed = await elementBox(page, '#doomed');
+	const doomed = await frameElementBox({ page, frameId: 'a', selector: '#doomed' });
 	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
 	const chip = popoverTarget(page);
 	await expect(chip).toHaveText('Doomed');
@@ -458,12 +445,6 @@ const THREADED = {
 		},
 		{ id: 'r2', author: 'agent' as const, body: 'Done', createdAt: '2026-10-27T10:02:00.000Z' },
 	],
-};
-
-const openThread = async (page: Page, id: string): Promise<void> => {
-	await clickChrome(pinOf(page, id));
-	await expect(thread(page)).toBeVisible();
-	await expect(thread(page).getByRole('button', { name: 'Close' })).toBeFocused();
 };
 
 test('a pin click opens its thread with the body, reply authors and actions', async ({ page }) => {
@@ -540,7 +521,7 @@ test('a pick in Comment mode closes the thread and opens the draft', async ({ pa
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	// Toggling the mode does not close it.
 	await expect(thread(page)).toBeVisible();
-	const doomed = await elementBox(page, '#doomed');
+	const doomed = await frameElementBox({ page, frameId: 'a', selector: '#doomed' });
 	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
 	await expect(popoverTarget(page)).toHaveText('Doomed');
 	await expect(thread(page)).toHaveCount(0);

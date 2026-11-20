@@ -5,7 +5,13 @@ import { expect, type Frame, type Locator, type Page } from '@playwright/test';
 
 import { parseArtboardDocument } from '../../src/disk/commentTarget';
 import { sourceTaggedHtml } from '../../src/disk/sourceTags';
-import { FRAME_HEIGHT_MESSAGE, FRAME_READY_MESSAGE } from '../../src/webview/frame/frameMessages';
+import {
+	FRAME_HEIGHT_MESSAGE,
+	FRAME_PICK_MESSAGE,
+	FRAME_READY_MESSAGE,
+	type FramePickMessage,
+	parseFrameMessage,
+} from '../../src/webview/frame/frameMessages';
 import type {
 	CanvasUpdatedMessage,
 	HostMessage,
@@ -117,7 +123,7 @@ export const isMessageOfType = (data: unknown, type: string): data is Record<str
 	typeof data === 'object' && data !== null && 'type' in data && data.type === type;
 
 // Routes the harness origin, aborts (and counts) every other request, opens the page and waits
-// for artboard:ready, like createPanelOutbox. `state` is a whole saved webview state (a reload
+// for artboard:ready, like createPanelOutbox. `state` is a whole saved webview state (`reload`
 // passes what savedState returned); otherwise `savedView` seeds only the stage view. `vscodeHost`
 // emulates Cursor's theme and default styles (vscodeHost.ts); without it the page has neither.
 export const openHarness = async (
@@ -203,6 +209,11 @@ export const savedRecord = async (page: Page): Promise<Record<string, unknown>> 
 	return typeof state === 'object' && state !== null ? { ...state } : {};
 };
 
+// A tab switch: Cursor rebuilds the webview, which starts again from the saved state.
+export const reload = async (page: Page): Promise<void> => {
+	await openHarness(page, { state: await savedState(page) });
+};
+
 // Raw captured frame → chrome messages of one type, in order (not run through parseFrameMessage).
 export const messagesOfType = async ({
 	page,
@@ -222,6 +233,20 @@ export const messagesOfType = async ({
 			frameId,
 		)
 	).filter((data): data is Record<string, unknown> => isMessageOfType(data, type));
+
+// Through the chrome's own guard: a captured pick is a wire value.
+export const picksOf = async (page: Page, frameId: string): Promise<FramePickMessage[]> =>
+	(await messagesOfType({ page, frameId, type: FRAME_PICK_MESSAGE }))
+		.map((data) => parseFrameMessage(data))
+		.filter((message): message is FramePickMessage => message?.type === FRAME_PICK_MESSAGE);
+
+export const lastPick = async (page: Page, frameId: string): Promise<FramePickMessage> => {
+	const pick = (await picksOf(page, frameId)).at(-1);
+	if (pick === undefined) {
+		throw new Error('No cd:pick was captured.');
+	}
+	return pick;
+};
 
 // A frame has laid out once it reports its height.
 export const untilHeightReported = async (page: Page, frameId: string): Promise<void> => {
@@ -362,6 +387,13 @@ export const thread = (page: Page): Locator =>
 
 export const threadButton = (page: Page, name: string): Locator =>
 	thread(page).getByRole('button', { name, exact: true });
+
+export const openThread = async (page: Page, id: string): Promise<void> => {
+	await expect(pinOf(page, id)).toBeVisible();
+	await clickChrome(pinOf(page, id));
+	await expect(thread(page)).toBeVisible();
+	await expect(threadButton(page, 'Close')).toBeFocused();
+};
 
 export const popover = (page: Page): Locator =>
 	page.getByRole('dialog', { name: 'Add comment', exact: true });

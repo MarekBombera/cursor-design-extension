@@ -6,7 +6,6 @@ import {
 	FRAME_HOVER_MESSAGE,
 	FRAME_PICK_MESSAGE,
 	type FramePickMessage,
-	type FrameRect,
 	parseFrameMessage,
 } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
@@ -20,11 +19,14 @@ import {
 	commentButton,
 	expectBoxNear,
 	frameBox,
+	frameElementBox,
 	frameOf,
+	lastPick,
 	loadsOf,
 	messagesOfType,
 	nextAnimationFrame,
 	openHarness,
+	picksOf,
 	popoverTarget,
 	type Point,
 	postToChrome,
@@ -61,32 +63,6 @@ const FRAME_B: PostedCanvasFrame = {
 
 type FrameTarget = { page: Page; frameId: string; selector: string };
 
-// Frame-local rect of the first match, from the frame's own layout.
-const elementRect = async ({ page, frameId, selector }: FrameTarget): Promise<FrameRect> => {
-	const frame = await frameOf(page, frameId);
-	return frame.evaluate((wanted) => {
-		const element = document.querySelector(wanted);
-		if (element === null) {
-			throw new Error(`No element matches ${wanted}.`);
-		}
-		const { x, y, width, height } = element.getBoundingClientRect();
-		return { x, y, width, height };
-	}, selector);
-};
-
-// Screen box at zoom 1: frame box + element rect.
-const screenBox = async (target: FrameTarget): Promise<Box> => {
-	const frame = await frameBox(target.page, target.frameId);
-	const rect = await elementRect(target);
-	return { x: frame.x + rect.x, y: frame.y + rect.y, width: rect.width, height: rect.height };
-};
-
-// Through the chrome's own guard: a captured pick is a wire value.
-const picksOf = async (page: Page, frameId: string): Promise<FramePickMessage[]> =>
-	(await messagesOfType({ page, frameId, type: FRAME_PICK_MESSAGE }))
-		.map((data) => parseFrameMessage(data))
-		.filter((message): message is FramePickMessage => message?.type === FRAME_PICK_MESSAGE);
-
 const openPickingStage = async (page: Page): Promise<Box> => {
 	await openHarness(page, { savedView: { x: 0, y: 0, zoom: 1 } });
 	await postToChrome(page, canvasUpdated([PICKING_FRAME, FRAME_B]));
@@ -99,7 +75,7 @@ const openPickingStage = async (page: Page): Promise<Box> => {
 // 0..800, and frame B, 1000..1400), never by scrolling into view.
 const reveal = async ({ stage, ...target }: FrameTarget & { stage: Box }): Promise<Box> => {
 	const { page } = target;
-	const box = await screenBox(target);
+	const box = await frameElementBox(target);
 	const middle = box.y + box.height / 2;
 	if (middle > stage.y + 40 && stage.y + stage.height - 40 > middle) {
 		return box;
@@ -109,7 +85,7 @@ const reveal = async ({ stage, ...target }: FrameTarget & { stage: Box }): Promi
 	await page.mouse.move(stage.x + 900, stage.y + 100);
 	await page.mouse.wheel(0, deltaY);
 	await expect.poll(async () => (await frameBox(page, 'a')).y).toBeCloseTo(before.y - deltaY, 0);
-	return screenBox(target);
+	return frameElementBox(target);
 };
 
 const toggleComment = async (page: Page, pressed: boolean): Promise<void> => {
@@ -136,11 +112,7 @@ const pickInFrame = async ({
 	const count = (await picksOf(page, frameId)).length;
 	await clickAt(page, point);
 	await expect.poll(async () => (await picksOf(page, frameId)).length).toBe(count + 1);
-	const pick = (await picksOf(page, frameId)).at(-1);
-	if (pick === undefined) {
-		throw new Error('No cd:pick was captured.');
-	}
-	return pick;
+	return lastPick(page, frameId);
 };
 
 // The selector of the last pick in frame A, once a step after `count` picks has posted.
@@ -561,7 +533,11 @@ test('selector: an item of a scrolled box', async ({ page }) => {
 			}),
 		)
 		.toBe(true);
-	const item = await screenBox({ page, frameId: 'a', selector: '.scroll-box > li:nth-child(12)' });
+	const item = await frameElementBox({
+		page,
+		frameId: 'a',
+		selector: '.scroll-box > li:nth-child(12)',
+	});
 	const pick = await pickInFrame({ page, frameId: 'a', point: centerOf(item) });
 	expect(
 		await resolvesTo({ page, selector: pick.selector, expected: '.scroll-box > li:nth-child(12)' }),
@@ -574,7 +550,11 @@ test('a click posts a user pick; a scroll inside the picked frame re-posts it', 
 	const stage = await openPickingStage(page);
 	await toggleComment(page, true);
 	const scrollBox = await reveal({ page, stage, frameId: 'a', selector: '.scroll-box' });
-	const item = await screenBox({ page, frameId: 'a', selector: '.scroll-box > li:nth-child(2)' });
+	const item = await frameElementBox({
+		page,
+		frameId: 'a',
+		selector: '.scroll-box > li:nth-child(2)',
+	});
 	const pick = await pickInFrame({ page, frameId: 'a', point: centerOf(item) });
 	expect(pick.repost).toBe(false);
 	expect(pick.box.width).toBeGreaterThan(0);
