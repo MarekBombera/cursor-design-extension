@@ -34,6 +34,8 @@ export const FRAMES: PostedCanvasFrame[] = [
 		group: 'Web',
 		generation: 3,
 		hash: 'sha256:test',
+		canUndo: false,
+		canRedo: false,
 		html: HOME_HTML,
 	},
 	{
@@ -45,6 +47,8 @@ export const FRAMES: PostedCanvasFrame[] = [
 		group: 'Web',
 		generation: 2,
 		hash: 'sha256:test',
+		canUndo: false,
+		canRedo: false,
 		html: artboard('pricing'),
 	},
 	{
@@ -56,6 +60,8 @@ export const FRAMES: PostedCanvasFrame[] = [
 		group: 'Mobile',
 		generation: 1,
 		hash: 'sha256:test',
+		canUndo: false,
+		canRedo: false,
 		html: MOBILE_HTML,
 	},
 ];

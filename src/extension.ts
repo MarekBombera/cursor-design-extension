@@ -11,8 +11,10 @@ import { syncAgentSkill } from './host/agentSkill';
 import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
 import { logDiskError } from './host/hostFs';
+import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
-import { answerEditRequest } from './host/panelEdit';
+import { isArtboardHistoryAttempt } from './host/chromeMessages';
+import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
 import {
@@ -59,7 +61,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
 	setArtboardPanelOnEditRequest((value) => {
 		// Never rejects: every failure is logged and answered inside.
-		void answerEditRequest({ value, outputChannel });
+		void (isArtboardHistoryAttempt(value) ? answerHistoryRequest : answerEditRequest)({
+			value,
+			outputChannel,
+		});
 	});
 
 	if (vscode.workspace.isTrusted) {
@@ -73,6 +78,8 @@ export const activate = (context: vscode.ExtensionContext): void => {
 			syncHostRuntime(false);
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
+			// ponytail: any folder change clears all undo history (9f), not only a new first folder.
+			clearEditHistories();
 			if (!vscode.workspace.isTrusted) {
 				postUiStatusToPanel({ mcpAvailable: false });
 				replaceArtboardWatcher({ context, outputChannel, rearmMarker: true });

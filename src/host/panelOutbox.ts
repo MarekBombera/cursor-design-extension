@@ -5,16 +5,20 @@ import type {
 	CommentsUpdatedMessage,
 	CopiedMessage,
 	HostMessage,
-	PostedCanvasFrame,
 	UiErrorMessage,
 } from '../webview/hostMessages';
-import { type CanvasSnapshot, postedFrameFromSnapshot } from './canvasSnapshot';
+import {
+	type CanvasSnapshot,
+	type UnflaggedPostedFrame,
+	postedFrameFromSnapshot,
+} from './canvasSnapshot';
+import type * as editHistory from './editHistory';
 
 type CanvasHostView = {
 	updated: {
 		activeArtboardId: string;
 		generation: number;
-		frames: PostedCanvasFrame[];
+		frames: UnflaggedPostedFrame[];
 	};
 	errorMessage?: string;
 };
@@ -41,12 +45,20 @@ type PanelOutbox = {
 // What the chrome sees, and when: nothing before artboard:ready, then the latest view, status and
 // comments. Answers to a chrome request are never held: a chrome that reloaded has no request.
 // The vscode glue (openArtboardPanel.ts) owns the panel; this owns only the pending state.
+// 9f: every new snapshot is checked against the undo history (keepUnchangedHistories) whatever
+// its caller, and each canvas:updated reads the history flags when it is sent, so a replay after a
+// webview reload is never stale.
 export const createPanelOutbox = ({
 	post,
 	readCspNonce,
+	readHistoryFlags,
+	keepUnchangedHistories,
 }: {
 	post: (message: HostMessage) => void;
 	readCspNonce: () => string;
+	// editHistory.ts's own, injected so the outbox stays testable without the module store.
+	readHistoryFlags: typeof editHistory.historyFlags;
+	keepUnchangedHistories: typeof editHistory.keepUnchangedHistories;
 }): PanelOutbox => {
 	let chromeReady = false;
 	let pendingView: CanvasHostView | undefined;
@@ -57,7 +69,15 @@ export const createPanelOutbox = ({
 		if (!chromeReady || pendingView === undefined) {
 			return;
 		}
-		post({ type: 'canvas:updated', ...pendingView.updated, cspNonce: readCspNonce() });
+		post({
+			type: 'canvas:updated',
+			...pendingView.updated,
+			frames: pendingView.updated.frames.map((frame) => ({
+				...frame,
+				...readHistoryFlags(frame.id),
+			})),
+			cspNonce: readCspNonce(),
+		});
 		if (pendingView.errorMessage !== undefined) {
 			post({ type: 'artboard:error', message: pendingView.errorMessage });
 		}
@@ -92,6 +112,7 @@ export const createPanelOutbox = ({
 
 	return {
 		postSnapshot: (snapshot) => {
+			keepUnchangedHistories(snapshot.frames);
 			pendingView = {
 				updated: {
 					activeArtboardId: snapshot.activeArtboardId,

@@ -347,6 +347,8 @@ const editedAnswer = ({
 		hash,
 		generation,
 		html: sourceTaggedHtml({ html, document: parseArtboardDocument(html) }),
+		canUndo: true,
+		canRedo: false,
 	};
 };
 
@@ -618,4 +620,265 @@ test('C typed in a field stays in Edit mode', async ({ page }) => {
 	await page.keyboard.type('c');
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(inspector(page)).toBeVisible();
+});
+
+// ---- 9f Undo / redo ------------------------------------------------------------------------------
+
+const historyPosted = async (page: Page): Promise<Record<string, unknown>[]> =>
+	(await posted(page)).filter((data): data is Record<string, unknown> =>
+		isMessageOfType(data, 'artboard:history'),
+	);
+
+const undoButton = (page: Page) => inspector(page).getByRole('button', { name: /^Undo/ });
+
+const redoButton = (page: Page) => inspector(page).getByRole('button', { name: /^Redo/ });
+
+const historyAnnouncement = (page: Page) => inspector(page).locator('p.visually-hidden');
+
+// One saved text edit on #title ("Title" → "New"), answered with canUndo.
+const saveTitleEdit = async (page: Page): Promise<void> => {
+	await clickElement(page, '#title');
+	await field(page, 'Text').fill('New');
+	await field(page, 'Text').blur();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [request] = await editsPosted(page);
+	await postToChrome(
+		page,
+		editedAnswer({
+			request: request ?? {},
+			change: renamedTitle,
+			hash: 'sha256:new',
+			generation: 2,
+		}),
+	);
+	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'false');
+};
+
+// The host's answer to a step: the file it restored, and the flags after it.
+const stepAnswer = ({
+	request,
+	html,
+	hash,
+	generation,
+	canUndo,
+	canRedo,
+}: {
+	request: Record<string, unknown> | undefined;
+	html: string;
+	hash: string;
+	generation: number;
+	canUndo: boolean;
+	canRedo: boolean;
+}) => ({
+	type: 'artboard:edited' as const,
+	requestId: String(request?.requestId),
+	frameId: 'a',
+	hash,
+	generation,
+	html,
+	canUndo,
+	canRedo,
+});
+
+test('Undo posts a step; its answer reloads the restored file, keeps the target and announces it', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	await expect(undoButton(page)).toHaveAccessibleName('Undo in Edit');
+	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'true');
+	const loads = await loadsOf(page, 'a');
+	await undoButton(page).click();
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
+	const [undo] = await historyPosted(page);
+	expect(undo).toMatchObject({ type: 'artboard:history', frameId: 'a', step: 'undo' });
+	expect(undo).not.toHaveProperty('hash');
+	await postToChrome(
+		page,
+		stepAnswer({
+			request: undo,
+			html: EDIT_FRAME.html,
+			hash: 'sha256:test',
+			generation: 3,
+			canUndo: false,
+			canRedo: true,
+		}),
+	);
+	await expect.poll(() => loadsOf(page, 'a')).toBe(loads + 1);
+	await expect(await inFrame(page, '#title')).toHaveText('Title');
+	await expect(inspector(page).getByText('No element selected')).toBeVisible();
+	// The pick dropped with the reload; the buttons still act on that frame.
+	await expect(redoButton(page)).toHaveAccessibleName('Redo in Edit');
+	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'false');
+	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
+	await expect(historyAnnouncement(page)).toHaveText(/^Undone in Edit\.\s?$/);
+	await redoButton(page).click();
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(2);
+	expect((await historyPosted(page)).at(-1)).toMatchObject({ step: 'redo', frameId: 'a' });
+});
+
+test('an open text draft is saved first; the step goes out only after that answer', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	await clickElement(page, '#title');
+	await field(page, 'Text').fill('Newer');
+	await undoButton(page).click();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
+	await nextAnimationFrame(page);
+	expect(await historyPosted(page)).toHaveLength(0);
+	const second = (await editsPosted(page)).at(-1);
+	expect(second).toMatchObject({ field: 'text', value: 'Newer', hash: 'sha256:new' });
+	await postToChrome(
+		page,
+		editedAnswer({
+			request: second ?? {},
+			change: (html) => html.replace('>Title</h1>', '>Newer</h1>'),
+			hash: 'sha256:newer',
+			generation: 3,
+		}),
+	);
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
+	expect((await historyPosted(page))[0]).toMatchObject({ step: 'undo', frameId: 'a' });
+});
+
+test('Undo without history ignores a click and keeps focus; a post without the flag disables it', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await expect(undoButton(page)).toHaveAccessibleName('Undo');
+	await clickElement(page, '#title');
+	await expect(undoButton(page)).toHaveAccessibleName('Undo in Edit');
+	// Playwright refuses to click an aria-disabled button; Enter activates it the same way.
+	await undoButton(page).focus();
+	await page.keyboard.press('Enter');
+	await nextAnimationFrame(page);
+	expect(await historyPosted(page)).toHaveLength(0);
+	await expect(undoButton(page)).toBeFocused();
+
+	await saveTitleEdit(page);
+	const [request] = await editsPosted(page);
+	const answered = editedAnswer({
+		request: request ?? {},
+		change: renamedTitle,
+		hash: 'sha256:new',
+		generation: 2,
+	});
+	// The echo after an outside forget carries no undo step: the button follows the host.
+	await postToChrome(
+		page,
+		canvasUpdated([
+			{ ...EDIT_FRAME, html: answered.html, hash: 'sha256:new', generation: 2, canUndo: false },
+		]),
+	);
+	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
+});
+
+// ---- 9f keyboard (kept only for the paths the F5 spike passes) ----------------------------------
+
+const focusFrame = (page: Page, frameId: string): Promise<void> =>
+	page.locator(`[data-cd-frame-id="${frameId}"] iframe`).focus();
+
+// What a design's own script can do: post cd:key from its window, whatever has focus.
+const forgeFrameKey = async (page: Page, frameId: string, key: string): Promise<void> => {
+	const frame = await frameOf(page, frameId);
+	await frame.evaluate(
+		(data) => {
+			window.parent.postMessage(data, '*');
+		},
+		{ type: 'cd:key', key },
+	);
+};
+
+test('Cmd/Ctrl+Z steps from the Undo button and the focused history frame; forged keys do nothing', async ({
+	page,
+}) => {
+	await openHarness(page, { savedView: { x: 0, y: 0, zoom: 1 } });
+	await postToChrome(
+		page,
+		canvasUpdated([EDIT_FRAME, { ...editFrame({ id: 'b', label: 'Other' }), x: 1000 }]),
+	);
+	await untilHeightReported(page, 'a');
+	await untilHeightReported(page, 'b');
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	// Forged: from the history frame without focus, and from another frame with focus.
+	await undoButton(page).focus();
+	await forgeFrameKey(page, 'a', 'undo');
+	await focusFrame(page, 'b');
+	await forgeFrameKey(page, 'b', 'undo');
+	await nextAnimationFrame(page);
+	expect(await historyPosted(page)).toHaveLength(0);
+
+	await undoButton(page).focus();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
+	const [undo] = await historyPosted(page);
+	expect(undo).toMatchObject({ step: 'undo', frameId: 'a' });
+	await postToChrome(
+		page,
+		stepAnswer({
+			request: undo,
+			html: EDIT_FRAME.html,
+			hash: 'sha256:test',
+			generation: 3,
+			canUndo: false,
+			canRedo: true,
+		}),
+	);
+	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'false');
+	await untilHeightReported(page, 'a');
+	await focusFrame(page, 'a');
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(2);
+	expect((await historyPosted(page)).at(-1)).toMatchObject({ step: 'redo', frameId: 'a' });
+});
+
+test('Cmd/Ctrl+Z in the Text field stays the field’s own undo', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	await field(page, 'Text').focus();
+	await page.keyboard.press('ControlOrMeta+z');
+	await nextAnimationFrame(page);
+	expect(await historyPosted(page)).toHaveLength(0);
+});
+
+test('F-146: a pick from a frame without focus never retargets Undo / Redo', async ({ page }) => {
+	await openHarness(page, { savedView: { x: 0, y: 0, zoom: 1 } });
+	await postToChrome(
+		page,
+		canvasUpdated([EDIT_FRAME, { ...editFrame({ id: 'b', label: 'Other' }), x: 1000 }]),
+	);
+	await untilHeightReported(page, 'a');
+	await untilHeightReported(page, 'b');
+	await enterEditMode(page);
+	await saveTitleEdit(page);
+	await expect(undoButton(page)).toHaveAccessibleName('Undo in Edit');
+	// A design script in frame b replays a real Edit-mode pick from its own window.
+	const [pickData] = (await messagesOfType({ page, frameId: 'a', type: FRAME_PICK_MESSAGE })).slice(
+		-1,
+	);
+	const forgePick = async (): Promise<void> => {
+		const frame = await frameOf(page, 'b');
+		await frame.evaluate(
+			(data) => {
+				window.parent.postMessage(data, '*');
+			},
+			{ ...(pickData as Record<string, unknown>), repost: false },
+		);
+	};
+	await undoButton(page).focus();
+	await forgePick();
+	await nextAnimationFrame(page);
+	await expect(undoButton(page)).toHaveAccessibleName('Undo in Edit');
+	// The same pick from the frame that holds focus moves the target (b has no history).
+	await focusFrame(page, 'b');
+	await forgePick();
+	await expect(undoButton(page)).toHaveAccessibleName('Undo in Other');
+	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
 });

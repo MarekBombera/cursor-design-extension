@@ -1,4 +1,4 @@
-import type { EDIT_FIELDS } from '../disk/layout';
+import type { EDIT_FIELDS, HISTORY_STEPS } from '../disk/layout';
 import {
 	type CommentStyles,
 	type FrameRect,
@@ -26,6 +26,10 @@ export type PostedCanvasFrame = {
 	hash: string;
 	html: string;
 	errorMessage?: string;
+	// 9f: whether the host holds an undo / redo step of the panel's own writes to this frame, read
+	// when the outbox sends (first send and every replay).
+	canUndo: boolean;
+	canRedo: boolean;
 };
 
 export type CanvasUpdatedMessage = {
@@ -92,8 +96,10 @@ export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: st
 // from open to sent (0 for a re-copy, or when the Agent resolved them first).
 export type CopiedMessage = { type: 'ui:copied'; requestId: string; count: number };
 
-// 9c: the success answer to one artboard:edit. `html` is the new frame copy (tagged), the exact
-// string the watcher echo's canvas:updated will carry for this frame. The chrome adopts it (9e).
+// 9c: the success answer to one artboard:edit, and (9f) to one artboard:history. `html` is the new
+// frame copy (tagged), the exact string the watcher echo's canvas:updated will carry for this
+// frame. The chrome adopts it (9e); after a step it also reloads the frame (9f). The flags are the
+// frame's history after this write.
 export type ArtboardEditedMessage = {
 	type: 'artboard:edited';
 	requestId: string;
@@ -101,6 +107,8 @@ export type ArtboardEditedMessage = {
 	hash: string;
 	generation: number;
 	html: string;
+	canUndo: boolean;
+	canRedo: boolean;
 };
 
 export type HostMessage =
@@ -186,11 +194,23 @@ export type ArtboardEditMessage = {
 	liveText?: string;
 };
 
+export type HistoryStep = (typeof HISTORY_STEPS)[number];
+
+// 9f: undo or redo the panel's own last write to the frame. The host writes only bytes it holds.
+// Answered once: artboard:edited or ui:error { requestId }.
+export type ArtboardHistoryMessage = {
+	type: 'artboard:history';
+	requestId: string;
+	frameId: string;
+	step: HistoryStep;
+};
+
 export type ChromeMessage =
 	| { type: 'artboard:ready' }
 	| FramePlaceMessage
 	| CommentRequestMessage
-	| ArtboardEditMessage;
+	| ArtboardEditMessage
+	| ArtboardHistoryMessage;
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
@@ -213,6 +233,8 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		!isFiniteNumber(entry.width) ||
 		!isFiniteNumber(entry.generation) ||
 		typeof entry.hash !== 'string' ||
+		typeof entry.canUndo !== 'boolean' ||
+		typeof entry.canRedo !== 'boolean' ||
 		!isOptionalString(entry.group) ||
 		!isOptionalString(entry.errorMessage)
 	) {
@@ -227,6 +249,8 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 		generation: entry.generation,
 		hash: entry.hash,
 		html: entry.html,
+		canUndo: entry.canUndo,
+		canRedo: entry.canRedo,
 	};
 	if (entry.group !== undefined) {
 		frame.group = entry.group;
@@ -395,12 +419,14 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 		return parseUiError(data);
 	}
 	if (data.type === 'artboard:edited') {
-		// The same guards as a canvas:updated frame's html, hash and generation.
+		// The same guards as a canvas:updated frame's html, hash, generation and flags.
 		return typeof data.requestId === 'string' &&
 			typeof data.frameId === 'string' &&
 			typeof data.hash === 'string' &&
 			isFiniteNumber(data.generation) &&
-			typeof data.html === 'string'
+			typeof data.html === 'string' &&
+			typeof data.canUndo === 'boolean' &&
+			typeof data.canRedo === 'boolean'
 			? {
 					type: 'artboard:edited',
 					requestId: data.requestId,
@@ -408,6 +434,8 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 					hash: data.hash,
 					generation: data.generation,
 					html: data.html,
+					canUndo: data.canUndo,
+					canRedo: data.canRedo,
 				}
 			: undefined;
 	}

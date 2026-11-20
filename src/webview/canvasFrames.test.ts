@@ -30,6 +30,8 @@ const posted = (id: string, overrides: Partial<PostedCanvasFrame> = {}): PostedC
 	generation: 1,
 	hash: `sha256:${id}`,
 	html: `<p>${id}</p>`,
+	canUndo: false,
+	canRedo: false,
 	...overrides,
 });
 
@@ -243,7 +245,13 @@ test('a frame label shows the width alone until the first height report, and a t
 
 // 9e: the user's own edit. Base: hash h0, generation 1; the answer: h1, generation 2.
 const base = (): FrameRecord => measured('a');
-const answer = { html: '<p>edited</p>', hash: 'sha256:h1', generation: 2 };
+const answer = {
+	html: '<p>edited</p>',
+	hash: 'sha256:h1',
+	generation: 2,
+	canUndo: true,
+	canRedo: false,
+};
 const adopted = (): FrameRecord =>
 	adoptEditAnswer({ record: base(), answer, baseHash: 'sha256:a' });
 
@@ -278,7 +286,13 @@ test('after an adopt, the echo and any late pre-write read change nothing', () =
 	// Two adopts in a row: a late read of the first base is still skipped.
 	const twice = adoptEditAnswer({
 		record: echoed,
-		answer: { html: '<p>again</p>', hash: 'sha256:h2', generation: 3 },
+		answer: {
+			html: '<p>again</p>',
+			hash: 'sha256:h2',
+			generation: 3,
+			canUndo: true,
+			canRedo: false,
+		},
 		baseHash: 'sha256:h1',
 	});
 	assert.equal(only(mergeCanvasFrames({ records: [twice], frames: [stale] })).hash, 'sha256:h2');
@@ -306,4 +320,24 @@ test('a forced reload rebuilds from the latest adopted copy, once', () => {
 	assert.equal(reloaded.documentVersion, base().documentVersion + 1);
 	const tile = demoteToTile(base());
 	assert.equal(reloadFrame(tile), tile);
+});
+
+test('9f: undo / redo flags follow posts and answers; a stale pre-write post keeps them', () => {
+	const fresh = only(mergeCanvasFrames({ records: [], frames: [posted('a')] }));
+	assert.deepEqual([fresh.canUndo, fresh.canRedo], [false, false]);
+	const record = adopted();
+	assert.deepEqual([record.canUndo, record.canRedo], [true, false]);
+	// A stale pre-write read carries old flags: only its placement is taken.
+	const stale = only(
+		mergeCanvasFrames({ records: [record], frames: [posted('a', { canUndo: false, x: 9 })] }),
+	);
+	assert.deepEqual([stale.canUndo, stale.canRedo, stale.x], [true, false, 9]);
+	// Any other post, the echo included, brings the host's flags.
+	const echoed = only(
+		mergeCanvasFrames({
+			records: [record],
+			frames: [posted('a', { ...answer, canUndo: false, canRedo: true })],
+		}),
+	);
+	assert.deepEqual([echoed.canUndo, echoed.canRedo], [false, true]);
 });

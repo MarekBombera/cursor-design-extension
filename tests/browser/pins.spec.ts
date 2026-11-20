@@ -40,6 +40,8 @@ const FRAME: PostedCanvasFrame = {
 	width: 600,
 	generation: 1,
 	hash: 'sha256:test',
+	canUndo: false,
+	canRedo: false,
 	html: PINS_HTML,
 };
 

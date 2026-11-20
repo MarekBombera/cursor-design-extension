@@ -61,6 +61,8 @@ export const ICONS = {
 		{ kind: 'path', path: 'M6.3 6.4a1.8 1.8 0 1 1 2.5 1.6c-.5.25-.8.6-.8 1.1v.3' },
 		{ kind: 'circle', cx: 8, cy: 11.3, radius: 0.85, fill: true },
 	],
+	// A curved arrow forward: Redo (9f), the mirror of undo.
+	redo: [{ kind: 'path', path: 'M9 3.5l3 3-3 3M12 6.5H6a3 3 0 0 0 0 6h3' }],
 	reopen: [
 		{ kind: 'path', path: 'M2.8 8a5.2 5.2 0 1 0 1.6-3.7' },
 		{ kind: 'path', path: 'M2.8 2.6v3h3' },
@@ -87,6 +89,8 @@ export const ICONS = {
 		{ kind: 'circle', cx: 8, cy: 8, radius: 4.5 },
 		{ kind: 'path', path: 'M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3' },
 	],
+	// A curved arrow back: Undo (9f).
+	undo: [{ kind: 'path', path: 'M7 3.5l-3 3 3 3M4 6.5h6a3 3 0 0 1 0 6H7' }],
 	warning: [
 		{ kind: 'path', path: 'M8 2.3l6.3 11H1.7zM8 6.6v3' },
 		{ kind: 'circle', cx: 8, cy: 11.5, radius: 0.85, fill: true },

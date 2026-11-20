@@ -41,6 +41,8 @@ const frameA = (overrides: Partial<PostedCanvasFrame> = {}): PostedCanvasFrame =
 	width: 400,
 	generation: 1,
 	hash: 'sha256:test',
+	canUndo: false,
+	canRedo: false,
 	html: TALL_PAGE,
 	...overrides,
 });
@@ -53,6 +55,8 @@ const frameB = (overrides: Partial<PostedCanvasFrame> = {}): PostedCanvasFrame =
 	width: 400,
 	generation: 1,
 	hash: 'sha256:test',
+	canUndo: false,
+	canRedo: false,
 	html: SHORT_PAGE,
 	...overrides,
 });

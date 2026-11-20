@@ -106,9 +106,12 @@ export const panelFrames = ({
 	return posted;
 };
 
+// A posted frame before the outbox adds the history flags at send time (9f).
+export type UnflaggedPostedFrame = Omit<PostedCanvasFrame, 'canUndo' | 'canRedo'>;
+
 // Frames arrive capped and tagged by panelFrames; this only maps the fields.
-export const postedFrameFromSnapshot = (frame: CanvasViewFrame): PostedCanvasFrame => {
-	const posted: PostedCanvasFrame = {
+export const postedFrameFromSnapshot = (frame: CanvasViewFrame): UnflaggedPostedFrame => {
+	const posted: UnflaggedPostedFrame = {
 		id: frame.id,
 		label: frame.label,
 		x: frame.x,

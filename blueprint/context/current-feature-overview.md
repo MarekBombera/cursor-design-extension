@@ -1,4 +1,4 @@
-# 9e Edit fields + save - Overview for review
+# 9f Undo/redo - Overview for review
 
 > **Generated file.** Human-facing steering summary of the active work item:
 > same content as `current-feature.md`, trimmed. Written at `/feature` when the
@@ -6,91 +6,92 @@
 > polish this into the archive-ready one-pager; it is not the first write.
 > Open in Markdown preview to render the diagrams.
 
-Source of truth: `blueprint/history/features/09e-edit-fields-save.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/09f-undo-redo.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The Edit-mode inspector is live. Type in Text, Font size, Padding or Margin, or drag the colour
-picker, and the frame updates as you go. Enter or leaving the field saves (the colour saves on
-release) through the 9c checked write. The frame does not reload after your own save, so scroll
-and page state stay. A refused save reloads the frame, keeping your earlier saved edits, and
-says why. An edit interrupted by an outside change is never written to the wrong element; it
-says "Not saved: the frame changed. Try again." No host, disk-core or MCP change.
+Undo and Redo for your own Edit-mode saves. The extension keeps up to 20 whole-file snapshots
+per frame in memory while the panel is open. Undo writes the previous file back through the same
+hash-checked, locked write an edit uses, so it can never overwrite the Agent's or the editor's
+work. An outside change clears that frame's history; a new edit clears redo. Inspector buttons
+plus Cmd+Z / Cmd+Shift+Z (checked in Cursor by an agent and by Bombic).
 
-## Flow
+## System map
 
 ```mermaid
 flowchart LR
-  Focus["focus a field"] --> Refresh["frame re-describes the pick"]
-  Refresh --> Type["type: draft tied to that element"]
-  Type --> Preview["frame previews the text / style"]
-  Preview --> Commit{"Enter, blur,<br/>colour release,<br/>or another pick"}
-  Commit -->|unchanged| Back["frame back to baseline"]
-  Commit -->|invalid| Err["field error, nothing sent"]
-  Commit -->|valid| Queue["one save in flight"]
-  Queue --> Host["artboard:edit → disk"]
-  Host -->|written| Adopt["adopt answer, no reload"]
-  Host -->|refused| Reload["reload from latest saved copy + error"]
+  Inspector["Inspector: Undo / Redo buttons"] --> EditState
+  Keys["Cmd+Z: chrome capture listener,<br/>or cd:key from the focused history frame"] --> EditState
+  EditState["EditState: history frame,<br/>one-in-flight queue (max 20 steps waiting)"] -->|artboard:history| Host
+  Host["panelEdit.ts"] -->|historyStepTarget / recordStep| History["editHistory.ts<br/>(memory, 20 per frame)"]
+  Host -->|updateArtboard: lock + hash check| Disk[(".cursor-design/artboards")]
+  Disk -->|watcher| Outbox["panel outbox"]
+  Outbox -->|keepUnchangedHistories| History
+  Outbox -->|canvas:updated + canUndo / canRedo| EditState
+  Host -->|artboard:edited + canUndo / canRedo| EditState
 ```
 
 ## Key loop
 
 ```mermaid
 sequenceDiagram
+  participant U as User
   participant C as Chrome
   participant F as Frame
   participant H as Host
-  C->>F: cd:pick-refresh (on focus)
-  F->>C: cd:pick (repost)
-  C->>F: cd:edit-apply {text | style} (each keystroke)
-  C->>H: artboard:edit {.., hash, field, value, liveText?} (on commit)
-  H->>C: artboard:edited {hash, generation, html}
-  C->>C: adopt, no reload; next queued save uses this hash
-  H->>C: canvas:updated (echo, identical): nothing changes
+  participant D as Disk
+  U->>C: Undo (button, or Cmd+Z with focus on the inspector or in the edited frame)
+  C->>H: artboard:history {requestId, frameId, step}
+  H->>D: updateArtboard {snapshot from memory, baseHash: last written}
+  alt written
+    H->>C: artboard:edited {…, html, canUndo, canRedo}
+    C->>F: reload the frame from the restored file
+  else file changed outside, or gone
+    H->>H: forget this frame's history
+    H->>C: ui:error ("…its undo history was cleared.")
+  end
+  D-->>H: watcher echo
+  H->>C: canvas:updated (flags read at send; own echo keeps the history)
 ```
 
 ## What you will see
 
-- Editable fields for an editable element; the Text field only for plain text.
-- Live preview in the frame while typing; the selection outline follows a growing element.
-- `16` saved shows back as `16px`; an unchanged field saves nothing.
-- A bad size value: "Not saved: use a number, a CSS length such as 1.5rem, or leave it empty."
-- A refused save or interrupted edit: an announced error at the top of the inspector.
-- An element whose `style` attribute is over 5,000 characters: a hint instead of the style fields.
+- In Edit mode, **Undo in Hero** / **Redo in Hero** before ↑ ↓; greyed out when unavailable.
+- Undo reloads the frame with the file as it was; the selection clears but the buttons keep
+  acting on that frame. A screen reader hears "Undone in Hero."
+- An Agent update or editor save of the file greys Undo out (the frame reloads as before).
+- History survives a tab switch; closing the panel clears it.
 
 ## Decisions locked
 
-- A save always targets the element its draft started on (frame, source number, document
-  version), never the current pick.
-- Preview uses the edit core's own string rules (moved to the parse5-free `editValues.ts`); the
-  frame only sets the text or the style attribute.
-- One save in flight per panel; a refusal drops the waiting ones.
-- No reload after your own save; a forced reload rebuilds from the latest adopted HTML; stale
-  pre-write refreshes are skipped.
-- Escape in a field does not revert (undo is 9f); the colour cannot be cleared.
+- From Notion: 20 whole-file steps per frame, memory only, panel session; the same checked write;
+  outside change clears, own echo does not; new edit clears redo; buttons, keys after a spike.
+- Made in this build: a step reloads the frame; the buttons act on the frame of the latest pick
+  *from a focused frame* (F-146); any history-held hash counts as the extension's own (so a slow
+  refresh cannot wipe history); any folder change clears all history; one answer type
+  (`artboard:edited`) for edits and steps.
+- Trust: undo writes only bytes the host read or produced; a design script's `cd:key` or pick
+  counts only from the focused frame in Edit mode; at most 20 steps can wait in the queue.
 
 ## Out of scope
 
-Undo / redo (9f), Agent conflict on a real frame, export and `.vsix` checks (9g), clearing the
-colour, mixed-content text, classes, per-side spacing, 0.4.1.
+Undoing Agent / editor changes, history on disk, keeping scroll across an undo, a history list,
+undo of drag/resize or comments, Escape-to-revert. 9g does the full real-frame verify.
 
 ## Glossary
 
 | Term | Why it exists |
 |---|---|
-| Draft | A field's uncommitted input, tied to one element, so a late blur can't save to a newly clicked one |
-| Adopt | Taking the host's answer (new HTML, hash, generation) without rebuilding the iframe |
-| Stale pre-write post | A refresh that read the file before your save; skipped so the frame doesn't flash back |
-| Independent review | A fresh reviewer with no build context checks the whole change before landing |
-
-## Your actions
-
-The Cursor (F5) checks were not run: save each field and `git diff` the artboard file, colour
-drag saves once, scroll kept after a save, an editor change while a field is dirty. Open
-findings carried forward: F-141, F-142, F-143 (P3), F-144 (P3, unverified).
+| Snapshot | The whole artboard file at one point; undo writes one back byte for byte |
+| Checked write | `updateArtboard` with the expected hash under the workspace lock; refuses if the file changed |
+| History frame | The frame the Undo / Redo buttons act on |
+| Echo | The file watcher's refresh after the extension's own write |
 
 ## Done means
 
-Five fields save to disk from the inspector with live preview and no frame reload; refused or
-interrupted edits say why; `pnpm verify`, `pnpm test:browser` and the gallery pass; independent
-review passed on `5c8a33a`.
+- `pnpm verify` 729 unit tests; `pnpm test:browser` 164/164; `pnpm gallery` contrast green.
+- Cursor run (agent over CDP): edit, undo to the exact original bytes, redo, keys from the
+  inspector and the frame, outside change, tab switch, close/reopen: all pass. Bombic confirmed
+  real Cmd+Z / Cmd+Shift+Z.
+- Independent review passed (fresh Opus 5.5 subagent, target `cf238c4`); audit findings
+  F-145–F-152 closed except F-149 (unverified).

@@ -1075,9 +1075,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	var frameKey = (event) =&gt; {
+		if (event.altKey || event.repeat || event.isComposing) return;
+		if (event.ctrlKey || event.metaKey) return event.key === &quot;z&quot; || event.key === &quot;Z&quot; ? event.shiftKey ? &quot;redo&quot; : &quot;undo&quot; : void 0;
+		return event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+	};
 	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
-		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
-		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		const key = frameKey(event);
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
@@ -2148,9 +2152,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	var frameKey = (event) =&gt; {
+		if (event.altKey || event.repeat || event.isComposing) return;
+		if (event.ctrlKey || event.metaKey) return event.key === &quot;z&quot; || event.key === &quot;Z&quot; ? event.shiftKey ? &quot;redo&quot; : &quot;undo&quot; : void 0;
+		return event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+	};
 	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
-		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
-		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		const key = frameKey(event);
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
@@ -3221,9 +3229,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	var frameKey = (event) =&gt; {
+		if (event.altKey || event.repeat || event.isComposing) return;
+		if (event.ctrlKey || event.metaKey) return event.key === &quot;z&quot; || event.key === &quot;Z&quot; ? event.shiftKey ? &quot;redo&quot; : &quot;undo&quot; : void 0;
+		return event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+	};
 	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
-		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
-		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		const key = frameKey(event);
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
@@ -4294,9 +4306,13 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		passive: false,
 		capture: true
 	});
+	var frameKey = (event) =&gt; {
+		if (event.altKey || event.repeat || event.isComposing) return;
+		if (event.ctrlKey || event.metaKey) return event.key === &quot;z&quot; || event.key === &quot;Z&quot; ? event.shiftKey ? &quot;redo&quot; : &quot;undo&quot; : void 0;
+		return event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+	};
 	window.addEventListener(&quot;keydown&quot;, (event) =&gt; {
-		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) return;
-		const key = event.key === &quot;c&quot; || event.key === &quot;C&quot; ? &quot;c&quot; : event.key === &quot;Escape&quot; ? &quot;Escape&quot; : void 0;
+		const key = frameKey(event);
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;

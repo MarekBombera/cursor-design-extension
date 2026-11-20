@@ -298,3 +298,11 @@
 **Why it matters:** Every `cd:edit-apply` on the picked element runs `refreshCurrent`, which calls `describeContent` (`selector.ts:137`: `element.innerText` of the whole subtree, a forced layout, then `getComputedStyle`) plus `describeEditTarget` (a document-wide `querySelectorAll`), and re-posts the pick. One `input` event = one preview, so typing a padding or font-size value on a large container (a `<main>` with most of the page) repeats that per keystroke, where 9d did it once per click. The text excerpt cannot change from a style-only preview. Not measured; on typical leaf elements the cost is small.
 **Suggested fix:** Measure in the F5 check (type into Padding with a large section picked). If noticeable, keep the cached `text` excerpt in `refreshCurrent` after a `style` apply and recompute only `styles` and `edit`. Otherwise accept under a `ponytail:` note.
 **Resolution:**
+
+### F-149 [P3] unverified - Chrome-side step paths have thin evidence
+
+**File:** src/webview/editState.svelte.ts (`handleEditAnswer`, `handleFramesChanged`), src/webview/canvasState.svelte.ts (`adoptEditAnswer`)
+**Found:** 2026-11-20 by /audit (scope: current; lens: tests; fresh subagent claude-sonnet-5-5)
+**Why it matters:** Only browser specs cover these, and three paths have none: a step answer whose adopt returns `false` (a newer post won: no reload, still announced), `historyFrameId` clearing when its frame leaves, and a repeated announcement re-speaking. The spec's Done-when list does not require them; no failing path found.
+**Suggested fix:** Optional: one browser case posting a `canvas:updated` before the step answer covers the `false` branch.
+**Resolution:**

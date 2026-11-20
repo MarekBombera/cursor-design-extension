@@ -2,17 +2,19 @@ import * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import {
-	COPIED_NOT_MARKED_MESSAGE,
-	NOTHING_OPEN_MESSAGE,
-	commentRequestErrorMessage,
 	commentRequestId,
 	commentRequestType,
-	isCopyType,
-	malformedRequestMessage,
 	parseChromeMessage,
 	toNewComment,
 	toPostedComment,
 } from './chromeMessages';
+import {
+	COPIED_NOT_MARKED_MESSAGE,
+	NOTHING_OPEN_MESSAGE,
+	commentRequestErrorMessage,
+	isCopyType,
+	malformedRequestMessage,
+} from './panelRequestCopy';
 import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
 import { firstWorkspaceFolder, logDiskError } from './hostFs';
 import {

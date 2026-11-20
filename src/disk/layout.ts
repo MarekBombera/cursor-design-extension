@@ -58,6 +58,12 @@ export const EDIT_STYLE_FIELDS = ['font-size', 'color', 'padding', 'margin'] as 
 // Edit-mode fields (0.4): the edit core's allowlist, shared with the panel's artboard:edit type.
 export const EDIT_FIELDS = ['text', ...EDIT_STYLE_FIELDS] as const;
 
+// Undo / redo steps (9f): shared by the panel's artboard:history type and the host's zod enum.
+export const HISTORY_STEPS = ['undo', 'redo'] as const;
+
+// Undo steps held per frame (9f), shared by the host's history store and the chrome's queue cap.
+export const MAX_HISTORY_STEPS = 20;
+
 // Source numbers (0.4): the attribute the host splices into the frame copy (sourceTags.ts). Here,
 // not there, so the frame runtime and the chrome never import parse5.
 export const SOURCE_TAG_ATTRIBUTE = 'data-cd-src';

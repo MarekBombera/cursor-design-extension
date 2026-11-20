@@ -2,21 +2,11 @@ import * as z from 'zod/mini';
 
 import type { CommentView } from '../disk/commentViews';
 import type { NewComment } from '../disk/commentsFile';
-import {
-	ArtboardNotFoundError,
-	CommentNotFoundError,
-	ConflictError,
-	DiskError,
-	EditRefusedError,
-	InvalidArgsError,
-	InvalidArtboardIdError,
-	LockTimeoutError,
-	toSafeArtboardErrorMessage,
-} from '../disk/errors';
 import { isArtboardHash } from '../disk/hash';
 import {
 	COMMENT_ID_PATTERN,
 	EDIT_FIELDS,
+	HISTORY_STEPS,
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
 	MAX_PICK_TEXT_CHARS,
@@ -31,7 +21,7 @@ import type {
 } from '../webview/hostMessages';
 
 // No `vscode` import: the panel's untrusted chrome → host input is parsed here, and the chrome ↔
-// host mapping lives here, so both stay unit-testable.
+// host mapping lives here, so both stay unit-testable. The answer copy is panelRequestCopy.ts.
 
 // z.number() already rejects NaN and ±Infinity.
 const coordinate = z.number().check(z.gte(-MAX_FRAME_COORDINATE), z.lte(MAX_FRAME_COORDINATE));
@@ -107,6 +97,15 @@ const artboardEditSchema = z
 	})
 	.check(z.refine((message) => (message.field === 'text') === (message.liveText !== undefined)));
 
+// 9f. Shape only: the frame id charset is the disk lib's (parseArtboardId); the host owns the
+// bytes an undo or redo writes, so nothing else crosses this boundary.
+const artboardHistorySchema = z.object({
+	type: z.literal('artboard:history'),
+	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	frameId: z.string(),
+	step: z.enum(HISTORY_STEPS),
+});
+
 // The artboard id charset is enforced by placeFrame's parseArtboardId.
 const chromeMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('artboard:ready') }),
@@ -122,6 +121,7 @@ const chromeMessageSchema = z.discriminatedUnion('type', [
 	commentCopySchema,
 	commentCopyOpenSchema,
 	artboardEditSchema,
+	artboardHistorySchema,
 ]);
 
 // Unknown `type`, a non-object, or any failing field returns undefined; never throws.
@@ -142,6 +142,11 @@ export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value
 // True for anything that claims to be artboard:edit, valid or not, so every attempt gets an answer.
 export const isArtboardEditAttempt = (value: unknown): boolean =>
 	claimsType(value, 'artboard:edit');
+
+// True for anything that claims to be artboard:history (9f), valid or not, so every attempt gets
+// an answer. It shares the edit route.
+export const isArtboardHistoryAttempt = (value: unknown): boolean =>
+	claimsType(value, 'artboard:history');
 
 // The request id to answer, read before any parse: a string matching REQUEST_ID_PATTERN, or
 // undefined (nothing to answer to). Shared by comment requests and artboard:edit.
@@ -171,91 +176,6 @@ export const commentRequestType = (value: unknown): CommentRequestMessage['type'
 // The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
 export const commentRequestId = (value: unknown): string | undefined =>
 	commentRequestType(value) === undefined ? undefined : claimedRequestId(value);
-
-export const CREATE_FALLBACK_MESSAGE =
-	'Could not add the comment. Check the Output panel: Cursor Design.';
-
-export const MALFORMED_CREATE_MESSAGE = 'Could not add the comment. Pick the element again.';
-
-export const CHANGE_FALLBACK_MESSAGE =
-	'Could not save the change. Check the Output panel: Cursor Design.';
-
-export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
-
-export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
-
-// The copy types' fallback (a clipboard rejection lands here) and their malformed copy (8h).
-export const COPY_FAILED_MESSAGE =
-	'Could not copy the prompt. Check the Output panel: Cursor Design.';
-
-// The clipboard holds the prompt, but markCommentsSent threw (busy, corrupt, anything).
-export const COPIED_NOT_MARKED_MESSAGE =
-	'The prompt was copied, but the comment status was not updated. Try again.';
-
-export const NOTHING_OPEN_MESSAGE = 'There are no open comments to copy.';
-
-// The one copy-type rule (8h): the copy fallback and malformed copy here, and the refresh after
-// every copy ui:error in panelComments.ts.
-export const isCopyType = (type: CommentRequestMessage['type']): boolean =>
-	type === 'comment:copy' || type === 'comment:copy-open';
-
-const fallbackMessage = (type: CommentRequestMessage['type']): string =>
-	type === 'comment:create'
-		? CREATE_FALLBACK_MESSAGE
-		: isCopyType(type)
-			? COPY_FAILED_MESSAGE
-			: CHANGE_FALLBACK_MESSAGE;
-
-export const malformedRequestMessage = (type: CommentRequestMessage['type']): string =>
-	type === 'comment:create'
-		? MALFORMED_CREATE_MESSAGE
-		: isCopyType(type)
-			? COPY_FAILED_MESSAGE
-			: MALFORMED_CHANGE_MESSAGE;
-
-// The panel's own copy: the Agent copy of CommentNotFoundError says to call list_comments.
-export const commentRequestErrorMessage = ({
-	type,
-	error,
-}: {
-	type: CommentRequestMessage['type'];
-	error: unknown;
-}): string =>
-	error instanceof CommentNotFoundError
-		? COMMENT_GONE_MESSAGE
-		: toSafeArtboardErrorMessage(error, fallbackMessage(type));
-
-export const MALFORMED_EDIT_MESSAGE = 'Could not save the edit. Try again.';
-
-export const EDIT_FALLBACK_MESSAGE =
-	'Could not save the edit. Check the Output panel: Cursor Design.';
-
-export const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
-
-export const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
-
-// Panel copy for a failed artboard:edit, an allowlist in this order: every other domain error's
-// own message is Agent copy (ConflictError says to call read_artboard, CorruptMetaError to
-// set_artboard), so it gets the fallback.
-export const editRequestErrorMessage = (error: unknown): string => {
-	if (error instanceof ConflictError) {
-		return EDIT_CONFLICT_MESSAGE;
-	}
-	if (error instanceof ArtboardNotFoundError) {
-		return EDIT_FRAME_GONE_MESSAGE;
-	}
-	if (error instanceof InvalidArgsError || error instanceof InvalidArtboardIdError) {
-		return MALFORMED_EDIT_MESSAGE;
-	}
-	if (
-		error instanceof EditRefusedError ||
-		error instanceof LockTimeoutError ||
-		error instanceof DiskError
-	) {
-		return error.message;
-	}
-	return EDIT_FALLBACK_MESSAGE;
-};
 
 // The pin is the point as a fraction of the unclipped box, never of the (maybe clipped or null)
 // rect. A zero-size box pins at 0 instead of NaN (addComment clamps the pin to 0..1 but leaves

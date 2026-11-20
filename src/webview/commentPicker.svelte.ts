@@ -40,7 +40,8 @@ const popoverHasFocus = (): boolean =>
 const inspectorHasFocus = (): boolean =>
 	document.activeElement?.closest('[data-cd-inspector]') != null;
 
-const isTextEntry = (target: EventTarget | null): boolean =>
+// Shared with EditState's undo / redo keys (9f).
+export const isTextEntry = (target: EventTarget | null): boolean =>
 	target instanceof HTMLElement &&
 	(target.isContentEditable || target.matches('input, textarea, select'));
 

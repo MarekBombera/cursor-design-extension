@@ -25,6 +25,9 @@ export type StageFrame = {
 	generation: number;
 	// The disk HTML's hash the host last posted (the base of an Edit-mode change, 9c).
 	hash: string;
+	// 9f: the host's undo / redo availability for this frame, from the last post or answer taken.
+	canUndo: boolean;
+	canRedo: boolean;
 	kind: 'tile' | 'iframe';
 	// Why a tile shows: an empty file or a failure. Read only while kind is 'tile'.
 	tileKind: 'empty' | 'error';
@@ -65,6 +68,8 @@ const newRecord = (entry: PostedCanvasFrame): FrameRecord => ({
 	group: entry.group,
 	generation: entry.generation,
 	hash: '',
+	canUndo: false,
+	canRedo: false,
 	height: TILE_HEIGHT,
 	measuredHeight: PROVISIONAL_FRAME_HEIGHT,
 	heightReported: false,
@@ -103,6 +108,8 @@ const mergeRecord = (record: FrameRecord, entry: PostedCanvasFrame): FrameRecord
 		generation: entry.generation,
 		hash: entry.hash,
 		html: entry.html,
+		canUndo: entry.canUndo,
+		canRedo: entry.canRedo,
 		// The echo of the user's own save keeps the list; any other change ends it.
 		replacedHashes: entry.hash === record.hash ? record.replacedHashes : [],
 	};
@@ -137,7 +144,7 @@ export const adoptEditAnswer = ({
 	baseHash,
 }: {
 	record: FrameRecord;
-	answer: Pick<ArtboardEditedMessage, 'html' | 'hash' | 'generation'>;
+	answer: Pick<ArtboardEditedMessage, 'html' | 'hash' | 'generation' | 'canUndo' | 'canRedo'>;
 	baseHash: string;
 }): FrameRecord =>
 	record.kind === 'iframe' && record.hash === baseHash
@@ -146,6 +153,8 @@ export const adoptEditAnswer = ({
 				html: answer.html,
 				hash: answer.hash,
 				generation: answer.generation,
+				canUndo: answer.canUndo,
+				canRedo: answer.canRedo,
 				replacedHashes: [...record.replacedHashes, baseHash],
 			}
 		: record;

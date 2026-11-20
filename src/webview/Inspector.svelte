@@ -2,22 +2,19 @@
 	import { MAX_EDIT_TEXT_CHARS } from '../disk/layout';
 	import type { ChromePick } from './commentPick';
 	import type { EditField } from './editRequests';
-	import {
-		type EditDraft,
-		fieldValue,
-		type InputField,
-		inspectorView,
-		textMaxLength,
-	} from './editInspector';
+	import { type EditDraft, fieldValue, textMaxLength } from './editDrafts';
+	import { type InputField, inspectorView } from './editInspector';
 	import EmptyState from './ui/EmptyState.svelte';
 	import IconButton from './ui/IconButton.svelte';
 	import Message from './ui/Message.svelte';
+	import type { HistoryTarget } from './undoRedo';
 
 	// The Edit-mode inspector (9d, live since 9e): the picked element's text and inline styles.
 	// Input previews in the frame; Enter or blur commits text and lengths, the picker's change
-	// commits colour (EditState decides what is saved). Rendered only in Edit mode, first in the
-	// workspace DOM (Tab order inspector → comments panel → stage); CSS `order` draws it at the
-	// right edge. Frame data reaches the DOM only as field values and text, never {@html}.
+	// commits colour (EditState decides what is saved). Undo / Redo (9f) act on the frame of the
+	// latest pick, also after the pick drops. Rendered only in Edit mode, first in the workspace
+	// DOM (Tab order inspector → comments panel → stage); CSS `order` draws it at the right edge.
+	// Frame data reaches the DOM only as field values and text, never {@html}.
 	type Props = {
 		pick: ChromePick | undefined;
 		// The picked frame's display name; '' without a pick.
@@ -31,6 +28,12 @@
 		onFieldFocus: () => void;
 		onFieldInput: (field: EditField, value: string) => void;
 		onFieldCommit: (field: EditField) => void;
+		// 9f: the frame Undo / Redo act on; undefined disables both.
+		history: HistoryTarget | undefined;
+		// The polite announcement after a written step ('' before the first).
+		historyAnnouncement: string;
+		onUndo: () => void;
+		onRedo: () => void;
 	};
 
 	let {
@@ -44,6 +47,10 @@
 		onFieldFocus,
 		onFieldInput,
 		onFieldCommit,
+		history,
+		historyAnnouncement,
+		onUndo,
+		onRedo,
 	}: Props = $props();
 
 	const fieldId = $props.id();
@@ -71,13 +78,19 @@
 	const STYLE_TOO_LONG_COPY =
 		"This element's style attribute is too long to edit here: ask the Agent.";
 
-	// aria-disabled, not disabled: when a frame reload clears the pick under a focused step button,
-	// focus stays on it instead of falling to body.
-	const step = (send: () => void): void => {
-		if (pick !== undefined) {
+	// The head buttons use aria-disabled, not disabled: a frame reload that clears the pick, or a
+	// step's reload that clears a flag, can disable the button under focus, and focus stays on it
+	// instead of falling to body. So a click checks the same flag itself.
+	const runIf = (enabled: boolean, send: () => void): void => {
+		if (enabled) {
 			send();
 		}
 	};
+
+	const canUndo = $derived(history?.canUndo === true);
+	const canRedo = $derived(history?.canRedo === true);
+	const historyLabel = (verb: string): string =>
+		history === undefined ? verb : `${verb} in ${history.label}`;
 
 	const shown = (field: EditField, pickValue: string): string =>
 		fieldValue({ draft: drafts[field], pick, pickValue });
@@ -97,22 +110,37 @@
 	<div class="head">
 		<p class="title">Inspector</p>
 		<span class="steps">
+			<span class="history">
+				<IconButton
+					icon="undo"
+					label={historyLabel('Undo')}
+					aria-disabled={!canUndo}
+					onclick={() => runIf(canUndo, onUndo)}
+				/>
+				<IconButton
+					icon="redo"
+					label={historyLabel('Redo')}
+					aria-disabled={!canRedo}
+					onclick={() => runIf(canRedo, onRedo)}
+				/>
+			</span>
 			<IconButton
 				icon="arrow-up"
 				label="Select parent element"
 				aria-disabled={pick === undefined}
-				onclick={() => step(onParent)}
+				onclick={() => runIf(pick !== undefined, onParent)}
 			/>
 			<IconButton
 				icon="arrow-down"
 				label="Select child element"
 				aria-disabled={pick === undefined}
-				onclick={() => step(onChild)}
+				onclick={() => runIf(pick !== undefined, onChild)}
 			/>
 		</span>
 		{#if view.kind !== 'empty'}
 			<p class="target">{frameLabel} › {view.target}</p>
 		{/if}
+		<p class="visually-hidden" aria-live="polite">{historyAnnouncement}</p>
 	</div>
 	<div class="body">
 		<div class={{ 'request-error': requestError !== undefined }} aria-live="polite">
@@ -228,9 +256,14 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 	}
-	.steps {
+	.steps,
+	.history {
 		display: inline-flex;
 		gap: var(--cd-space-2);
+	}
+	/* Undo / Redo, then a gap, then the element steps. */
+	.history {
+		margin-inline-end: var(--cd-space-6);
 	}
 	.target {
 		grid-column: 1 / -1;

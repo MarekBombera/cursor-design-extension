@@ -260,6 +260,8 @@ export const editFrame = ({ id, label }: { id: string; label: string }): PostedC
 		width: 800,
 		generation: 1,
 		hash: 'sha256:test',
+		canUndo: false,
+		canRedo: false,
 		html: sourceTaggedHtml({ html, document: parseArtboardDocument(html) }),
 	};
 };

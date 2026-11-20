@@ -316,16 +316,26 @@ export class CanvasState {
 		this.#updateFrame(id, demoteToTile);
 	};
 
-	// 9e: the host's answer to the user's own edit, based on `baseHash`; no reload.
-	adoptEditAnswer = (answer: ArtboardEditedMessage, baseHash: string): void => {
-		this.#updateFrame(answer.frameId, (record) => adoptEditAnswer({ record, answer, baseHash }));
-		const active = this.frames.find((frame) => frame.id === this.artboardId);
-		if (answer.frameId === this.artboardId && active !== undefined) {
-			this.generation = String(active.generation);
+	// 9e: the host's answer to the user's own edit (9f: or undo / redo), based on `baseHash`; no
+	// reload. False when a newer post already won and the record was left as it was.
+	adoptEditAnswer = (answer: ArtboardEditedMessage, baseHash: string): boolean => {
+		const record = this.frames.find((frame) => frame.id === answer.frameId);
+		if (record === undefined) {
+			return false;
 		}
+		const adopted = adoptEditAnswer({ record, answer, baseHash });
+		if (adopted === record) {
+			return false;
+		}
+		this.#updateFrame(answer.frameId, () => adopted);
+		if (answer.frameId === this.artboardId) {
+			this.generation = String(adopted.generation);
+		}
+		return true;
 	};
 
-	// 9e: a refused edit drops its preview by rebuilding the iframe from the latest adopted copy.
+	// 9e: a refused edit drops its preview by rebuilding the iframe from the latest adopted copy;
+	// 9f: a written undo / redo shows the restored file the same way.
 	reloadFrame = (id: string): void => {
 		this.#updateFrame(id, reloadFrame);
 	};

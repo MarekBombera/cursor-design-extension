@@ -4,9 +4,11 @@ import type { CanvasSnapshot } from '../host/canvasSnapshot';
 import {
 	commentRequestType,
 	isArtboardEditAttempt,
+	isArtboardHistoryAttempt,
 	isFramePlaceAttempt,
 	parseChromeMessage,
 } from '../host/chromeMessages';
+import { clearEditHistories, historyFlags, keepUnchangedHistories } from '../host/editHistory';
 import { type PanelAnswer, createPanelOutbox } from '../host/panelOutbox';
 import type { CommentsUpdatedMessage } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
@@ -25,6 +27,8 @@ const outbox = createPanelOutbox({
 		void currentPanel?.webview.postMessage(message);
 	},
 	readCspNonce: () => chromeCspNonce,
+	readHistoryFlags: historyFlags,
+	keepUnchangedHistories,
 });
 
 export const hasCurrentArtboardPanel = (): boolean => currentPanel !== undefined;
@@ -43,7 +47,8 @@ export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => vo
 	onCommentRequest = handler;
 };
 
-// Gets every artboard:edit attempt raw, valid or not; the handler owns the one answer (9c).
+// Gets every artboard:edit (9c) and artboard:history (9f) attempt raw, valid or not; the handler
+// owns the one answer.
 export const setArtboardPanelOnEditRequest = (handler: (value: unknown) => void): void => {
 	onEditRequest = handler;
 };
@@ -100,7 +105,7 @@ export const openArtboardPanel = ({
 			onFramePlace?.(message);
 			return;
 		}
-		if (isArtboardEditAttempt(message)) {
+		if (isArtboardEditAttempt(message) || isArtboardHistoryAttempt(message)) {
 			onEditRequest?.(message);
 			return;
 		}
@@ -125,6 +130,8 @@ export const openArtboardPanel = ({
 	panel.onDidDispose(() => {
 		currentPanel = undefined;
 		outbox.reset();
+		// 9f: undo history lives for the panel session only.
+		clearEditHistories();
 	});
 	currentPanel = panel;
 	return panel;

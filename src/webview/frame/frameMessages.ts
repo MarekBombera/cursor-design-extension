@@ -115,8 +115,16 @@ export type FramePickMessage = {
 	edit?: PickEditFields;
 };
 
-// The mode keys, forwarded so they work with focus inside a frame.
-type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: 'c' | 'Escape' };
+// The keys a frame forwards so they work with focus inside it: the mode keys C and Escape, and
+// (9f) undo / redo for Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
+const FRAME_KEYS = ['c', 'Escape', 'undo', 'redo'] as const;
+
+export type FrameKey = (typeof FRAME_KEYS)[number];
+
+const isFrameKey = (value: unknown): value is FrameKey =>
+	(FRAME_KEYS as readonly unknown[]).includes(value);
+
+type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: FrameKey };
 
 export type AnchorRequest = { id: string; selector: string };
 
@@ -446,9 +454,7 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
 		case FRAME_PICK_MESSAGE:
 			return parseFramePick(record);
 		case FRAME_KEY_MESSAGE:
-			return record.key === 'c' || record.key === 'Escape'
-				? { type: FRAME_KEY_MESSAGE, key: record.key }
-				: undefined;
+			return isFrameKey(record.key) ? { type: FRAME_KEY_MESSAGE, key: record.key } : undefined;
 		case FRAME_ANCHOR_RECTS_MESSAGE: {
 			const anchors = parseAnchorList(record.anchors, parseAnchorRect);
 			return anchors === undefined ? undefined : { type: FRAME_ANCHOR_RECTS_MESSAGE, anchors };

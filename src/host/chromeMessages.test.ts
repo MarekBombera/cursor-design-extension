@@ -2,41 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/commentViews';
-import {
-	ArtboardNotFoundError,
-	CommentNotFoundError,
-	ConflictError,
-	CorruptMetaError,
-	DiskError,
-	EditRefusedError,
-	InvalidArgsError,
-	InvalidArtboardIdError,
-	LockTimeoutError,
-} from '../disk/errors';
 import { MAX_EDIT_TEXT_CHARS } from '../disk/layout';
 import {
-	CHANGE_FALLBACK_MESSAGE,
-	COMMENT_GONE_MESSAGE,
-	COPY_FAILED_MESSAGE,
-	CREATE_FALLBACK_MESSAGE,
-	MALFORMED_CHANGE_MESSAGE,
-	MALFORMED_CREATE_MESSAGE,
-	EDIT_CONFLICT_MESSAGE,
-	EDIT_FALLBACK_MESSAGE,
-	EDIT_FRAME_GONE_MESSAGE,
-	MALFORMED_EDIT_MESSAGE,
 	claimedRequestId,
-	commentRequestErrorMessage,
 	commentRequestId,
-	editRequestErrorMessage,
 	isArtboardEditAttempt,
 	commentRequestType,
 	isFramePlaceAttempt,
-	malformedRequestMessage,
 	parseChromeMessage,
 	toNewComment,
 	toPostedComment,
+	isArtboardHistoryAttempt,
 } from './chromeMessages';
+import { COPY_FAILED_MESSAGE, malformedRequestMessage } from './panelRequestCopy';
 import type { CommentCreateMessage } from '../webview/hostMessages';
 
 const validPlace = {
@@ -185,19 +163,6 @@ test('comment:copy and comment:copy-open parse; bad ids and requestIds are rejec
 	assert.equal(malformedRequestMessage('comment:copy-open'), COPY_FAILED_MESSAGE);
 });
 
-test('a copy error: gone comment remapped, domain copy kept, anything else the copy fallback', () => {
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:copy', error: new CommentNotFoundError() }),
-		COMMENT_GONE_MESSAGE,
-	);
-	const busy = new LockTimeoutError();
-	assert.equal(commentRequestErrorMessage({ type: 'comment:copy', error: busy }), busy.message);
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:copy-open', error: new Error('clipboard') }),
-		COPY_FAILED_MESSAGE,
-	);
-});
-
 test('a malformed comment request is still an attempt with an answerable requestId', () => {
 	const malformed = { type: 'comment:create', requestId: 'req-1', selector: 7 };
 	assert.equal(parseChromeMessage(malformed), undefined);
@@ -212,36 +177,6 @@ test('a malformed comment request is still an attempt with an answerable request
 		assert.equal(commentRequestType(other), undefined);
 		assert.equal(commentRequestId(other), undefined);
 	}
-});
-
-test('commentRequestErrorMessage remaps a missing comment and keeps domain copy', () => {
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:reply', error: new CommentNotFoundError() }),
-		COMMENT_GONE_MESSAGE,
-	);
-	const capped = new InvalidArgsError('This comment has the maximum number of replies.');
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:reply', error: capped }),
-		capped.message,
-	);
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:reply', error: new Error('/secret/path') }),
-		CHANGE_FALLBACK_MESSAGE,
-	);
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:set-status', error: new Error('x') }),
-		CHANGE_FALLBACK_MESSAGE,
-	);
-	assert.equal(
-		commentRequestErrorMessage({ type: 'comment:create', error: new Error('x') }),
-		CREATE_FALLBACK_MESSAGE,
-	);
-});
-
-test('malformedRequestMessage gives create its own copy and replies and status changes the change copy', () => {
-	assert.equal(malformedRequestMessage('comment:create'), MALFORMED_CREATE_MESSAGE);
-	assert.equal(malformedRequestMessage('comment:reply'), MALFORMED_CHANGE_MESSAGE);
-	assert.equal(malformedRequestMessage('comment:set-status'), MALFORMED_CHANGE_MESSAGE);
 });
 
 test('toNewComment pins by the unclipped box, never by the rect', () => {
@@ -368,23 +303,22 @@ test('a malformed artboard:edit is still an attempt with an answerable requestId
 	assert.equal(commentRequestType(styleEdit), undefined);
 });
 
-test('editRequestErrorMessage is an allowlist: Agent copy never reaches the panel', () => {
-	const refused = new EditRefusedError('not-plain-text');
-	const busy = new LockTimeoutError();
-	const disk = new DiskError();
-	const rows: [unknown, string][] = [
-		[new ConflictError('hero', {}), EDIT_CONFLICT_MESSAGE],
-		[new ArtboardNotFoundError('hero'), EDIT_FRAME_GONE_MESSAGE],
-		[new InvalidArgsError('x'), MALFORMED_EDIT_MESSAGE],
-		[new InvalidArtboardIdError('Bad id'), MALFORMED_EDIT_MESSAGE],
-		[refused, refused.message],
-		[busy, busy.message],
-		[disk, disk.message],
-		[new CorruptMetaError('hero'), EDIT_FALLBACK_MESSAGE],
-		[new Error('/Users/someone/secret'), EDIT_FALLBACK_MESSAGE],
-	];
-	for (const [error, expected] of rows) {
-		assert.equal(editRequestErrorMessage(error), expected);
+test('9f: artboard:history parses its shape only; every claim is an attempt', () => {
+	const undo = { type: 'artboard:history', requestId: 'step-1', frameId: 'hero', step: 'undo' };
+	assert.deepEqual(parseChromeMessage(undo), undo);
+	assert.deepEqual(parseChromeMessage({ ...undo, step: 'redo', extra: 1 }), {
+		...undo,
+		step: 'redo',
+	});
+	for (const broken of [
+		{ step: 'sideways' },
+		{ step: undefined },
+		{ requestId: 'bad id' },
+		{ frameId: 7 },
+	]) {
+		assert.equal(parseChromeMessage({ ...undo, ...broken }), undefined, JSON.stringify(broken));
+		assert.equal(isArtboardHistoryAttempt({ ...undo, ...broken }), true);
 	}
-	assert.match(refused.message, /Ask the Agent/);
+	assert.equal(isArtboardHistoryAttempt({ type: 'artboard:edit' }), false);
+	assert.equal(isArtboardEditAttempt(undo), false);
 });

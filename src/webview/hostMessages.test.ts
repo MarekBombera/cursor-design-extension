@@ -12,6 +12,8 @@ const validFrame = {
 	generation: 2,
 	hash: 'sha256:aa',
 	html: '<p>a</p>',
+	canUndo: true,
+	canRedo: false,
 };
 const validUpdate = {
 	type: 'canvas:updated',
@@ -67,6 +69,8 @@ test('invalid frame entries are dropped and the valid ones kept in order', () =>
 			{ ...validFrame, errorMessage: false },
 			{ ...validFrame, hash: undefined },
 			{ ...validFrame, hash: 5 },
+			{ ...validFrame, canUndo: undefined },
+			{ ...validFrame, canRedo: 'false' },
 			second,
 			validFrame,
 		],
@@ -231,6 +235,8 @@ test('artboard:edited needs every field with its canvas:updated guard (9e)', () 
 		hash: 'sha256:abc',
 		generation: 4,
 		html: '<p>x</p>',
+		canUndo: true,
+		canRedo: false,
 	} as const;
 	assert.deepEqual(parseHostMessage({ ...edited, extra: 1 }), edited);
 	for (const broken of [
@@ -240,6 +246,8 @@ test('artboard:edited needs every field with its canvas:updated guard (9e)', () 
 		{ generation: '4' },
 		{ generation: Number.NaN },
 		{ html: 3 },
+		{ canUndo: undefined },
+		{ canRedo: 1 },
 	]) {
 		assert.equal(parseHostMessage({ ...edited, ...broken }), undefined, JSON.stringify(broken));
 	}

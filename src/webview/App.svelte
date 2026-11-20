@@ -106,7 +106,7 @@
 				pinThread.resetFrameAnchors(frameId);
 				edit.handleFrameReady(frameId);
 			} else if (message.type === 'cd:pick') {
-				edit.handlePick(message, frameId);
+				edit.handlePick(message, frameId, document.activeElement === canvas.iframes.get(frameId));
 			}
 			return;
 		}
@@ -120,7 +120,15 @@
 			return;
 		}
 		if (message.type === 'cd:key') {
-			picker.handleFrameKey(message.key);
+			if (message.key === 'undo' || message.key === 'redo') {
+				edit.handleFrameHistoryKey(
+					frameId,
+					message.key,
+					document.activeElement === canvas.iframes.get(frameId),
+				);
+			} else {
+				picker.handleFrameKey(message.key);
+			}
 			return;
 		}
 		canvas.handleFrameWheel(frame, message);
@@ -167,6 +175,7 @@
 </script>
 
 <svelte:window
+	onkeydowncapture={edit.handleHistoryKeydown}
 	onkeydown={handleWindowKeydown}
 	onscroll={canvas.handleSinkScroll}
 	onresize={canvas.recentreScrollSink}
@@ -208,6 +217,10 @@
 			onFieldFocus={edit.handleFieldFocus}
 			onFieldInput={edit.handleFieldInput}
 			onFieldCommit={edit.handleFieldCommit}
+			history={edit.history}
+			historyAnnouncement={edit.historyAnnouncement}
+			onUndo={() => edit.handleHistoryStep('undo')}
+			onRedo={() => edit.handleHistoryStep('redo')}
 		/>
 	{/if}
 	<CommentsPanel

@@ -85,6 +85,8 @@ test('a style edit writes only that declaration and returns the new hash and gen
 		generation: 2,
 		hash: hashHtml(expected),
 		html: expected,
+		baseHtml: html,
+		baseHash: hashHtml(html),
 	});
 });
 
@@ -169,7 +171,14 @@ test('a same-value edit returns the current state without writing', async () => 
 		baseHash: hashHtml(html),
 		edit: fontSize(0, '12px'),
 	});
-	assert.deepEqual(result, { artboardId: 'hero', generation: 1, hash: hashHtml(html), html });
+	assert.deepEqual(result, {
+		artboardId: 'hero',
+		generation: 1,
+		hash: hashHtml(html),
+		html,
+		baseHtml: html,
+		baseHash: hashHtml(html),
+	});
 	assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
 	assert.equal((await stat(htmlPath)).mtimeMs, mtimeBefore);
 });

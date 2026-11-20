@@ -8,7 +8,7 @@ import {
 	COPY_FAILED_MESSAGE,
 	MALFORMED_CHANGE_MESSAGE,
 	NOTHING_OPEN_MESSAGE,
-} from './chromeMessages';
+} from './panelRequestCopy';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import type { CommentView } from '../disk/commentViews';
 import { CommentNotFoundError, LockTimeoutError } from '../disk/errors';

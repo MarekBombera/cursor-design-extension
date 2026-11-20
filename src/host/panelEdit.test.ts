@@ -3,8 +3,9 @@ import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import { EDIT_CONFLICT_MESSAGE, MALFORMED_EDIT_MESSAGE } from './chromeMessages';
+import { EDIT_CONFLICT_MESSAGE, MALFORMED_EDIT_MESSAGE } from './panelRequestCopy';
 import { ConflictError, EditRefusedError, NoWorkspaceError } from '../disk/errors';
+import { clearEditHistories, historyFlags, historyStepTarget } from './editHistory';
 import { answerEditRequest } from './panelEdit';
 
 // One shared, ordered log of everything the host does, so order is assertable.
@@ -32,6 +33,8 @@ vi.mock('../disk/artboardEditFs', () => ({
 			generation: 4,
 			hash: `sha256:${'b'.repeat(64)}`,
 			html: '<p style="padding: 8px">x</p>',
+			baseHtml: '<p>x</p>',
+			baseHash: `sha256:${'a'.repeat(64)}`,
 		});
 	}),
 }));
@@ -67,6 +70,7 @@ beforeEach(() => {
 	host.hasFolder = true;
 	host.calls = [];
 	vi.clearAllMocks();
+	clearEditHistories();
 });
 
 test('a valid edit is written, then answered once with the tagged frame copy', async () => {
@@ -80,6 +84,8 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 			hash: `sha256:${'b'.repeat(64)}`,
 			generation: 4,
 			html: 'tagged:<p style="padding: 8px">x</p>',
+			canUndo: true,
+			canRedo: false,
 		},
 	]);
 	assert.deepEqual(vi.mocked(editArtboard).mock.calls[0]?.[0], {
@@ -136,4 +142,36 @@ test('an attempt without a usable requestId is logged once and never answered', 
 	await answerEditRequest({ value: { ...edit, requestId: 'bad id' }, outputChannel });
 	assert.deepEqual(host.calls, ['log']);
 	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
+});
+
+test('9f: a same-bytes edit records nothing and answers the current flags', async () => {
+	const sameBytes = {
+		artboardId: 'hero',
+		generation: 4,
+		hash: `sha256:${'b'.repeat(64)}`,
+		html: '<p style="padding: 8px">x</p>',
+		baseHtml: '<p style="padding: 8px">x</p>',
+		baseHash: `sha256:${'b'.repeat(64)}`,
+	};
+	vi.mocked(editArtboard).mockResolvedValueOnce(sameBytes);
+	await answerEditRequest({ value: edit, outputChannel });
+	// A written edit, then the same-bytes one: the history keeps its one step.
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, outputChannel });
+	vi.mocked(editArtboard).mockResolvedValueOnce(sameBytes);
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-3' }, outputChannel });
+	const flags = answers().map((answer) => {
+		const { canUndo, canRedo } = answer as { canUndo: boolean; canRedo: boolean };
+		return { canUndo, canRedo };
+	});
+	assert.deepEqual(flags, [
+		{ canUndo: false, canRedo: false },
+		{ canUndo: true, canRedo: false },
+		{ canUndo: true, canRedo: false },
+	]);
+	assert.deepEqual(historyFlags('hero'), { canUndo: true, canRedo: false });
+	// The same-bytes edit pushed no step: the one undo still restores the written edit's base.
+	assert.equal(
+		historyStepTarget({ frameId: 'hero', step: 'undo' })?.target.hash,
+		`sha256:${'a'.repeat(64)}`,
+	);
 });

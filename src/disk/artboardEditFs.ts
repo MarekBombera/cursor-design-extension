@@ -30,6 +30,10 @@ export type EditArtboardResult = {
 	hash: string;
 	// The disk HTML after the edit (never tagged).
 	html: string;
+	// 9f: the disk HTML the edit was checked against (the string already read, never a re-read) and
+	// its normalized hash, for the undo history. Equal to `html` when the edit changed no byte.
+	baseHtml: string;
+	baseHash: string;
 };
 
 // The hash check, then a parse of those exact bytes before the lock; updateArtboard re-checks the
@@ -78,7 +82,14 @@ export const editArtboard = async ({
 			meta: await readStoredMeta(workspaceRoot, resolvedId),
 			artboardId: resolvedId,
 		});
-		return { artboardId: resolvedId, generation: meta.generation, hash: actualHash, html };
+		return {
+			artboardId: resolvedId,
+			generation: meta.generation,
+			hash: actualHash,
+			html,
+			baseHtml: html,
+			baseHash: expectedHash,
+		};
 	}
 	const written = await updateArtboard({
 		workspaceRoot,
@@ -91,5 +102,7 @@ export const editArtboard = async ({
 		generation: written.generation,
 		hash: written.hash,
 		html: result.html,
+		baseHtml: html,
+		baseHash: expectedHash,
 	};
 };

@@ -41,6 +41,8 @@ const frame = (overrides: Partial<FrameRecord> = {}): FrameRecord => ({
 	height: 300,
 	generation: 1,
 	hash: '',
+	canUndo: false,
+	canRedo: false,
 	kind: 'iframe',
 	tileKind: 'empty',
 	tileText: '',

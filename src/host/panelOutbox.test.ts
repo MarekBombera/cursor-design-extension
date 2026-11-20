@@ -3,18 +3,38 @@ import { test } from 'vite-plus/test';
 
 import type { HostMessage } from '../webview/hostMessages';
 import type { CanvasSnapshot } from './canvasSnapshot';
+import type { HistoryFlags } from './editHistory';
 import { createPanelOutbox } from './panelOutbox';
 
 const setup = () => {
 	const posted: HostMessage[] = [];
 	const nonce = { value: 'nonce-1' };
+	// A stand-in for the 9f history store: flags per frame id, and every frame list it was asked
+	// to check.
+	const flags = new Map<string, HistoryFlags>();
+	const checked: string[][] = [];
 	const outbox = createPanelOutbox({
 		post: (message) => posted.push(message),
 		readCspNonce: () => nonce.value,
+		readHistoryFlags: (frameId) => flags.get(frameId) ?? { canUndo: false, canRedo: false },
+		keepUnchangedHistories: (frames) => {
+			checked.push(frames.map((frame) => `${frame.id}@${frame.hash}`));
+		},
 	});
 	const types = (): string[] => posted.map(({ type }) => type);
-	return { outbox, posted, nonce, types };
+	return { outbox, posted, nonce, types, flags, checked };
 };
+
+const frame = (id: string, hash: string): CanvasSnapshot['frames'][number] => ({
+	id,
+	label: id,
+	x: 0,
+	y: 0,
+	width: 400,
+	generation: 1,
+	hash,
+	html: '<p>x</p>',
+});
 
 const snapshot = (overrides: Partial<CanvasSnapshot> = {}): CanvasSnapshot => ({
 	activeArtboardId: 'hero',
@@ -128,6 +148,8 @@ test('an artboard:edited answer before ready is dropped and never replayed', () 
 		hash: `sha256:${'0'.repeat(64)}`,
 		generation: 2,
 		html: '<p>x</p>',
+		canUndo: true,
+		canRedo: false,
 	} as const;
 	outbox.postAnswer(edited);
 	outbox.markReady();
@@ -143,4 +165,38 @@ test('reset drops the cached comments', () => {
 	outbox.reset();
 	outbox.markReady();
 	assert.deepEqual(types(), []);
+});
+
+test('9f: every new snapshot is checked against the history; a replay is not', () => {
+	const { outbox, checked } = setup();
+	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:a')] }));
+	outbox.markReady();
+	outbox.markReady();
+	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:b'), frame('card', '')] }));
+	assert.deepEqual(checked, [['hero@sha256:a'], ['hero@sha256:b', 'card@']]);
+});
+
+test('9f: canvas:updated reads the history flags when sent, so a replay sees later changes', () => {
+	const { outbox, posted, flags } = setup();
+	const sentFlags = (): unknown =>
+		posted
+			.filter((message) => message.type === 'canvas:updated')
+			.map((message) =>
+				message.frames.map(({ id, canUndo, canRedo }) => ({ id, canUndo, canRedo })),
+			);
+	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:a'), frame('card', 'sha256:c')] }));
+	flags.set('hero', { canUndo: true, canRedo: false });
+	outbox.markReady();
+	flags.set('hero', { canUndo: false, canRedo: true });
+	outbox.markReady();
+	assert.deepEqual(sentFlags(), [
+		[
+			{ id: 'hero', canUndo: true, canRedo: false },
+			{ id: 'card', canUndo: false, canRedo: false },
+		],
+		[
+			{ id: 'hero', canUndo: false, canRedo: true },
+			{ id: 'card', canUndo: false, canRedo: false },
+		],
+	]);
 });

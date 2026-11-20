@@ -5,6 +5,7 @@ import {
 	FRAME_KEY_MESSAGE,
 	FRAME_READY_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
+	type FrameKey,
 } from './frameMessages';
 import { installPinAnchors } from './pinAnchors';
 
@@ -124,18 +125,29 @@ window.addEventListener(
 );
 
 // C and Escape with focus in the frame reach the chrome as cd:key; the chrome decides what they do.
+// So do Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z as undo / redo (9f; the chrome acts only in Edit mode).
 // Never prevented, so the design still sees them. Separate from Comment mode's input blocking.
 // ponytail: a design with its own bare `c` shortcut also toggles Comment mode in Interact mode;
 // only editable targets are excluded. `event.key` is layout-dependent, so a layout that never
 // produces `c` cannot toggle by key (the Comment button still works).
+const frameKey = (event: KeyboardEvent): FrameKey | undefined => {
+	if (event.altKey || event.repeat || event.isComposing) {
+		return undefined;
+	}
+	if (event.ctrlKey || event.metaKey) {
+		return event.key === 'z' || event.key === 'Z' ? (event.shiftKey ? 'redo' : 'undo') : undefined;
+	}
+	return event.key === 'c' || event.key === 'C'
+		? 'c'
+		: event.key === 'Escape'
+			? 'Escape'
+			: undefined;
+};
+
 window.addEventListener(
 	'keydown',
 	(event) => {
-		if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing) {
-			return;
-		}
-		const key =
-			event.key === 'c' || event.key === 'C' ? 'c' : event.key === 'Escape' ? 'Escape' : undefined;
+		const key = frameKey(event);
 		if (key === undefined) {
 			return;
 		}

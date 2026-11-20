@@ -5,6 +5,7 @@ import {
 } from './frame/frameMessages';
 import {
 	type ArtboardEditMessage,
+	type ArtboardHistoryMessage,
 	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
@@ -82,8 +83,9 @@ export const postCommentRequest = (message: CommentRequestMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 
-// 9e: one Edit-mode save; the host answers artboard:edited or ui:error with its requestId.
-export const postEditRequest = (message: ArtboardEditMessage): void => {
+// 9e: one Edit-mode save, or (9f) one undo / redo step; the host answers artboard:edited or
+// ui:error with its requestId.
+export const postEditRequest = (message: ArtboardEditMessage | ArtboardHistoryMessage): void => {
 	vscodeApi.postMessage($state.snapshot(message));
 };
 

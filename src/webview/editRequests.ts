@@ -1,13 +1,24 @@
-import type { EDIT_FIELDS } from '../disk/layout';
+import { type EDIT_FIELDS, MAX_HISTORY_STEPS } from '../disk/layout';
 import type { FrameRecord } from './canvasFrames';
-import type { ArtboardEditedMessage, ArtboardEditMessage, UiErrorMessage } from './hostMessages';
+import type {
+	ArtboardEditedMessage,
+	ArtboardEditMessage,
+	ArtboardHistoryMessage,
+	HistoryStep,
+	UiErrorMessage,
+} from './hostMessages';
+import { canStep } from './undoRedo';
 
-// Edit-mode saves (9e): one artboard:edit in flight per panel, the rest wait in order and go out
-// with the hash the previous answer brought (9c: two commits on one base would conflict with the
-// user's own save). Pure; EditState (editState.svelte.ts) holds the state and does the I/O.
+// Edit-mode saves (9e) and undo / redo steps (9f): one request in flight per panel, the rest wait
+// in order; a save goes out with the hash the previous answer brought (9c: two commits on one base
+// would conflict with the user's own save). Pure; EditState (editState.svelte.ts) holds the state
+// and does the I/O.
 // ponytail: one in flight per panel, not per frame (the simplest form of the 9c rule), and no
-// timeout: an answer that never arrives (a dropped post) blocks later saves until the webview
+// timeout: an answer that never arrives (a dropped post) blocks later requests until the webview
 // reloads.
+// ponytail: a written step reloads its frame (scroll and page state reset): the restored file is
+// not in the live page. Upgrade path: the answer carries the restored text or style for
+// cd:edit-apply.
 
 export type EditField = (typeof EDIT_FIELDS)[number];
 
@@ -24,13 +35,20 @@ export type EditCommit = {
 	liveText?: string;
 };
 
-type InFlight = { requestId: string; key: EditKey; baseHash: string };
+// A step has no element and no preview: it undoes or redoes the frame's last own write.
+type QueuedRequest =
+	| { kind: 'edit'; commit: EditCommit }
+	| { kind: 'step'; frameId: string; step: HistoryStep };
 
-// `key`: the edit the copy is about, so a pick of another element clears it.
+// The request as it was queued, plus its id and the hash it was sent against.
+type InFlight = QueuedRequest & { requestId: string; baseHash: string };
+
+// `key`: the edit the copy is about, so a pick of another element clears it; undefined for a
+// step's refusal (any new pick clears it).
 type EditError = { message: string; key: EditKey | undefined };
 
 export type EditRequestsState = {
-	waiting: readonly EditCommit[];
+	waiting: readonly QueuedRequest[];
 	inFlight: InFlight | undefined;
 	error: EditError | undefined;
 };
@@ -43,26 +61,53 @@ export const INITIAL_EDIT_REQUESTS: EditRequestsState = {
 	error: undefined,
 };
 
-type SendFrame = Pick<FrameRecord, 'id' | 'kind' | 'hash' | 'documentVersion'>;
+type SendFrame = Pick<
+	FrameRecord,
+	'id' | 'kind' | 'hash' | 'documentVersion' | 'canUndo' | 'canRedo'
+>;
 
 // A commit clears the error: the user moved on.
 export const enqueueEdit = (state: EditRequestsState, commit: EditCommit): EditRequestsState => ({
 	...state,
-	waiting: [...state.waiting, commit],
+	waiting: [...state.waiting, { kind: 'edit', commit }],
 	error: undefined,
 });
+
+// A step clears the error too. At most MAX_HISTORY_STEPS steps wait: a design script posting
+// cd:key undo / redo in a loop (F-145) cannot grow the queue or the writes it causes past what a
+// history can hold; a further step is ignored.
+export const enqueueStep = (
+	state: EditRequestsState,
+	{ frameId, step }: { frameId: string; step: HistoryStep },
+): EditRequestsState =>
+	state.waiting.filter((request) => request.kind === 'step').length >= MAX_HISTORY_STEPS
+		? state
+		: {
+				...state,
+				waiting: [...state.waiting, { kind: 'step', frameId, step }],
+				error: undefined,
+			};
 
 // An edit that ended unsent. A copy already showing (a refusal from the same event) wins.
 export const notSaved = (state: EditRequestsState, key: EditKey | undefined): EditRequestsState =>
 	state.error === undefined ? { ...state, error: { message: NOT_SAVED_COPY, key } } : state;
 
-const isSendable = (commit: EditCommit, frame: SendFrame | undefined): frame is SendFrame =>
+const isSendableEdit = (commit: EditCommit, frame: SendFrame | undefined): frame is SendFrame =>
 	frame !== undefined &&
 	frame.kind === 'iframe' &&
 	frame.documentVersion === commit.key.documentVersion;
 
-// The next artboard:edit, when nothing is in flight. Heads whose frame left, became a tile or
-// reloaded since the draft started are dropped (their preview is gone), and the loop goes on.
+// The flag is read at send time: the answer to the request before it may have changed it.
+const isSendableStep = (step: HistoryStep, frame: SendFrame | undefined): frame is SendFrame =>
+	frame !== undefined && frame.kind === 'iframe' && canStep(frame, step);
+
+// InFlight extends QueuedRequest, so this one helper serves both.
+const requestFrameId = (request: QueuedRequest): string =>
+	request.kind === 'step' ? request.frameId : request.commit.key.frameId;
+
+// The next request, when nothing is in flight. An edit whose frame left, became a tile or reloaded
+// since its draft started is dropped with "Not saved" (its preview is gone); a step whose frame
+// left, is a tile or has nothing to undo / redo any more is dropped silently. The loop goes on.
 export const nextSend = ({
 	state,
 	frames,
@@ -71,14 +116,32 @@ export const nextSend = ({
 	state: EditRequestsState;
 	frames: readonly SendFrame[];
 	newRequestId: () => string;
-}): { state: EditRequestsState; send: ArtboardEditMessage | undefined } => {
+}): {
+	state: EditRequestsState;
+	send: ArtboardEditMessage | ArtboardHistoryMessage | undefined;
+} => {
 	if (state.inFlight !== undefined) {
 		return { state, send: undefined };
 	}
 	let next = state;
-	for (const [index, commit] of state.waiting.entries()) {
-		const frame = frames.find((candidate) => candidate.id === commit.key.frameId);
-		if (!isSendable(commit, frame)) {
+	for (const [index, request] of state.waiting.entries()) {
+		const frame = frames.find((candidate) => candidate.id === requestFrameId(request));
+		if (request.kind === 'step') {
+			if (!isSendableStep(request.step, frame)) {
+				continue;
+			}
+			const requestId = newRequestId();
+			return {
+				state: {
+					...next,
+					waiting: state.waiting.slice(index + 1),
+					inFlight: { ...request, requestId, baseHash: frame.hash },
+				},
+				send: { type: 'artboard:history', requestId, frameId: request.frameId, step: request.step },
+			};
+		}
+		const { commit } = request;
+		if (!isSendableEdit(commit, frame)) {
 			next = notSaved(next, commit.key);
 			continue;
 		}
@@ -97,7 +160,7 @@ export const nextSend = ({
 			state: {
 				...next,
 				waiting: state.waiting.slice(index + 1),
-				inFlight: { requestId, key: commit.key, baseHash: frame.hash },
+				inFlight: { ...request, requestId, baseHash: frame.hash },
 			},
 			send,
 		};
@@ -109,8 +172,10 @@ export type EditAnswerStep = {
 	state: EditRequestsState;
 	// Success: what CanvasState.adoptEditAnswer takes.
 	adopt: { answer: ArtboardEditedMessage; baseHash: string } | undefined;
-	// Refusal: frames whose previews must go (the in-flight one and every dropped waiting one).
+	// Refusal: frames whose previews must go (an in-flight edit's and every dropped waiting edit's).
 	reloadFrameIds: string[];
+	// A written step (9f): EditState reloads the frame if the adopt applied, and announces it.
+	stepDone: { frameId: string; step: HistoryStep } | undefined;
 };
 
 // Only the in-flight request's answer counts (comment answers share ui:error; ids never match).
@@ -118,33 +183,40 @@ export const answerEdit = (
 	state: EditRequestsState,
 	message: ArtboardEditedMessage | UiErrorMessage,
 ): EditAnswerStep => {
-	const unchanged = { state, adopt: undefined, reloadFrameIds: [] };
+	const unchanged = { state, adopt: undefined, reloadFrameIds: [], stepDone: undefined };
 	const inFlight = state.inFlight;
 	if (inFlight === undefined || message.requestId !== inFlight.requestId) {
 		return unchanged;
 	}
+	const frameId = requestFrameId(inFlight);
 	if (message.type === 'artboard:edited') {
-		if (message.frameId !== inFlight.key.frameId) {
+		if (message.frameId !== frameId) {
 			return unchanged;
 		}
 		return {
 			state: { ...state, inFlight: undefined },
 			adopt: { answer: message, baseHash: inFlight.baseHash },
 			reloadFrameIds: [],
+			stepDone: inFlight.kind === 'step' ? { frameId, step: inFlight.step } : undefined,
 		};
 	}
+	// Every waiting request is dropped: steps silently (no preview), edits by reloading their frames.
 	const frameIds = new Set([
-		inFlight.key.frameId,
-		...state.waiting.map((commit) => commit.key.frameId),
+		...(inFlight.kind === 'edit' ? [frameId] : []),
+		...state.waiting.filter((request) => request.kind === 'edit').map(requestFrameId),
 	]);
 	return {
 		state: {
 			waiting: [],
 			inFlight: undefined,
-			error: { message: message.message, key: inFlight.key },
+			error: {
+				message: message.message,
+				key: inFlight.kind === 'edit' ? inFlight.commit.key : undefined,
+			},
 		},
 		adopt: undefined,
 		reloadFrameIds: [...frameIds],
+		stepDone: undefined,
 	};
 };
 
