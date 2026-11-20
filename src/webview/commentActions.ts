@@ -32,7 +32,7 @@ export type CommentActions = ReadonlyMap<string, CommentAction>;
 export const replyPending = (action: CommentAction | undefined): boolean =>
 	action?.pending?.kind === 'reply';
 
-const anythingPending = (action: CommentAction | undefined): boolean =>
+export const anythingPending = (action: CommentAction | undefined): boolean =>
 	action?.pending !== undefined;
 
 // The one write path: drops undefined keys, and the whole entry when nothing is left.

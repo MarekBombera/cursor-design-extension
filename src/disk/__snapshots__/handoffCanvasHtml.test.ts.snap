@@ -133,13 +133,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const number = Number(value);
 		return Number.isSafeInteger(number) ? number : null;
 	};
-	var textOf = (element) =&gt; {
+	var hasOtherContent = (element) =&gt; {
 		const children = element.childNodes;
 		const [only] = children;
-		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
 			textState: &quot;children&quot;,
 			text: &quot;&quot;
 		};
+		const [only] = element.childNodes;
 		const text = only instanceof Text ? only.data : &quot;&quot;;
 		return text.length &gt; 5e3 ? {
 			textState: &quot;too-long&quot;,
@@ -828,9 +832,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const [target] = matches;
 			if (matches.length !== 1 || target === void 0) return;
 			if (&quot;text&quot; in message) {
-				const children = target.childNodes;
-				const [only] = children;
-				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				if (hasOtherContent(target)) return;
 				target.textContent = message.text;
 			} else {
 				const { style: styleText } = message;
@@ -1210,13 +1212,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const number = Number(value);
 		return Number.isSafeInteger(number) ? number : null;
 	};
-	var textOf = (element) =&gt; {
+	var hasOtherContent = (element) =&gt; {
 		const children = element.childNodes;
 		const [only] = children;
-		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
 			textState: &quot;children&quot;,
 			text: &quot;&quot;
 		};
+		const [only] = element.childNodes;
 		const text = only instanceof Text ? only.data : &quot;&quot;;
 		return text.length &gt; 5e3 ? {
 			textState: &quot;too-long&quot;,
@@ -1905,9 +1911,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const [target] = matches;
 			if (matches.length !== 1 || target === void 0) return;
 			if (&quot;text&quot; in message) {
-				const children = target.childNodes;
-				const [only] = children;
-				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				if (hasOtherContent(target)) return;
 				target.textContent = message.text;
 			} else {
 				const { style: styleText } = message;
@@ -2287,13 +2291,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const number = Number(value);
 		return Number.isSafeInteger(number) ? number : null;
 	};
-	var textOf = (element) =&gt; {
+	var hasOtherContent = (element) =&gt; {
 		const children = element.childNodes;
 		const [only] = children;
-		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
 			textState: &quot;children&quot;,
 			text: &quot;&quot;
 		};
+		const [only] = element.childNodes;
 		const text = only instanceof Text ? only.data : &quot;&quot;;
 		return text.length &gt; 5e3 ? {
 			textState: &quot;too-long&quot;,
@@ -2982,9 +2990,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const [target] = matches;
 			if (matches.length !== 1 || target === void 0) return;
 			if (&quot;text&quot; in message) {
-				const children = target.childNodes;
-				const [only] = children;
-				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				if (hasOtherContent(target)) return;
 				target.textContent = message.text;
 			} else {
 				const { style: styleText } = message;
@@ -3364,13 +3370,17 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const number = Number(value);
 		return Number.isSafeInteger(number) ? number : null;
 	};
-	var textOf = (element) =&gt; {
+	var hasOtherContent = (element) =&gt; {
 		const children = element.childNodes;
 		const [only] = children;
-		if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return {
+		return children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text);
+	};
+	var textOf = (element) =&gt; {
+		if (hasOtherContent(element)) return {
 			textState: &quot;children&quot;,
 			text: &quot;&quot;
 		};
+		const [only] = element.childNodes;
 		const text = only instanceof Text ? only.data : &quot;&quot;;
 		return text.length &gt; 5e3 ? {
 			textState: &quot;too-long&quot;,
@@ -4059,9 +4069,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			const [target] = matches;
 			if (matches.length !== 1 || target === void 0) return;
 			if (&quot;text&quot; in message) {
-				const children = target.childNodes;
-				const [only] = children;
-				if (children.length &gt; 1 || only !== void 0 &amp;&amp; !(only instanceof Text)) return;
+				if (hasOtherContent(target)) return;
 				target.textContent = message.text;
 			} else {
 				const { style: styleText } = message;

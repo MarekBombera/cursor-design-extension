@@ -16,13 +16,18 @@ const sourceNumberOf = (element: Element): number | null => {
 	return Number.isSafeInteger(number) ? number : null;
 };
 
-const textOf = (element: Element): Pick<PickEditFields, 'textState' | 'text'> => {
+// A comment counts as other content: it is a node, not text (the edit core agrees).
+export const hasOtherContent = (element: Element): boolean => {
 	const children = element.childNodes;
 	const [only] = children;
-	// A comment counts as other content: it is a node, not text (the edit core agrees).
-	if (children.length > 1 || (only !== undefined && !(only instanceof Text))) {
+	return children.length > 1 || (only !== undefined && !(only instanceof Text));
+};
+
+const textOf = (element: Element): Pick<PickEditFields, 'textState' | 'text'> => {
+	if (hasOtherContent(element)) {
 		return { textState: 'children', text: '' };
 	}
+	const [only] = element.childNodes;
 	const text = only instanceof Text ? only.data : '';
 	return text.length > MAX_EDIT_TEXT_CHARS
 		? { textState: 'too-long', text: '' }

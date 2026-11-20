@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, test } from 'vite-plus/test';
+import { afterEach, test, vi } from 'vite-plus/test';
 
 import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
 import { CURSOR_DESIGN_DIR } from '../disk/layout';
@@ -18,6 +18,7 @@ const makeTempRoot = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await Promise.all(
 		tempRoots.splice(0).map((workspaceRoot) => rm(workspaceRoot, { recursive: true, force: true })),
 	);
@@ -82,6 +83,8 @@ test('rootPath outside the host list is INVALID_ROOT', async () => {
 
 test('invalid ROOTS falls back to ROOT', async () => {
 	const workspaceRoot = await makeTempRoot();
+	// The log-once flag is module state with no reset, so this must stay the file's first invalid-ROOTS parse.
+	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 	for (const rootsRaw of ['null', '{}', '[1]', '[""]', '["a", 1]', '{oops']) {
 		assert.deepEqual(
 			parseWorkspaceRootsEnv({
@@ -91,6 +94,11 @@ test('invalid ROOTS falls back to ROOT', async () => {
 			[workspaceRoot],
 		);
 	}
+	assert.deepEqual(stderr.mock.calls, [
+		[
+			`cursor-design: ${CURSOR_DESIGN_WORKSPACE_ROOTS_ENV} parse failed: expected a JSON array of non-empty strings\n`,
+		],
+	]);
 });
 
 test('valid ROOTS wins over ROOT', async () => {

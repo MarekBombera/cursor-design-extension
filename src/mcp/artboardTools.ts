@@ -52,10 +52,7 @@ type ToolArgs = {
 const ARTBOARD_HTML_RULES =
 	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes work: keep any already in the file (the user may have set them in the panel) and prefer classes for your own CSS. Inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
 
-const toolSchema = (properties: Record<string, { description: string }>) =>
-	toolInputSchema<ToolArgs>(properties);
-
-const setArtboardInputSchema = toolSchema({
+const setArtboardInputSchema = toolInputSchema<ToolArgs>({
 	artboardId: {
 		description: 'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
 	},
@@ -67,7 +64,7 @@ const setArtboardInputSchema = toolSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const updateArtboardInputSchema = toolSchema({
+const updateArtboardInputSchema = toolInputSchema<ToolArgs>({
 	artboardId: { description: 'Required string. Existing artboard id.' },
 	html: {
 		description: `Required string. Replacement HTML document (the whole document). ${ARTBOARD_HTML_RULES}`,
@@ -85,34 +82,34 @@ const updateArtboardInputSchema = toolSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const readArtboardInputSchema = toolSchema({
+const readArtboardInputSchema = toolInputSchema<ToolArgs>({
 	artboardId: {
 		description: 'Optional string artboard id. Defaults to the active artboard when omitted.',
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const listArtboardsInputSchema = toolSchema({
+const listArtboardsInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const setActiveArtboardInputSchema = toolSchema({
+const setActiveArtboardInputSchema = toolInputSchema<ToolArgs>({
 	artboardId: { description: 'Required string. Existing artboard id to make active.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const exportArtboardInputSchema = toolSchema({
+const exportArtboardInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE =
 	'export_artboard exports every frame. Omit artboardId and retry.';
 
-const handoffStatusInputSchema = toolSchema({
+const handoffStatusInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const placeFrameInputSchema = toolSchema({
+const placeFrameInputSchema = toolInputSchema<ToolArgs>({
 	id: {
 		description:
 			'Required string. Existing artboard id to place on the stage (named id here, artboardId in the other tools).',

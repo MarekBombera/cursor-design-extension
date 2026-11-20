@@ -327,6 +327,20 @@ export class EditRefusedError extends CursorDesignError {
 	}
 }
 
+// The disk lib has no OutputChannel, so disk-lib failures (and the MCP's ROOTS parse) go to stderr.
+export const logStderr = (scope: string, error: unknown): void => {
+	try {
+		process.stderr.write(
+			`cursor-design: ${scope} failed: ${error instanceof Error ? error.message : String(error)}\n`,
+		);
+	} catch {
+		// ponytail: a sync throw (a throwing message getter or toString, a sync write failure) is
+		// dropped so the caller's original failure wins; an async EPIPE is a stream 'error' event and is
+		// not covered. In the extension host this lands in the Extension Host log, not the Cursor
+		// Design Output channel. Upgrade path: host callers log through logDiskError.
+	}
+};
+
 // Rethrows a domain error as is; any other fs failure becomes DISK_ERROR with the cause kept.
 export const throwDiskError = (error: unknown): never => {
 	if (error instanceof CursorDesignError) {

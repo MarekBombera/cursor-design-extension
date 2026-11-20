@@ -82,6 +82,7 @@ export const buildSelector = (
 		: selector;
 };
 
+// Keeps format chars (\p{Cf}) that toOneLine strips: targetAgrees compares it with raw disk text.
 export const textExcerpt = (raw: string): string => {
 	const text = raw
 		.replaceAll(/[\p{Cc}\s]+/gu, ' ')

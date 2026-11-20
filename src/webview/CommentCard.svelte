@@ -6,7 +6,12 @@
 	import PinChip from './PinChip.svelte';
 	import TargetRef from './TargetRef.svelte';
 	import { popoverKeyAction, targetChipText } from './commentPopover';
-	import { type CommentAction, canSubmitReply } from './commentActions';
+	import {
+		type CommentAction,
+		anythingPending,
+		canSubmitReply,
+		replyPending,
+	} from './commentActions';
 	import { relativeTime } from './commentsPanel';
 	import type { PostedComment } from './hostMessages';
 	import { flagBadge, type PinBadge, statusBadge } from './pins';
@@ -86,10 +91,10 @@
 
 	const chipText = $derived(targetChipText(comment));
 	const composerOpen = $derived(action?.reply !== undefined);
-	const replyPending = $derived(action?.pending?.kind === 'reply');
-	const anythingPending = $derived(action?.pending !== undefined);
+	const isReplyPending = $derived(replyPending(action));
+	const isAnythingPending = $derived(anythingPending(action));
 	const canSend = $derived(canSubmitReply(action));
-	const copyDisabled = $derived(copyBlocked || anythingPending);
+	const copyDisabled = $derived(copyBlocked || isAnythingPending);
 	const resolved = $derived(comment.status === 'resolved');
 	const describedBy = $derived(action?.error === undefined ? undefined : errorId);
 
@@ -102,7 +107,7 @@
 
 	// Escape and Cancel share this path; a pending reply keeps the composer.
 	const closeComposer = async (): Promise<void> => {
-		if (replyPending) {
+		if (isReplyPending) {
 			return;
 		}
 		onReplyCancel();
@@ -117,7 +122,7 @@
 	};
 
 	const handleStatus = (): void => {
-		if (!anythingPending) {
+		if (!isAnythingPending) {
 			onToggleStatus();
 		}
 	};
@@ -228,7 +233,7 @@
 			placeholder="Reply to the Agent…"
 			rows={4}
 			primaryLabel="Add reply"
-			pending={replyPending}
+			pending={isReplyPending}
 			canSubmit={canSend}
 			focusKey="reply"
 			{describedBy}
@@ -255,7 +260,7 @@
 			variant="ghost"
 			size="sm"
 			icon={resolved ? 'reopen' : 'check'}
-			aria-disabled={anythingPending}
+			aria-disabled={isAnythingPending}
 			aria-describedby={describedBy}
 			data-cd-focus="status"
 			onclick={handleStatus}>{resolved ? 'Reopen' : 'Resolve'}</Button

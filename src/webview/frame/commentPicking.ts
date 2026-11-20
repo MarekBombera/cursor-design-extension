@@ -13,7 +13,7 @@ import {
 	PICK_REFRESH_MESSAGE,
 	parseChromeFrameMessage,
 } from './frameMessages';
-import { describeEditTarget } from './editTarget';
+import { describeEditTarget, hasOtherContent } from './editTarget';
 import { stepToChild, stepToParent } from './pickPath';
 import {
 	clipRect,
@@ -399,9 +399,7 @@ export const installCommentPicking = (host: Window): void => {
 			return;
 		}
 		if ('text' in message) {
-			const children = target.childNodes;
-			const [only] = children;
-			if (children.length > 1 || (only !== undefined && !(only instanceof Text))) {
+			if (hasOtherContent(target)) {
 				return;
 			}
 			target.textContent = message.text;

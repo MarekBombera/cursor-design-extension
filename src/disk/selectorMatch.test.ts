@@ -22,6 +22,9 @@ test('every case in the shared table (Chromium proves the same table)', () => {
 // Alone the scale cases take about 0.3 s at most; the parallel suite makes them up to 4x slower. A return
 // to backtracking takes seconds to minutes, so this bound still catches it without flaking.
 const LINEAR_BOUND_MS = 5000;
+// Building the big trees is CPU-heavy and can exceed Vitest's 5 s default under the parallel verify;
+// the guard is LINEAR_BOUND_MS on the match itself, not the test's wall clock.
+const HEAVY = { timeout: 30_000 };
 
 const timed = <T>(run: () => T): { result: T; ms: number } => {
 	const started = performance.now();
@@ -174,7 +177,7 @@ const deepDivs = (depth: number): TreeDocument =>
 
 const LONG_SELECTOR = `${'div '.repeat(249)}div`;
 
-test('scale: deep, wide and long inputs stay linear', () => {
+test('scale: deep, wide and long inputs stay linear', HEAVY, () => {
 	assert.equal(LONG_SELECTOR.length, 999);
 	const deep = deepDivs(10_000);
 	const wide = parse(`<ul>${'<li>x</li>'.repeat(50_000)}</ul>`);
@@ -194,7 +197,7 @@ test('scale: deep, wide and long inputs stay linear', () => {
 	}
 });
 
-test('scale: past MAX_MATCH_WORK the match gives up as null', () => {
+test('scale: past MAX_MATCH_WORK the match gives up as null', HEAVY, () => {
 	const document = deepDivs(100_000);
 	assert.ok(100_000 * 250 > MAX_MATCH_WORK);
 	const { result, ms } = timed(() => selectMatches(document, LONG_SELECTOR));
@@ -216,22 +219,26 @@ test('a long attribute value never costs a fold per check', () => {
 
 // The attribute-count part of the charge (element.attrs.length) needs more than 10M attributes
 // (50 MB+) to change a result, so no test pins it; the cost tests above pin the check count.
-test('MAX_MATCH_WORK counts every check: long selectors and attribute-heavy pages stay bounded', () => {
-	const attributes = Array.from({ length: 200 }, (_, index) => `b${index}=1`).join(' ');
-	const heavy = parse(`<p ${attributes} id="a">x</p>`.repeat(4000));
-	for (const [document, selector, count] of [
-		[heavy, '#a'.repeat(499), 4000],
-		[heavy, '[b199="1"]'.repeat(99), 4000],
-		[parse('<i class="a">x</i>'.repeat(30_000)), '.a'.repeat(499), null],
-		// Each check folds a 10-char value that matches only case-insensitively, so a fold is charged
-		// by the value's length (7.6 s when it counted 1 unit).
-		[parse('<i type=AAAAAAAAAa>x</i>'.repeat(181_808)), '[type="AAAAAAAAAA"]'.repeat(52), null],
-	] as const) {
-		const { result, ms } = timed(() => selectMatches(document, selector));
-		assert.equal(result === null ? null : result.length, count, selector.slice(0, 12));
-		assert.ok(ms < LINEAR_BOUND_MS, `${selector.slice(0, 12)}… took ${ms} ms`);
-	}
-});
+test(
+	'MAX_MATCH_WORK counts every check: long selectors and attribute-heavy pages stay bounded',
+	HEAVY,
+	() => {
+		const attributes = Array.from({ length: 200 }, (_, index) => `b${index}=1`).join(' ');
+		const heavy = parse(`<p ${attributes} id="a">x</p>`.repeat(4000));
+		for (const [document, selector, count] of [
+			[heavy, '#a'.repeat(499), 4000],
+			[heavy, '[b199="1"]'.repeat(99), 4000],
+			[parse('<i class="a">x</i>'.repeat(30_000)), '.a'.repeat(499), null],
+			// Each check folds a 10-char value that matches only case-insensitively, so a fold is charged
+			// by the value's length (7.6 s when it counted 1 unit).
+			[parse('<i type=AAAAAAAAAa>x</i>'.repeat(181_808)), '[type="AAAAAAAAAA"]'.repeat(52), null],
+		] as const) {
+			const { result, ms } = timed(() => selectMatches(document, selector));
+			assert.equal(result === null ? null : result.length, count, selector.slice(0, 12));
+			assert.ok(ms < LINEAR_BOUND_MS, `${selector.slice(0, 12)}… took ${ms} ms`);
+		}
+	},
+);
 
 const SELECTOR_PIECES = [
 	'div',

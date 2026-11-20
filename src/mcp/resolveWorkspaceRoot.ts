@@ -1,21 +1,28 @@
 import { isAbsolute, resolve } from 'node:path';
 
-import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
+import { InvalidRootError, NoWorkspaceError, logStderr } from '../disk/errors';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+
+let rootsInvalidLogged = false;
 
 const parseRootsJson = (raw: string): string[] | undefined => {
 	try {
 		const parsed = JSON.parse(raw) as unknown;
-		if (!Array.isArray(parsed)) {
-			return undefined;
-		}
-		if (!parsed.every((item) => typeof item === 'string' && item.length > 0)) {
-			return undefined;
+		if (
+			!Array.isArray(parsed) ||
+			!parsed.every((item) => typeof item === 'string' && item.length > 0)
+		) {
+			throw new Error('expected a JSON array of non-empty strings');
 		}
 		return parsed;
-	} catch {
-		// ponytail: invalid ROOTS JSON silently falls back to the ROOT env. Upgrade path: log it to
-		// stderr.
+	} catch (error) {
+		// ponytail: falls back to the ROOT env, so only the ROOT folder (the first) is served, and
+		// later invalid values in the same process are not logged. Upgrade path: fail the tool call
+		// with an authored error instead of falling back.
+		if (!rootsInvalidLogged) {
+			rootsInvalidLogged = true;
+			logStderr(`${CURSOR_DESIGN_WORKSPACE_ROOTS_ENV} parse`, error);
+		}
 		return undefined;
 	}
 };

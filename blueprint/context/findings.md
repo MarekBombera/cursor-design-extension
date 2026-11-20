@@ -101,14 +101,6 @@
 **Suggested fix:** Delete the pre-check in `getComment` and drop `commentsTextIfExists` in favour of calling `readUtf8IfExists(workspaceLayoutFile(...))` in the four writers (or keep one tiny helper used by `readCommentsFile` too). No behaviour is lost: a missing file still gives `COMMENT_NOT_FOUND`.
 **Resolution:** open
 
-### F-76 [P3] open - Twin stderr logger in the disk lib and a pass-through toolSchema wrapper
-
-**File:** src/disk/comments.ts:449 and src/mcp/artboardTools.ts:55
-**Found:** 2026-10-26 by independent /audit (scope: current; lens: quality)
-**Why it matters:** Rule 05 names `logMcpError` (`mcpToolResult.ts`) as the MCP stderr logger and `logDiskError` as the host one. `logTargetReadError` in `comments.ts` is a third stderr writer with its own wording inside the disk lib, which the rule says has no I/O policy of its own and which the host will also call from 8f1 (where stderr is not the Output channel). Separately `toolSchema` in `artboardTools.ts` only fixes the generic of `toolInputSchema<ToolArgs>`; it is the forwarder rule 05 says to leave out, and it forced eight renames in the diff.
-**Suggested fix:** Export `logMcpError` from `mcpToolResult.ts` or, for the disk lib, let `loadArtboardDocument` return `'unreadable'` without logging and have the MCP/host caller log (8f1 decides). Delete `toolSchema` and call `toolInputSchema<ToolArgs>(...)` directly. No behaviour is lost.
-**Resolution:** open
-
 ### F-83 [P3] open - Host comment:create guards for tagName, text, generation, rect size and styles have no test that fails when they go
 
 **File:** src/host/chromeMessages.test.ts:96 (guards at src/host/chromeMessages.ts:30-40)

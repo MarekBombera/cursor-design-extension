@@ -7,19 +7,13 @@ import {
 	parseArtboardDocument,
 } from './commentTarget';
 import type { Comment } from './commentsFile';
-import { DiskError } from './errors';
+import { DiskError, logStderr } from './errors';
 import { artboardHtmlPathSegments } from './layout';
 import { layoutEntryKind, readUtf8IfExists, workspaceJoin, workspaceLayoutFile } from './layoutFs';
 
 // Each comment's stale / targetMissing flags, checked against its frame's HTML on disk.
 
 export type CommentView = Comment & CommentFlags;
-
-const logTargetReadError = (error: unknown): void => {
-	process.stderr.write(
-		`cursor-design: comment target read failed: ${error instanceof Error ? error.message : String(error)}\n`,
-	);
-};
 
 // Per read: past it, a comment that needs a target match reports unchecked.
 const CHECK_BUDGET_MS = 200;
@@ -33,6 +27,9 @@ const CHECK_BUDGET_MS = 200;
 export const MAX_PARSED_DOCUMENTS = 32;
 const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
 
+export const frameCacheKey = (workspaceRoot: string, frameId: string): string =>
+	`${workspaceRoot}\0${frameId}`;
+
 export const cachedArtboardDocument = ({
 	workspaceRoot,
 	frameId,
@@ -42,7 +39,7 @@ export const cachedArtboardDocument = ({
 	frameId: string;
 	html: string;
 }): ArtboardDocument => {
-	const key = `${workspaceRoot}\0${frameId}`;
+	const key = frameCacheKey(workspaceRoot, frameId);
 	const cached = parsedDocuments.get(key);
 	if (cached?.html === html) {
 		return cached.document;
@@ -62,7 +59,7 @@ const loadArtboardDocument = async (
 	workspaceRoot: string,
 	frameId: string,
 ): Promise<CommentDocument> => {
-	const key = `${workspaceRoot}\0${frameId}`;
+	const key = frameCacheKey(workspaceRoot, frameId);
 	try {
 		const html = await readUtf8IfExists(
 			workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(frameId)),
@@ -74,7 +71,7 @@ const loadArtboardDocument = async (
 		return cachedArtboardDocument({ workspaceRoot, frameId, html });
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
-			logTargetReadError(error);
+			logStderr('comment target read', error);
 			parsedDocuments.delete(key);
 			return 'unreadable';
 		}
@@ -99,7 +96,7 @@ const loadFramePresence = async (
 		return 'unreadable';
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
-			logTargetReadError(error);
+			logStderr('comment target read', error);
 			return 'unreadable';
 		}
 		throw error;

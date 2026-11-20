@@ -3,7 +3,7 @@ import { type FileHandle, lstat, mkdir, open, readFile, unlink } from 'node:fs/p
 import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { LockTimeoutError, isErrno, throwDiskError } from './errors';
+import { LockTimeoutError, isErrno, logStderr, throwDiskError } from './errors';
 import { CURSOR_DESIGN_DIR, LOCK_FILE } from './layout';
 
 export type WithWorkspaceLockArgs<T> = {
@@ -11,13 +11,6 @@ export type WithWorkspaceLockArgs<T> = {
 	operation: () => Promise<T>;
 	timeoutMs?: number;
 	staleMs?: number;
-};
-
-// The disk lib has no output channel; lock housekeeping failures go to stderr once each.
-const logLockError = (action: string, error: unknown): void => {
-	process.stderr.write(
-		`cursor-design: workspace lock ${action} failed: ${error instanceof Error ? error.message : String(error)}\n`,
-	);
 };
 
 const tryCreateLock = async (lockPath: string, token: string): Promise<boolean> => {
@@ -38,10 +31,10 @@ const tryCreateLock = async (lockPath: string, token: string): Promise<boolean> 
 		// ponytail: cleanup failures are logged, not thrown, so the original error wins; a lock
 		// left behind is broken as stale after staleMs. Upgrade path: retry the unlink.
 		await handle.close().catch((closeError: unknown) => {
-			logLockError('close', closeError);
+			logStderr('workspace lock close', closeError);
 		});
 		await unlink(lockPath).catch((unlinkError: unknown) => {
-			logLockError('cleanup', unlinkError);
+			logStderr('workspace lock cleanup', unlinkError);
 		});
 		return throwDiskError(error);
 	}
@@ -106,7 +99,7 @@ const breakIfStale = async ({
 		}
 	} finally {
 		await unlink(breakPath).catch((error: unknown) => {
-			logLockError('break release', error);
+			logStderr('workspace lock break release', error);
 		});
 	}
 	return true;
@@ -126,7 +119,7 @@ const releaseLock = async (lockPath: string, token: string): Promise<void> => {
 		}
 		// ponytail: release failure is logged and swallowed so the operation's own result wins; a
 		// leftover lock is broken as stale after staleMs. Upgrade path: retry the unlink.
-		logLockError('release', error);
+		logStderr('workspace lock release', error);
 	}
 };
 

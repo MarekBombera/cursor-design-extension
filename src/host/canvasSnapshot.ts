@@ -1,5 +1,5 @@
 import { type CanvasView, type CanvasViewFrame } from '../disk/artboardFs';
-import { cachedArtboardDocument } from '../disk/commentViews';
+import { cachedArtboardDocument, frameCacheKey } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
@@ -34,8 +34,6 @@ export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => 
 // parse and tag in a worker thread.
 const taggedFrames = new Map<string, { html: string; posted: string }>();
 
-const memoKey = (workspaceRoot: string, frameId: string): string => `${workspaceRoot}\0${frameId}`;
-
 // Seeds the memo, so the next panelFrames call with the same disk HTML (the watcher echo after an
 // edit) posts this exact string. A tagging failure is reported once per HTML and posts untagged.
 export const panelFrameHtml = ({
@@ -52,7 +50,7 @@ export const panelFrameHtml = ({
 	if (html.length > MAX_POSTED_ARTBOARD_HTML_CHARS) {
 		return { html: '', errorMessage: ARTBOARD_HTML_TOO_LARGE_MESSAGE };
 	}
-	const key = memoKey(workspaceRoot, frameId);
+	const key = frameCacheKey(workspaceRoot, frameId);
 	const memo = taggedFrames.get(key);
 	if (memo?.html === html) {
 		return { html: memo.posted };
@@ -82,7 +80,7 @@ export const panelFrames = ({
 }): CanvasViewFrame[] => {
 	const keys = new Set<string>();
 	const posted = frames.map((frame) => {
-		keys.add(memoKey(workspaceRoot, frame.id));
+		keys.add(frameCacheKey(workspaceRoot, frame.id));
 		// Size cap first: an over-cap frame is the too-large tile whatever else it carries.
 		if (
 			frame.html.length <= MAX_POSTED_ARTBOARD_HTML_CHARS &&

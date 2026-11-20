@@ -315,12 +315,6 @@
 		if (!onEmptyStage) {
 			return;
 		}
-		if (
-			event.target instanceof Element &&
-			event.target.closest('[data-cd-frame-label], [data-cd-frame-resize]') !== null
-		) {
-			return;
-		}
 		dragging = true;
 		event.currentTarget.setPointerCapture(event.pointerId);
 		lastPointerX = event.clientX;

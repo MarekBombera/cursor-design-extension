@@ -1,5 +1,6 @@
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { AnchorRect, AnchorRequest, FrameRect } from './frame/frameMessages';
+import { clipRect } from './frame/pickTarget';
 import type { PostedComment } from './hostMessages';
 import { clampNumber, type StagePoint, type StageView, stageToScreen } from './stageGeometry';
 import type { BadgeProps } from './ui/badge';
@@ -268,17 +269,6 @@ const clampIntoRect = (point: StagePoint, rect: FrameRect): StagePoint => ({
 	y: clampNumber({ value: point.y, min: rect.y, max: rect.y + rect.height }),
 });
 
-const intersectRect = (box: FrameRect | null, bounds: FrameRect): FrameRect | undefined => {
-	if (box === null) {
-		return undefined;
-	}
-	const left = Math.max(box.x, bounds.x);
-	const top = Math.max(box.y, bounds.y);
-	const width = Math.min(box.x + box.width, bounds.x + bounds.width) - left;
-	const height = Math.min(box.y + box.height, bounds.y + bounds.height) - top;
-	return width > 0 && height > 0 ? { x: left, y: top, width, height } : undefined;
-};
-
 // Frame-local CSS px; `fit` undefined keeps the zoom. Centering the target box keeps its pin on
 // screen too. A missing target flashes its stored rect; one scrolled out of its box flashes none.
 export const jumpTarget = ({
@@ -299,12 +289,13 @@ export const jumpTarget = ({
 	if (comment.isPage) {
 		return { center: pinCenter, fit: undefined, outline: frameRect };
 	}
-	const fitBox = intersectRect(live?.box ?? comment.rect, frameRect);
+	const box = live?.box ?? comment.rect;
+	const fitBox = box === null ? null : clipRect(box, [frameRect]);
 	const outline =
 		live !== undefined && live.box !== null
 			? (live.visible ?? undefined)
 			: (comment.rect ?? undefined);
-	if (fitBox === undefined) {
+	if (fitBox === null) {
 		return { center: pinCenter, fit: undefined, outline };
 	}
 	return {
