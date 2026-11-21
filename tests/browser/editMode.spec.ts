@@ -1,7 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { parseArtboardDocument } from '../../src/disk/commentTarget';
-import { SOURCE_TAG_ATTRIBUTE } from '../../src/disk/layout';
+import {
+	MAX_EDIT_TEXT_CHARS,
+	MAX_PICK_STYLE_CHARS,
+	SOURCE_TAG_ATTRIBUTE,
+} from '../../src/disk/layout';
 import { sourceTaggedHtml } from '../../src/disk/sourceTags';
 import { FIELD_ERROR_COPY } from '../../src/webview/editDrafts';
 import { NOT_SAVED_COPY } from '../../src/webview/editRequests';
@@ -61,7 +65,8 @@ const clickElement = async (
 const sourceNumberOf = async (page: Page, selector: string): Promise<number> =>
 	Number(await (await frameOf(page, 'a')).locator(selector).getAttribute(SOURCE_TAG_ATTRIBUTE));
 
-const field = (page: Page, name: string) => inspector(page).getByLabel(name, { exact: true });
+// By data-cd-field: a field's accessible name changes when it becomes set.
+const field = (page: Page, name: string) => inspector(page).locator(`[data-cd-field="${name}"]`);
 
 const selectParent = (page: Page) =>
 	inspector(page).getByRole('button', { name: 'Select parent element' });
@@ -95,17 +100,16 @@ test('a plain-text pick reports its edit fields and fills enabled fields', async
 		computed: expect.any(Object),
 	});
 	await expect(inspector(page).getByText('Edit › h1')).toBeVisible();
-	await expect(field(page, 'Text')).toHaveValue('Title');
-	await expect(field(page, 'Text')).toBeEnabled();
-	await expect(field(page, 'Font size')).toHaveValue('32px');
-	await expect(field(page, 'Font size')).toBeEnabled();
-	await expect(field(page, 'Color')).toHaveValue('#ff0000');
-	await expect(field(page, 'Color')).toBeEnabled();
-	await expect(inspector(page).getByText('#ff0000', { exact: true })).toBeVisible();
-	await expect(field(page, 'Padding')).toHaveValue('');
-	await expect(field(page, 'Padding')).toHaveAttribute('placeholder', '0px');
-	await expect(field(page, 'Margin')).toHaveValue('');
-	await expect(field(page, 'Margin')).not.toHaveAttribute('placeholder', '');
+	await expect(field(page, 'text')).toHaveValue('Title');
+	await expect(field(page, 'text')).toBeEnabled();
+	await expect(field(page, 'font-size')).toHaveValue('32px');
+	await expect(field(page, 'font-size')).toBeEnabled();
+	await expect(field(page, 'color')).toHaveValue('#ff0000');
+	await expect(field(page, 'color')).toBeEnabled();
+	await expect(field(page, 'padding')).toHaveValue('');
+	await expect(field(page, 'padding')).toHaveAttribute('placeholder', '0px');
+	await expect(field(page, 'margin')).toHaveValue('');
+	await expect(field(page, 'margin')).not.toHaveAttribute('placeholder', '');
 });
 
 test("a pick reports the edit target's computed edit field values", async ({ page }) => {
@@ -133,6 +137,10 @@ test("Edit mode blocks the design's own clicks; Interact mode lets them through"
 	await expect(clicks).toHaveText('1');
 });
 
+const MIXED_HINT = 'To change these words, ask the Agent or select a part that holds only text.';
+
+const sectionTitles = (page: Page) => inspector(page).locator('section h3');
+
 test('text: trimmed in the field, raw on the wire; mixed content and void elements get no field', async ({
 	page,
 }) => {
@@ -140,24 +148,80 @@ test('text: trimmed in the field, raw on the wire; mixed content and void elemen
 	await enterEditMode(page);
 	await clickElement(page, '#spaced');
 	expect((await lastPick(page, 'a'))?.edit?.text).toBe('\n    Spaced text\n');
-	await expect(field(page, 'Text')).toHaveValue('Spaced text');
+	await expect(field(page, 'text')).toHaveValue('Spaced text');
 
 	for (const selector of ['#mixed', '#commented']) {
 		await clickElement(page, selector, { x: 0.9, y: 0.5 });
 		expect((await lastPick(page, 'a'))?.edit?.textState).toBe('mixed');
-		await expect(
-			inspector(page).getByText('Contains other elements: ask the Agent to change this text.'),
-		).toBeVisible();
-		await expect(field(page, 'Text')).toHaveCount(0);
+		await expect(inspector(page).getByText(MIXED_HINT)).toBeVisible();
+		await expect(field(page, 'text')).toHaveCount(0);
 	}
 
 	await clickElement(page, '#picture');
-	await expect(field(page, 'Font size')).toBeVisible();
-	await expect(field(page, 'Text')).toHaveCount(0);
-	await expect(inspector(page).getByText('Contains other elements')).toHaveCount(0);
+	await expect(field(page, 'font-size')).toHaveCount(0);
+	await expect(field(page, 'text')).toHaveCount(0);
+	await expect(inspector(page).getByText(MIXED_HINT)).toHaveCount(0);
 
 	await clickElement(page, '#padded');
-	await expect(field(page, 'Padding')).toHaveValue('8px 16px');
+	await expect(field(page, 'padding')).toHaveValue('8px 16px');
+});
+
+test('each selection kind shows its sections', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await expect(sectionTitles(page)).toHaveText(['Text', 'Appearance', 'Spacing', 'Border']);
+	await expect(field(page, 'text')).toHaveValue('Title');
+	await expect(field(page, 'gap')).toHaveCount(0);
+
+	await clickElement(page, '#mixed', { x: 0.9, y: 0.5 });
+	await expect(sectionTitles(page)).toHaveText(['Typography', 'Appearance', 'Spacing', 'Border']);
+	await expect(inspector(page).getByText(MIXED_HINT)).toBeVisible();
+	await expect(field(page, 'text')).toHaveCount(0);
+	await expect(field(page, 'font-size')).toBeVisible();
+
+	// A flex container: no text section; Gap shows with its computed value.
+	await clickElement(page, '#row');
+	await expect(sectionTitles(page)).toHaveText(['Appearance', 'Spacing', 'Border']);
+	await expect(field(page, 'gap')).toHaveAttribute('placeholder', '12px');
+
+	// A void element: its background parent is not a set Background (D2), so the computed colour is
+	// the placeholder.
+	await clickElement(page, '#picture');
+	await expect(sectionTitles(page)).toHaveText(['Appearance', 'Spacing', 'Border']);
+	await expect(field(page, 'background-color')).toHaveValue('');
+	await expect(field(page, 'background-color')).toHaveAttribute('placeholder', '#cccccc');
+	await expect(field(page, 'background-color')).toHaveAccessibleName('Background');
+});
+
+test('too-long text with a too-long style shows the style message alone', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await (await frameOf(page, 'a')).locator('#spaced').evaluate(
+		(element, { text, style }) => {
+			element.textContent = 'a'.repeat(text + 1);
+			element.setAttribute('style', `--x: ${'a'.repeat(style)}`);
+		},
+		{ text: MAX_EDIT_TEXT_CHARS, style: MAX_PICK_STYLE_CHARS },
+	);
+	await clickElement(page, '#spaced');
+	await expect(inspector(page).getByText(/style attribute is too long/)).toBeVisible();
+	await expect(inspector(page).getByText(/^This text is over/)).toHaveCount(0);
+});
+
+test('the field grid is one column when the inspector is under 260px', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const fieldBox = (name: string) =>
+		boxOf(inspector(page).locator(`.field:has([data-cd-field="${name}"])`));
+	// 296px: Size and Color side by side.
+	expect((await fieldBox('color')).x).toBeGreaterThan((await fieldBox('font-size')).x);
+	// 30% of 820px is about 246px.
+	await page.setViewportSize({ width: 820, height: 720 });
+	await expect.poll(async () => (await boxOf(inspector(page))).width).toBeLessThan(260);
+	await expect.poll(async () => (await fieldBox('color')).x).toBe((await fieldBox('font-size')).x);
+	expect((await fieldBox('color')).y).toBeGreaterThan((await fieldBox('font-size')).y);
 });
 
 test('script-made and script-copied elements read not editable; a page click selects the page', async ({
@@ -293,7 +357,7 @@ test('a frame reload clears the pick and keeps focus on the Select parent button
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	await expect(field(page, 'Text')).toHaveValue('Title');
+	await expect(field(page, 'text')).toHaveValue('Title');
 	await selectParent(page).focus();
 	const loads = await loadsOf(page, 'a');
 	await postToChrome(
@@ -372,6 +436,9 @@ const editedAnswer = ({
 
 const renamedTitle = (html: string): string => html.replace('>Title</h1>', '>New</h1>');
 
+// An opening tag without its source number, as it reads in the disk HTML.
+const stripTag = (tag: string): string => tag.replace(/ data-cd-src="\d+"/, '');
+
 const inFrame = async (page: Page, selector: string) =>
 	(await frameOf(page, 'a')).locator(selector);
 
@@ -426,10 +493,10 @@ test('typing previews; blur saves once with the raw liveText; the answer and ech
 	await enterEditMode(page);
 	await clickElement(page, '#title');
 	const loads = await loadsOf(page, 'a');
-	await field(page, 'Text').fill('New');
+	await field(page, 'text').fill('New');
 	await expect(await inFrame(page, '#title')).toHaveText('New');
 	expect(await editsPosted(page)).toHaveLength(0);
-	await field(page, 'Text').blur();
+	await field(page, 'text').blur();
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
 	const [request] = await editsPosted(page);
 	expect(request).toMatchObject({
@@ -456,7 +523,7 @@ test('typing previews; blur saves once with the raw liveText; the answer and ech
 	await nextAnimationFrame(page);
 	expect(await loadsOf(page, 'a')).toBe(loads);
 	await expect(await inFrame(page, '#title')).toHaveText('New');
-	await expect(field(page, 'Text')).toHaveValue('New');
+	await expect(field(page, 'text')).toHaveValue('New');
 	// An outside change still reloads.
 	await postToChrome(
 		page,
@@ -473,13 +540,13 @@ test('Enter commits font size and keeps focus; colour commits on change as #rrgg
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	await field(page, 'Font size').fill('16');
+	await field(page, 'font-size').fill('16');
 	await expect(await inFrame(page, '#title')).toHaveAttribute(
 		'style',
 		'font-size: 16px; color: #ff0000',
 	);
-	await field(page, 'Font size').press('Enter');
-	await expect(field(page, 'Font size')).toBeFocused();
+	await field(page, 'font-size').press('Enter');
+	await expect(field(page, 'font-size')).toBeFocused();
 	await expect.poll(async () => firstStyle((await editsPosted(page)).at(-1))?.value).toBe('16');
 	const [request] = await editsPosted(page);
 	await postToChrome(
@@ -491,8 +558,8 @@ test('Enter commits font size and keeps focus; colour commits on change as #rrgg
 			generation: 2,
 		}),
 	);
-	await expect(field(page, 'Font size')).toHaveValue('16px');
-	await field(page, 'Color').fill('#00ff00');
+	await expect(field(page, 'font-size')).toHaveValue('16px');
+	await inspector(page).getByLabel('Color picker', { exact: true }).fill('#00ff00');
 	await expect
 		.poll(async () => firstStyle((await editsPosted(page)).at(-1))?.value)
 		.toBe('#00ff00');
@@ -503,16 +570,16 @@ test('an invalid value shows its error, posts nothing and restores the frame', a
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#padded');
-	await field(page, 'Padding').fill('4');
+	await field(page, 'padding').fill('4');
 	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 4px');
-	await field(page, 'Padding').fill('4 apples;');
-	await field(page, 'Padding').blur();
+	await field(page, 'padding').fill('4 apples;');
+	await field(page, 'padding').blur();
 	const error = inspector(page).getByText('Not saved: use a number');
 	await expect(error).toBeVisible();
-	await expect(field(page, 'Padding')).toHaveAttribute('aria-invalid', 'true');
+	await expect(field(page, 'padding')).toHaveAttribute('aria-invalid', 'true');
 	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', 'padding: 8px 16px');
 	expect(await editsPosted(page)).toHaveLength(0);
-	await field(page, 'Padding').fill('4');
+	await field(page, 'padding').fill('4');
 	await expect(error).toHaveCount(0);
 });
 
@@ -520,13 +587,13 @@ test('a newline-only text change sends nothing; the next real edit saves', async
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#spaced');
-	await field(page, 'Text').fill('Spaced\ntext');
-	await field(page, 'Text').blur();
+	await field(page, 'text').fill('Spaced\ntext');
+	await field(page, 'text').blur();
 	await expect(await inFrame(page, '#spaced')).toHaveText('\n    Spaced text\n');
 	await nextAnimationFrame(page);
 	expect(await editsPosted(page)).toHaveLength(0);
-	await field(page, 'Text').fill('Spaced!');
-	await field(page, 'Text').blur();
+	await field(page, 'text').fill('Spaced!');
+	await field(page, 'text').blur();
 	await expect
 		.poll(async () => (await editsPosted(page)).at(-1)?.liveText)
 		.toBe('\n    Spaced text\n');
@@ -538,16 +605,16 @@ test('a refused save reloads once with the earlier adopted edit and shows the co
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	await field(page, 'Text').fill('New');
-	await field(page, 'Text').blur();
+	await field(page, 'text').fill('New');
+	await field(page, 'text').blur();
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
 	const [first] = await editsPosted(page);
 	await postToChrome(
 		page,
 		editedAnswer({ request: first ?? {}, change: renamedTitle, hash: 'sha256:new', generation: 2 }),
 	);
-	await field(page, 'Margin').fill('4');
-	await field(page, 'Margin').blur();
+	await field(page, 'margin').fill('4');
+	await field(page, 'margin').blur();
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
 	const second = (await editsPosted(page)).at(-1);
 	expect(second?.hash).toBe('sha256:new');
@@ -569,10 +636,10 @@ test('two quick commits: one in flight, the second after the answer with its has
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#padded');
-	await field(page, 'Padding').fill('4');
-	await field(page, 'Margin').focus();
-	await field(page, 'Margin').fill('2');
-	await field(page, 'Margin').blur();
+	await field(page, 'padding').fill('4');
+	await field(page, 'margin').focus();
+	await field(page, 'margin').fill('2');
+	await field(page, 'margin').blur();
 	await nextAnimationFrame(page);
 	expect(await editsPosted(page)).toHaveLength(1);
 	const [first] = await editsPosted(page);
@@ -599,7 +666,7 @@ test('a dirty field, then a click on another element, saves to the first element
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	await field(page, 'Margin').fill('6');
+	await field(page, 'margin').fill('6');
 	await clickElement(page, '#padded');
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
 	await nextAnimationFrame(page);
@@ -609,7 +676,7 @@ test('a dirty field, then a click on another element, saves to the first element
 		sourceNumber: await sourceNumberOf(page, '#title'),
 		styles: [{ field: 'margin', value: '6' }],
 	});
-	await expect(field(page, 'Margin')).toHaveValue('');
+	await expect(field(page, 'margin')).toHaveValue('');
 });
 
 test('an invalid value left by a click on another element names its own cause', async ({
@@ -618,9 +685,9 @@ test('an invalid value left by a click on another element names its own cause', 
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#padded');
-	await field(page, 'Padding').fill('4 apples;');
+	await field(page, 'padding').fill('4 apples;');
 	await clickElement(page, '#title');
-	await expect(field(page, 'Text')).toHaveValue('Title');
+	await expect(field(page, 'text')).toHaveValue('Title');
 	await expect(
 		inspector(page).locator('.request-error').getByText(FIELD_ERROR_COPY['invalid-length']),
 	).toBeVisible();
@@ -633,11 +700,11 @@ test('a refused value, then a pick of another element, names its own cause', asy
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#padded');
-	await field(page, 'Padding').fill('4 apples;');
-	await field(page, 'Padding').press('Enter');
+	await field(page, 'padding').fill('4 apples;');
+	await field(page, 'padding').press('Enter');
 	await expect(inspector(page).getByText(FIELD_ERROR_COPY['invalid-length'])).toBeVisible();
 	await clickElement(page, '#title');
-	await expect(field(page, 'Text')).toHaveValue('Title');
+	await expect(field(page, 'text')).toHaveValue('Title');
 	await expect(
 		inspector(page).locator('.request-error').getByText(FIELD_ERROR_COPY['invalid-length']),
 	).toBeVisible();
@@ -652,7 +719,7 @@ test('an outside change while a field is dirty posts nothing and says Not saved'
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#title');
-	await field(page, 'Text').fill('Draft');
+	await field(page, 'text').fill('Draft');
 	await postToChrome(
 		page,
 		canvasUpdated([
@@ -673,7 +740,7 @@ test('C typed in a field stays in Edit mode', async ({ page }) => {
 	await openEditStage(page);
 	await enterEditMode(page);
 	await clickElement(page, '#padded');
-	await field(page, 'Margin').focus();
+	await field(page, 'margin').focus();
 	await page.keyboard.type('c');
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(inspector(page)).toBeVisible();
@@ -688,13 +755,13 @@ const undoButton = (page: Page) => inspector(page).getByRole('button', { name: /
 
 const redoButton = (page: Page) => inspector(page).getByRole('button', { name: /^Redo/ });
 
-const historyAnnouncement = (page: Page) => inspector(page).locator('p.visually-hidden');
+const announcement = (page: Page) => inspector(page).locator('p.visually-hidden');
 
 // One saved text edit on #title ("Title" → "New"), answered with canUndo.
 const saveTitleEdit = async (page: Page): Promise<void> => {
 	await clickElement(page, '#title');
-	await field(page, 'Text').fill('New');
-	await field(page, 'Text').blur();
+	await field(page, 'text').fill('New');
+	await field(page, 'text').blur();
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
 	const [request] = await editsPosted(page);
 	await postToChrome(
@@ -767,7 +834,7 @@ test('Undo posts a step; its answer reloads the restored file, keeps the target 
 	await expect(redoButton(page)).toHaveAccessibleName('Redo in Edit');
 	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'false');
 	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
-	await expect(historyAnnouncement(page)).toHaveText(/^Undone in Edit\.\s?$/);
+	await expect(announcement(page)).toHaveText(/^Undone in Edit\.\s?$/);
 	await redoButton(page).click();
 	await expect.poll(async () => (await historyPosted(page)).length).toBe(2);
 	expect((await historyPosted(page)).at(-1)).toMatchObject({ step: 'redo', frameId: 'a' });
@@ -805,7 +872,7 @@ test('a canvas:updated before the step answer reloads once; the answer still ann
 			canRedo: true,
 		}),
 	);
-	await expect(historyAnnouncement(page)).toHaveText(/^Undone in Edit\.\s?$/);
+	await expect(announcement(page)).toHaveText(/^Undone in Edit\.\s?$/);
 	expect(await page.locator('[data-cd-frame-id="a"] iframe').getAttribute('src')).toBe(src);
 	expect(await loadsOf(page, 'a')).toBe(loads + 1);
 	await expect(redoButton(page)).toHaveAttribute('aria-disabled', 'false');
@@ -818,7 +885,7 @@ test('an open text draft is saved first; the step goes out only after that answe
 	await enterEditMode(page);
 	await saveTitleEdit(page);
 	await clickElement(page, '#title');
-	await field(page, 'Text').fill('Newer');
+	await field(page, 'text').fill('Newer');
 	await undoButton(page).click();
 	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
 	await nextAnimationFrame(page);
@@ -935,7 +1002,7 @@ test('Cmd/Ctrl+Z in the Text field stays the field’s own undo', async ({ page 
 	await openEditStage(page);
 	await enterEditMode(page);
 	await saveTitleEdit(page);
-	await field(page, 'Text').focus();
+	await field(page, 'text').focus();
 	await page.keyboard.press('ControlOrMeta+z');
 	await nextAnimationFrame(page);
 	expect(await historyPosted(page)).toHaveLength(0);
@@ -974,4 +1041,537 @@ test('a pick from a frame without focus never retargets Undo / Redo', async ({ p
 	await forgePick();
 	await expect(undoButton(page)).toHaveAccessibleName('Undo in Other');
 	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'true');
+});
+
+test('every text-box field previews and saves exactly one change', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	const cases = [
+		{ selector: '#title', field: 'font-size', value: '20px' },
+		{ selector: '#title', field: 'color', value: '#0000ff' },
+		{ selector: '#title', field: 'line-height', value: '2' },
+		{ selector: '#title', field: 'letter-spacing', value: '1px' },
+		{ selector: '#title', field: 'background-color', value: 'transparent' },
+		{ selector: '#title', field: 'border-radius', value: '4px' },
+		{ selector: '#title', field: 'opacity', value: '0.5' },
+		{ selector: '#title', field: 'padding', value: '4px' },
+		{ selector: '#title', field: 'margin', value: '2px' },
+		{ selector: '#row', field: 'gap', value: '6px' },
+		{ selector: '#boxed', field: 'border-width', value: '2px' },
+		{ selector: '#boxed', field: 'border-color', value: '#00ff00' },
+	];
+	let html = readEditFixture();
+	let picked = '';
+	for (const [index, { selector, field: name, value }] of cases.entries()) {
+		if (picked !== selector) {
+			await clickElement(page, selector);
+			picked = selector;
+		}
+		const element = await inFrame(page, selector);
+		const before = await element.evaluate((node) =>
+			node.outerHTML.slice(0, node.outerHTML.indexOf('>') + 1),
+		);
+		await field(page, name).fill(value);
+		await expect(element).toHaveAttribute('style', new RegExp(`${name}: ${value}`));
+		await field(page, name).press('Enter');
+		await expect.poll(async () => (await editsPosted(page)).length).toBe(index + 1);
+		const request = (await editsPosted(page)).at(-1);
+		expect(request?.styles).toEqual([{ field: name, value }]);
+		// The host's answer holds the previewed element, so it adopts without a reload.
+		const after = await element.evaluate((node) =>
+			node.outerHTML.slice(0, node.outerHTML.indexOf('>') + 1),
+		);
+		html = html.replace(stripTag(before), stripTag(after));
+		const written = html;
+		await postToChrome(
+			page,
+			editedAnswer({
+				request: request ?? {},
+				change: () => written,
+				hash: `sha256:${index}`,
+				generation: index + 2,
+			}),
+		);
+	}
+});
+
+test('a colour clears from its text box', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	await field(page, 'color').fill('');
+	await field(page, 'color').blur();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([{ field: 'color', value: '' }]);
+	await expect(await inFrame(page, '#title')).toHaveAttribute('style', 'font-size: 32px;');
+});
+
+test('a refused value shows its own field copy, right after the field', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const cases = [
+		{ name: 'opacity', value: '2', copy: FIELD_ERROR_COPY['invalid-opacity'] },
+		{ name: 'color', value: 'red', copy: FIELD_ERROR_COPY['invalid-color'] },
+		{ name: 'line-height', value: '-1', copy: FIELD_ERROR_COPY['invalid-leading'] },
+	];
+	for (const { name, value, copy } of cases) {
+		await field(page, name).fill(value);
+		await field(page, name).press('Enter');
+		await expect(field(page, name)).toHaveAttribute('aria-invalid', 'true');
+		const describedBy = await field(page, name).getAttribute('aria-describedby');
+		await expect(inspector(page).locator(`[id="${describedBy}"]`)).toHaveText(copy);
+		// One error at a time: the next field's draft ends this one silently.
+		await expect(inspector(page).getByText(/^Not saved:/)).toHaveCount(1);
+	}
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+test('a set field shows the dot, full text and the set name', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const size = field(page, 'font-size');
+	await expect(size).toHaveValue('32px');
+	await expect(size).toHaveAccessibleName('Size (set on this element)');
+	await expect(size.locator('..')).toHaveClass(/\bis-set\b/);
+	await expect(field(page, 'padding')).toHaveAccessibleName('Padding');
+	await expect(field(page, 'padding').locator('..')).not.toHaveClass(/\bis-set\b/);
+	// The computed value reads as secondary text, never the low-contrast global placeholder.
+	const colours = await field(page, 'padding').evaluate((input) => {
+		const probe = document.createElement('span');
+		probe.style.color = 'var(--cd-fg-2)';
+		input.parentElement?.append(probe);
+		const expected = getComputedStyle(probe).color;
+		probe.remove();
+		return { placeholder: getComputedStyle(input, '::placeholder').color, expected };
+	});
+	expect(colours.placeholder).toBe(colours.expected);
+});
+
+test("a new draft ends the element's other open draft", async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'padding').fill('4 apples;');
+	await field(page, 'padding').press('Enter');
+	const error = inspector(page).getByText(FIELD_ERROR_COPY['invalid-length']);
+	await expect(error).toBeVisible();
+	await field(page, 'margin').fill('2');
+	await expect(error).toHaveCount(0);
+	await expect(field(page, 'padding')).toHaveValue('8px 16px');
+	await expect(field(page, 'padding')).toHaveAttribute('aria-invalid', 'false');
+	await expect(inspector(page).locator('.request-error')).toHaveCount(0);
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+// The host's answer to the last edit: the fixture with `selector`'s opening tag as the frame now
+// shows it, so the chrome adopts it without a reload.
+const answerFromFrame = async ({
+	page,
+	selector,
+	request,
+	generation,
+}: {
+	page: Page;
+	selector: `#${string}`;
+	request: Record<string, unknown> | undefined;
+	generation: number;
+}): Promise<void> => {
+	const tag = await (
+		await inFrame(page, selector)
+	).evaluate((node) => node.outerHTML.slice(0, node.outerHTML.indexOf('>') + 1));
+	const opening = new RegExp(`<[^>]*\\bid="${selector.slice(1)}"[^>]*>`);
+	const html = readEditFixture().replace(opening, stripTag(tag));
+	await postToChrome(
+		page,
+		editedAnswer({
+			request: request ?? {},
+			change: () => html,
+			hash: `sha256:${generation}`,
+			generation,
+		}),
+	);
+};
+
+const sectionAction = (page: Page, name: string) =>
+	inspector(page).getByRole('button', { name, exact: true });
+
+test('a select saves one change, previews first, and always shows the computed option', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#spaced');
+	const weight = field(page, 'font-weight');
+	await expect(weight).toHaveValue('400');
+	const loads = await loadsOf(page, 'a');
+	await weight.selectOption('700');
+	// The preview lands before any answer; the re-post moves the select to Bold.
+	await expect(await inFrame(page, '#spaced')).toHaveAttribute('style', 'font-weight: 700');
+	await expect(weight).toHaveValue('700');
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [request] = await editsPosted(page);
+	expect(request?.styles).toEqual([{ field: 'font-weight', value: '700' }]);
+	await answerFromFrame({ page, selector: '#spaced', request, generation: 2 });
+	await nextAnimationFrame(page);
+	expect(await loadsOf(page, 'a')).toBe(loads);
+	await expect(weight).toHaveValue('700');
+});
+
+test('a choice equal to the inline value posts nothing and the select keeps the computed option', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	// font-weight: 700 inline, but 400 !important from the style block.
+	await clickElement(page, '#heavy');
+	const weight = field(page, 'font-weight');
+	await expect(weight).toHaveValue('400');
+	await weight.selectOption('700');
+	await expect(weight).toHaveValue('400');
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+test('an out-of-list value shows as an extra option and choosing it posts nothing', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#ruled');
+	const style = field(page, 'border-style');
+	const extra = await style.inputValue();
+	expect(['none', 'solid', 'dashed', 'dotted', 'double']).not.toContain(extra);
+	await style.selectOption('none');
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	await style.selectOption(extra);
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+test('U then S combine; S again leaves underline; a pressed inherited Align saves', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#spaced');
+	const textStyle = field(page, 'text-style');
+	await expect(textStyle).toHaveRole('group');
+	await expect(textStyle).toHaveAccessibleName('Text style');
+	const underline = textStyle.getByRole('button', { name: 'Underline' });
+	const strike = textStyle.getByRole('button', { name: 'Strikethrough' });
+	const steps = [
+		{ button: underline, value: 'underline' },
+		{ button: strike, value: 'underline line-through' },
+		{ button: strike, value: 'underline' },
+	];
+	for (const [index, { button, value }] of steps.entries()) {
+		await button.click();
+		await expect.poll(async () => (await editsPosted(page)).length).toBe(index + 1);
+		const request = (await editsPosted(page)).at(-1);
+		expect(request?.styles).toEqual([{ field: 'text-decoration-line', value }]);
+		await expect(underline).toHaveAttribute('aria-pressed', 'true');
+		await expect(strike).toHaveAttribute('aria-pressed', String(value.includes('line-through')));
+		await answerFromFrame({ page, selector: '#spaced', request, generation: index + 2 });
+	}
+	await expect(textStyle).toHaveAccessibleName('Text style (set on this element)');
+	// Left is pressed but inherited (start); clicking it still pins it.
+	const left = field(page, 'align').getByRole('button', { name: 'Align left' });
+	await expect(left).toHaveAttribute('aria-pressed', 'true');
+	await left.click();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(4);
+	expect((await editsPosted(page)).at(-1)?.styles).toEqual([
+		{ field: 'text-align', value: 'left' },
+	]);
+});
+
+test('a choice ends an invalid draft silently; the next draft keeps the choice in its baseline', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'padding').fill('4 apples;');
+	await field(page, 'padding').press('Enter');
+	await expect(inspector(page).getByText(FIELD_ERROR_COPY['invalid-length'])).toBeVisible();
+	await field(page, 'font-weight').selectOption('700');
+	await expect(inspector(page).getByText(/^Not saved:/)).toHaveCount(0);
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([{ field: 'font-weight', value: '700' }]);
+	await expect(field(page, 'font-weight')).toHaveValue('700');
+	await field(page, 'padding').fill('4');
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', /font-weight: 700/);
+	await expect(await inFrame(page, '#padded')).toHaveAttribute('style', /padding: 4/);
+});
+
+test('a choice saves a valid open draft first, then itself on top of it', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	// The swatch's input previews with no blur commit, so the colour draft stays open.
+	await inspector(page)
+		.getByLabel('Color picker', { exact: true })
+		.evaluate((swatch: HTMLInputElement) => {
+			swatch.value = '#00ff00';
+			swatch.dispatchEvent(new Event('input', { bubbles: true }));
+		});
+	await expect
+		.poll(async () => (await lastPick(page, 'a'))?.edit?.style)
+		.toBe('font-size: 32px; color: #00ff00');
+	expect(await editsPosted(page)).toHaveLength(0);
+	await field(page, 'font-weight').selectOption('700');
+	await expect(await inFrame(page, '#title')).toHaveAttribute(
+		'style',
+		'font-size: 32px; color: #00ff00; font-weight: 700',
+	);
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [colour] = await editsPosted(page);
+	expect(colour?.styles).toEqual([{ field: 'color', value: '#00ff00' }]);
+	await answerFromFrame({ page, selector: '#title', request: colour, generation: 2 });
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(2);
+	expect((await editsPosted(page))[1]?.styles).toEqual([{ field: 'font-weight', value: '700' }]);
+});
+
+test("a choice keeps a style change the design's script made after the pick", async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#title');
+	const changed = 'font-size: 32px; color: #ff0000; margin: 7px';
+	await (
+		await inFrame(page, '#title')
+	).evaluate((element, style) => {
+		element.setAttribute('style', style);
+	}, changed);
+	// A click or Tab onto the select focuses it before the choice: the pick is re-described.
+	await field(page, 'font-weight').focus();
+	await expect.poll(async () => (await lastPick(page, 'a'))?.edit?.style).toBe(changed);
+	await field(page, 'font-weight').selectOption('700');
+	await expect(await inFrame(page, '#title')).toHaveAttribute(
+		'style',
+		`${changed}; font-weight: 700`,
+	);
+});
+
+test('a choice whose style would pass the cap posts nothing and says why', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	const style = `--x: ${'a'.repeat(MAX_PICK_STYLE_CHARS - 6)}`;
+	await (
+		await inFrame(page, '#spaced')
+	).evaluate((element, value) => {
+		element.setAttribute('style', value);
+	}, style);
+	await clickElement(page, '#spaced');
+	await field(page, 'font-weight').selectOption('700');
+	await expect(inspector(page).getByText(FIELD_ERROR_COPY['complex-style'])).toBeVisible();
+	await expect(await inFrame(page, '#spaced')).toHaveAttribute('style', style);
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+test('Reset Text clears the nine text fields in one save and one undo step', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#styled');
+	await sectionAction(page, 'Reset Text').click();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [request] = await editsPosted(page);
+	expect(request?.styles).toEqual(
+		[
+			'font-size',
+			'color',
+			'font-weight',
+			'font-style',
+			'text-decoration-line',
+			'text-align',
+			'line-height',
+			'letter-spacing',
+			'text-transform',
+		].map((name) => ({ field: name, value: '' })),
+	);
+	await expect(announcement(page)).toHaveText(/^Text reset\.\s?$/);
+	await expect(sectionAction(page, 'Reset Text')).toHaveAttribute('aria-disabled', 'true');
+	await expect(sectionAction(page, 'Reset Text')).toBeFocused();
+	await answerFromFrame({ page, selector: '#styled', request, generation: 2 });
+	await expect(undoButton(page)).toHaveAttribute('aria-disabled', 'false');
+	await undoButton(page).click();
+	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+test('a disabled Reset posts nothing and keeps focus', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#mixed', { x: 0.9, y: 0.5 });
+	const reset = sectionAction(page, 'Reset Appearance');
+	await expect(reset).toHaveText('Reset');
+	await expect(reset).toHaveAttribute('aria-disabled', 'true');
+	// Playwright refuses to click an aria-disabled button unless forced; the click is real.
+	await reset.click({ force: true });
+	await expect(reset).toBeFocused();
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(0);
+});
+
+test('Add border saves width and style once, focuses Width and announces it', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#spaced');
+	await expect(field(page, 'border-width')).toHaveCount(0);
+	// A double-click: the second click lands after the label flipped to Reset.
+	await sectionAction(page, 'Add border').dblclick();
+	await expect(field(page, 'border-width')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([
+		{ field: 'border-width', value: '1px' },
+		{ field: 'border-style', value: 'solid' },
+	]);
+	await expect(announcement(page)).toHaveText(/^Border added\.\s?$/);
+	// One in flight: a second save would wait for this answer, then go out.
+	const [request] = await editsPosted(page);
+	await answerFromFrame({ page, selector: '#spaced', request, generation: 2 });
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+test('Reset Border on a border shorthand clears all three and keeps focus on the button', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#boxed');
+	const button = page.locator('[data-cd-section="border"] .section-head button');
+	await expect(button).toHaveAccessibleName('Reset Border');
+	await button.click();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([
+		{ field: 'border-width', value: '' },
+		{ field: 'border-style', value: '' },
+		{ field: 'border-color', value: '' },
+	]);
+	await expect(button).toHaveAccessibleName('Add border');
+	await expect(button).toHaveText('Add border');
+	await expect(button).toBeFocused();
+});
+
+test('a held Enter on a segment button saves once', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#spaced');
+	const underline = field(page, 'text-style').getByRole('button', { name: 'Underline' });
+	await underline.focus();
+	await page.keyboard.down('Enter');
+	await expect(underline).toHaveAttribute('aria-pressed', 'true');
+	// Key auto-repeat: keydown with repeat true, which Chromium activates buttons on.
+	await page.keyboard.down('Enter');
+	await page.keyboard.down('Enter');
+	await page.keyboard.up('Enter');
+	await nextAnimationFrame(page);
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	const [request] = await editsPosted(page);
+	// A repeat's save would wait behind this one: it goes out on the answer.
+	await answerFromFrame({ page, selector: '#spaced', request, generation: 2 });
+	await nextAnimationFrame(page);
+	await expect(underline).toHaveAttribute('aria-pressed', 'true');
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+test('a held Enter on Reset Border saves Reset only', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#boxed');
+	const button = page.locator('[data-cd-section="border"] .section-head button');
+	await button.focus();
+	await page.keyboard.down('Enter');
+	await expect(button).toHaveAccessibleName('Add border');
+	// Key auto-repeat: keydown with repeat true, which Chromium activates buttons on.
+	await page.keyboard.down('Enter');
+	await page.keyboard.down('Enter');
+	await page.keyboard.up('Enter');
+	await nextAnimationFrame(page);
+	await expect(button).toHaveAccessibleName('Add border');
+	await expect(button).toBeFocused();
+	await expect(announcement(page)).toHaveText(/^Border reset\.\s?$/);
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+// The emptied box's preview re-posts the pick without the declaration: the draft keeps the field.
+const emptyWhileDrafted = async (page: Page, selector: string, name: string): Promise<void> => {
+	await clickElement(page, selector);
+	await field(page, name).fill('');
+	await expect.poll(async () => (await lastPick(page, 'a'))?.edit?.style).toBe('');
+	await nextAnimationFrame(page);
+	await expect(field(page, name)).toBeFocused();
+	expect(await editsPosted(page)).toHaveLength(0);
+};
+
+test('a click on another field after emptying Width keeps that focus', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await emptyWhileDrafted(page, '#widthonly', 'border-width');
+	await field(page, 'font-size').click();
+	await expect(field(page, 'border-width')).toHaveCount(0);
+	await expect(field(page, 'font-size')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(1);
+});
+
+test('an emptied border field stays while drafted; Enter saves once and focuses Add border', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await emptyWhileDrafted(page, '#widthonly', 'border-width');
+	await expect(field(page, 'border-style')).toHaveCount(1);
+	await expect(field(page, 'border-color')).toHaveCount(1);
+	await expect(sectionAction(page, 'Reset Border')).toHaveCount(1);
+	await field(page, 'border-width').press('Enter');
+	await expect(field(page, 'border-width')).toHaveCount(0);
+	await expect(sectionAction(page, 'Add border')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([{ field: 'border-width', value: '' }]);
+});
+
+test('Tab out of an emptied border Width saves once and focuses Add border', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await emptyWhileDrafted(page, '#widthonly', 'border-width');
+	// The blur commit unmounts the Style select Tab was heading for.
+	await field(page, 'border-width').press('Tab');
+	await expect(field(page, 'border-width')).toHaveCount(0);
+	await expect(sectionAction(page, 'Add border')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+});
+
+test('an emptied Gap on a block element stays while drafted, then leaves on Enter', async ({
+	page,
+}) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await emptyWhileDrafted(page, '#gapped', 'gap');
+	await field(page, 'gap').press('Enter');
+	await expect(field(page, 'gap')).toHaveCount(0);
+	await expect(sectionAction(page, 'Reset Spacing')).toBeFocused();
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([{ field: 'gap', value: '' }]);
+});
+
+test('Reset Spacing ends an invalid draft silently and posts one edit', async ({ page }) => {
+	await openEditStage(page);
+	await enterEditMode(page);
+	await clickElement(page, '#padded');
+	await field(page, 'padding').fill('4 apples;');
+	await field(page, 'padding').press('Enter');
+	await expect(inspector(page).getByText(FIELD_ERROR_COPY['invalid-length'])).toBeVisible();
+	await sectionAction(page, 'Reset Spacing').click();
+	await expect(inspector(page).getByText(/^Not saved:/)).toHaveCount(0);
+	await expect.poll(async () => (await editsPosted(page)).length).toBe(1);
+	expect((await editsPosted(page))[0]?.styles).toEqual([
+		{ field: 'padding', value: '' },
+		{ field: 'margin', value: '' },
+		{ field: 'gap', value: '' },
+	]);
+	await nextAnimationFrame(page);
+	expect(await editsPosted(page)).toHaveLength(1);
 });

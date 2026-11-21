@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { ChromePick } from './commentPick';
+import { applyStyleChanges, type StyleChange } from '../disk/editValues';
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
 import {
 	commitDraft,
@@ -13,6 +14,8 @@ import {
 	fieldValue,
 	invalidDraftCopy,
 	startDraft,
+	stylesCommit,
+	swatchValue,
 	textMaxLength,
 } from './editDrafts';
 import { NOT_SAVED_COPY } from './editRequests';
@@ -214,4 +217,101 @@ test('an invalid draft ended by a pick names its own cause; a step returns the f
 		assert.equal(invalidDraftCopy(kind, 'pick'), FIELD_ERROR_COPY[kind]);
 	}
 	assert.equal(invalidDraftCopy('invalid-length', 'step'), NOT_SAVED_COPY);
+});
+
+test('a refused value names its field: colour, opacity, leading, length', () => {
+	const errorOf = (field: EditDraft['field'], value: string): unknown => {
+		const verdict = commitDraft(draftOf(field, value));
+		return verdict.kind === 'invalid' ? verdict.error : verdict.kind;
+	};
+	assert.equal(errorOf('color', 'red'), 'invalid-color');
+	assert.equal(errorOf('background-color', 'url(x)'), 'invalid-color');
+	assert.equal(errorOf('border-color', 'blue'), 'invalid-color');
+	assert.equal(errorOf('opacity', '2'), 'invalid-opacity');
+	assert.equal(errorOf('line-height', '-1'), 'invalid-leading');
+	assert.equal(errorOf('gap', '1;'), 'invalid-length');
+	assert.equal(errorOf('border-width', 'thick;'), 'invalid-length');
+	assert.equal(
+		FIELD_ERROR_COPY['invalid-color'],
+		'Not saved: use a hex color such as #1a2b3c, transparent, or leave it empty.',
+	);
+	assert.equal(
+		FIELD_ERROR_COPY['invalid-opacity'],
+		'Not saved: use a number from 0 to 1, or leave it empty.',
+	);
+	assert.equal(
+		FIELD_ERROR_COPY['invalid-leading'],
+		'Not saved: use a number such as 1.5, a CSS length such as 24px, or leave it empty.',
+	);
+	assert.equal(FIELD_ERROR_COPY['invalid-choice'], 'Not saved: choose a value from the list.');
+});
+
+test('stylesCommit: none, unchanged, invalid, and one save whose preview is the core result', () => {
+	const commit = (
+		changes: StyleChange[],
+		fields: Partial<PickEditFields> = {},
+		pick?: ChromePick,
+	) => stylesCommit({ pick: pick ?? pickWith(fields), documentVersion: 2, changes });
+	const bold: StyleChange[] = [{ field: 'font-weight', value: '700' }];
+	const key = { frameId: 'a', sourceNumber: 4, documentVersion: 2 };
+	assert.deepEqual(stylesCommit({ pick: undefined, documentVersion: 2, changes: bold }), {
+		kind: 'none',
+	});
+	assert.deepEqual(commit(bold, {}, pickWith(undefined)), { kind: 'none' });
+	for (const fields of [{ sourceNumber: null }, { sharedNumber: true }, { style: null }]) {
+		assert.deepEqual(commit(bold, fields), { kind: 'none' });
+	}
+	assert.deepEqual(commit(bold, { style: 'font-weight: 700' }), { kind: 'unchanged' });
+	// Clearing what is not set changes nothing.
+	assert.deepEqual(commit([{ field: 'opacity', value: '' }]), { kind: 'unchanged' });
+	assert.deepEqual(commit([{ field: 'font-weight', value: 'heavy' }]), {
+		kind: 'invalid',
+		error: 'invalid-choice',
+		key,
+	});
+	assert.deepEqual(commit(bold, { style: 'background: url(a' }), {
+		kind: 'invalid',
+		error: 'complex-style',
+		key,
+	});
+	assert.deepEqual(commit(bold, { style: `--x: ${'a'.repeat(MAX_PICK_STYLE_CHARS - 6)}` }), {
+		kind: 'invalid',
+		error: 'complex-style',
+		key,
+	});
+	const border: StyleChange[] = [
+		{ field: 'border-width', value: '' },
+		{ field: 'border-style', value: '' },
+		{ field: 'border-color', value: '' },
+	];
+	const style = 'border: 1px solid #ddd; color: #ff0000';
+	const applied = applyStyleChanges({ styleText: style, changes: border });
+	assert.ok(applied.ok);
+	assert.deepEqual(commit(border, { style }), {
+		kind: 'save',
+		preview: { type: 'cd:edit-apply', sourceNumber: 4, style: applied.styleText },
+		commit: { key, styles: border },
+	});
+	assert.equal(applied.styleText, 'color: #ff0000');
+});
+
+test('swatchValue: a #rrggbb draft of the picked element, else the computed swatch', () => {
+	const pick = pickWith({});
+	assert.equal(
+		swatchValue({ draft: draftOf('color', '#00FF00'), pick, swatch: '#ff0000' }),
+		'#00ff00',
+	);
+	assert.equal(
+		swatchValue({ draft: draftOf('color', '#abc'), pick, swatch: '#ff0000' }),
+		'#ff0000',
+	);
+	assert.equal(
+		swatchValue({
+			draft: draftOf('color', '#00ff00'),
+			pick: pickWith({ sourceNumber: 5 }),
+			swatch: '#ff0000',
+		}),
+		'#ff0000',
+	);
+	assert.equal(swatchValue({ draft: undefined, pick, swatch: '#ff0000' }), '#ff0000');
 });

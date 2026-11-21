@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
+import type { StyleField } from '../disk/editValues';
 import type { ChromePick } from './commentPick';
 import {
+	colorDisplay,
 	editability,
+	editableSections,
+	type FieldView,
 	inlineValue,
 	inspectorView,
 	pickAnnouncementText,
 	toHexColor,
 } from './editInspector';
 import type { PickEditFields } from './frame/frameMessages';
+
+const NO_DRAFTS: ReadonlySet<StyleField> = new Set();
 
 const edit: PickEditFields = {
 	sourceNumber: 4,
@@ -51,23 +57,23 @@ const pickWith = (
 });
 
 test('no pick, or a pick without edit fields, shows the empty inspector', () => {
-	assert.deepEqual(inspectorView(undefined), { kind: 'empty' });
-	assert.deepEqual(inspectorView(pickWith(undefined)), { kind: 'empty' });
+	assert.deepEqual(inspectorView(undefined, NO_DRAFTS), { kind: 'empty' });
+	assert.deepEqual(inspectorView(pickWith(undefined), NO_DRAFTS), { kind: 'empty' });
 });
 
 test('no number and a shared number are not editable, page picks name the page', () => {
-	assert.deepEqual(inspectorView(pickWith({ sourceNumber: null })), {
+	assert.deepEqual(inspectorView(pickWith({ sourceNumber: null }), NO_DRAFTS), {
 		kind: 'not-editable',
 		reason: 'no-number',
 		target: 'h1',
 	});
-	assert.deepEqual(inspectorView(pickWith({ sharedNumber: true })), {
+	assert.deepEqual(inspectorView(pickWith({ sharedNumber: true }), NO_DRAFTS), {
 		kind: 'not-editable',
 		reason: 'shared-number',
 		target: 'h1',
 	});
 	assert.deepEqual(
-		inspectorView(pickWith({ sourceNumber: null }, { isPage: true, tagName: 'body' })),
+		inspectorView(pickWith({ sourceNumber: null }, { isPage: true, tagName: 'body' }), NO_DRAFTS),
 		{
 			kind: 'not-editable',
 			reason: 'no-number',
@@ -78,55 +84,21 @@ test('no number and a shared number are not editable, page picks name the page',
 	assert.equal(editability(edit), 'editable');
 });
 
-test('an editable pick fills the fields from the style attribute with computed placeholders', () => {
-	const view = inspectorView(pickWith({}));
-	assert.equal(view.kind, 'editable');
-	if (view.kind !== 'editable') {
-		return;
-	}
-	assert.equal(view.target, 'h1');
-	// The field shows the trimmed text; liveText keeps the frame's raw text for artboard:edit.
-	assert.deepEqual(view.text, { state: 'plain', value: 'Title', liveText: '\n    Title\n  ' });
-	assert.deepEqual(view.fields, [
-		{ field: 'font-size', value: '32px', placeholder: '32px' },
-		{ field: 'padding', value: '', placeholder: '0px' },
-		{ field: 'margin', value: '', placeholder: '21px 0px' },
-	]);
-	assert.deepEqual(view.color, { hex: '#ff0000', value: '#ff0000', computed: false });
-	// No inline colour: the computed one, marked computed; a missing computed value is ''. The
-	// comment record (`styles`) never fills a field.
-	const plain = inspectorView(pickWith({ style: null, computed: {} }));
-	assert.ok(plain.kind === 'editable');
-	assert.deepEqual(plain.color, { hex: '#000000', value: '', computed: true });
-	assert.deepEqual(
-		plain.fields.map((field) => field.placeholder),
-		['', '', ''],
+test('an editable pick is the section model, targeting the tag or the page', () => {
+	const pick = pickWith({});
+	assert.ok(pick.edit !== undefined);
+	assert.deepEqual(inspectorView(pick, NO_DRAFTS), {
+		kind: 'editable',
+		target: 'h1',
+		...editableSections({ pick, edit: pick.edit, drafted: NO_DRAFTS }),
+	});
+	const page = inspectorView(
+		pickWith({ textState: 'elements', text: '' }, { isPage: true }),
+		NO_DRAFTS,
 	);
-	const page = inspectorView(pickWith({ textState: 'elements', text: '' }, { isPage: true }));
 	assert.ok(page.kind === 'editable');
 	assert.equal(page.target, 'page');
-});
-
-test('the text field: empty plain keeps a field, mixed and long show a hint, void and raw text none', () => {
-	const textOf = (pick: ChromePick): unknown => {
-		const view = inspectorView(pick);
-		return view.kind === 'editable' ? view.text : view.kind;
-	};
-	assert.deepEqual(textOf(pickWith({ text: '' })), { state: 'plain', value: '', liveText: '' });
-	// Mixed text and elements-only show the same hint.
-	assert.deepEqual(textOf(pickWith({ textState: 'mixed', text: '' })), { state: 'children' });
-	assert.deepEqual(textOf(pickWith({ textState: 'elements', text: '' })), { state: 'children' });
-	assert.deepEqual(textOf(pickWith({ textState: 'too-long', text: '' })), { state: 'too-long' });
-	// The tag rule wins over every text state.
-	for (const tagName of ['img', 'input', 'iframe']) {
-		for (const textState of ['plain', 'mixed', 'elements', 'too-long'] as const) {
-			assert.deepEqual(
-				textOf(pickWith({ textState, text: '' }, { tagName })),
-				{ state: 'none' },
-				`${tagName} ${textState}`,
-			);
-		}
-	}
+	assert.equal(page.selection, 'container');
 });
 
 test('inlineValue reads the last declaration of that exact property, as typed', () => {
@@ -181,9 +153,304 @@ test('toHexColor reads only Chromium computed rgb() and rgba()', () => {
 	}
 });
 
-test('an over-cap style attribute shows the hint instead of the style fields', () => {
-	const view = inspectorView(pickWith({ style: null }));
-	assert.equal(view.kind === 'editable' ? view.style : '', 'too-long');
-	const normal = inspectorView(pickWith({ style: '' }));
-	assert.equal(normal.kind === 'editable' ? normal.style : '', 'editable');
+const sectionsOf = (
+	fields: Partial<PickEditFields>,
+	overrides: Partial<ChromePick> = {},
+	drafted: ReadonlySet<StyleField> = NO_DRAFTS,
+): ReturnType<typeof editableSections> => {
+	const pick = pickWith(fields, overrides);
+	assert.ok(pick.edit !== undefined);
+	return editableSections({ pick, edit: pick.edit, drafted });
+};
+
+const fieldOf = (view: ReturnType<typeof editableSections>, key: string): FieldView | undefined =>
+	view.sections
+		.flatMap((section) => section.fields)
+		.find((candidate) =>
+			candidate.control === 'segments' ? candidate.id === key : candidate.field === key,
+		);
+
+const sectionOf = (view: ReturnType<typeof editableSections>, id: string) =>
+	view.sections.find((section) => section.id === id);
+
+test('the selection kind picks the sections; the tag rule wins over every text state', () => {
+	const titles = (view: ReturnType<typeof editableSections>) =>
+		view.sections.map((section) => section.title);
+	const text = sectionsOf({});
+	assert.equal(text.selection, 'text');
+	assert.deepEqual(titles(text), ['Text', 'Appearance', 'Spacing', 'Border']);
+	assert.deepEqual(text.content, { state: 'plain', value: 'Title', liveText: '\n    Title\n  ' });
+	assert.equal(sectionOf(text, 'text')?.hint, undefined);
+	// An empty element is text with empty Content; too-long text keeps Text without a Content box.
+	assert.deepEqual(sectionsOf({ text: '' }).content, { state: 'plain', value: '', liveText: '' });
+	const long = sectionsOf({ textState: 'too-long', text: '' });
+	assert.equal(long.selection, 'text');
+	assert.deepEqual(long.content, { state: 'too-long' });
+	const mixed = sectionsOf({ textState: 'mixed', text: '' });
+	assert.equal(mixed.selection, 'mixed');
+	assert.equal(mixed.content, undefined);
+	assert.deepEqual(titles(mixed), ['Typography', 'Appearance', 'Spacing', 'Border']);
+	assert.equal(
+		sectionOf(mixed, 'text')?.hint,
+		'To change these words, ask the Agent or select a part that holds only text.',
+	);
+	const container = sectionsOf({ textState: 'elements', text: '' });
+	assert.equal(container.selection, 'container');
+	assert.deepEqual(titles(container), ['Appearance', 'Spacing', 'Border']);
+	for (const tagName of ['img', 'iframe']) {
+		const view = sectionsOf({}, { tagName });
+		assert.equal(view.selection, 'no-text', tagName);
+		assert.equal(view.content, undefined);
+		assert.deepEqual(titles(view), ['Appearance', 'Spacing', 'Border']);
+	}
+});
+
+test('an over-cap style renders no section, only Content', () => {
+	assert.deepEqual(sectionsOf({ style: null }), {
+		selection: 'text',
+		content: { state: 'plain', value: 'Title', liveText: '\n    Title\n  ' },
+		styleTooLong: true,
+		sections: [],
+	});
+});
+
+test('set: through a longhand or a border parent; never through font or background', () => {
+	const view = sectionsOf({
+		style: 'padding-left: 2px; border-top: 1px solid; font: 12px serif; background: #ccc',
+	});
+	assert.equal(fieldOf(view, 'padding')?.set, true);
+	// A field set only through a longhand or parent shows the dot and an empty box.
+	assert.deepEqual(fieldOf(view, 'padding'), {
+		field: 'padding',
+		label: 'Padding',
+		name: 'Padding',
+		set: true,
+		wide: true,
+		control: 'text',
+		value: '',
+		placeholder: '0px',
+	});
+	for (const field of ['border-width', 'border-style', 'border-color']) {
+		assert.equal(fieldOf(view, field)?.set, true, field);
+	}
+	for (const field of ['font-size', 'font-weight', 'line-height', 'background-color', 'margin']) {
+		assert.equal(fieldOf(view, field)?.set, false, field);
+	}
+	assert.equal(fieldOf(view, 'text-style')?.set, false);
+	assert.equal(sectionOf(view, 'appearance')?.action.enabled, false);
+	assert.equal(sectionOf(view, 'spacing')?.action.enabled, true);
+});
+
+test('colorDisplay: lowercase hex, None for no colour, translucent and other spaces as given', () => {
+	assert.deepEqual(colorDisplay('rgb(255, 0, 170)'), {
+		text: '#ff00aa',
+		swatch: '#ff00aa',
+		none: false,
+	});
+	assert.deepEqual(colorDisplay('rgba(0, 0, 0, 0)'), {
+		text: 'None',
+		swatch: '#000000',
+		none: true,
+	});
+	assert.deepEqual(colorDisplay('rgba(16, 32, 48, 0.5)'), {
+		text: 'rgba(16, 32, 48, 0.5)',
+		swatch: '#102030',
+		none: false,
+	});
+	assert.deepEqual(colorDisplay('oklch(0.7 0.1 200)'), {
+		text: 'oklch(0.7 0.1 200)',
+		swatch: '#000000',
+		none: false,
+	});
+	assert.deepEqual(colorDisplay(undefined), { text: '', swatch: '#000000', none: false });
+	// The colour field: the inline value as typed, the computed display as placeholder.
+	const view = sectionsOf({ style: 'color: red', computed: { color: 'rgb(255, 0, 0)' } });
+	assert.deepEqual(fieldOf(view, 'color'), {
+		field: 'color',
+		label: 'Color',
+		name: 'Color',
+		set: true,
+		wide: false,
+		control: 'color',
+		value: 'red',
+		placeholder: '#ff0000',
+		swatch: '#ff0000',
+		none: false,
+		pickerName: 'Color picker',
+	});
+});
+
+test('align: start, end and -webkit-center map; match-parent presses none; each button saves', () => {
+	const pressed = (textAlign: string): string[] => {
+		const align = fieldOf(sectionsOf({ computed: { 'text-align': textAlign } }), 'align');
+		return align?.control === 'segments'
+			? align.buttons.filter((button) => button.pressed).map((button) => button.name)
+			: [];
+	};
+	assert.deepEqual(pressed('start'), ['Align left']);
+	assert.deepEqual(pressed('end'), ['Align right']);
+	assert.deepEqual(pressed('-webkit-center'), ['Align center']);
+	assert.deepEqual(pressed('match-parent'), []);
+	const align = fieldOf(sectionsOf({ computed: { 'text-align': 'left' } }), 'align');
+	// The pressed, inherited button still saves its value explicitly.
+	assert.deepEqual(align?.control === 'segments' ? align.buttons[0] : undefined, {
+		name: 'Align left',
+		icon: 'align-left',
+		pressed: true,
+		set: false,
+		change: { field: 'text-align', value: 'left' },
+	});
+});
+
+test('selects: the computed value is selected; an out-of-list or missing value is display-only', () => {
+	const weight = fieldOf(sectionsOf({ computed: { 'font-weight': '700' } }), 'font-weight');
+	assert.ok(weight?.control === 'select');
+	assert.equal(weight.selected, '700');
+	assert.equal(weight.options.length, 9);
+	assert.deepEqual(weight.options[6], {
+		value: '700',
+		label: 'Bold',
+		change: { field: 'font-weight', value: '700' },
+	});
+	const variable = fieldOf(sectionsOf({ computed: { 'font-weight': '450' } }), 'font-weight');
+	assert.ok(variable?.control === 'select');
+	assert.equal(variable.selected, '450');
+	assert.deepEqual(variable.options.at(-1), { value: '450', label: '450', change: undefined });
+	const missing = fieldOf(sectionsOf({ computed: {} }), 'overflow');
+	assert.ok(missing?.control === 'select');
+	assert.equal(missing.selected, '');
+	assert.deepEqual(missing.options.at(-1), { value: '', label: '–', change: undefined });
+	assert.equal(missing.options.length, 6);
+});
+
+test('text style: I flips italic; U and S combine and drop other tokens', () => {
+	const buttons = (computed: PickEditFields['computed'], style = '') => {
+		const group = fieldOf(sectionsOf({ computed, style }), 'text-style');
+		return group?.control === 'segments' ? group.buttons : [];
+	};
+	const [italic, underline, strike] = buttons({ 'font-style': 'oblique 10deg' });
+	assert.equal(italic?.pressed, true);
+	assert.deepEqual(italic?.change, { field: 'font-style', value: 'normal' });
+	assert.deepEqual(buttons({ 'font-style': 'normal' })[0]?.change, {
+		field: 'font-style',
+		value: 'italic',
+	});
+	assert.equal(underline?.pressed, false);
+	assert.deepEqual(underline?.change, { field: 'text-decoration-line', value: 'underline' });
+	assert.deepEqual(strike?.change, { field: 'text-decoration-line', value: 'line-through' });
+	const both = buttons({ 'text-decoration-line': 'underline line-through' });
+	assert.deepEqual(both[1]?.change.value, 'line-through');
+	assert.deepEqual(both[2]?.change.value, 'underline');
+	const overline = buttons({ 'text-decoration-line': 'underline overline' });
+	assert.deepEqual(overline[2]?.change.value, 'underline line-through');
+	assert.deepEqual(overline[1]?.change.value, 'none');
+	// Each button's set is its own property's; the group is set when either is.
+	const set = buttons({}, 'text-decoration-line: underline');
+	assert.deepEqual(
+		set.map((button) => button.set),
+		[false, true, true],
+	);
+	assert.equal(fieldOf(sectionsOf({ style: 'font-style: italic' }), 'text-style')?.set, true);
+});
+
+test('gap shows for flex and grid displays or when set; hidden for block or no display', () => {
+	const hasGap = (display: string | undefined, style = '', drafted = NO_DRAFTS): boolean =>
+		fieldOf(
+			sectionsOf({ style }, { styles: display === undefined ? {} : { display } }, drafted),
+			'gap',
+		) !== undefined;
+	for (const display of ['flex', 'inline-flex', 'grid', 'inline-grid']) {
+		assert.equal(hasGap(display), true, display);
+	}
+	assert.equal(hasGap('block'), false);
+	assert.equal(hasGap(undefined), false);
+	assert.equal(hasGap('block', 'row-gap: 4px'), true);
+	// An emptied Gap box previews '' (no longer set): its draft keeps it until the draft ends.
+	assert.equal(hasGap('block', '', new Set(['gap'])), true);
+	assert.equal(hasGap('block', '', new Set(['padding'])), false);
+});
+
+test('border presence: computed style or any set field; otherwise Add border', () => {
+	const border = (fields: Partial<PickEditFields>) => sectionOf(sectionsOf(fields), 'border');
+	const none = border({ computed: { 'border-style': 'none', 'border-width': '0px' } });
+	assert.deepEqual(none?.fields, []);
+	assert.deepEqual(none?.action, {
+		kind: 'add-border',
+		label: 'Add border',
+		name: 'Add border',
+		enabled: true,
+		changes: [
+			{ field: 'border-width', value: '1px' },
+			{ field: 'border-style', value: 'solid' },
+		],
+		announcement: 'Border added.',
+	});
+	assert.equal(border({ computed: {} })?.action.kind, 'add-border');
+	const ruled = border({ computed: { 'border-style': 'none none solid' } });
+	assert.equal(ruled?.fields.length, 3);
+	assert.equal(ruled?.action.kind, 'reset');
+	assert.equal(ruled?.action.enabled, false);
+	// The multi-value style shows as given: an extra, display-only option.
+	const style = ruled?.fields[1];
+	assert.ok(style?.control === 'select');
+	assert.equal(style.selected, 'none none solid');
+	assert.equal(style.name, 'Border style');
+	assert.equal(style.label, 'Style');
+	assert.equal(border({ style: 'border: 1px solid #ddd', computed: {} })?.action.enabled, true);
+	const widthOnly = border({ style: 'border-width: 3px', computed: { 'border-style': 'none' } });
+	assert.equal(widthOnly?.fields.length, 3);
+	assert.equal(widthOnly?.action.enabled, true);
+	// An emptied Width box previews '' (no border left): its draft keeps all three fields.
+	const emptied = (drafted: ReadonlySet<StyleField>) =>
+		sectionOf(
+			sectionsOf({ style: '', computed: { 'border-style': 'none' } }, {}, drafted),
+			'border',
+		);
+	const drafted = emptied(new Set(['border-width']));
+	assert.equal(drafted?.fields.length, 3);
+	assert.equal(drafted?.action.kind, 'reset');
+	assert.equal(emptied(new Set(['padding']))?.action.kind, 'add-border');
+});
+
+test('every Reset clears its section in render order and names its section', () => {
+	const view = sectionsOf({ style: 'font-size: 2px', computed: { 'border-style': 'solid' } });
+	assert.deepEqual(
+		view.sections.map(({ action }) => [action.name, action.announcement, action.enabled]),
+		[
+			['Reset Text', 'Text reset.', true],
+			['Reset Appearance', 'Appearance reset.', false],
+			['Reset Spacing', 'Spacing reset.', false],
+			['Reset Border', 'Border reset.', false],
+		],
+	);
+	const cleared = (id: string) =>
+		sectionOf(view, id)?.action.changes.map((change) => {
+			assert.equal(change.value, '');
+			return change.field;
+		});
+	assert.deepEqual(cleared('text'), [
+		'font-size',
+		'color',
+		'font-weight',
+		'font-style',
+		'text-decoration-line',
+		'text-align',
+		'line-height',
+		'letter-spacing',
+		'text-transform',
+	]);
+	assert.deepEqual(cleared('appearance'), [
+		'background-color',
+		'border-radius',
+		'overflow',
+		'opacity',
+	]);
+	// Gap is cleared even while hidden.
+	assert.equal(fieldOf(view, 'gap'), undefined);
+	assert.deepEqual(cleared('spacing'), ['padding', 'margin', 'gap']);
+	assert.deepEqual(cleared('border'), ['border-width', 'border-style', 'border-color']);
+	assert.equal(
+		sectionOf(sectionsOf({ textState: 'mixed', text: '' }), 'text')?.action.name,
+		'Reset Typography',
+	);
 });

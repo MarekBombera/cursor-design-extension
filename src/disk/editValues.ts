@@ -61,7 +61,8 @@ export const previewText = ({ liveText, value }: { liveText: string; value: stri
 	return `${leading}${normalizeEditText(value)}${trailing}`;
 };
 
-const COLOR_FIELDS: ReadonlySet<StyleField> = new Set([
+// The fields the colour rule checks; the chrome names their refusal by it too.
+export const COLOR_FIELDS: ReadonlySet<StyleField> = new Set([
 	'color',
 	'background-color',
 	'border-color',

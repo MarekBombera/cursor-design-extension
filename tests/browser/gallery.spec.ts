@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
 	type Box,
 	clickChrome,
+	editFrame,
 	commentButton,
 	copyOpenButton,
 	panelButton,
@@ -40,7 +41,7 @@ import {
 } from './gallery/scene';
 import { bannersStates } from './gallery/states/banners';
 import { focusStates } from './gallery/states/focus';
-import { inspectorStates } from './gallery/states/inspector';
+import { inspectorStates, openEditMode, pickToEdit } from './gallery/states/inspector';
 import { answerError, panelStates } from './gallery/states/panel';
 import { pinsStates } from './gallery/states/pins';
 import { popoverStates } from './gallery/states/popover';
@@ -358,6 +359,41 @@ for (const theme of THEMES) {
 			'disabled text (segment, no artboard)',
 			'.mode button',
 			'disabled text (WCAG 1.4.3)',
+		);
+
+		// The inspector on the h1: input values, placeholders and select text are not text nodes, so
+		// the sweep misses them.
+		const field = (name: string): string => `[data-cd-inspector] [data-cd-field="${name}"]`;
+		await openEditMode({
+			page,
+			open: async () => open({ frames: [editFrame({ id: 'edit', label: 'Edit fixture' })] }),
+		});
+		await pickToEdit(page, '#title');
+		await text('input text (inspector field, set)', field('font-size'));
+		await measure('placeholder text (inspector field, computed)', {
+			kind: 'placeholder',
+			selector: field('line-height'),
+		});
+		await text('select text (inspector, inherited)', field('font-weight'));
+		await text('fg-2 text (inspector field label)', '[data-cd-inspector] .field .label');
+		await text('fg-2 text (inspector section title)', '[data-cd-inspector] .section-title');
+		await text(
+			'segment glyph (inspector, unpressed)',
+			`${field('text-style')} [aria-pressed="false"]`,
+		);
+		await measure(
+			'set dot on a field',
+			{ kind: 'tokens', foreground: '--cd-accent', background: '--cd-input-bg' },
+			{
+				threshold: NON_TEXT_THRESHOLD,
+				exempt: 'supplementary: set also reads as full text and the "(set on this element)" name',
+			},
+		);
+		// The field's inset ring is drawn by :focus-within on the wrapper, so it is measured by token.
+		await measure(
+			'focus ring (inspector field, inset) against the field',
+			{ kind: 'tokens', foreground: '--cd-focus', background: '--cd-input-bg' },
+			{ threshold: NON_TEXT_THRESHOLD },
 		);
 	});
 }

@@ -293,9 +293,15 @@ export const removeStyleProperties = (
 	return output;
 };
 
+// What clearing a field removes: the field and the longhands it drops.
+export const clearedProperties = (field: string): readonly string[] => [
+	field,
+	...(LONGHANDS.get(field) ?? []),
+];
+
 // An absent property gives back the input unchanged; an emptied attribute stays `style=""`.
 export const removeStyleProperty = (styleText: string, property: string): string =>
-	removeStyleProperties(styleText, new Set([property, ...(LONGHANDS.get(property) ?? [])]));
+	removeStyleProperties(styleText, new Set(clearedProperties(property)));
 
 // undefined: the text ends inside a string, comment, escape or bracket, so an appended
 // declaration would land inside it.

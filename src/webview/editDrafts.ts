@@ -1,9 +1,11 @@
 import {
 	applyStyleChanges,
+	COLOR_FIELDS,
 	isRefusedEditText,
 	normalizeEditText,
 	normalizeStyleValue,
 	previewText,
+	type StyleChange,
 } from '../disk/editValues';
 import { leadingWhitespaceLength, trailingWhitespaceLength } from '../disk/inlineStyle';
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
@@ -14,10 +16,23 @@ import type { EditApplyMessage, EditStyleField } from './frame/frameMessages';
 
 // The host stays the authority on every save; these rules only decide what to preview and send.
 
-export type FieldErrorKind = 'invalid-length' | 'complex-style' | 'control-text';
+export type FieldErrorKind =
+	| 'invalid-length'
+	| 'invalid-color'
+	| 'invalid-opacity'
+	| 'invalid-leading'
+	| 'invalid-choice'
+	| 'complex-style'
+	| 'control-text';
 
 export const FIELD_ERROR_COPY = {
 	'invalid-length': 'Not saved: use a number, a CSS length such as 1.5rem, or leave it empty.',
+	'invalid-color': 'Not saved: use a hex color such as #1a2b3c, transparent, or leave it empty.',
+	'invalid-opacity': 'Not saved: use a number from 0 to 1, or leave it empty.',
+	'invalid-leading':
+		'Not saved: use a number such as 1.5, a CSS length such as 24px, or leave it empty.',
+	// Selects, segments, Reset and Add border offer only valid values: defensive.
+	'invalid-choice': 'Not saved: choose a value from the list.',
 	'complex-style': "Not saved: this element's style is too complex to edit here. Ask the Agent.",
 	'control-text': 'Not saved: the text has control characters. Remove them and try again.',
 } as const satisfies Record<FieldErrorKind, string>;
@@ -66,7 +81,7 @@ export const startDraft = ({
 	};
 };
 
-const sameElement = (key: EditKey, pick: ChromePick | undefined): boolean =>
+export const sameElement = (key: EditKey, pick: ChromePick | undefined): boolean =>
 	pick !== undefined &&
 	pick.frameId === key.frameId &&
 	pick.edit?.sourceNumber === key.sourceNumber;
@@ -92,6 +107,17 @@ export const textMaxLength = (liveText: string): number => {
 
 type StylePreview = { style: string } | { error: FieldErrorKind };
 
+// A refused text-box value, named by its field's own rule.
+const invalidValueError = (field: EditStyleField): FieldErrorKind => {
+	if (COLOR_FIELDS.has(field)) {
+		return 'invalid-color';
+	}
+	if (field === 'opacity') {
+		return 'invalid-opacity';
+	}
+	return field === 'line-height' ? 'invalid-leading' : 'invalid-length';
+};
+
 // The edit core's apply rule, so the preview is what a save writes.
 const stylePreview = (draft: EditDraft, field: EditStyleField): StylePreview => {
 	const applied = applyStyleChanges({
@@ -99,7 +125,9 @@ const stylePreview = (draft: EditDraft, field: EditStyleField): StylePreview => 
 		changes: [{ field, value: draft.value }],
 	});
 	if (!applied.ok) {
-		return { error: applied.refusal === 'invalid-value' ? 'invalid-length' : 'complex-style' };
+		return {
+			error: applied.refusal === 'invalid-value' ? invalidValueError(field) : 'complex-style',
+		};
 	}
 	return applied.styleText.length > MAX_PICK_STYLE_CHARS
 		? { error: 'complex-style' }
@@ -174,6 +202,69 @@ export const commitDraft = (draft: EditDraft): CommitVerdict => {
 				commit: { key: draft.key, styles: [{ field: draft.field, value: draft.value }] },
 			};
 };
+
+// A choice, Reset or Add border: one save of every change, so one undo step. Raw values go out;
+// the host normalizes.
+export const stylesCommit = ({
+	pick,
+	documentVersion,
+	changes,
+}: {
+	pick: ChromePick | undefined;
+	documentVersion: number;
+	changes: readonly StyleChange[];
+}):
+	| { kind: 'none' }
+	| { kind: 'unchanged' }
+	| { kind: 'invalid'; error: FieldErrorKind; key: EditKey }
+	| { kind: 'save'; preview: EditApplyMessage; commit: EditCommit } => {
+	const edit = pick?.edit;
+	if (
+		pick === undefined ||
+		edit === undefined ||
+		edit.sourceNumber === null ||
+		edit.sharedNumber ||
+		edit.style === null
+	) {
+		return { kind: 'none' };
+	}
+	const key = { frameId: pick.frameId, sourceNumber: edit.sourceNumber, documentVersion };
+	const applied = applyStyleChanges({ styleText: edit.style, changes });
+	if (!applied.ok) {
+		return {
+			kind: 'invalid',
+			error: applied.refusal === 'invalid-value' ? 'invalid-choice' : 'complex-style',
+			key,
+		};
+	}
+	if (applied.styleText.length > MAX_PICK_STYLE_CHARS) {
+		return { kind: 'invalid', error: 'complex-style', key };
+	}
+	if (applied.styleText === edit.style) {
+		return { kind: 'unchanged' };
+	}
+	return {
+		kind: 'save',
+		preview: applyMessage(edit.sourceNumber, { style: applied.styleText }),
+		commit: { key, styles: [...changes] },
+	};
+};
+
+const SWATCH_HEX = /^#[0-9a-f]{6}$/i;
+
+// The native swatch needs #rrggbb: a draft of the picked element shows while it is one.
+export const swatchValue = ({
+	draft,
+	pick,
+	swatch,
+}: {
+	draft: EditDraft | undefined;
+	pick: ChromePick | undefined;
+	swatch: string;
+}): string =>
+	draft !== undefined && sameElement(draft.key, pick) && SWATCH_HEX.test(draft.value)
+		? draft.value.toLowerCase()
+		: swatch;
 
 export type DraftFate = 'keep' | 'commit' | 'drop';
 

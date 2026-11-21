@@ -12,6 +12,16 @@
 			#padded {
 				background: #eeeeee;
 			}
+			#row {
+				display: flex;
+				gap: 12px;
+			}
+			#ruled {
+				border-bottom: 2px solid #999999;
+			}
+			#heavy {
+				font-weight: 400 !important;
+			}
 		</style>
 	</head>
 	<body>
@@ -26,6 +36,18 @@
 		<img id="picture" alt="" width="40" height="40" style="background: #cccccc" />
 		<div id="padded" style="padding: 8px 16px">Padded</div>
 		<p id="cloned">Cloned text</p>
+		<div id="row"><span>One</span><span>Two</span></div>
+		<div id="gapped" style="gap: 8px">Gapped</div>
+		<p id="boxed" style="border: 1px solid #dddddd">Boxed</p>
+		<p id="ruled">Ruled</p>
+		<p id="widthonly" style="border-width: 3px">Width only</p>
+		<p
+			id="styled"
+			style="font-weight: 700; text-decoration-line: underline; letter-spacing: 0.04em"
+		>
+			Styled
+		</p>
+		<p id="heavy" style="font-weight: 700">Heavy</p>
 		<script>
 			document.getElementById('mixed').addEventListener('click', () => {
 				const counter = document.getElementById('clicks');

@@ -51,6 +51,8 @@ body {
 	--cd-input-bg: var(--vscode-input-background);
 	--cd-input-fg: var(--vscode-input-foreground);
 	--cd-input-edge: var(--vscode-input-border, var(--cd-edge));
+	/* An inspector field's edge under the pointer. */
+	--cd-field-edge-hover: color-mix(in srgb, var(--cd-fg) 32%, var(--cd-input-edge));
 	--cd-placeholder: var(--vscode-input-placeholderForeground, var(--cd-fg-3));
 	--cd-dropdown-bg: var(--vscode-dropdown-background, var(--cd-input-bg));
 	--cd-dropdown-fg: var(--vscode-dropdown-foreground, var(--cd-input-fg));
@@ -138,7 +140,13 @@ body {
 	--cd-pin-sm: 18px;
 	--cd-kbd-lh: 14px;
 	--cd-panel-w: 320px;
-	--cd-inspector-w: 240px;
+	/* Two field columns need about 130px each, so a hex colour fits. */
+	--cd-inspector-w: 296px;
+	/* The colour swatch inside a field, the "set on this element" dot, and a segment button inside
+	   a field (the field height minus its edge and 2px). */
+	--cd-swatch: 14px;
+	--cd-set-dot: 5px;
+	--cd-seg-h: 20px;
 	--cd-widget-w: 340px;
 	--cd-widget-max-h: 440px;
 

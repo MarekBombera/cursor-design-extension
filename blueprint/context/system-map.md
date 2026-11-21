@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 9h More edit fields: saving (`feature/more-edit-fields-saving`): `artboard:edit` becomes text `{field: 'text', value, liveText}` or styles `{styles: StyleChange[]}` (1..19 distinct `EDIT_STYLE_FIELDS`, one write and one undo step; the field inspector sends one change), and the edit core and the chrome preview share `applyStyleChanges`; `cd:pick`'s `edit` gains `computed` and the text states `mixed` / `elements` replace `children`. No disk format or process flow change; the inspector looks as before. Before it, fix Chrome load error and export lock (`fix/chrome-load-error-and-export-lock`). The Export section now shows the locked, re-reading tail of `exportArtboard`, checked against `exportFs.ts`. The extension host's new `missingChromeAssets` check on panel creation calls `showErrorMessage` and sends no message to the chrome. No other message, disk format or process flow changed. Before it, feature 9g Verify (`feature/verify`): no message, disk format or process flow change. Docs and the Agent skill changed, and the 9c and 9e `artboard:edited` lines now show `canUndo, canRedo`, which `postEdited` has sent since 9f. The flows were checked against the installed `.vsix` in a real Cursor run (spec cases A–K). Before it, fix Backlog: small product fixes (`fix/backlog-small-product-fixes`): no message, disk format or process flow change; in Chromium a click into an artboard frame blurs the field before the frame's `cd:pick` arrives (the Edit drafts bullet now says so), a pick of another element ends an invalid draft with its field's own copy in the request error (`invalidDraftCopy`), and `saveCommentUi` also drops the pre-9d `commentMode` key. Before it, fix Backlog: tests and dev tooling (`fix/backlog-tests-and-dev-tooling`): no message, disk format or process flow change; tests, the `watch:webview` task matcher and one CSS comment; `frameMessages.test.ts` now also fails when the message contract table's `host → chrome` / `chrome → host` names differ from the `HostMessage` / `ChromeMessage` types. Before it, fix Share browser test helpers (`fix/share-browser-test-helpers`): no message, disk format or process flow change; test-only, the Playwright specs' twin helpers move into `tests/browser/harness.ts`. Before it, fix Audit code problems (`fix/audit-code-problems`): no message, disk format or process flow change; the disk lib's two stderr writers become one `logStderr` (same bytes), and the MCP logs an invalid `CURSOR_DESIGN_WORKSPACE_ROOTS` to stderr once per process before the unchanged fallback to ROOT. Before it, feature 9f Undo/redo (`feature/undo-redo`): new chrome → host `artboard:history {requestId, frameId, step}` (the inspector's Undo / Redo, sharing the edit route, the one-in-flight queue and the one-answer rule), answered by `artboard:edited` (which, like every `canvas:updated` frame, now carries `canUndo` / `canRedo`) or `ui:error`; the host keeps whole-file undo snapshots per frame in memory (`editHistory.ts`, 20 steps) and writes a step through `updateArtboard` with the history's current hash; the outbox checks every new snapshot against the history (`keepUnchangedHistories`) and reads the flags at every `canvas:updated` send, replays included; a written step reloads the frame; `cd:key` gains `undo` / `redo` (Cmd/Ctrl+Z with frame focus; the chrome acts only from the focused history frame in Edit mode), and a capture-phase window listener handles Cmd/Ctrl+Z with chrome focus. Before it, feature 9e Edit fields + save (`feature/edit-fields-save`): the Edit-mode inspector is the first `artboard:edit` sender (drafts keyed to the element they started on, one save in flight, the next with the answered hash); new chrome → frame `cd:pick-refresh` and `cd:edit-apply` (Edit mode only; the runtime's one design-DOM write is that preview); `edit.style` is `''` when absent and `null` only over the cap; the chrome parses `artboard:edited` and adopts it without a frame reload (`documentHtml` / `documentVersion` vs `html`), skips stale pre-write posts (`replacedHashes`), and reloads a refused edit's frame from the latest adopted copy; a pick re-post keeps its announcement `sequence`; no host or disk change. Before it, feature 9d Edit mode + selection (`feature/edit-mode-selection`): no host or disk change; `cd:mode` gains `edit`, and in Edit mode the frame picker (shared with Comment mode) adds `edit {sourceNumber|null, sharedNumber, textState, text, style|null}` to each `cd:pick` (`describeEditTarget`, DOM reads only); the chrome's one acceptance rule `pickCounts` drops a `cd:hover` / `cd:pick` in Interact mode and a `cd:pick` whose `edit` does not match the mode, for the pick and the comment draft alike; the Edit-mode inspector (`inspectorView`, disabled fields) and the saved `mode` key (replacing `commentMode`). Before it, feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** feature 9i Inspector redesign (`feature/inspector-redesign`): the chrome becomes the first multi-change `artboard:edit {styles}` sender (a choice is one change, a section Reset or Add border several, through `handleStyleChanges` → `stylesCommit`: one preview, one write, one undo step); a new draft or a choice first ends the element's other open drafts (valid ones save, invalid ones end silently), and `cd:pick-refresh` now goes out when focus enters any inspector control. No message, disk or host change. Before it, feature 9h More edit fields: saving (`feature/more-edit-fields-saving`): `artboard:edit` becomes text `{field: 'text', value, liveText}` or styles `{styles: StyleChange[]}` (1..19 distinct `EDIT_STYLE_FIELDS`, one write and one undo step; the field inspector sends one change), and the edit core and the chrome preview share `applyStyleChanges`; `cd:pick`'s `edit` gains `computed` and the text states `mixed` / `elements` replace `children`. No disk format or process flow change; the inspector looks as before. Before it, fix Chrome load error and export lock (`fix/chrome-load-error-and-export-lock`). The Export section now shows the locked, re-reading tail of `exportArtboard`, checked against `exportFs.ts`. The extension host's new `missingChromeAssets` check on panel creation calls `showErrorMessage` and sends no message to the chrome. No other message, disk format or process flow changed. Before it, feature 9g Verify (`feature/verify`): no message, disk format or process flow change. Docs and the Agent skill changed, and the 9c and 9e `artboard:edited` lines now show `canUndo, canRedo`, which `postEdited` has sent since 9f. The flows were checked against the installed `.vsix` in a real Cursor run (spec cases A–K). Before it, fix Backlog: small product fixes (`fix/backlog-small-product-fixes`): no message, disk format or process flow change; in Chromium a click into an artboard frame blurs the field before the frame's `cd:pick` arrives (the Edit drafts bullet now says so), a pick of another element ends an invalid draft with its field's own copy in the request error (`invalidDraftCopy`), and `saveCommentUi` also drops the pre-9d `commentMode` key. Before it, fix Backlog: tests and dev tooling (`fix/backlog-tests-and-dev-tooling`): no message, disk format or process flow change; tests, the `watch:webview` task matcher and one CSS comment; `frameMessages.test.ts` now also fails when the message contract table's `host → chrome` / `chrome → host` names differ from the `HostMessage` / `ChromeMessage` types. Before it, fix Share browser test helpers (`fix/share-browser-test-helpers`): no message, disk format or process flow change; test-only, the Playwright specs' twin helpers move into `tests/browser/harness.ts`. Before it, fix Audit code problems (`fix/audit-code-problems`): no message, disk format or process flow change; the disk lib's two stderr writers become one `logStderr` (same bytes), and the MCP logs an invalid `CURSOR_DESIGN_WORKSPACE_ROOTS` to stderr once per process before the unchanged fallback to ROOT. Before it, feature 9f Undo/redo (`feature/undo-redo`): new chrome → host `artboard:history {requestId, frameId, step}` (the inspector's Undo / Redo, sharing the edit route, the one-in-flight queue and the one-answer rule), answered by `artboard:edited` (which, like every `canvas:updated` frame, now carries `canUndo` / `canRedo`) or `ui:error`; the host keeps whole-file undo snapshots per frame in memory (`editHistory.ts`, 20 steps) and writes a step through `updateArtboard` with the history's current hash; the outbox checks every new snapshot against the history (`keepUnchangedHistories`) and reads the flags at every `canvas:updated` send, replays included; a written step reloads the frame; `cd:key` gains `undo` / `redo` (Cmd/Ctrl+Z with frame focus; the chrome acts only from the focused history frame in Edit mode), and a capture-phase window listener handles Cmd/Ctrl+Z with chrome focus. Before it, feature 9e Edit fields + save (`feature/edit-fields-save`): the Edit-mode inspector is the first `artboard:edit` sender (drafts keyed to the element they started on, one save in flight, the next with the answered hash); new chrome → frame `cd:pick-refresh` and `cd:edit-apply` (Edit mode only; the runtime's one design-DOM write is that preview); `edit.style` is `''` when absent and `null` only over the cap; the chrome parses `artboard:edited` and adopts it without a frame reload (`documentHtml` / `documentVersion` vs `html`), skips stale pre-write posts (`replacedHashes`), and reloads a refused edit's frame from the latest adopted copy; a pick re-post keeps its announcement `sequence`; no host or disk change. Before it, feature 9d Edit mode + selection (`feature/edit-mode-selection`): no host or disk change; `cd:mode` gains `edit`, and in Edit mode the frame picker (shared with Comment mode) adds `edit {sourceNumber|null, sharedNumber, textState, text, style|null}` to each `cd:pick` (`describeEditTarget`, DOM reads only); the chrome's one acceptance rule `pickCounts` drops a `cd:hover` / `cd:pick` in Interact mode and a `cd:pick` whose `edit` does not match the mode, for the pick and the comment draft alike; the Edit-mode inspector (`inspectorView`, disabled fields) and the saved `mode` key (replacing `commentMode`). Before it, feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -326,10 +326,16 @@ sequenceDiagram
 - The frame reads the edit target through `getAttribute`, `childNodes`, `querySelectorAll` and
   `getComputedStyle` only (`editTarget.ts`); a page pick edits `body`. The exported `canvas.html` never sends `cd:mode`, so
   this code stays dormant there.
-- Inspector fields: the inline value as typed (`inlineValue`: the last declaration, read after the
-  tokenizer's own colon), the computed value from `edit.computed` as placeholder (9h); not editable
-  for no source number or a number shared by two live elements; "ask the Agent" for mixed content
-  or text over the cap.
+- Inspector sections (`editableSections`, 9i) follow the selection: Text (with Content) for plain
+  text, Typography plus an "ask the Agent" hint for mixed content, no text section for a container
+  or a void / raw-text element; then Appearance, Spacing (Gap for flex / grid, or when set or
+  drafted) and Border (its fields when bordered, else Add border). A text box shows the inline
+  value as typed (`inlineValue`: the last declaration, read after the tokenizer's own colon) and
+  the computed value from `edit.computed` as placeholder (9h); a select or toggle shows the
+  computed value. A set dot marks a field whose section Reset would remove a declaration
+  (`clearedProperties`; border parents count for border fields). Not editable for no source number
+  or a number shared by two live elements; text over the cap shows a message in place of Content,
+  and `style: null` keeps Content beside a style-too-long message.
 
 ## Edit fields + save (9e)
 
@@ -340,27 +346,31 @@ sequenceDiagram
   participant F as Frame runtime
   participant H as Host
   participant D as Disk
-  U->>C: focus a field
+  U->>C: focus any inspector control (.body focusin → handleFieldFocus, 9i)
   C->>F: cd:pick-refresh
-  F->>C: cd:pick {..., edit, repost: true} (describeContent, selector reused; sequence kept)
-  U->>C: first input
+  F->>C: cd:pick {..., edit, repost: true} (describeContent, selector reused, sequence kept)
+  U->>C: first input in a text box or swatch
+  opt the element has other open drafts (9i)
+    C->>C: #endOtherDrafts: a valid one saves first (enqueueEdit, as below), any other ends silently
+    C->>F: cd:edit-apply {baseline} (only a silently ended draft that previewed)
+  end
   C->>C: startDraft: key {frameId, sourceNumber, documentVersion}, baseline liveText + style
   C->>F: cd:edit-apply {sourceNumber, text | style} (draftPreview: previewText / setStyleProperty)
   F->>F: Edit mode, exactly one [data-cd-src=N]: textContent (plain only) or setAttribute style
   F->>C: cd:pick (rAF re-post, refreshed edit, repost: true)
-  U->>C: Enter / blur (text, size, spacing), change (colour), or a new pick of another element
+  U->>C: Enter / blur (text box), change (swatch), or a new pick of another element
   alt unchanged
     C->>F: cd:edit-apply {baseline} (only if a preview was sent)
-  else invalid (normalizeStyleValue, open or over-cap style, control characters)
-    C->>C: field error (aria-invalid, Message), draft kept
+  else invalid (applyStyleChanges refusal, over-cap style, control characters)
+    C->>C: field error (aria-invalid, Message with the field's own copy, 9i), draft kept
     C->>F: cd:edit-apply {baseline}
   else save
-    C->>C: enqueueEdit; nextSend: one in flight, drop heads whose frame left, is a tile or reloaded (NOT_SAVED_COPY)
+    C->>C: enqueueEdit, then nextSend: one in flight, drop heads whose frame left, is a tile or reloaded (NOT_SAVED_COPY)
     C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, field: 'text', value, liveText | styles: [{field, value}]}
     H->>D: editArtboard → updateArtboard (9c)
     alt written or same bytes
       H->>C: artboard:edited {requestId, frameId, hash, generation, html, canUndo, canRedo}
-      C->>C: adoptEditAnswer (record.hash === base): html, hash, generation, canUndo, canRedo; replacedHashes += base; no reload; send next
+      C->>C: adoptEditAnswer (record.hash === base): html, hash, generation, canUndo, canRedo, replacedHashes += base, no reload, send next
       H->>C: canvas:updated (echo: same html and hash): nothing reloads
       opt refresh that read disk before the write
         H->>C: canvas:updated (a replaced hash, older generation): placement only
@@ -390,6 +400,76 @@ sequenceDiagram
   copy in the same event. The request error clears on the next commit or a new pick of another
   element and survives a mode switch.
 - One `artboard:edit` in flight per panel, no timeout (`ponytail:` in `editRequests.ts`).
+
+## Choices, Reset and Add border (9i)
+
+A choice saves at once, with no draft; Reset and Add border are one save of several changes. All
+three share the 9e queue, answer and adopt path, and the 9f undo history.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant I as Inspector (view, Field)
+  participant C as Chrome (EditState, CommentPicker, CanvasState)
+  participant F as Frame runtime
+  participant H as Host (panelEdit, editHistory)
+  participant D as Disk
+  U->>I: focus a select, a segment button or a section header button
+  I->>C: handleFieldFocus (.body focusin)
+  C->>F: cd:pick-refresh
+  F->>C: cd:pick {..., edit, repost: true}
+  alt choice: Weight, Case, Overflow or Border style select, I / U / S, Align
+    U->>I: change (select) or click (segment button)
+    I->>C: handleStyleChanges([change]) (select: DOM value back to the computed option, a display-only option calls nothing)
+  else Reset (any section) or Add border (header button)
+    U->>I: click (ignored: detail > 1, an aria-disabled Reset, a held Enter / Space repeat)
+    I->>C: handleStyleChanges(action.changes, action.announcement)
+  end
+  C->>C: #endOtherDrafts: every open draft of the element (valid: saved first, else ended silently)
+  C->>C: stylesCommit: applyStyleChanges over pick.edit.style
+  alt no editable pick, or result equals the baseline
+    C-->>I: false, nothing sent
+  else invalid-choice or complex-style (refusal, or over MAX_PICK_STYLE_CHARS)
+    C->>C: request error (notSaved, aria-live), nothing sent
+    C-->>I: false
+  else save
+    C->>F: cd:edit-apply {sourceNumber, style}
+    C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, styles: [{field, value}, ...]} (#pump, when nothing is in flight)
+    C->>C: announcement "Text reset." / "Border added." (Reset, Add border only)
+    C-->>I: true (Add border arms the one-shot Width focus)
+    F->>C: cd:pick {..., edit, repost: true} (rAF re-post)
+    I->>I: keyed re-render: the focused control stays, Width takes focus after Add border
+    H->>D: editArtboard → updateArtboard (9c): one write
+    H->>H: recordEdit: one undo step (9f)
+    alt written or same bytes
+      H->>C: artboard:edited {requestId, frameId, hash, generation, html, canUndo, canRedo}
+      C->>C: adoptEditAnswer, no frame reload (9e)
+    else refused
+      H->>C: ui:error {requestId, message}
+      C->>F: reloadFrame (the pick drops, the Width focus clears)
+    end
+  end
+```
+
+- Reset sends every field of its section with value `''`: Text / Typography's nine style fields
+  (never Content), Appearance's four, Spacing's three (Gap even while hidden), Border's three (the
+  edit core then also drops `border` / `border-<side>` parents, 9h). Add border sends
+  `border-width: 1px` and `border-style: solid`; the colour stays `currentColor`. An inline
+  `font`, `text-decoration` or `background` parent is never removed (`ponytail:` in
+  `editInspector.ts`).
+- One open draft per element: a new draft (`handleFieldInput`) and every `handleStyleChanges`
+  call first end the picked element's other open drafts, a valid one through the 9e save, any
+  other silently (its preview reverted, no request error). So no save of the element lands between
+  a draft's start and its commit, and no preview restores a stale baseline.
+- The `cd:pick-refresh` on focus of any control gives a choice the style a design's script may
+  have changed since the pick; the baseline is the latest re-posted `pick.edit.style`, so a second
+  choice within one animation frame of a preview can read the state before it (`ponytail:` in
+  `Inspector.svelte`; disk always gets exactly what was sent).
+- Focus: the header button is always mounted and switches label in place (Reset on Border leaves
+  focus on it, now Add border). A re-render that removes the focused field (Gap hidden, the border
+  fields gone), or Tab's destination (recorded in the capture phase), hands focus to that
+  section's header button. Segment and header buttons ignore a held Enter / Space repeat
+  (`ignoreKeyRepeat`).
 
 ## Undo / redo (9f)
 
@@ -758,7 +838,7 @@ settles the gesture to disk (the Agent wins).
 | chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
 | chrome → host | `comment:copy` | `{requestId, id}` (8h) |
 | chrome → host | `comment:copy-open` | `{requestId}` (8h) |
-| chrome → host | `artboard:edit` | `{requestId, frameId, sourceNumber, hash}` plus either `{field: 'text', value, liveText}` or `{styles: StyleChange[]}`, `StyleChange` `{field, value}` with `field` in `EDIT_STYLE_FIELDS` (9c; `styles` 9h: 1..`EDIT_STYLE_FIELDS.length` distinct fields set or cleared together, one write and one undo step; a message with the text fields and `styles` parses as text; the pre-9h single-style shape is malformed; sent by the Edit-mode inspector since 9e, one in flight per panel) |
+| chrome → host | `artboard:edit` | `{requestId, frameId, sourceNumber, hash}` plus either `{field: 'text', value, liveText}` or `{styles: StyleChange[]}`, `StyleChange` `{field, value}` with `field` in `EDIT_STYLE_FIELDS` (9c; `styles` 9h: 1..`EDIT_STYLE_FIELDS.length` distinct fields set or cleared together, one write and one undo step; a message with the text fields and `styles` parses as text; the pre-9h single-style shape is malformed; sent by the Edit-mode inspector since 9e, one in flight per panel; a choice sends one change, a section Reset or Add border several, 9i) |
 | chrome → host | `artboard:history` | `{requestId, frameId, step: 'undo' \| 'redo'}` (9f; the inspector's Undo / Redo or Cmd/Ctrl+Z; one in flight per panel, shared with `artboard:edit`) |
 | host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` (each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a; each frame's `hash` is `hashHtml` of the disk HTML, `''` when unreadable, 9c; each frame's `canUndo` / `canRedo` is read from the undo history when the outbox sends, 9f) |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
@@ -779,7 +859,7 @@ settles the gesture to disk (the Agent wins).
 | chrome → frame | `cd:mode` | `{mode: 'interact' \| 'comment' \| 'edit'}` |
 | chrome → frame | `cd:pick-parent`, `cd:pick-child` | none |
 | chrome → frame | `cd:anchors` | `{anchors: [{id, selector}]}` (the frame's element comments, every status; replaces its previous list) |
-| chrome → frame | `cd:pick-refresh` | none (9e, Edit mode only; the frame re-describes its pick, selector reused, and re-posts it with `repost: true`) |
+| chrome → frame | `cd:pick-refresh` | none (9e, Edit mode only; sent when focus enters any inspector control, 9i; the frame re-describes its pick, selector reused, and re-posts it with `repost: true`) |
 | chrome → frame | `cd:edit-apply` | `{sourceNumber, text}` or `{sourceNumber, style}` (9e, Edit mode only; the live preview of the one element with that number; display only) |
 
 This table is the normative message contract; rule 02 keeps only the cross-cutting invariants.

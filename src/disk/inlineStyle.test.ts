@@ -4,6 +4,7 @@ import { test } from 'vite-plus/test';
 
 import {
 	BORDER_PARENTS,
+	clearedProperties,
 	MARGIN_LONGHANDS,
 	PADDING_LONGHANDS,
 	removeStyleProperty,
@@ -93,6 +94,15 @@ test('a shorthand field drops only its own longhands', () => {
 	);
 	assert.equal(set('overflow-x: auto', 'overflow', 'hidden'), 'overflow: hidden');
 	assert.equal(BORDER_PARENTS.length, 11);
+});
+
+test('clearedProperties is the field plus only its own longhands', () => {
+	assert.deepEqual(clearedProperties('font-size'), ['font-size']);
+	assert.deepEqual(clearedProperties('padding'), ['padding', ...PADDING_LONGHANDS]);
+	const width = clearedProperties('border-width');
+	assert.ok(width.includes('border-top-width'));
+	// A border field never clears a parent or another aspect: Reset on Border does that (9h).
+	assert.ok(!width.includes('border') && !width.includes('border-top-style'));
 });
 
 test('padding drops its ten longhands and nothing else', () => {

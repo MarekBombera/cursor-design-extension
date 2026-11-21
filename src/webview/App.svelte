@@ -209,6 +209,7 @@
 			{pick}
 			frameLabel={pick === undefined ? '' : frameLabel(canvas.frames, pick.frameId)}
 			drafts={edit.drafts}
+			drafted={edit.drafted}
 			requestError={edit.requestError}
 			fieldError={edit.fieldError}
 			onParent={() => picker.stepPick('cd:pick-parent')}
@@ -216,8 +217,9 @@
 			onFieldFocus={edit.handleFieldFocus}
 			onFieldInput={edit.handleFieldInput}
 			onFieldCommit={edit.handleFieldCommit}
+			onStyleChanges={edit.handleStyleChanges}
 			history={edit.history}
-			historyAnnouncement={edit.historyAnnouncement}
+			announcement={edit.announcement}
 			onUndo={() => edit.handleHistoryStep('undo')}
 			onRedo={() => edit.handleHistoryStep('redo')}
 		/>

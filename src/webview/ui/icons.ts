@@ -6,6 +6,10 @@ export type IconShape =
 	| { kind: 'rect'; x: number; y: number; width: number; height: number; rx?: number };
 
 export const ICONS = {
+	'align-center': [{ kind: 'path', path: 'M2.5 4h11M4.5 8h7M3.5 12h9' }],
+	'align-justify': [{ kind: 'path', path: 'M2.5 4h11M2.5 8h11M2.5 12h11' }],
+	'align-left': [{ kind: 'path', path: 'M2.5 4h11M2.5 8h7M2.5 12h9' }],
+	'align-right': [{ kind: 'path', path: 'M2.5 4h11M6.5 8h7M4.5 12h9' }],
 	'arrow-down': [{ kind: 'path', path: 'M8 3v9.5M4 8.5l4 4 4-4' }],
 	'arrow-up': [{ kind: 'path', path: 'M8 13V3.5M4 7.5l4-4 4 4' }],
 	artboard: [
@@ -54,6 +58,7 @@ export const ICONS = {
 	],
 	page: [{ kind: 'path', path: 'M4 1.5h5l3 3v10H4zM9 1.5v3h3' }],
 	plug: [{ kind: 'path', path: 'M6 1.8v3M10 1.8v3M4.5 4.8h7v2.7a3.5 3.5 0 0 1-7 0zM8 11v3.2' }],
+	plus: [{ kind: 'path', path: 'M8 3.5v9M3.5 8h9' }],
 	question: [
 		{ kind: 'circle', cx: 8, cy: 8, radius: 6 },
 		{ kind: 'path', path: 'M6.3 6.4a1.8 1.8 0 1 1 2.5 1.6c-.5.25-.8.6-.8 1.1v.3' },

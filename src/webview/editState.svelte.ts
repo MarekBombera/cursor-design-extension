@@ -1,4 +1,6 @@
 import type { CanvasState } from './canvasState.svelte';
+import type { StyleChange, StyleField } from '../disk/editValues';
+import type { ChromePick } from './commentPick';
 import { type CommentPicker, isTextEntry } from './commentPicker.svelte';
 import { frameLabel, liveRegionText } from './commentsPanel';
 import {
@@ -20,7 +22,9 @@ import {
 	type EditDraft,
 	FIELD_ERROR_COPY,
 	invalidDraftCopy,
+	sameElement,
 	startDraft,
+	stylesCommit,
 } from './editDrafts';
 import type { FramePickMessage } from './frame/frameMessages';
 import { postEditRequest } from './hostBridge.svelte';
@@ -47,8 +51,8 @@ export class EditState {
 	readonly #picker: CommentPicker;
 
 	readonly requestError = $derived(this.requests.error?.message);
-	// After a written step; a repeat still speaks (liveRegionText).
-	readonly historyAnnouncement = $derived(liveRegionText(this.#announcement));
+	// After a written step or a saved Reset / Add border; a repeat still speaks (liveRegionText).
+	readonly announcement = $derived(liveRegionText(this.#announcement));
 
 	constructor({ canvas, picker }: { canvas: CanvasState; picker: CommentPicker }) {
 		this.#canvas = canvas;
@@ -58,6 +62,17 @@ export class EditState {
 	// A getter, not a field $derived: #canvas is set in the constructor, after field initializers.
 	get history(): HistoryTarget | undefined {
 		return historyTarget({ frames: this.#canvas.frames, frameId: this.historyFrameId });
+	}
+
+	// The style fields with an open draft for the picked element: editableSections keeps them shown
+	// while an emptied box's preview says they are unset.
+	get drafted(): ReadonlySet<StyleField> {
+		const pick = this.#picker.picking.pick;
+		return new Set(
+			Object.values(this.drafts).flatMap((draft) =>
+				draft.field === 'text' || !sameElement(draft.key, pick) ? [] : [draft.field],
+			),
+		);
 	}
 
 	fieldError = (field: EditField): string | undefined => {
@@ -77,6 +92,13 @@ export class EditState {
 		}
 	};
 
+	#announce = (text: string): void => {
+		this.#announcement = { text, sequence: this.#announcement.sequence + 1 };
+	};
+
+	#documentVersion = (pick: ChromePick | undefined): number =>
+		this.#canvas.frames.find((candidate) => candidate.id === pick?.frameId)?.documentVersion ?? -1;
+
 	#setDraft = (field: EditField, draft: EditDraft | undefined): void => {
 		const { [field]: _dropped, ...rest } = this.drafts;
 		this.drafts = draft === undefined ? rest : { ...rest, [field]: draft };
@@ -91,7 +113,8 @@ export class EditState {
 		this.requests = notSaved(this.requests, { key: draft.key });
 	};
 
-	// Focus: the frame re-describes the pick first, so the baseline a draft takes is fresh.
+	// Focus on any inspector control: the frame re-describes the pick first, so the baseline a
+	// draft or a choice takes is fresh (a design's script may have changed the style since).
 	handleFieldFocus = (): void => {
 		const pick = this.#picker.picking.pick;
 		if (pick !== undefined) {
@@ -99,13 +122,41 @@ export class EditState {
 		}
 	};
 
+	// Ends unsent and unannounced: the user moved to another control of the same element.
+	#endDraftSilently = (draft: EditDraft): void => {
+		if (draft.previewed) {
+			this.#canvas.sendToFrame(draft.key.frameId, baselinePreview(draft));
+		}
+		this.#setDraft(draft.field, undefined);
+	};
+
+	// One open draft per element: a valid one is saved first, the rest end silently, so no save of
+	// this element lands between another draft's start and its commit (a stale baseline).
+	// `field` undefined ends them all (a choice, Reset or Add border).
+	#endOtherDrafts = (field: EditField | undefined): void => {
+		const pick = this.#picker.picking.pick;
+		for (const draft of Object.values(this.drafts)) {
+			if (draft.field === field || !sameElement(draft.key, pick)) {
+				continue;
+			}
+			if (commitDraft(draft).kind === 'save') {
+				this.#commit(draft, { ending: 'field' });
+			} else {
+				this.#endDraftSilently(draft);
+			}
+		}
+	};
+
 	handleFieldInput = (field: EditField, value: string): void => {
 		const pick = this.#picker.picking.pick;
 		const existing = this.drafts[field];
-		const frame = this.#canvas.frames.find((candidate) => candidate.id === pick?.frameId);
+		// The others end before this draft reads its baseline, so their reverts land first (D5).
+		if (existing === undefined) {
+			this.#endOtherDrafts(field);
+		}
 		const draft =
 			existing === undefined
-				? startDraft({ pick, documentVersion: frame?.documentVersion ?? -1, field, value })
+				? startDraft({ pick, documentVersion: this.#documentVersion(pick), field, value })
 				: { ...existing, value, error: undefined };
 		if (draft === undefined) {
 			return;
@@ -115,6 +166,30 @@ export class EditState {
 			this.#canvas.sendToFrame(draft.key.frameId, preview);
 		}
 		this.#setDraft(field, { ...draft, previewed: draft.previewed || preview !== undefined });
+	};
+
+	// A choice, Reset or Add border: one save of every change (one undo step). True when enqueued.
+	handleStyleChanges = (changes: readonly StyleChange[], announcement?: string): boolean => {
+		this.#endOtherDrafts(undefined);
+		const pick = this.#picker.picking.pick;
+		const verdict = stylesCommit({ pick, documentVersion: this.#documentVersion(pick), changes });
+		if (verdict.kind === 'invalid') {
+			this.requests = notSaved(this.requests, {
+				key: verdict.key,
+				message: FIELD_ERROR_COPY[verdict.error],
+			});
+			return false;
+		}
+		if (verdict.kind !== 'save') {
+			return false;
+		}
+		this.#canvas.sendToFrame(verdict.commit.key.frameId, verdict.preview);
+		this.requests = enqueueEdit(this.requests, verdict.commit);
+		this.#pump();
+		if (announcement !== undefined) {
+			this.#announce(announcement);
+		}
+		return true;
 	};
 
 	handleFieldCommit = (field: EditField): void => {
@@ -268,10 +343,7 @@ export class EditState {
 					this.#canvas.reloadFrame(step.stepDone.frameId);
 				}
 				const verb = step.stepDone.step === 'undo' ? 'Undone' : 'Redone';
-				this.#announcement = {
-					text: `${verb} in ${frameLabel(this.#canvas.frames, step.stepDone.frameId)}.`,
-					sequence: this.#announcement.sequence + 1,
-				};
+				this.#announce(`${verb} in ${frameLabel(this.#canvas.frames, step.stepDone.frameId)}.`);
 			}
 		}
 		for (const frameId of step.reloadFrameIds) {
