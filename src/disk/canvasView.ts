@@ -14,6 +14,7 @@ import { type HandoffCompare, compareCanvasHandoff } from './handoff';
 import { hashHtml } from './hash';
 import { artboardHtmlPathSegments, artboardsDirSegments } from './layout';
 import {
+	type PageLocation,
 	assertLayoutDirsOwned,
 	layoutEntryKind,
 	readCanvasLayoutFile,
@@ -26,7 +27,7 @@ import {
 import { type ArtboardManifest, type ArtboardMeta, parseArtboardId } from './parse';
 
 export type ListArtboardsArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 };
 
 type ListedArtboard = {
@@ -65,7 +66,7 @@ export type CanvasView = {
 };
 
 export type ReadCanvasViewArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 };
 
 export const FRAME_READ_ERROR_MESSAGE =
@@ -131,14 +132,14 @@ const pushUnreadableMeta = ({
 };
 
 export const scanArtboardFiles = async ({
-	workspaceRoot,
+	page,
 	tolerateHtmlDiskError,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	tolerateHtmlDiskError: boolean;
 }): Promise<ScannedArtboards> => {
-	await assertLayoutDirsOwned(workspaceRoot);
-	const artboardsDirectory = workspaceJoin(workspaceRoot, artboardsDirSegments);
+	await assertLayoutDirsOwned(page);
+	const artboardsDirectory = workspaceJoin(page.workspaceRoot, artboardsDirSegments(page.pageId));
 	if ((await layoutEntryKind(artboardsDirectory)) === 'missing') {
 		return { activeArtboardId: '', artboards: [], artboardsDirMissing: true };
 	}
@@ -150,7 +151,7 @@ export const scanArtboardFiles = async ({
 		return throwDiskError(error);
 	}
 
-	const manifest = await readManifestFile(workspaceRoot);
+	const manifest = await readManifestFile(page);
 	const activeArtboardId = manifest?.activeArtboardId ?? '';
 	const artboards: ScannedArtboard[] = [];
 	for (const fileName of fileNames) {
@@ -167,7 +168,10 @@ export const scanArtboardFiles = async ({
 			throw error;
 		}
 
-		const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(candidateId));
+		const htmlLayout = workspaceLayoutFile(
+			page.workspaceRoot,
+			artboardHtmlPathSegments(page.pageId, candidateId),
+		);
 		if ((await layoutEntryKind(htmlLayout.filePath)) !== 'file') {
 			continue;
 		}
@@ -192,7 +196,7 @@ export const scanArtboardFiles = async ({
 
 		let storedMeta: ArtboardMeta | undefined;
 		try {
-			storedMeta = await readStoredMeta(workspaceRoot, candidateId);
+			storedMeta = await readStoredMeta(page, candidateId);
 		} catch (error: unknown) {
 			if (error instanceof DiskError || error instanceof CorruptMetaError) {
 				// ponytail: an unreadable meta (symlink, corrupt, foreign id) lists the artboard
@@ -274,10 +278,10 @@ export const compareScannedHandoff = (
 	});
 
 const resolveLayoutOrEmpty = async (
-	workspaceRoot: string,
+	page: PageLocation,
 ): Promise<{ stored: CanvasFrame[]; layoutErrorMessage?: string }> => {
 	try {
-		return { stored: (await readCanvasLayoutFile(workspaceRoot)).frames };
+		return { stored: (await readCanvasLayoutFile(page)).frames };
 	} catch (error: unknown) {
 		if (error instanceof CorruptCanvasError || error instanceof UnsupportedCanvasVersionError) {
 			return { stored: [], layoutErrorMessage: error.message };
@@ -286,15 +290,13 @@ const resolveLayoutOrEmpty = async (
 	}
 };
 
-export const listArtboards = async ({
-	workspaceRoot,
-}: ListArtboardsArgs): Promise<ListArtboardsResult> => {
-	const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: false });
+export const listArtboards = async ({ page }: ListArtboardsArgs): Promise<ListArtboardsResult> => {
+	const scanned = await scanArtboardFiles({ page, tolerateHtmlDiskError: false });
 	const artboards = scanned.artboards.map(listedFromScan);
 	if (scanned.artboardsDirMissing) {
 		return { activeArtboardId: '', artboards: [], frames: [] };
 	}
-	const layout = await readCanvasLayoutFile(workspaceRoot);
+	const layout = await readCanvasLayoutFile(page);
 	const frames = resolveCanvasFrames({
 		stored: layout.frames,
 		artboards: artboards.map(({ artboardId, title }) => ({ artboardId, title })),
@@ -302,14 +304,12 @@ export const listArtboards = async ({
 	return { activeArtboardId: scanned.activeArtboardId, artboards, frames };
 };
 
-export const readCanvasView = async ({
-	workspaceRoot,
-}: ReadCanvasViewArgs): Promise<CanvasView> => {
-	const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: true });
+export const readCanvasView = async ({ page }: ReadCanvasViewArgs): Promise<CanvasView> => {
+	const scanned = await scanArtboardFiles({ page, tolerateHtmlDiskError: true });
 	if (scanned.artboardsDirMissing) {
 		return { activeArtboardId: '', frames: [], handoffStale: false };
 	}
-	const { stored, layoutErrorMessage } = await resolveLayoutOrEmpty(workspaceRoot);
+	const { stored, layoutErrorMessage } = await resolveLayoutOrEmpty(page);
 	const byId = new Map(scanned.artboards.map((entry) => [entry.artboardId, entry]));
 	const hashes = scannedHashes(scanned);
 	const htmlReadErrors: CanvasViewHtmlReadError[] = [];

@@ -83,7 +83,8 @@ test('a broken comments.json shows its own banner and never blanks the stage', a
 
 	const banner = page.locator('[data-cd-comments-error]');
 	await expect(banner).toBeHidden();
-	const error = 'comments.json is not valid. Fix or delete .cursor-design/comments.json.';
+	const error =
+		'comments.json is not valid. Fix or delete .cursor-design/pages/page-1/comments.json.';
 	await postToChrome(page, { type: 'comments:updated', comments: [], error });
 	await expect(banner).toBeVisible();
 	await expect(banner).toHaveText(error);

@@ -1,14 +1,14 @@
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import { registerArtboardTools } from './artboardTools';
 import { addComment } from '../disk/comments';
-import { commentsPathSegments } from '../disk/layout';
+import { FIRST_PAGE_ID, commentsPathSegments } from '../disk/layout';
 import { registerCommentTools } from './commentTools';
 import {
 	CURSOR_DESIGN_MCP_SERVER_NAME,
@@ -179,7 +179,7 @@ const seedHeroComment = async (
 ): Promise<{ commentId: string }> => {
 	assertSuccess(await callTool(client, SET_ARTBOARD_TOOL, { artboardId: 'hero', html: HERO_HTML }));
 	const comment = await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: {
 			frameId: 'hero',
 			generation: 1,
@@ -327,10 +327,39 @@ test('corrupt comments.json is CORRUPT_COMMENTS and names the relative path', as
 		assertSuccess(
 			await callTool(client, SET_ARTBOARD_TOOL, { artboardId: 'hero', html: HERO_HTML }),
 		);
-		await writeFile(join(workspaceRoot, ...commentsPathSegments), '{', 'utf8');
+		await writeFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), '{', 'utf8');
 		const result = await callTool(client, LIST_COMMENTS_TOOL);
 		const body = requireErrorCode(result, 'CORRUPT_COMMENTS');
-		assert.ok(String(body.message).includes('.cursor-design/comments.json'));
+		assert.ok(String(body.message).includes('.cursor-design/pages/page-1/comments.json'));
 		assertNoLeak(result, workspaceRoot);
+	});
+});
+
+test('every tool but set_artboard answers a fresh root as an empty folder and creates nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		const listedArtboards = assertSuccess(await callTool(client, LIST_ARTBOARDS_TOOL));
+		assert.deepEqual(listedArtboards.artboards, []);
+		assert.deepEqual(listedArtboards.frames, []);
+		assert.deepEqual(assertSuccess(await callTool(client, LIST_COMMENTS_TOOL)).comments, []);
+		const refusals: [string, Record<string, unknown>, string][] = [
+			[READ_ARTBOARD_TOOL, {}, 'ARTBOARD_NOT_FOUND'],
+			[GET_COMMENT_TOOL, { id: 'c1' }, 'COMMENT_NOT_FOUND'],
+			[HANDOFF_STATUS_TOOL, {}, 'ARTBOARD_NOT_FOUND'],
+			[
+				UPDATE_ARTBOARD_TOOL,
+				{ artboardId: 'hero', html: '<p>x</p>', baseGeneration: 1 },
+				'ARTBOARD_NOT_FOUND',
+			],
+			[PLACE_FRAME_TOOL, { id: 'hero', x: 0, y: 0 }, 'ARTBOARD_NOT_FOUND'],
+			[SET_ACTIVE_ARTBOARD_TOOL, { artboardId: 'hero' }, 'ARTBOARD_NOT_FOUND'],
+			[EXPORT_ARTBOARD_TOOL, {}, 'ARTBOARD_NOT_FOUND'],
+			[RESOLVE_COMMENT_TOOL, { id: 'c1', note: 'done' }, 'COMMENT_NOT_FOUND'],
+		];
+		for (const [name, args, code] of refusals) {
+			requireErrorCode(await callTool(client, name, args), code);
+		}
+		assert.deepEqual(await readdir(workspaceRoot), []);
 	});
 });

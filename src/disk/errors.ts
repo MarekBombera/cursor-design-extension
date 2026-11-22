@@ -1,12 +1,19 @@
 import type { EditRefusal } from './artboardEdit';
 import {
+	ARTBOARDS_DIR,
 	CANVAS_SCHEMA_VERSION,
 	COMMENTS_SCHEMA_VERSION,
+	PROJECT_SCHEMA_VERSION,
+	type PageEntry,
 	SCHEMA_VERSION,
 	artboardMetaPathSegments,
 	canvasPathSegments,
 	commentsPathSegments,
 	manifestPathSegments,
+	pageDirSegments,
+	pageEntrySegments,
+	projectPathSegments,
+	rootEntrySegments,
 } from './layout';
 
 export abstract class CursorDesignError extends Error {
@@ -40,69 +47,93 @@ export class InvalidArtboardIdError extends CursorDesignError {
 export class CorruptManifestError extends CursorDesignError {
 	readonly code = 'CORRUPT_MANIFEST' as const;
 
-	constructor(options?: { cause?: unknown }) {
+	readonly pageId: string;
+
+	constructor({ pageId }: { pageId: string }, options?: { cause?: unknown }) {
 		super(
-			`Artboard manifest is invalid. Fix or restore ${manifestPathSegments.join('/')} (version ${SCHEMA_VERSION}).`,
+			`Artboard manifest is invalid. Fix or restore ${manifestPathSegments(pageId).join('/')} (version ${SCHEMA_VERSION}).`,
 			options,
 		);
 		this.name = 'CorruptManifestError';
+		this.pageId = pageId;
 	}
 }
 
 export class UnsupportedSchemaVersionError extends CursorDesignError {
 	readonly code = 'UNSUPPORTED_SCHEMA_VERSION' as const;
 
+	readonly pageId: string;
+
+	readonly version: number;
+
 	constructor(
-		readonly version: number,
+		{ pageId, version }: { pageId: string; version: number },
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Artboard manifest version ${version} is unsupported. Expected version ${SCHEMA_VERSION}. Fix or restore ${manifestPathSegments.join('/')}.`,
+			`Artboard manifest version ${version} is unsupported. Expected version ${SCHEMA_VERSION}. Fix or restore ${manifestPathSegments(pageId).join('/')}.`,
 			options,
 		);
 		this.name = 'UnsupportedSchemaVersionError';
+		this.pageId = pageId;
+		this.version = version;
 	}
 }
 
 export class CorruptCanvasError extends CursorDesignError {
 	readonly code = 'CORRUPT_CANVAS' as const;
 
-	constructor(options?: { cause?: unknown }) {
+	readonly pageId: string;
+
+	constructor({ pageId }: { pageId: string }, options?: { cause?: unknown }) {
 		super(
-			`Canvas layout is invalid. Fix or restore ${canvasPathSegments.join('/')} (version ${CANVAS_SCHEMA_VERSION}), or delete it to auto-place every frame.`,
+			`Canvas layout is invalid. Fix or restore ${canvasPathSegments(pageId).join('/')} (version ${CANVAS_SCHEMA_VERSION}), or delete it to auto-place every frame.`,
 			options,
 		);
 		this.name = 'CorruptCanvasError';
+		this.pageId = pageId;
 	}
 }
 
 export class UnsupportedCanvasVersionError extends CursorDesignError {
 	readonly code = 'UNSUPPORTED_CANVAS_VERSION' as const;
 
+	readonly pageId: string;
+
+	readonly version: number;
+
 	constructor(
-		readonly version: number,
+		{ pageId, version }: { pageId: string; version: number },
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Canvas layout version ${version} is unsupported (expected ${CANVAS_SCHEMA_VERSION}). Fix ${canvasPathSegments.join('/')} or delete it to auto-place every frame.`,
+			`Canvas layout version ${version} is unsupported (expected ${CANVAS_SCHEMA_VERSION}). Fix ${canvasPathSegments(pageId).join('/')} or delete it to auto-place every frame.`,
 			options,
 		);
 		this.name = 'UnsupportedCanvasVersionError';
+		this.pageId = pageId;
+		this.version = version;
 	}
 }
 
 export class CorruptMetaError extends CursorDesignError {
 	readonly code = 'CORRUPT_META' as const;
 
+	readonly pageId: string;
+
+	readonly artboardId: string;
+
 	constructor(
-		readonly artboardId: string,
+		{ pageId, artboardId }: { pageId: string; artboardId: string },
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Artboard "${artboardId}" meta is invalid. Restore ${artboardMetaPathSegments(artboardId).join('/')} or set_artboard a new id.`,
+			`Artboard "${artboardId}" meta is invalid. Restore ${artboardMetaPathSegments(pageId, artboardId).join('/')} or set_artboard a new id.`,
 			options,
 		);
 		this.name = 'CorruptMetaError';
+		this.pageId = pageId;
+		this.artboardId = artboardId;
 	}
 }
 
@@ -242,27 +273,36 @@ export class FrameMovedError extends CursorDesignError {
 export class CorruptCommentsError extends CursorDesignError {
 	readonly code = 'CORRUPT_COMMENTS' as const;
 
-	constructor(options?: { cause?: unknown }) {
+	readonly pageId: string;
+
+	constructor({ pageId }: { pageId: string }, options?: { cause?: unknown }) {
 		super(
-			`Comments file is invalid. Fix or restore ${commentsPathSegments.join('/')} (version ${COMMENTS_SCHEMA_VERSION}), or delete it to drop every comment.`,
+			`Comments file is invalid. Fix or restore ${commentsPathSegments(pageId).join('/')} (version ${COMMENTS_SCHEMA_VERSION}), or delete it to drop every comment.`,
 			options,
 		);
 		this.name = 'CorruptCommentsError';
+		this.pageId = pageId;
 	}
 }
 
 export class UnsupportedCommentsVersionError extends CursorDesignError {
 	readonly code = 'UNSUPPORTED_COMMENTS_VERSION' as const;
 
+	readonly pageId: string;
+
+	readonly version: number;
+
 	constructor(
-		readonly version: number,
+		{ pageId, version }: { pageId: string; version: number },
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Comments file version ${version} is unsupported (expected ${COMMENTS_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${commentsPathSegments.join('/')}.`,
+			`Comments file version ${version} is unsupported (expected ${COMMENTS_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${commentsPathSegments(pageId).join('/')}.`,
 			options,
 		);
 		this.name = 'UnsupportedCommentsVersionError';
+		this.pageId = pageId;
+		this.version = version;
 	}
 }
 
@@ -324,6 +364,84 @@ export class EditRefusedError extends CursorDesignError {
 	) {
 		super(EDIT_REFUSED_MESSAGES[reason], options);
 		this.name = 'EditRefusedError';
+	}
+}
+
+export class PageNotFoundError extends CursorDesignError {
+	readonly code = 'PAGE_NOT_FOUND' as const;
+
+	constructor(
+		readonly pageId: string,
+		options?: { cause?: unknown },
+	) {
+		super(
+			`Page "${pageId}" has no folder. Restore ${pageDirSegments(pageId).join('/')}/, or delete ${projectPathSegments.join('/')} to rebuild the page list from the page folders.`,
+			options,
+		);
+		this.name = 'PageNotFoundError';
+	}
+}
+
+export class CorruptProjectError extends CursorDesignError {
+	readonly code = 'CORRUPT_PROJECT' as const;
+
+	constructor(options?: { cause?: unknown }) {
+		super(
+			`Project index is invalid. Fix ${projectPathSegments.join('/')} (version ${PROJECT_SCHEMA_VERSION}), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".`,
+			options,
+		);
+		this.name = 'CorruptProjectError';
+	}
+}
+
+export class UnsupportedProjectVersionError extends CursorDesignError {
+	readonly code = 'UNSUPPORTED_PROJECT_VERSION' as const;
+
+	constructor(
+		readonly version: number,
+		options?: { cause?: unknown },
+	) {
+		super(
+			`Project index version ${version} is unsupported (expected ${PROJECT_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${projectPathSegments.join('/')}.`,
+			options,
+		);
+		this.name = 'UnsupportedProjectVersionError';
+	}
+}
+
+const migrationConflictMessage = (pageId: string, names: readonly PageEntry[]): string => {
+	const rootArtboards = rootEntrySegments(ARTBOARDS_DIR).join('/');
+	const pageArtboards = pageEntrySegments(pageId, ARTBOARDS_DIR).join('/');
+	const clauses = names.map((name) =>
+		name === ARTBOARDS_DIR
+			? `${rootArtboards}/ is a folder, but artboards now live in ${pageArtboards}/`
+			: `${rootEntrySegments(name).join('/')} and ${pageEntrySegments(pageId, name).join('/')} both exist`,
+	);
+	const artboardsStep = names.includes(ARTBOARDS_DIR)
+		? ` Move the files you want from ${rootArtboards}/ into ${pageArtboards}/, then delete ${rootArtboards}/ (quit and reopen Cursor first if an older cursor-design MCP server may still be running).`
+		: '';
+	const jsonStep = names.some((name) => name !== ARTBOARDS_DIR)
+		? ' Keep one copy of each JSON file: move or delete the other by hand.'
+		: '';
+	return `Cannot move the existing design into ${pageDirSegments(pageId).join('/')}/: ${clauses.join('; ')}.${artboardsStep}${jsonStep} Then retry.`;
+};
+
+// A 0.4 entry and its page-folder twin both exist: the migration never picks one, the user does.
+export class MigrationConflictError extends CursorDesignError {
+	readonly code = 'MIGRATION_CONFLICT' as const;
+
+	readonly pageId: string;
+
+	readonly names: readonly PageEntry[];
+
+	constructor(
+		{ pageId, names }: { pageId: string; names: readonly PageEntry[] },
+		options?: { cause?: unknown },
+	) {
+		super(migrationConflictMessage(pageId, names), options);
+		this.name = 'MigrationConflictError';
+		this.pageId = pageId;
+		this.names = names;
 	}
 }
 

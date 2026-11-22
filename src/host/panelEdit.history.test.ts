@@ -9,7 +9,8 @@ import { createArtboard, readArtboard } from '../disk/artboardFs';
 import { LockTimeoutError } from '../disk/errors';
 import { hashHtml } from '../disk/hash';
 import { clearEditHistories, historyFlags } from './editHistory';
-import { MAX_HISTORY_STEPS, artboardHtmlPathSegments } from '../disk/layout';
+import { FIRST_PAGE_ID, MAX_HISTORY_STEPS, artboardHtmlPathSegments } from '../disk/layout';
+import { resolveOpenPage } from '../disk/openPage';
 import { withWorkspaceLock } from '../disk/workspaceLock';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import {
@@ -60,7 +61,7 @@ let requestCount = 0;
 
 const lastAnswer = (): Answer => vi.mocked(postAnswerToPanel).mock.calls.at(-1)?.[0] as Answer;
 
-const htmlPath = (): string => join(host.root, ...artboardHtmlPathSegments('hero'));
+const htmlPath = (): string => join(host.root, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 
 const diskHtml = (): Promise<string> => readFile(htmlPath(), 'utf8');
 
@@ -108,8 +109,9 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	clearEditHistories();
 	host.root = await mkdtemp(join(tmpdir(), 'cursor-design-history-'));
+	await resolveOpenPage({ workspaceRoot: host.root, createIfFresh: true });
 	await createArtboard({
-		workspaceRoot: host.root,
+		page: { workspaceRoot: host.root, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: ORIGINAL,
 		writeEnsurePanelMarker: false,
@@ -134,7 +136,10 @@ test('undo restores the exact original bytes, redo the edited ones', async () =>
 	assert.equal(undone?.generation, (edited.generation ?? 0) + 1);
 	assert.deepEqual([undone?.canUndo, undone?.canRedo], [false, true]);
 	assert.match(undone?.html ?? '', /data-cd-src="1"/);
-	const read = await readArtboard({ workspaceRoot: host.root, artboardId: 'hero' });
+	const read = await readArtboard({
+		page: { workspaceRoot: host.root, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
 	assert.equal(read.generation, undone?.generation);
 
 	const redone = await historyStep('redo');
@@ -143,7 +148,10 @@ test('undo restores the exact original bytes, redo the edited ones', async () =>
 });
 
 test('a two-change save writes once and one undo restores both declarations', async () => {
-	const before = await readArtboard({ workspaceRoot: host.root, artboardId: 'hero' });
+	const before = await readArtboard({
+		page: { workspaceRoot: host.root, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
 	const edited = await editStyles([
 		{ field: 'padding', value: '8' },
 		{ field: 'font-weight', value: '700' },

@@ -9,7 +9,13 @@ import {
 import type { Comment } from './commentsFile';
 import { DiskError, logStderr } from './errors';
 import { artboardHtmlPathSegments } from './layout';
-import { layoutEntryKind, readUtf8IfExists, workspaceJoin, workspaceLayoutFile } from './layoutFs';
+import {
+	type PageLocation,
+	layoutEntryKind,
+	readUtf8IfExists,
+	workspaceJoin,
+	workspaceLayoutFile,
+} from './layoutFs';
 
 // Each comment's stale / targetMissing flags, checked against its frame's HTML on disk.
 
@@ -56,19 +62,19 @@ export const cachedArtboardDocument = ({
 };
 
 const loadArtboardDocument = async (
-	workspaceRoot: string,
+	page: PageLocation,
 	frameId: string,
 ): Promise<CommentDocument> => {
-	const key = frameCacheKey(workspaceRoot, frameId);
+	const key = frameCacheKey(page.workspaceRoot, frameId);
 	try {
 		const html = await readUtf8IfExists(
-			workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(frameId)),
+			workspaceLayoutFile(page.workspaceRoot, artboardHtmlPathSegments(page.pageId, frameId)),
 		);
 		if (html === undefined) {
 			parsedDocuments.delete(key);
 			return 'missing';
 		}
-		return cachedArtboardDocument({ workspaceRoot, frameId, html });
+		return cachedArtboardDocument({ workspaceRoot: page.workspaceRoot, frameId, html });
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
 			logStderr('comment target read', error);
@@ -79,13 +85,10 @@ const loadArtboardDocument = async (
 	}
 };
 
-const loadFramePresence = async (
-	workspaceRoot: string,
-	frameId: string,
-): Promise<CommentDocument> => {
+const loadFramePresence = async (page: PageLocation, frameId: string): Promise<CommentDocument> => {
 	try {
 		const kind = await layoutEntryKind(
-			workspaceJoin(workspaceRoot, artboardHtmlPathSegments(frameId)),
+			workspaceJoin(page.workspaceRoot, artboardHtmlPathSegments(page.pageId, frameId)),
 		);
 		if (kind === 'missing') {
 			return 'missing';
@@ -107,7 +110,7 @@ const loadFramePresence = async (
 // ponytail: a whole-file parse on the extension host thread, once per HTML change per frame; no
 // byte cap. Upgrade path: a worker thread for the host read.
 const documentsFor = async (
-	workspaceRoot: string,
+	page: PageLocation,
 	comments: readonly Comment[],
 ): Promise<Map<string, CommentDocument>> => {
 	const parseIds = new Set<string>();
@@ -121,21 +124,21 @@ const documentsFor = async (
 	}
 	const documents = new Map<string, CommentDocument>();
 	for (const frameId of parseIds) {
-		documents.set(frameId, await loadArtboardDocument(workspaceRoot, frameId));
+		documents.set(frameId, await loadArtboardDocument(page, frameId));
 	}
 	for (const frameId of presenceIds) {
 		if (!documents.has(frameId)) {
-			documents.set(frameId, await loadFramePresence(workspaceRoot, frameId));
+			documents.set(frameId, await loadFramePresence(page, frameId));
 		}
 	}
 	return documents;
 };
 
 export const withCommentViews = async (
-	workspaceRoot: string,
+	page: PageLocation,
 	comments: Comment[],
 ): Promise<CommentView[]> => {
-	const documents = await documentsFor(workspaceRoot, comments);
+	const documents = await documentsFor(page, comments);
 	// After the parse: the budget bounds matching only, so a slow parse never skips a match.
 	const started = performance.now();
 	return comments.map((comment) => {

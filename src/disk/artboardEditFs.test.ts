@@ -17,10 +17,12 @@ import {
 } from './errors';
 import { hashHtml } from './hash';
 import {
+	FIRST_PAGE_ID,
 	MAX_POSTED_ARTBOARD_HTML_CHARS,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 } from './layout';
+import { resolveOpenPage } from './openPage';
 
 // Test seam: rewrite the file once, synchronously, between editArtboard's pre-read parse and the
 // lock its updateArtboard call takes.
@@ -50,8 +52,17 @@ afterEach(async () => {
 const seed = async (html: string): Promise<{ workspaceRoot: string; htmlPath: string }> => {
 	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-edit-'));
 	tempRoots.push(workspaceRoot);
-	await createArtboard({ workspaceRoot, artboardId: 'hero', html, writeEnsurePanelMarker: false });
-	return { workspaceRoot, htmlPath: join(workspaceRoot, ...artboardHtmlPathSegments('hero')) };
+	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
+	await createArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+		html,
+		writeEnsurePanelMarker: false,
+	});
+	return {
+		workspaceRoot,
+		htmlPath: join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+	};
 };
 
 const fontSize = (sourceNumber: number, value: string): ArtboardEdit => ({
@@ -71,7 +82,7 @@ test('a style edit writes only that declaration and returns the new hash and gen
 	const html = '<main>\n  <h1 style="color: red">Hi</h1>\n  <p>x</p>\n</main>\n';
 	const { workspaceRoot, htmlPath } = await seed(html);
 	const result = await editArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		baseHash: hashHtml(html),
 		edit: fontSize(1, '24'),
@@ -93,7 +104,7 @@ test('a stale base hash is a conflict and the file is untouched', async () => {
 	const { workspaceRoot, htmlPath } = await seed('<p>a</p>');
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml('<p>other</p>'),
 			edit: fontSize(0, '12'),
@@ -123,7 +134,12 @@ test('each edit core refusal surfaces as EditRefusedError with its reason', asyn
 	for (const { html, edit, reason } of cases) {
 		const { workspaceRoot, htmlPath } = await seed(html);
 		await assertRefused(
-			editArtboard({ workspaceRoot, artboardId: 'hero', baseHash: hashHtml(html), edit }),
+			editArtboard({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				artboardId: 'hero',
+				baseHash: hashHtml(html),
+				edit,
+			}),
 			reason,
 		);
 		assert.equal(await readFile(htmlPath, 'utf8'), html, reason);
@@ -136,7 +152,7 @@ test('a file over the preview cap, or an edit that would cross it, is refused un
 	// Number 9 does not exist: without the pre-parse size check this is unknown-number instead.
 	await assertRefused(
 		editArtboard({
-			workspaceRoot: overSeed.workspaceRoot,
+			page: { workspaceRoot: overSeed.workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml(over),
 			edit: fontSize(9, '12'),
@@ -148,7 +164,7 @@ test('a file over the preview cap, or an edit that would cross it, is refused un
 	const atCapSeed = await seed(atCap);
 	await assertRefused(
 		editArtboard({
-			workspaceRoot: atCapSeed.workspaceRoot,
+			page: { workspaceRoot: atCapSeed.workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml(atCap),
 			edit: fontSize(0, '12'),
@@ -161,11 +177,11 @@ test('a file over the preview cap, or an edit that would cross it, is refused un
 test('a same-value edit returns the current state without writing', async () => {
 	const html = '<p style="font-size: 12px">a</p>';
 	const { workspaceRoot, htmlPath } = await seed(html);
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const metaBefore = await readFile(metaPath, 'utf8');
 	const mtimeBefore = (await stat(htmlPath)).mtimeMs;
 	const result = await editArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		baseHash: hashHtml(html),
 		edit: fontSize(0, '12px'),
@@ -188,7 +204,7 @@ test('a same-value edit on a stale base is a conflict, not a success', async () 
 	const { workspaceRoot } = await seed(html);
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml('<p>older</p>'),
 			edit: fontSize(0, '12px'),
@@ -204,7 +220,7 @@ test('a case variant id is ARTBOARD_NOT_FOUND, even for a same-value edit', asyn
 	const { workspaceRoot } = await seed(html);
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'HERO',
 			baseHash: hashHtml(html),
 			edit: fontSize(0, '12px'),
@@ -218,7 +234,7 @@ test('a workspace whose artboards dir is gone is ARTBOARD_NOT_FOUND, not a disk 
 	await rm(dirname(htmlPath), { recursive: true });
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml('<p>a</p>'),
 			edit: fontSize(0, '12'),
@@ -230,7 +246,10 @@ test('a workspace whose artboards dir is gone is ARTBOARD_NOT_FOUND, not a disk 
 test('a malformed baseHash is InvalidArgsError before any read', async () => {
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot: join(tmpdir(), 'cursor-design-edit-never-created'),
+			page: {
+				workspaceRoot: join(tmpdir(), 'cursor-design-edit-never-created'),
+				pageId: FIRST_PAGE_ID,
+			},
 			artboardId: 'hero',
 			baseHash: 'sha256:xyz',
 			edit: fontSize(0, '12'),
@@ -243,7 +262,7 @@ test('an unknown artboard is ARTBOARD_NOT_FOUND', async () => {
 	const { workspaceRoot } = await seed('<p>a</p>');
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'missing',
 			baseHash: hashHtml('<p>a</p>'),
 			edit: fontSize(0, '12'),
@@ -259,7 +278,7 @@ test('a write between the pre-read and the lock is a conflict and keeps the outs
 	};
 	await assert.rejects(
 		editArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			baseHash: hashHtml('<p>a</p>'),
 			edit: fontSize(0, '12'),
@@ -267,5 +286,9 @@ test('a write between the pre-read and the lock is a conflict and keeps the outs
 		ConflictError,
 	);
 	assert.equal(await readFile(htmlPath, 'utf8'), '<p>outside</p>');
-	assert.equal((await readArtboard({ workspaceRoot, artboardId: 'hero' })).html, '<p>outside</p>');
+	assert.equal(
+		(await readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'hero' }))
+			.html,
+		'<p>outside</p>',
+	);
 });

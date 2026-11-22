@@ -27,6 +27,7 @@ import {
 	InvalidArgsError,
 	NoWorkspaceError,
 } from '../disk/errors';
+import { resolveOpenPage } from '../disk/openPage';
 import { parseArtboardId } from '../disk/parse';
 import { postAnswerToPanel } from '../panel/openArtboardPanel';
 import type { ArtboardEditMessage } from '../webview/hostMessages';
@@ -155,7 +156,7 @@ export const answerEditRequest = async ({
 		}
 		const epoch = historyEpoch();
 		const edited = await editArtboard({
-			workspaceRoot,
+			page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 			artboardId: message.frameId,
 			baseHash: message.hash,
 			edit: toArtboardEdit(message),
@@ -221,7 +222,7 @@ export const answerHistoryRequest = async ({
 		}
 		const epoch = historyEpoch();
 		const written = await updateArtboard({
-			workspaceRoot,
+			page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 			artboardId: frameId,
 			html: restore.target.html,
 			baseHash: restore.base.hash,

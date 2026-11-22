@@ -10,6 +10,7 @@ import {
 	serializeCanvasLayout,
 } from './canvasLayout';
 import {
+	FIRST_PAGE_ID,
 	CANVAS_SCHEMA_VERSION,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
@@ -50,7 +51,7 @@ test('parse keeps a valid layout, including an empty label', () => {
 		unknownRoot: 1,
 	};
 	assert.deepEqual(
-		parseCanvasLayout(raw),
+		parseCanvasLayout(raw, FIRST_PAGE_ID),
 		layoutOf([
 			{ id: 'hero', label: '', x: 10, y: -20, width: 400, group: 'Desktop' },
 			{ id: 'hero-alt', label: 'Alt', x: 0.5, y: 0, width: 390 },
@@ -78,7 +79,7 @@ test('parse rejects corrupt layouts with CORRUPT_CANVAS', () => {
 	];
 	for (const corrupt of corruptCases) {
 		assert.equal(
-			codeOf(() => parseCanvasLayout(corrupt)),
+			codeOf(() => parseCanvasLayout(corrupt, FIRST_PAGE_ID)),
 			'CORRUPT_CANVAS',
 			JSON.stringify(corrupt),
 		);
@@ -87,19 +88,24 @@ test('parse rejects corrupt layouts with CORRUPT_CANVAS', () => {
 
 test('parse rejects another integer version with UNSUPPORTED_CANVAS_VERSION', () => {
 	assert.equal(
-		codeOf(() => parseCanvasLayout({ version: CANVAS_SCHEMA_VERSION + 1, frames: [] })),
+		codeOf(() =>
+			parseCanvasLayout({ version: CANVAS_SCHEMA_VERSION + 1, frames: [] }, FIRST_PAGE_ID),
+		),
 		'UNSUPPORTED_CANVAS_VERSION',
 	);
 });
 
 test('parse clamps width and drops an empty group', () => {
-	const parsed = parseCanvasLayout({
-		version: CANVAS_SCHEMA_VERSION,
-		frames: [
-			{ id: 'narrow', label: '', x: 0, y: 0, width: 50, group: '' },
-			{ id: 'wide', label: '', x: 0, y: 0, width: 9999 },
-		],
-	});
+	const parsed = parseCanvasLayout(
+		{
+			version: CANVAS_SCHEMA_VERSION,
+			frames: [
+				{ id: 'narrow', label: '', x: 0, y: 0, width: 50, group: '' },
+				{ id: 'wide', label: '', x: 0, y: 0, width: 9999 },
+			],
+		},
+		FIRST_PAGE_ID,
+	);
 	assert.equal(parsed.frames[0].width, MIN_FRAME_WIDTH);
 	assert.equal(parsed.frames[1].width, MAX_FRAME_WIDTH);
 	assert.ok(!('group' in parsed.frames[0]));
@@ -112,7 +118,7 @@ test('serialize matches pretty JSON, round-trips, and never writes an empty grou
 	]);
 	const text = serializeCanvasLayout(layout);
 	assert.equal(text, `${JSON.stringify(layout, null, 2)}\n`);
-	assert.deepEqual(parseCanvasLayout(JSON.parse(text)), layout);
+	assert.deepEqual(parseCanvasLayout(JSON.parse(text), FIRST_PAGE_ID), layout);
 
 	const withEmptyGroup = serializeCanvasLayout(layoutOf([frame({ id: 'hero', group: '' })]));
 	assert.ok(!withEmptyGroup.includes('group'));

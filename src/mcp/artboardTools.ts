@@ -9,9 +9,11 @@ import {
 	readHandoffStatus,
 	setActiveArtboard,
 	updateArtboard,
+	validateNewArtboardArgs,
 } from '../disk/artboardFs';
 import { InvalidArgsError } from '../disk/errors';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
+import { resolveOpenPage } from '../disk/openPage';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import {
 	READ_ONLY_ANNOTATIONS,
@@ -160,16 +162,19 @@ export const registerArtboardTools = (server: McpServer): void => {
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
 		async ({ artboardId, html, title, viewport, rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) =>
-				createArtboard({
-					workspaceRoot,
+			runQueued(rootPath, async (workspaceRoot) => {
+				// Invalid args refuse before the resolver, so they never create a fresh project.
+				validateNewArtboardArgs({ artboardId, html, title, viewport });
+				const page = await resolveOpenPage({ workspaceRoot, createIfFresh: true });
+				return createArtboard({
+					page,
 					artboardId,
 					html,
 					title,
 					viewport,
 					writeEnsurePanelMarker: shouldWriteEnsurePanelMarker(workspaceRoot),
-				}),
-			),
+				});
+			}),
 	);
 
 	server.registerTool(
@@ -182,9 +187,9 @@ export const registerArtboardTools = (server: McpServer): void => {
 			annotations: { destructiveHint: true, openWorldHint: false },
 		},
 		async ({ artboardId, html, title, viewport, rootPath, baseGeneration, baseHash }) =>
-			runQueued(rootPath, (workspaceRoot) =>
+			runQueued(rootPath, async (workspaceRoot) =>
 				updateArtboard({
-					workspaceRoot,
+					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 					artboardId,
 					html,
 					baseGeneration,
@@ -205,9 +210,9 @@ export const registerArtboardTools = (server: McpServer): void => {
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ artboardId, rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) =>
+			runQueued(rootPath, async (workspaceRoot) =>
 				readArtboard({
-					workspaceRoot,
+					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 					artboardId,
 				}),
 			),
@@ -218,12 +223,14 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'List artboards',
 			description:
-				'List artboards/*.html ids. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from .cursor-design/canvas.json, with artboards missing from it auto-placed to the right. Does not write.',
+				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.cursor-design/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. Does not write.',
 			inputSchema: listArtboardsInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) => listArtboards({ workspaceRoot })),
+			runQueued(rootPath, async (workspaceRoot) =>
+				listArtboards({ page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }) }),
+			),
 	);
 
 	server.registerTool(
@@ -231,14 +238,14 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Place frame',
 			description:
-				'Update one frame (x, y, width, label, group) in .cursor-design/canvas.json and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
+				'Update one frame (x, y, width, label, group) in the open page (.cursor-design/pages/<pageId>/canvas.json) and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
 			inputSchema: placeFrameInputSchema,
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
 		async ({ id, x, y, width, label, group, rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) =>
+			runQueued(rootPath, async (workspaceRoot) =>
 				placeFrame({
-					workspaceRoot,
+					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 					id,
 					x,
 					y,
@@ -259,9 +266,9 @@ export const registerArtboardTools = (server: McpServer): void => {
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
 		async ({ artboardId, rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) =>
+			runQueued(rootPath, async (workspaceRoot) =>
 				setActiveArtboard({
-					workspaceRoot,
+					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
 					artboardId,
 				}),
 			),
@@ -279,7 +286,11 @@ export const registerArtboardTools = (server: McpServer): void => {
 		// The passthrough schema still delivers a stray artboardId; reject it before any disk work.
 		async ({ artboardId, rootPath }) =>
 			artboardId === undefined
-				? runQueued(rootPath, (workspaceRoot) => exportArtboard({ workspaceRoot }))
+				? runQueued(rootPath, async (workspaceRoot) =>
+						exportArtboard({
+							page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
+						}),
+					)
 				: toMcpToolError(new InvalidArgsError(EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE)),
 	);
 
@@ -293,6 +304,8 @@ export const registerArtboardTools = (server: McpServer): void => {
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
-			runQueued(rootPath, (workspaceRoot) => readHandoffStatus({ workspaceRoot })),
+			runQueued(rootPath, async (workspaceRoot) =>
+				readHandoffStatus({ page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }) }),
+			),
 	);
 };

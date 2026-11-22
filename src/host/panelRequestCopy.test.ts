@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
+import { FIRST_PAGE_ID } from '../disk/layout';
+
 import {
 	ArtboardNotFoundError,
 	CommentNotFoundError,
@@ -86,7 +88,7 @@ test('editRequestErrorMessage is an allowlist: Agent copy never reaches the pane
 		[refused, refused.message],
 		[busy, busy.message],
 		[disk, disk.message],
-		[new CorruptMetaError('hero'), EDIT_FALLBACK_MESSAGE],
+		[new CorruptMetaError({ pageId: FIRST_PAGE_ID, artboardId: 'hero' }), EDIT_FALLBACK_MESSAGE],
 		[new Error('/Users/someone/secret'), EDIT_FALLBACK_MESSAGE],
 	];
 	for (const [error, expected] of rows) {
@@ -105,7 +107,7 @@ test('history copy differs from edit copy for conflict, malformed and fallback o
 		[new InvalidArtboardIdError('Bad id'), MALFORMED_HISTORY_MESSAGE],
 		[busy, busy.message],
 		[disk, disk.message],
-		[new CorruptMetaError('hero'), HISTORY_FALLBACK_MESSAGE],
+		[new CorruptMetaError({ pageId: FIRST_PAGE_ID, artboardId: 'hero' }), HISTORY_FALLBACK_MESSAGE],
 		[new Error('/Users/someone/secret'), HISTORY_FALLBACK_MESSAGE],
 	];
 	for (const [error, expected] of rows) {

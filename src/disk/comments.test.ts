@@ -44,6 +44,7 @@ import {
 	PickOutdatedError,
 } from './errors';
 import {
+	FIRST_PAGE_ID,
 	COMMENTS_SCHEMA_VERSION,
 	CURSOR_DESIGN_DIR,
 	MAX_COMMENT_REPLIES,
@@ -53,6 +54,7 @@ import {
 	artboardsDirSegments,
 	commentsPathSegments,
 } from './layout';
+import { resolveOpenPage } from './openPage';
 
 // The real parser behind a counter, so the parse cache's reuse and eviction are observable.
 vi.mock('./commentTarget', async (importOriginal) => {
@@ -64,9 +66,13 @@ const parseCount = (): number => vi.mocked(parseArtboardDocument).mock.calls.len
 
 const tempRoots: string[] = [];
 
-const makeTempRoot = async (): Promise<string> => {
+// Seeded by default; { seeded: false } is a fresh workspace with no .cursor-design.
+const makeTempRoot = async ({ seeded = true }: { seeded?: boolean } = {}): Promise<string> => {
 	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-comments-'));
 	tempRoots.push(workspaceRoot);
+	if (seeded) {
+		await resolveOpenPage({ workspaceRoot, createIfFresh: true });
+	}
 	return workspaceRoot;
 };
 
@@ -110,7 +116,7 @@ const seedHero = async (
 	{ html = HERO_HTML, title }: { html?: string; title?: string } = {},
 ): Promise<void> => {
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		title,
@@ -133,7 +139,7 @@ const pick = (overrides: Partial<NewComment> = {}): NewComment => ({
 });
 
 const writeComments = async (workspaceRoot: string, text: string): Promise<string> => {
-	const filePath = join(workspaceRoot, ...commentsPathSegments);
+	const filePath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
 	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
 	await writeFile(filePath, text, 'utf8');
 	return filePath;
@@ -142,7 +148,10 @@ const writeComments = async (workspaceRoot: string, text: string): Promise<strin
 test('an agreeing element pick stores a fingerprint', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
 	assert.ok(comment.targetFingerprint?.startsWith('sha256:'));
 	assert.equal(comment.status, 'open');
 	assert.match(comment.id, /^[0-9a-f-]{36}$/i);
@@ -161,7 +170,7 @@ test('tag mismatch, text mismatch, 0 matches and 2+ matches store no fingerprint
 		pick({ selector: 'h1' }),
 	];
 	for (const comment of cases) {
-		const stored = await addComment({ workspaceRoot, comment });
+		const stored = await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment });
 		assert.equal(stored.targetFingerprint, undefined);
 	}
 });
@@ -170,7 +179,7 @@ test('a page comment has no fingerprint', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	const comment = await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick({ isPage: true, selector: 'body', tagName: 'body', text: '', rect: null }),
 	});
 	assert.equal(comment.targetFingerprint, undefined);
@@ -181,24 +190,32 @@ test('a generation mismatch throws PickOutdatedError and writes nothing', async 
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	await assert.rejects(
-		addComment({ workspaceRoot, comment: pick({ generation: 2 }) }),
+		addComment({
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+			comment: pick({ generation: 2 }),
+		}),
 		PickOutdatedError,
 	);
 	assert.equal(
-		await readFile(join(workspaceRoot, ...commentsPathSegments), 'utf8').catch(() => 'missing'),
+		await readFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), 'utf8').catch(
+			() => 'missing',
+		),
 		'missing',
 	);
 });
 
 test('a missing frame throws ArtboardNotFoundError', async () => {
 	const workspaceRoot = await makeTempRoot();
-	await assert.rejects(addComment({ workspaceRoot, comment: pick() }), ArtboardNotFoundError);
+	await assert.rejects(
+		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() }),
+		ArtboardNotFoundError,
+	);
 });
 
 test('an empty body on a missing frame throws InvalidArgsError', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await assert.rejects(
-		addComment({ workspaceRoot, comment: pick({ body: '   ' }) }),
+		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick({ body: '   ' }) }),
 		InvalidArgsError,
 	);
 });
@@ -211,19 +228,28 @@ test('at MAX_COMMENTS addComment throws and the file is unchanged', async () => 
 	);
 	const before = commentsFileOf(comments);
 	await writeComments(workspaceRoot, before);
-	await assert.rejects(addComment({ workspaceRoot, comment: pick() }), (error: unknown) => {
-		assert.ok(error instanceof InvalidArgsError);
-		assert.match(error.message, /500 comments/);
-		return true;
-	});
-	assert.equal(await readFile(join(workspaceRoot, ...commentsPathSegments), 'utf8'), before);
+	await assert.rejects(
+		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() }),
+		(error: unknown) => {
+			assert.ok(error instanceof InvalidArgsError);
+			assert.equal(
+				error.message,
+				'comments.json already holds 500 comments. Remove resolved comments from .cursor-design/pages/page-1/comments.json, then retry.',
+			);
+			return true;
+		},
+	);
+	assert.equal(
+		await readFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), 'utf8'),
+		before,
+	);
 });
 
 test('the body is stored trimmed and the pin is clamped', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	const comment = await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick({ body: '  Hello  ', pin: { x: 1.5, y: -1 } }),
 	});
 	assert.equal(comment.body, 'Hello');
@@ -234,11 +260,11 @@ test('two addComment calls in parallel both land with distinct ids', async () =>
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	const [first, second] = await Promise.all([
-		addComment({ workspaceRoot, comment: pick({ body: 'one' }) }),
-		addComment({ workspaceRoot, comment: pick({ body: 'two' }) }),
+		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick({ body: 'one' }) }),
+		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick({ body: 'two' }) }),
 	]);
 	assert.notEqual(first.id, second.id);
-	const listed = await listComments({ workspaceRoot });
+	const listed = await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(listed.comments.length, 2);
 });
 
@@ -246,22 +272,38 @@ test('artboard title, empty title, missing meta, newline title and version', asy
 	const titled = await makeTempRoot();
 	await seedHero(titled, { title: 'Landing page' });
 	assert.equal(
-		(await addComment({ workspaceRoot: titled, comment: pick() })).artboard,
+		(await addComment({ page: { workspaceRoot: titled, pageId: FIRST_PAGE_ID }, comment: pick() }))
+			.artboard,
 		'Landing page',
 	);
 
 	const emptyTitle = await makeTempRoot();
 	await seedHero(emptyTitle, { title: '' });
-	assert.equal((await addComment({ workspaceRoot: emptyTitle, comment: pick() })).artboard, 'hero');
+	assert.equal(
+		(
+			await addComment({
+				page: { workspaceRoot: emptyTitle, pageId: FIRST_PAGE_ID },
+				comment: pick(),
+			})
+		).artboard,
+		'hero',
+	);
 
 	const noMeta = await makeTempRoot();
 	await seedHero(noMeta, { title: 'Gone' });
-	await unlink(join(noMeta, ...artboardMetaPathSegments('hero')));
-	assert.equal((await addComment({ workspaceRoot: noMeta, comment: pick() })).artboard, 'hero');
+	await unlink(join(noMeta, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')));
+	assert.equal(
+		(await addComment({ page: { workspaceRoot: noMeta, pageId: FIRST_PAGE_ID }, comment: pick() }))
+			.artboard,
+		'hero',
+	);
 
 	const newline = await makeTempRoot();
 	await seedHero(newline, { title: 'Line\nBreak' });
-	const stored = await addComment({ workspaceRoot: newline, comment: pick() });
+	const stored = await addComment({
+		page: { workspaceRoot: newline, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
 	assert.equal(stored.artboard, 'Line Break');
 	assert.equal(stored.version, 1);
 });
@@ -273,11 +315,17 @@ test('corrupt and version-2 files are never overwritten', async () => {
 		await seedHero(workspaceRoot);
 		const filePath = await writeComments(workspaceRoot, payload);
 		const ops = [
-			() => addComment({ workspaceRoot, comment: pick() }),
-			() => replyToComment({ workspaceRoot, id: 'c1', body: 'x' }),
-			() => setCommentStatus({ workspaceRoot, id: 'c1', status: 'resolved' }),
-			() => markCommentsSent({ workspaceRoot, ids: ['c1'] }),
-			() => resolveComment({ workspaceRoot, id: 'c1', note: 'done' }),
+			() => addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() }),
+			() => replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', body: 'x' }),
+			() =>
+				setCommentStatus({
+					page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+					id: 'c1',
+					status: 'resolved',
+				}),
+			() => markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: ['c1'] }),
+			() =>
+				resolveComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', note: 'done' }),
 		];
 		for (const op of ops) {
 			await assert.rejects(op);
@@ -287,13 +335,13 @@ test('corrupt and version-2 files are never overwritten', async () => {
 });
 
 test('resolve and reply on a workspace with no .cursor-design create nothing', async () => {
-	const workspaceRoot = await makeTempRoot();
+	const workspaceRoot = await makeTempRoot({ seeded: false });
 	await assert.rejects(
-		resolveComment({ workspaceRoot, id: 'c1', note: 'done' }),
+		resolveComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', note: 'done' }),
 		CommentNotFoundError,
 	);
 	await assert.rejects(
-		replyToComment({ workspaceRoot, id: 'c1', body: 'hi' }),
+		replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', body: 'hi' }),
 		CommentNotFoundError,
 	);
 	assert.deepEqual(await readdir(workspaceRoot), []);
@@ -302,22 +350,47 @@ test('resolve and reply on a workspace with no .cursor-design create nothing', a
 test('setCommentStatus rejects sent and applies the status machine', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
 	await assert.rejects(
-		setCommentStatus({ workspaceRoot, id: comment.id, status: 'sent' }),
+		setCommentStatus({
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+			id: comment.id,
+			status: 'sent',
+		}),
 		InvalidArgsError,
 	);
 	assert.equal(
-		(await setCommentStatus({ workspaceRoot, id: comment.id, status: 'resolved' })).status,
+		(
+			await setCommentStatus({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				id: comment.id,
+				status: 'resolved',
+			})
+		).status,
 		'resolved',
 	);
 	assert.equal(
-		(await setCommentStatus({ workspaceRoot, id: comment.id, status: 'open' })).status,
+		(
+			await setCommentStatus({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				id: comment.id,
+				status: 'open',
+			})
+		).status,
 		'open',
 	);
-	await markCommentsSent({ workspaceRoot, ids: [comment.id] });
+	await markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: [comment.id] });
 	assert.equal(
-		(await setCommentStatus({ workspaceRoot, id: comment.id, status: 'resolved' })).status,
+		(
+			await setCommentStatus({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				id: comment.id,
+				status: 'resolved',
+			})
+		).status,
 		'resolved',
 	);
 });
@@ -325,18 +398,37 @@ test('setCommentStatus rejects sent and applies the status machine', async () =>
 test('open to open and resolved to resolved do not write', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
-	const filePath = join(workspaceRoot, ...commentsPathSegments);
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
+	const filePath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
 	const before = await readFile(filePath, 'utf8');
 	const mtime = (await lstat(filePath)).mtimeMs;
-	await setCommentStatus({ workspaceRoot, id: comment.id, status: 'open' });
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		status: 'open',
+	});
 	assert.equal(await readFile(filePath, 'utf8'), before);
 	assert.equal((await lstat(filePath)).mtimeMs, mtime);
-	await setCommentStatus({ workspaceRoot, id: comment.id, status: 'resolved' });
-	await setCommentStatus({ workspaceRoot, id: comment.id, status: 'resolved' });
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		status: 'resolved',
+	});
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		status: 'resolved',
+	});
 	const resolvedBytes = await readFile(filePath, 'utf8');
 	const resolvedMtime = (await lstat(filePath)).mtimeMs;
-	await setCommentStatus({ workspaceRoot, id: comment.id, status: 'resolved' });
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		status: 'resolved',
+	});
 	assert.equal(await readFile(filePath, 'utf8'), resolvedBytes);
 	assert.equal((await lstat(filePath)).mtimeMs, resolvedMtime);
 });
@@ -344,13 +436,24 @@ test('open to open and resolved to resolved do not write', async () => {
 test('resolveComment on resolved throws, appends a trimmed agent reply otherwise', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
-	const resolved = await resolveComment({ workspaceRoot, id: comment.id, note: '  bolded  ' });
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
+	const resolved = await resolveComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		note: '  bolded  ',
+	});
 	assert.equal(resolved.status, 'resolved');
 	assert.equal(resolved.replies.at(-1)?.author, 'agent');
 	assert.equal(resolved.replies.at(-1)?.body, 'bolded');
 	await assert.rejects(
-		resolveComment({ workspaceRoot, id: comment.id, note: 'again' }),
+		resolveComment({
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+			id: comment.id,
+			note: 'again',
+		}),
 		CommentResolvedError,
 	);
 });
@@ -358,36 +461,73 @@ test('resolveComment on resolved throws, appends a trimmed agent reply otherwise
 test('markCommentsSent marks only open comments and skips unknown ids', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const openComment = await addComment({ workspaceRoot, comment: pick({ body: 'open' }) });
-	const extra = await addComment({ workspaceRoot, comment: pick({ body: 'extra' }) });
-	await setCommentStatus({ workspaceRoot, id: extra.id, status: 'resolved' });
+	const openComment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ body: 'open' }),
+	});
+	const extra = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ body: 'extra' }),
+	});
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: extra.id,
+		status: 'resolved',
+	});
 	const marked = await markCommentsSent({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		ids: [openComment.id, extra.id, 'missing'],
 	});
 	assert.deepEqual(
 		marked.map((comment) => comment.id),
 		[openComment.id],
 	);
-	assert.equal((await getComment({ workspaceRoot, id: openComment.id })).status, 'sent');
-	assert.equal((await getComment({ workspaceRoot, id: extra.id })).status, 'resolved');
+	assert.equal(
+		(await getComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: openComment.id }))
+			.status,
+		'sent',
+	);
+	assert.equal(
+		(await getComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: extra.id })).status,
+		'resolved',
+	);
 });
 
 test('resolved is not re-sent', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
-	await resolveComment({ workspaceRoot, id: comment.id, note: 'done' });
-	assert.deepEqual(await markCommentsSent({ workspaceRoot, ids: [comment.id] }), []);
-	assert.equal((await getComment({ workspaceRoot, id: comment.id })).status, 'resolved');
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
+	await resolveComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		note: 'done',
+	});
+	assert.deepEqual(
+		await markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: [comment.id] }),
+		[],
+	);
+	assert.equal(
+		(await getComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: comment.id })).status,
+		'resolved',
+	);
 });
 
 test('replyToComment keeps the status', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const comment = await addComment({ workspaceRoot, comment: pick() });
-	await markCommentsSent({ workspaceRoot, ids: [comment.id] });
-	const replied = await replyToComment({ workspaceRoot, id: comment.id, body: 'more' });
+	const comment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
+	await markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: [comment.id] });
+	const replied = await replyToComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		body: 'more',
+	});
 	assert.equal(replied.status, 'sent');
 	assert.equal(replied.replies.at(-1)?.author, 'user');
 });
@@ -403,10 +543,14 @@ test('reply cap leaves the last slot for resolve, then thread-full', async () =>
 	}));
 	await writeComments(workspaceRoot, commentsFileOf([validComment({ replies })]));
 	await assert.rejects(
-		replyToComment({ workspaceRoot, id: 'c1', body: 'one more' }),
+		replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', body: 'one more' }),
 		InvalidArgsError,
 	);
-	const resolved = await resolveComment({ workspaceRoot, id: 'c1', note: 'done' });
+	const resolved = await resolveComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: 'c1',
+		note: 'done',
+	});
 	assert.equal(resolved.replies.length, MAX_COMMENT_REPLIES);
 	await writeComments(
 		workspaceRoot,
@@ -418,7 +562,7 @@ test('reply cap leaves the last slot for resolve, then thread-full', async () =>
 		]),
 	);
 	await assert.rejects(
-		resolveComment({ workspaceRoot, id: 'c1', note: 'done' }),
+		resolveComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', note: 'done' }),
 		(error: unknown) => {
 			assert.ok(error instanceof InvalidArgsError);
 			assert.match(error.message, /thread is full/);
@@ -430,9 +574,12 @@ test('reply cap leaves the last slot for resolve, then thread-full', async () =>
 test('deleted HTML is targetMissing; a page comment stays not stale', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const element = await addComment({ workspaceRoot, comment: pick() });
+	const element = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
 	const page = await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick({
 			body: 'whole page',
 			isPage: true,
@@ -442,11 +589,17 @@ test('deleted HTML is targetMissing; a page comment stays not stale', async () =
 			rect: null,
 		}),
 	});
-	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments('hero')));
-	const missing = await getComment({ workspaceRoot, id: element.id });
+	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')));
+	const missing = await getComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: element.id,
+	});
 	assert.equal(missing.targetMissing, true);
 	assert.equal(missing.hint, HINT_FRAME_MISSING);
-	const pageView = await getComment({ workspaceRoot, id: page.id });
+	const pageView = await getComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: page.id,
+	});
 	assert.equal(pageView.stale, false);
 	assert.equal(pageView.targetMissing, true);
 });
@@ -456,10 +609,16 @@ test('deleted HTML is targetMissing; a page comment stays not stale', async () =
 test('an unchecked comment on a deleted frame is targetMissing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const unchecked = await addComment({ workspaceRoot, comment: pick({ tagName: 'p' }) });
+	const unchecked = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ tagName: 'p' }),
+	});
 	assert.equal(unchecked.targetFingerprint, undefined);
-	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments('hero')));
-	const view = await getComment({ workspaceRoot, id: unchecked.id });
+	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')));
+	const view = await getComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: unchecked.id,
+	});
 	assert.equal(view.targetMissing, true);
 	assert.equal(view.hint, HINT_FRAME_MISSING);
 });
@@ -467,9 +626,9 @@ test('an unchecked comment on a deleted frame is targetMissing', async () => {
 test('an added comment is written in the documented key order', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
 	const written = JSON.parse(
-		await readFile(join(workspaceRoot, ...commentsPathSegments), 'utf8'),
+		await readFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), 'utf8'),
 	) as { comments: Record<string, unknown>[] };
 	assert.deepEqual(Object.keys(written.comments[0] ?? {}), Object.keys(validComment()));
 });
@@ -478,23 +637,26 @@ test('an unreadable frame still lists every comment', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'other',
 		html: '<p>other</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const heroComment = await addComment({ workspaceRoot, comment: pick() });
+	const heroComment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
 	const otherComment = await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick({ frameId: 'other', selector: 'p', tagName: 'p', text: 'other', body: 'other' }),
 	});
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 	const html = await readFile(htmlPath, 'utf8');
 	await unlink(htmlPath);
 	const target = join(workspaceRoot, 'elsewhere.html');
 	await writeFile(target, html, 'utf8');
 	await symlink(target, htmlPath);
-	const listed = await listComments({ workspaceRoot });
+	const listed = await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(listed.comments.length, 2);
 	const heroView = listed.comments.find((comment) => comment.id === heroComment.id);
 	const otherView = listed.comments.find((comment) => comment.id === otherComment.id);
@@ -505,30 +667,52 @@ test('an unreadable frame still lists every comment', async () => {
 test('listComments filters by status and rejects a bad status', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const openComment = await addComment({ workspaceRoot, comment: pick({ body: 'open' }) });
-	const sentComment = await addComment({ workspaceRoot, comment: pick({ body: 'sent' }) });
-	const resolvedComment = await addComment({ workspaceRoot, comment: pick({ body: 'resolved' }) });
-	await markCommentsSent({ workspaceRoot, ids: [sentComment.id] });
-	await setCommentStatus({ workspaceRoot, id: resolvedComment.id, status: 'resolved' });
+	const openComment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ body: 'open' }),
+	});
+	const sentComment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ body: 'sent' }),
+	});
+	const resolvedComment = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick({ body: 'resolved' }),
+	});
+	await markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: [sentComment.id] });
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: resolvedComment.id,
+		status: 'resolved',
+	});
 	assert.deepEqual(
-		(await listComments({ workspaceRoot })).comments.map((comment) => comment.id),
+		(await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).comments.map(
+			(comment) => comment.id,
+		),
 		[openComment.id, sentComment.id],
 	);
 	assert.deepEqual(
-		(await listComments({ workspaceRoot, status: 'open' })).comments.map((comment) => comment.id),
+		(
+			await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'open' })
+		).comments.map((comment) => comment.id),
 		[openComment.id],
 	);
 	assert.deepEqual(
-		(await listComments({ workspaceRoot, status: 'sent' })).comments.map((comment) => comment.id),
+		(
+			await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'sent' })
+		).comments.map((comment) => comment.id),
 		[sentComment.id],
 	);
 	assert.deepEqual(
-		(await listComments({ workspaceRoot, status: 'resolved' })).comments.map(
-			(comment) => comment.id,
-		),
+		(
+			await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'resolved' })
+		).comments.map((comment) => comment.id),
 		[resolvedComment.id],
 	);
-	await assert.rejects(listComments({ workspaceRoot, status: 'nope' }), InvalidArgsError);
+	await assert.rejects(
+		listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'nope' }),
+		InvalidArgsError,
+	);
 });
 
 test('an unchecked stored comment keeps HINT_UNCHECKED', async () => {
@@ -538,35 +722,40 @@ test('an unchecked stored comment keeps HINT_UNCHECKED', async () => {
 		workspaceRoot,
 		commentsFileOf([validComment({ targetFingerprint: undefined })]),
 	);
-	const view = await getComment({ workspaceRoot, id: 'c1' });
+	const view = await getComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1' });
 	assert.equal(view.stale, null);
 	assert.equal(view.targetMissing, null);
 	assert.equal(view.hint, HINT_UNCHECKED);
 });
 
 test('a no-file workspace has no lock file after a missing-comment read', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await assert.rejects(getComment({ workspaceRoot, id: 'c1' }), CommentNotFoundError);
+	const workspaceRoot = await makeTempRoot({ seeded: false });
+	await assert.rejects(
+		getComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1' }),
+		CommentNotFoundError,
+	);
 	assert.deepEqual(await readdir(workspaceRoot), []);
 });
 
 test('readComments returns every comment, resolved included, and [] without a file', async () => {
 	const workspaceRoot = await makeTempRoot();
-	assert.deepEqual(await readComments({ workspaceRoot }), []);
+	assert.deepEqual(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), []);
 	await writeComments(workspaceRoot, commentsFileOf([validComment({ status: 'resolved' })]));
 	assert.deepEqual(
-		(await readComments({ workspaceRoot })).map((comment) => comment.status),
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).map(
+			(comment) => comment.status,
+		),
 		['resolved'],
 	);
 });
 
 test('readComments refuses a symlinked .cursor-design like listComments', async () => {
-	const workspaceRoot = await makeTempRoot();
+	const workspaceRoot = await makeTempRoot({ seeded: false });
 	const elsewhere = await makeTempRoot();
 	await writeComments(elsewhere, commentsFileOf([validComment()]));
 	await symlink(join(elsewhere, CURSOR_DESIGN_DIR), join(workspaceRoot, CURSOR_DESIGN_DIR));
-	await assert.rejects(readComments({ workspaceRoot }), DiskError);
-	await assert.rejects(listComments({ workspaceRoot }), DiskError);
+	await assert.rejects(readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
+	await assert.rejects(listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
 });
 
 const PAGE_PICK: Partial<NewComment> = {
@@ -590,9 +779,16 @@ const flagsOf = (comment: {
 test('readComments flags resolved comments too', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	const added = await addComment({ workspaceRoot, comment: pick() });
-	await setCommentStatus({ workspaceRoot, id: added.id, status: 'resolved' });
-	const [view] = await readComments({ workspaceRoot });
+	const added = await addComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		comment: pick(),
+	});
+	await setCommentStatus({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: added.id,
+		status: 'resolved',
+	});
+	const [view] = await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view?.status, 'resolved');
 	assert.deepEqual(view && flagsOf(view), { stale: false, targetMissing: false });
 });
@@ -601,41 +797,53 @@ test('readComments flags resolved comments too', async () => {
 test('an edit inside the target between two reads flips stale', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
-	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, false);
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
+	assert.equal(
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.stale,
+		false,
+	);
 	await writeFile(
-		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
 		HERO_HTML.replace('<h1>Hello</h1>', '<h1>Hello there</h1>'),
 		'utf8',
 	);
-	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, true);
+	assert.equal(
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.stale,
+		true,
+	);
 });
 
 test('an unchanged frame is parsed once across reads, and again after an edit', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
 	const before = parseCount();
-	await readComments({ workspaceRoot });
-	await readComments({ workspaceRoot });
+	await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(parseCount() - before, 1);
 	await writeFile(
-		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
 		HERO_HTML.replace('<h1>Hello</h1>', '<h1>Hello there</h1>'),
 		'utf8',
 	);
-	await readComments({ workspaceRoot });
+	await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(parseCount() - before, 2);
 });
 
 test('cachedArtboardDocument and a later flag read share one parse', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
-	const html = await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8');
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
+	const html = await readFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+		'utf8',
+	);
 	const before = parseCount();
 	cachedArtboardDocument({ workspaceRoot, frameId: 'hero', html });
-	assert.equal((await readComments({ workspaceRoot }))[0]?.stale, false);
+	assert.equal(
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.stale,
+		false,
+	);
 	assert.equal(parseCount() - before, 1);
 });
 
@@ -644,7 +852,7 @@ test('the parse cache keeps at most MAX_PARSED_DOCUMENTS frames', async () => {
 	const frameIds = Array.from({ length: MAX_PARSED_DOCUMENTS + 1 }, (_, index) => `f${index}`);
 	for (const artboardId of frameIds) {
 		await createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId,
 			html: HERO_HTML,
 			writeEnsurePanelMarker: false,
@@ -654,23 +862,29 @@ test('the parse cache keeps at most MAX_PARSED_DOCUMENTS frames', async () => {
 		workspaceRoot,
 		commentsFileOf(frameIds.map((frameId) => validComment({ id: `c-${frameId}`, frameId }))),
 	);
-	await readComments({ workspaceRoot });
+	await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	const before = parseCount();
 	// The first frame was evicted by the last one, so the second read parses it again.
-	await readComments({ workspaceRoot });
+	await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.ok(parseCount() > before);
 });
 
 test('a deleted frame is targetMissing and a re-created one is checked again', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
-	assert.equal((await readComments({ workspaceRoot }))[0]?.targetMissing, false);
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+	assert.equal(
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.targetMissing,
+		false,
+	);
 	await unlink(htmlPath);
-	assert.equal((await readComments({ workspaceRoot }))[0]?.targetMissing, true);
+	assert.equal(
+		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.targetMissing,
+		true,
+	);
 	await writeFile(htmlPath, HERO_HTML, 'utf8');
-	const [view] = await readComments({ workspaceRoot });
+	const [view] = await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(view && flagsOf(view), { stale: false, targetMissing: false });
 });
 
@@ -681,14 +895,14 @@ test('an lstat failure on a page comment frame reads as unchecked, never a rejec
 	}
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
-	await addComment({ workspaceRoot, comment: pick(PAGE_PICK) });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick(PAGE_PICK) });
 	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-	const artboardsDir = join(workspaceRoot, ...artboardsDirSegments);
+	const artboardsDir = join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID));
 	await chmod(artboardsDir, 0o000);
 	let views: Awaited<ReturnType<typeof readComments>>;
 	try {
-		views = await readComments({ workspaceRoot });
+		views = await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	} finally {
 		await chmod(artboardsDir, 0o755);
 	}
@@ -705,19 +919,21 @@ test('an lstat failure on a page comment frame reads as unchecked, never a rejec
 test('past the check budget a fingerprinted comment is unchecked; a page comment is not', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
-	await addComment({ workspaceRoot, comment: pick() });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick() });
 	await addComment({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick({ selector: 'p', tagName: 'p', text: 'World', body: 'second' }),
 	});
-	await addComment({ workspaceRoot, comment: pick(PAGE_PICK) });
+	await addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick(PAGE_PICK) });
 	// The read's start and the first check see 0 ms; every later check is far past the budget.
 	let calls = 0;
 	vi.spyOn(performance, 'now').mockImplementation(() => {
 		calls += 1;
 		return calls <= 2 ? 0 : 1000;
 	});
-	const [first, second, page] = await readComments({ workspaceRoot });
+	const [first, second, page] = await readComments({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+	});
 	assert.equal(second?.targetFingerprint === undefined, false);
 	assert.deepEqual(first && flagsOf(first), { stale: false, targetMissing: false });
 	assert.deepEqual(second && flagsOf(second), {

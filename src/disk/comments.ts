@@ -25,13 +25,15 @@ import {
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
 	MAX_PICK_TEXT_CHARS,
+	commentsPathSegments,
 } from './layout';
-import { assertLayoutDirsOwned, readStoredMeta } from './layoutFs';
+import { type PageLocation, assertLayoutDirsOwned, readStoredMeta } from './layoutFs';
 import { withWorkspaceLock } from './workspaceLock';
 
 // Every write is a read-modify-write of comments.json under the workspace lock; reads take none.
 
-const COMMENT_COUNT_MESSAGE = `comments.json already holds ${MAX_COMMENTS} comments. Remove resolved comments from .cursor-design/comments.json, then retry.`;
+const commentCountMessage = (pageId: string): string =>
+	`comments.json already holds ${MAX_COMMENTS} comments. Remove resolved comments from ${commentsPathSegments(pageId).join('/')}, then retry.`;
 
 const USER_REPLY_CAP_MESSAGE = 'This comment has the maximum number of replies.';
 
@@ -95,15 +97,15 @@ const artboardLabel = (title: string, frameId: string): string => {
 };
 
 export const addComment = async ({
-	workspaceRoot,
+	page,
 	comment,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	comment: NewComment;
 }): Promise<Comment> => {
-	await assertLayoutDirsOwned(workspaceRoot);
+	await assertLayoutDirsOwned(page);
 	const fields = validateNewComment(comment);
-	const read = await readArtboard({ workspaceRoot, artboardId: fields.frameId });
+	const read = await readArtboard({ page, artboardId: fields.frameId });
 	if (comment.generation !== read.generation) {
 		throw new PickOutdatedError(fields.frameId);
 	}
@@ -121,7 +123,7 @@ export const addComment = async ({
 			targetFingerprint = match.fingerprint;
 		}
 	}
-	const storedMeta = await readStoredMeta(workspaceRoot, fields.frameId);
+	const storedMeta = await readStoredMeta(page, fields.frameId);
 	const next = orderedComment({
 		...fields,
 		id: crypto.randomUUID(),
@@ -133,41 +135,41 @@ export const addComment = async ({
 		replies: [],
 	});
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const file = await readCommentsFile(workspaceRoot);
+			const file = await readCommentsFile(page);
 			if (file.comments.length >= MAX_COMMENTS) {
-				throw new InvalidArgsError(COMMENT_COUNT_MESSAGE);
+				throw new InvalidArgsError(commentCountMessage(page.pageId));
 			}
 			const written = {
 				version: COMMENTS_SCHEMA_VERSION,
 				comments: [...file.comments, next],
 			};
-			await writeCommentsFile(workspaceRoot, written);
+			await writeCommentsFile(page, written);
 			return next;
 		},
 	});
 };
 
 export const replyToComment = async ({
-	workspaceRoot,
+	page,
 	id,
 	body,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	id: unknown;
 	body: unknown;
 }): Promise<Comment> => {
 	const commentId = requireCommentId(id);
 	const trimmed = requireCommentBody(body);
-	await assertLayoutDirsOwned(workspaceRoot);
-	if ((await commentsTextIfExists(workspaceRoot)) === undefined) {
+	await assertLayoutDirsOwned(page);
+	if ((await commentsTextIfExists(page)) === undefined) {
 		throw new CommentNotFoundError();
 	}
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const file = await readCommentsFile(workspaceRoot);
+			const file = await readCommentsFile(page);
 			const current = findComment(file, commentId);
 			if (current.replies.length >= MAX_COMMENT_REPLIES - 1) {
 				throw new InvalidArgsError(USER_REPLY_CAP_MESSAGE);
@@ -184,18 +186,18 @@ export const replyToComment = async ({
 					},
 				],
 			};
-			await writeCommentsFile(workspaceRoot, replaceComment(file, next));
+			await writeCommentsFile(page, replaceComment(file, next));
 			return next;
 		},
 	});
 };
 
 export const setCommentStatus = async ({
-	workspaceRoot,
+	page,
 	id,
 	status,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	id: unknown;
 	status: unknown;
 }): Promise<Comment> => {
@@ -203,14 +205,14 @@ export const setCommentStatus = async ({
 		throw new InvalidArgsError(SET_STATUS_MESSAGE);
 	}
 	const commentId = requireCommentId(id);
-	await assertLayoutDirsOwned(workspaceRoot);
-	if ((await commentsTextIfExists(workspaceRoot)) === undefined) {
+	await assertLayoutDirsOwned(page);
+	if ((await commentsTextIfExists(page)) === undefined) {
 		throw new CommentNotFoundError();
 	}
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const file = await readCommentsFile(workspaceRoot);
+			const file = await readCommentsFile(page);
 			const current = findComment(file, commentId);
 			const nextStatus: CommentStatus | undefined =
 				status === 'resolved' && (current.status === 'open' || current.status === 'sent')
@@ -222,27 +224,27 @@ export const setCommentStatus = async ({
 				return current;
 			}
 			const next: Comment = { ...current, status: nextStatus };
-			await writeCommentsFile(workspaceRoot, replaceComment(file, next));
+			await writeCommentsFile(page, replaceComment(file, next));
 			return next;
 		},
 	});
 };
 
 export const markCommentsSent = async ({
-	workspaceRoot,
+	page,
 	ids,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	ids: readonly string[];
 }): Promise<Comment[]> => {
-	await assertLayoutDirsOwned(workspaceRoot);
-	if ((await commentsTextIfExists(workspaceRoot)) === undefined) {
+	await assertLayoutDirsOwned(page);
+	if ((await commentsTextIfExists(page)) === undefined) {
 		return [];
 	}
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const file = await readCommentsFile(workspaceRoot);
+			const file = await readCommentsFile(page);
 			const marked: Comment[] = [];
 			const comments = file.comments.map((comment) => {
 				if (comment.status === 'open' && ids.includes(comment.id)) {
@@ -255,31 +257,31 @@ export const markCommentsSent = async ({
 			if (marked.length === 0) {
 				return [];
 			}
-			await writeCommentsFile(workspaceRoot, { version: COMMENTS_SCHEMA_VERSION, comments });
+			await writeCommentsFile(page, { version: COMMENTS_SCHEMA_VERSION, comments });
 			return marked;
 		},
 	});
 };
 
 export const resolveComment = async ({
-	workspaceRoot,
+	page,
 	id,
 	note,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	id: unknown;
 	note: unknown;
 }): Promise<Comment> => {
 	const commentId = requireCommentId(id);
 	const trimmed = requireNote(note);
-	await assertLayoutDirsOwned(workspaceRoot);
-	if ((await commentsTextIfExists(workspaceRoot)) === undefined) {
+	await assertLayoutDirsOwned(page);
+	if ((await commentsTextIfExists(page)) === undefined) {
 		throw new CommentNotFoundError();
 	}
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const file = await readCommentsFile(workspaceRoot);
+			const file = await readCommentsFile(page);
 			const current = findComment(file, commentId);
 			if (current.status === 'resolved') {
 				throw new CommentResolvedError();
@@ -300,53 +302,49 @@ export const resolveComment = async ({
 					},
 				],
 			};
-			await writeCommentsFile(workspaceRoot, replaceComment(file, next));
+			await writeCommentsFile(page, replaceComment(file, next));
 			return next;
 		},
 	});
 };
 
 export const listComments = async ({
-	workspaceRoot,
+	page,
 	status,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	status?: unknown;
 }): Promise<{ comments: CommentView[] }> => {
 	if (status !== undefined && status !== 'open' && status !== 'sent' && status !== 'resolved') {
 		throw new InvalidArgsError(LIST_STATUS_MESSAGE);
 	}
-	await assertLayoutDirsOwned(workspaceRoot);
-	const file = await readCommentsFile(workspaceRoot);
+	await assertLayoutDirsOwned(page);
+	const file = await readCommentsFile(page);
 	const comments =
 		status === undefined
 			? file.comments.filter((comment) => comment.status !== 'resolved')
 			: file.comments.filter((comment) => comment.status === status);
-	return { comments: await withCommentViews(workspaceRoot, comments) };
+	return { comments: await withCommentViews(page, comments) };
 };
 
 // The panel's read: every stored comment, resolved included, with the same flags as get_comment.
-export const readComments = async ({
-	workspaceRoot,
-}: {
-	workspaceRoot: string;
-}): Promise<CommentView[]> => {
-	await assertLayoutDirsOwned(workspaceRoot);
-	return withCommentViews(workspaceRoot, (await readCommentsFile(workspaceRoot)).comments);
+export const readComments = async ({ page }: { page: PageLocation }): Promise<CommentView[]> => {
+	await assertLayoutDirsOwned(page);
+	return withCommentViews(page, (await readCommentsFile(page)).comments);
 };
 
 export const getComment = async ({
-	workspaceRoot,
+	page,
 	id,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	id: unknown;
 }): Promise<CommentView> => {
 	const commentId = requireCommentId(id);
-	await assertLayoutDirsOwned(workspaceRoot);
-	const file = await readCommentsFile(workspaceRoot);
+	await assertLayoutDirsOwned(page);
+	const file = await readCommentsFile(page);
 	const comment = findComment(file, commentId);
-	const [view] = await withCommentViews(workspaceRoot, [comment]);
+	const [view] = await withCommentViews(page, [comment]);
 	if (view === undefined) {
 		throw new CommentNotFoundError();
 	}

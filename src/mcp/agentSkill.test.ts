@@ -88,3 +88,8 @@ test('the skill states the frame sandbox the panel uses', () => {
 	assert.ok(sandbox);
 	assert.ok(skill.includes(sandbox), `skill must state ${sandbox}`);
 });
+
+test('the skill never names the old artboards folder', () => {
+	// `.cursor-design/artboards` is the tombstone file now; with a slash it reads as a folder to edit.
+	assert.ok(!skill.includes('.cursor-design/artboards/'));
+});

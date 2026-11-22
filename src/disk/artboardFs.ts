@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 import {
 	type CanvasFrame,
@@ -17,6 +17,7 @@ import {
 	DiskError,
 	FrameMovedError,
 	InvalidArgsError,
+	PageNotFoundError,
 	isErrno,
 	throwDiskError,
 } from './errors';
@@ -33,8 +34,8 @@ import {
 	manifestPathSegments,
 } from './layout';
 import {
+	type PageLocation,
 	assertLayoutDirsOwned,
-	ensureDir,
 	layoutEntryKind,
 	readCanvasLayoutFile,
 	readManifestFile,
@@ -70,7 +71,7 @@ export {
 export { exportArtboard, readHandoffStatus } from './exportFs';
 
 export type CreateArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId: unknown;
 	html: unknown;
 	title?: unknown;
@@ -89,7 +90,7 @@ export type CreateArtboardResult = {
 };
 
 export type UpdateArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId: unknown;
 	html: unknown;
 	baseGeneration?: unknown;
@@ -107,7 +108,7 @@ export type UpdateArtboardResult = {
 };
 
 export type ReadArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId?: unknown;
 };
 
@@ -123,7 +124,7 @@ export type ReadArtboardResult = {
 };
 
 export type PlaceFrameArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	id: unknown;
 	x?: unknown;
 	y?: unknown;
@@ -139,7 +140,7 @@ export type PlaceFrameResult = {
 };
 
 export type SetActiveArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId: unknown;
 };
 
@@ -170,49 +171,98 @@ const requireOptionalString = (value: unknown, fieldName: string): string | unde
 	return value;
 };
 
+// set_artboard's arg checks, run by createArtboard and by the handler before it resolves the page,
+// so invalid args on a fresh root create nothing.
+export const validateNewArtboardArgs = ({
+	artboardId,
+	html,
+	title,
+	viewport,
+}: {
+	artboardId: unknown;
+	html: unknown;
+	title?: unknown;
+	viewport?: unknown;
+}): {
+	artboardId: string;
+	html: string;
+	title: string | undefined;
+	viewport: string | undefined;
+} => ({
+	artboardId: requireArtboardIdString(artboardId),
+	html: requireHtmlString(html),
+	title: requireOptionalString(title, 'title'),
+	viewport: requireOptionalString(viewport, 'viewport'),
+});
+
+// No page-folder mkdir anywhere else, so no page-scoped write recreates a missing page.
+const makeArtboardsDir = async (page: PageLocation): Promise<void> => {
+	try {
+		await mkdir(workspaceJoin(page.workspaceRoot, artboardsDirSegments(page.pageId)));
+	} catch (error: unknown) {
+		if (isErrno(error, 'EEXIST')) {
+			return;
+		}
+		if (isErrno(error, 'ENOENT')) {
+			throw new PageNotFoundError(page.pageId, { cause: error });
+		}
+		throwDiskError(error);
+	}
+};
+
 const writeManifestActive = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 	existing,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId: string;
 	existing: ArtboardManifest | undefined;
 }): Promise<void> => {
 	const manifest: ArtboardManifest = {
 		version: SCHEMA_VERSION,
 		activeArtboardId: artboardId,
-		workspaceFolder: existing?.workspaceFolder ?? workspaceRoot,
+		workspaceFolder: existing?.workspaceFolder ?? page.workspaceRoot,
 		updatedAt: new Date().toISOString(),
 	};
 	if (existing?.lastExport !== undefined) {
 		manifest.lastExport = existing.lastExport;
 	}
 	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, manifestPathSegments),
+		...workspaceLayoutFile(page.workspaceRoot, manifestPathSegments(page.pageId)),
 		contents: serializeManifest(manifest),
 	});
 };
 
 export const createArtboard = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 	html,
 	title,
 	viewport,
 	writeEnsurePanelMarker,
 }: CreateArtboardArgs): Promise<CreateArtboardResult> => {
-	const resolvedId = requireArtboardIdString(artboardId);
-	const resolvedHtml = requireHtmlString(html);
-	const validatedTitle = requireOptionalString(title, 'title');
-	const validatedViewport = requireOptionalString(viewport, 'viewport');
+	const {
+		artboardId: resolvedId,
+		html: resolvedHtml,
+		title: validatedTitle,
+		viewport: validatedViewport,
+	} = validateNewArtboardArgs({ artboardId, html, title, viewport });
 
-	await assertLayoutDirsOwned(workspaceRoot);
-	const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(resolvedId));
-	const metaLayout = workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId));
-	const existingManifest = await readManifestFileLenient(workspaceRoot);
+	await assertLayoutDirsOwned(page);
+	const htmlLayout = workspaceLayoutFile(
+		page.workspaceRoot,
+		artboardHtmlPathSegments(page.pageId, resolvedId),
+	);
+	const metaLayout = workspaceLayoutFile(
+		page.workspaceRoot,
+		artboardMetaPathSegments(page.pageId, resolvedId),
+	);
+	const existingManifest = await readManifestFileLenient(page);
 
-	await ensureDir(workspaceJoin(workspaceRoot, artboardsDirSegments));
+	// ponytail: only this mkdir maps a missing page folder to PAGE_NOT_FOUND; a writeUtf8 into a page
+	// folder deleted by hand mid-call surfaces as the generic DISK_ERROR. 10c's delete revisits it.
+	await makeArtboardsDir(page);
 
 	const existingHtmlKind = await layoutEntryKind(htmlLayout.filePath);
 	if (existingHtmlKind === 'file') {
@@ -245,12 +295,12 @@ export const createArtboard = async ({
 	// (effectiveArtboardMeta); a failed manifest or marker write leaves it inactive and unopened.
 	// Upgrade path: unlink the HTML when a later write fails.
 	await writeUtf8({ ...metaLayout, contents: serializeMeta(meta) });
-	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing: existingManifest });
+	await writeManifestActive({ page, artboardId: resolvedId, existing: existingManifest });
 
 	let panelEnsured = false;
 	if (writeEnsurePanelMarker) {
 		await writeUtf8({
-			...workspaceLayoutFile(workspaceRoot, ensurePanelPathSegments),
+			...workspaceLayoutFile(page.workspaceRoot, ensurePanelPathSegments),
 			contents: '',
 		});
 		panelEnsured = true;
@@ -268,7 +318,7 @@ export const createArtboard = async ({
 };
 
 export const updateArtboard = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 	html,
 	baseGeneration,
@@ -297,18 +347,21 @@ export const updateArtboard = async ({
 	const validatedTitle = requireOptionalString(title, 'title');
 	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
-	await assertLayoutDirsOwned(workspaceRoot);
-	const htmlLayout = workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(resolvedId));
+	await assertLayoutDirsOwned(page);
+	const htmlLayout = workspaceLayoutFile(
+		page.workspaceRoot,
+		artboardHtmlPathSegments(page.pageId, resolvedId),
+	);
 	// Before the lock: a missing artboard must not create .cursor-design/ through the lock's mkdir,
 	// and a case variant (`HERO` for hero.html on a case-insensitive disk) must never rename it.
-	await requireHtmlFile(htmlLayout.filePath, resolvedId);
-	await requireExactHtmlFileName(workspaceRoot, resolvedId);
+	await requireHtmlFile(page, resolvedId);
+	await requireExactHtmlFileName(page, resolvedId);
 
 	// ponytail: a write that skips the lock (the Agent's direct file edit, an editor save) can land
 	// between the compare and the rename and be overwritten. Upgrade path: re-hash right before the
 	// rename (narrows the window; writers outside the extension can never be locked out).
 	return withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
 			const currentHtml = await readUtf8IfExists(htmlLayout);
 			if (currentHtml === undefined) {
@@ -316,7 +369,7 @@ export const updateArtboard = async ({
 			}
 			const currentMeta = effectiveArtboardMeta({
 				html: currentHtml,
-				meta: await readStoredMeta(workspaceRoot, resolvedId),
+				meta: await readStoredMeta(page, resolvedId),
 				artboardId: resolvedId,
 			});
 			const compared = conflictFields({
@@ -343,7 +396,10 @@ export const updateArtboard = async ({
 			};
 			await writeUtf8({ ...htmlLayout, contents: resolvedHtml });
 			await writeUtf8({
-				...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(resolvedId)),
+				...workspaceLayoutFile(
+					page.workspaceRoot,
+					artboardMetaPathSegments(page.pageId, resolvedId),
+				),
 				contents: serializeMeta(nextMeta),
 			});
 			return {
@@ -358,23 +414,21 @@ export const updateArtboard = async ({
 };
 
 export const readArtboard = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 }: ReadArtboardArgs): Promise<ReadArtboardResult> => {
-	await assertLayoutDirsOwned(workspaceRoot);
+	await assertLayoutDirsOwned(page);
 	const manifest =
-		artboardId === undefined
-			? await readManifestFile(workspaceRoot)
-			: await readManifestFileLenient(workspaceRoot);
+		artboardId === undefined ? await readManifestFile(page) : await readManifestFileLenient(page);
 	const resolvedId =
 		artboardId === undefined
 			? requireActiveManifest(manifest).activeArtboardId
 			: requireArtboardIdString(artboardId);
 
-	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
+	const html = await requireArtboardHtml(page, resolvedId);
 	const meta = effectiveArtboardMeta({
 		html,
-		meta: await readStoredMeta(workspaceRoot, resolvedId),
+		meta: await readStoredMeta(page, resolvedId),
 		artboardId: resolvedId,
 	});
 	return {
@@ -401,7 +455,7 @@ const requireOptionalFiniteNumber = (value: unknown, fieldName: string): number 
 
 // Backs place_frame and the panel drag commit; writes only this frame's canvas.json entry.
 export const placeFrame = async ({
-	workspaceRoot,
+	page,
 	id,
 	x,
 	y,
@@ -419,22 +473,19 @@ export const placeFrame = async ({
 		group: requireOptionalString(group, 'group'),
 	};
 
-	await assertLayoutDirsOwned(workspaceRoot);
-	await requireHtmlFile(
-		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)),
-		resolvedId,
-	);
-	await requireExactHtmlFileName(workspaceRoot, resolvedId);
-	const listed = await listArtboards({ workspaceRoot });
+	await assertLayoutDirsOwned(page);
+	await requireHtmlFile(page, resolvedId);
+	await requireExactHtmlFileName(page, resolvedId);
+	const listed = await listArtboards({ page });
 	if (!listed.artboards.some(({ artboardId }) => artboardId === resolvedId)) {
 		throw new ArtboardNotFoundError(resolvedId);
 	}
 
 	// Only the canvas.json read-modify-write runs under the lock, so the hold stays tiny.
 	const next = await withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
-			const stored = await readCanvasLayoutFile(workspaceRoot);
+			const stored = await readCanvasLayoutFile(page);
 			const current = resolveCanvasFrames({
 				stored: stored.frames,
 				artboards: listed.artboards,
@@ -450,7 +501,7 @@ export const placeFrame = async ({
 			}
 			const placed = placeCanvasFrame({ layout: stored, current, placement });
 			await writeUtf8({
-				...workspaceLayoutFile(workspaceRoot, canvasPathSegments),
+				...workspaceLayoutFile(page.workspaceRoot, canvasPathSegments(page.pageId)),
 				contents: serializeCanvasLayout(placed),
 			});
 			return placed;
@@ -462,19 +513,16 @@ export const placeFrame = async ({
 };
 
 export const setActiveArtboard = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 }: SetActiveArtboardArgs): Promise<{ activeArtboardId: string }> => {
 	const resolvedId = requireArtboardIdString(artboardId);
-	await assertLayoutDirsOwned(workspaceRoot);
-	await requireHtmlFile(
-		workspaceJoin(workspaceRoot, artboardHtmlPathSegments(resolvedId)),
-		resolvedId,
-	);
-	await requireExactHtmlFileName(workspaceRoot, resolvedId);
+	await assertLayoutDirsOwned(page);
+	await requireHtmlFile(page, resolvedId);
+	await requireExactHtmlFileName(page, resolvedId);
 	let existing: ArtboardManifest | undefined;
 	try {
-		existing = await readManifestFile(workspaceRoot);
+		existing = await readManifestFile(page);
 	} catch (error: unknown) {
 		// ponytail: a corrupt manifest is overwritten here (git can restore it). Upgrade path:
 		// keep a .bak copy before overwriting.
@@ -482,6 +530,6 @@ export const setActiveArtboard = async ({
 			throw error;
 		}
 	}
-	await writeManifestActive({ workspaceRoot, artboardId: resolvedId, existing });
+	await writeManifestActive({ page, artboardId: resolvedId, existing });
 	return { activeArtboardId: resolvedId };
 };

@@ -11,7 +11,7 @@ import {
 } from './panelRequestCopy';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import type { CommentView } from '../disk/commentViews';
-import { CommentNotFoundError, LockTimeoutError } from '../disk/errors';
+import { CommentNotFoundError, LockTimeoutError, MigrationConflictError } from '../disk/errors';
 import { answerCommentRequest } from './panelComments';
 
 // One shared, ordered log of everything the host does, so order is assertable.
@@ -40,6 +40,11 @@ vi.mock('../panel/openArtboardPanel', () => ({
 	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
 	postCommentsToPanel: vi.fn(() => host.calls.push('comments:updated')),
 }));
+vi.mock('../disk/openPage', () => ({
+	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
+		Promise.resolve({ workspaceRoot, pageId: 'page-1' }),
+	),
+}));
 vi.mock('../disk/comments', () => ({
 	addComment: vi.fn(() => host.calls.push('write:create')),
 	replyToComment: vi.fn(() => host.calls.push('write:reply')),
@@ -54,8 +59,10 @@ vi.mock('../disk/comments', () => ({
 }));
 
 const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
-const { replyToComment, getComment, listComments, markCommentsSent } =
+const { addComment, replyToComment, setCommentStatus, getComment, listComments, markCommentsSent } =
 	await import('../disk/comments');
+const { resolveOpenPage } = await import('../disk/openPage');
+const { logDiskError } = await import('./hostFs');
 
 const outputChannel = {} as vscode.OutputChannel;
 const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
@@ -122,6 +129,47 @@ test('an untrusted workspace posts one ui:error and writes nothing', async () =>
 		{ type: 'ui:error', requestId: 'req-1', message: UNTRUSTED_WORKSPACE_MESSAGE },
 	]);
 	assert.deepEqual(host.calls, ['answer:ui:error']);
+	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
+});
+
+test('a resolver error posts one ui:error with its message and writes nothing', async () => {
+	const conflict = new MigrationConflictError({ pageId: 'page-1', names: ['manifest.json'] });
+	vi.mocked(resolveOpenPage).mockRejectedValueOnce(conflict);
+	await answerCommentRequest({ value: reply, outputChannel });
+	await flushRefresh();
+	assert.deepEqual(answers(), [
+		{ type: 'ui:error', requestId: 'req-2', message: conflict.message },
+	]);
+	assert.deepEqual(host.calls, ['answer:ui:error']);
+	assert.deepEqual(
+		vi.mocked(logDiskError).mock.calls.map(([args]) => args.error),
+		[conflict],
+	);
+	assert.equal(vi.mocked(addComment).mock.calls.length, 0);
+	assert.equal(vi.mocked(replyToComment).mock.calls.length, 0);
+	assert.equal(vi.mocked(setCommentStatus).mock.calls.length, 0);
+});
+
+test('each copy resolves the page once, never creating, and reads and marks on that page', async () => {
+	for (const value of [copy, copyOpen]) {
+		vi.clearAllMocks();
+		await answerCommentRequest({ value, outputChannel });
+		await flushRefresh();
+		const resolve = vi.mocked(resolveOpenPage).mock;
+		// The request's one resolve, then the comments:updated refresh's own read after the answer.
+		assert.deepEqual(resolve.calls, [
+			[{ workspaceRoot: '/ws', createIfFresh: false }],
+			[{ workspaceRoot: '/ws', createIfFresh: false }],
+		]);
+		const [answerOrder] = vi.mocked(postAnswerToPanel).mock.invocationCallOrder;
+		assert.ok(answerOrder !== undefined && (resolve.invocationCallOrder[1] ?? 0) > answerOrder);
+		const readPage =
+			value === copy
+				? vi.mocked(getComment).mock.calls[0]?.[0].page
+				: vi.mocked(listComments).mock.calls[0]?.[0].page;
+		assert.ok(readPage !== undefined);
+		assert.equal(vi.mocked(markCommentsSent).mock.calls[0]?.[0].page, readPage);
+	}
 });
 
 test('a malformed comment:reply posts one ui:error with the change copy', async () => {
@@ -227,4 +275,5 @@ test('an untrusted workspace refuses a copy before the clipboard', async () => {
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-4', message: UNTRUSTED_WORKSPACE_MESSAGE },
 	]);
+	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
 });

@@ -16,7 +16,7 @@ alwaysApply: false
 - `read_artboard` / `list_artboards` / `set_active_artboard`
 - `export_artboard`: every frame to `handoff/<exportId>/`; takes no `artboardId`
 - `handoff_status`: stale when a frame's HTML changed or a frame was added or removed since the last export
-- `place_frame`: one frame's x / y / width / label / group in `canvas.json`; returns every frame
+- `place_frame`: one frame's x / y / width / label / group in the open page's `canvas.json`; returns every frame
 - `list_comments({status})`: default every unresolved; `stale` / `targetMissing` (`null` = unchecked), `replyCount` instead of `replies`
 - `get_comment(id)`: one comment with replies, flags checked against disk
 - `resolve_comment(id, note)`: resolve after changing the target; `note` is stored as an agent reply
@@ -25,11 +25,12 @@ Changing a tool, its args, an Agent-visible error code, an artboard runtime limi
 
 ## Disk and lock
 
-`.cursor-design/`: `manifest.json`, `canvas.json`, `comments.json`, `artboards/<id>.html`, optional meta, `assets/`, `tokens.json`, `handoff/<exportId>/`. Multi-artboard, one active, no gallery. Users gitignore it.
+`.cursor-design/`: `project.json` (version 1: `openPageId`, `pages`); `pages/<pageId>/` with `manifest.json`, `canvas.json`, `comments.json`, `artboards/<id>.html` + optional meta; `artboards`, a tombstone FILE (never a directory) so a stale 0.4 MCP fails instead of writing; and at the root `handoff/<exportId>/`, `tokens.json`, `assets/`, `.lock`, `.ensure-panel`. Multi-artboard per page, one active, no gallery. Users gitignore it.
 
+- Every MCP handler and host entry point calls `resolveOpenPage` (`src/disk/openPage.ts`) once per call, after the trust check, and passes the `PageLocation` down; never re-resolve inside an op. It migrates a 0.4 root layout into `pages/page-1/` (resumable, never overwrites; `MIGRATION_CONFLICT` when both copies exist), rebuilds a lost `project.json` from the page folders, and creates a fresh project only with `createIfFresh` (`set_artboard`, Open Artboard). Per-page paths come from the `pageId` builders in `layout.ts`; root files take `page.workspaceRoot`.
 - MCP serializes its writes (`enqueueDiskOp`). Every `canvas.json` / `comments.json` read-modify-write, `updateArtboard`'s HTML + meta read-compare-write and the export tail (meta refresh + manifest write, after a re-read) run under the cross-process `withWorkspaceLock` (`.cursor-design/.lock`, `WORKSPACE_BUSY` after 2 s), shared by MCP and the panel.
-- The lock is not re-entrant: never call a disk-lib function that takes it (`updateArtboard`, `editArtboard`, `exportArtboard`, `placeFrame`, `addComment`, `replyToComment`, `setCommentStatus`, `markCommentsSent`, `resolveComment`) inside `withWorkspaceLock`.
-- MCP denied: edit `.cursor-design/**` directly; tell the user to allowlist the tools.
+- The lock is not re-entrant: never call a disk-lib function that takes it (`resolveOpenPage`, `updateArtboard`, `editArtboard`, `exportArtboard`, `placeFrame`, `addComment`, `replyToComment`, `setCommentStatus`, `markCommentsSent`, `resolveComment`) inside `withWorkspaceLock`.
+- MCP denied: edit `.cursor-design/pages/<openPageId>/**` directly; tell the user to allowlist the tools. No `project.json` yet: the user opens the panel once to migrate; never create `pages/` or `project.json` by hand.
 
 ## Webview CSP and messages
 

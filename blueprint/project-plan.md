@@ -40,11 +40,17 @@ Shipped demo: Agent designs a landing hero+CTA on the artboard, export, then imp
 
 No database. User-workspace disk under `.cursor-design/` (gitignored by default):
 
-- `manifest.json` - `version`, `activeArtboardId`, `workspaceFolder`, `updatedAt`, `lastExport` (0.2 adds `lastExport.frames: [{ artboardId, artboardHash }]`, additive, manifest stays version 1)
-- `artboards/<id>.html` - full HTML document
-- optional `artboards/<id>.meta.json` - `id`, `title`, `generation`, `hash`, `viewport`, `updatedAt`
-- `canvas.json` (0.2) - `{ version: 1, frames: [{ id, label, x, y, width, group? }] }`. `id` matches `artboards/<id>.html`; width default 1280, clamped 120–3840 by `place_frame`; height is never stored (it comes from rendered content). A frame missing from `canvas.json` is auto-placed right of the last frame with a 24px gap. Stage view (zoom, pan) is chrome state, not design data.
-- `assets/`, stub `tokens.json`, `handoff/<exportId>/` including `IMPLEMENT.md`. 0.2 layout: `IMPLEMENT.md` (index of groups and frames), `canvas.html` (view-only layout preview), `<group-slug>/<frame-id>/index.html` per frame (`ungrouped/` when no group; colliding slugs get a numeric suffix), `tokens.json`
+- `project.json` (0.5, 10a) - `{ version: 1, openPageId, pages: [{ id, title }] }`. Page ids are `page-<n>` (1 to 100 pages); array order is menu order. It names the open page every tool and the panel work on.
+- `pages/<pageId>/` (0.5, 10a) - one page's design files, schemas unchanged from 0.4:
+  - `manifest.json` - `version`, `activeArtboardId`, `workspaceFolder`, `updatedAt`, `lastExport` (0.2 adds `lastExport.frames: [{ artboardId, artboardHash }]`, additive, manifest stays version 1)
+  - `artboards/<id>.html` - full HTML document
+  - optional `artboards/<id>.meta.json` - `id`, `title`, `generation`, `hash`, `viewport`, `updatedAt`
+  - `canvas.json` (0.2) - `{ version: 1, frames: [{ id, label, x, y, width, group? }] }`. `id` matches `artboards/<id>.html`; width default 1280, clamped 120–3840 by `place_frame`; height is never stored (it comes from rendered content). A frame missing from `canvas.json` is auto-placed right of the last frame with a 24px gap. Stage view (zoom, pan) is chrome state, not design data.
+  - `comments.json` (0.3) - `{ version: 1, comments }`, at most 500.
+- `artboards` (0.5, 10a) - a tombstone text FILE where 0.4 kept its artboards folder, so a still-running 0.4 MCP fails instead of writing there. Never a directory.
+- Root, shared by every page: `assets/`, stub `tokens.json`, `.lock`, `.ensure-panel`, `handoff/<exportId>/` including `IMPLEMENT.md`. 0.2 layout: `IMPLEMENT.md` (index of groups and frames), `canvas.html` (view-only layout preview), `<group-slug>/<frame-id>/index.html` per frame (`ungrouped/` when no group; colliding slugs get a numeric suffix), `tokens.json`
+
+0.5 (10a): the first call or panel open moves a 0.4 root layout into `pages/page-1/` ("Page 1") once, resumable and never overwriting; an entry in both places stops with `MIGRATION_CONFLICT`. A lost `project.json` is rebuilt from the page folders.
 
 Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 

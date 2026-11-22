@@ -132,7 +132,8 @@ popoverState(
 		const request = await lastRequest(page, 'comment:create');
 		await postToChrome(page, {
 			type: 'ui:error',
-			message: 'Could not save the comment. Fix .cursor-design/comments.json and try again.',
+			message:
+				'Could not save the comment. Fix .cursor-design/pages/page-1/comments.json and try again.',
 			requestId: String(request.requestId),
 		});
 		await shootPopover(session);

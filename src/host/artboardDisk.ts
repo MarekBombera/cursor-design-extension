@@ -24,6 +24,8 @@ import {
 	toSafeArtboardErrorMessage,
 } from '../disk/errors';
 import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from '../disk/layout';
+import type { PageLocation } from '../disk/layoutFs';
+import { resolveOpenPage } from '../disk/openPage';
 
 export { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE, type CanvasSnapshot };
 
@@ -39,10 +41,10 @@ const joinWorkspace = (
 
 // No manifest yet: create the default artboard, or make an existing artboard.html active.
 // Goes through the disk lib so the host gets the same symlink and ownership checks as MCP.
-const initializeDefaultArtboard = async (workspaceRoot: string): Promise<void> => {
+const initializeDefaultArtboard = async (page: PageLocation): Promise<void> => {
 	try {
 		await createArtboard({
-			workspaceRoot,
+			page,
 			artboardId: DEFAULT_ARTBOARD_ID,
 			html: DEFAULT_ARTBOARD_HTML,
 			writeEnsurePanelMarker: false,
@@ -51,7 +53,7 @@ const initializeDefaultArtboard = async (workspaceRoot: string): Promise<void> =
 		if (!(error instanceof ArtboardExistsError)) {
 			throw error;
 		}
-		await setActiveArtboard({ workspaceRoot, artboardId: DEFAULT_ARTBOARD_ID });
+		await setActiveArtboard({ page, artboardId: DEFAULT_ARTBOARD_ID });
 	}
 };
 
@@ -71,11 +73,13 @@ const logCanvasViewReadErrors = ({
 };
 
 const snapshotFromCanvasView = async ({
-	workspaceFolder,
+	page,
 	outputChannel,
-}: WorkspaceDiskArgs): Promise<CanvasSnapshot> => {
-	const workspaceRoot = workspaceFolder.uri.fsPath;
-	const view = await readCanvasView({ workspaceRoot });
+}: {
+	page: PageLocation;
+	outputChannel: vscode.OutputChannel;
+}): Promise<CanvasSnapshot> => {
+	const view = await readCanvasView({ page });
 	logCanvasViewReadErrors({ view, outputChannel });
 	const activeFrame = view.frames.find((frame) => frame.id === view.activeArtboardId);
 	const errorMessage = canvasSnapshotErrorMessage({
@@ -89,7 +93,7 @@ const snapshotFromCanvasView = async ({
 		generation: activeFrame?.generation ?? 0,
 		// Same root string as panelComments' readComments, so the shared parse cache keys match.
 		frames: panelFrames({
-			workspaceRoot,
+			workspaceRoot: page.workspaceRoot,
 			frames: view.frames,
 			onTagError: (frameId, error) => {
 				logDiskError({ scope: `artboardDisk.sourceTags:${frameId}`, error, outputChannel });
@@ -117,15 +121,18 @@ const loadActiveSnapshot = async ({
 		return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 	}
 
-	const manifestUri = joinWorkspace(workspaceFolder, manifestPathSegments);
 	try {
-		if (!(await fileExists(manifestUri))) {
+		const page = await resolveOpenPage({
+			workspaceRoot: workspaceFolder.uri.fsPath,
+			createIfFresh: initializeWhenMissing,
+		});
+		if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
 			if (!initializeWhenMissing) {
 				return emptyArtboardSnapshot();
 			}
-			await initializeDefaultArtboard(workspaceFolder.uri.fsPath);
+			await initializeDefaultArtboard(page);
 		}
-		return await snapshotFromCanvasView({ workspaceFolder, outputChannel });
+		return await snapshotFromCanvasView({ page, outputChannel });
 	} catch (error: unknown) {
 		logDiskError({ scope, error, outputChannel });
 		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
@@ -171,7 +178,10 @@ export const placeFrameFromChrome = async ({
 		} else {
 			try {
 				await placeFrame({
-					workspaceRoot: workspaceFolder.uri.fsPath,
+					page: await resolveOpenPage({
+						workspaceRoot: workspaceFolder.uri.fsPath,
+						createIfFresh: false,
+					}),
 					id: message.id,
 					x: message.x,
 					y: message.y,

@@ -27,6 +27,7 @@ import {
 	workspaceTokensPathSegments,
 } from './layout';
 import {
+	type PageLocation,
 	assertLayoutDirsOwned,
 	ensureDir,
 	readCanvasLayoutFile,
@@ -50,7 +51,7 @@ import {
 import { withWorkspaceLock } from './workspaceLock';
 
 export type ExportArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	now?: Date;
 };
 
@@ -113,12 +114,12 @@ const writeHandoffLeaf = async ({
 };
 
 const writeManifestLastExport = async ({
-	workspaceRoot,
+	page,
 	existing,
 	artboardId,
 	lastExport,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 	existing: ArtboardManifest | undefined;
 	artboardId: string;
 	lastExport: LastExport;
@@ -126,21 +127,21 @@ const writeManifestLastExport = async ({
 	const manifest: ArtboardManifest = {
 		version: SCHEMA_VERSION,
 		activeArtboardId: existing?.activeArtboardId || artboardId,
-		workspaceFolder: existing?.workspaceFolder ?? workspaceRoot,
+		workspaceFolder: existing?.workspaceFolder ?? page.workspaceRoot,
 		updatedAt: lastExport.exportedAt,
 		lastExport,
 	};
 	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, manifestPathSegments),
+		...workspaceLayoutFile(page.workspaceRoot, manifestPathSegments(page.pageId)),
 		contents: serializeManifest(manifest),
 	});
 };
 
 // `.` and `..` pass the artboard-id charset but cannot be a handoff folder name.
-const requireExportableFolderId = (artboardId: string): void => {
+const requireExportableFolderId = (page: PageLocation, artboardId: string): void => {
 	if (artboardId === '.' || artboardId === '..') {
 		throw new DiskError(
-			`Artboard id "${artboardId}" cannot be exported as a folder. Rename ${artboardHtmlPathSegments(artboardId).join('/')}.`,
+			`Artboard id "${artboardId}" cannot be exported as a folder. Rename ${artboardHtmlPathSegments(page.pageId, artboardId).join('/')}.`,
 		);
 	}
 };
@@ -166,13 +167,13 @@ const isSameStoredMeta = (
 // Scan reads (and their errors) happen before the leaf mkdir; the scan's HTML string is the only
 // source for index.html, hashes, and meta.
 export const exportArtboard = async ({
-	workspaceRoot,
+	page,
 	now,
 }: ExportArtboardArgs): Promise<ExportArtboardResult> => {
 	const exportNow = now ?? new Date();
-	await assertLayoutDirsOwned(workspaceRoot);
-	const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: false });
-	const layout = await readCanvasLayoutFile(workspaceRoot);
+	await assertLayoutDirsOwned(page);
+	const scanned = await scanArtboardFiles({ page, tolerateHtmlDiskError: false });
+	const layout = await readCanvasLayoutFile(page);
 	const htmlById = new Map(scanned.artboards.map(({ artboardId, html }) => [artboardId, html]));
 	const resolved = resolveCanvasFrames({
 		stored: layout.frames,
@@ -182,14 +183,14 @@ export const exportArtboard = async ({
 		throw new NoArtboardsToExportError();
 	}
 	for (const frame of resolved) {
-		requireExportableFolderId(frame.id);
+		requireExportableFolderId(page, frame.id);
 	}
 
 	const folders = assignGroupFolders(resolved);
 	const planned: ExportPlanFrame[] = [];
 	for (const frame of resolved) {
 		const html = htmlById.get(frame.id) ?? '';
-		const storedMeta = await readStoredMeta(workspaceRoot, frame.id, { rejectUnparsable: true });
+		const storedMeta = await readStoredMeta(page, frame.id, { rejectUnparsable: true });
 		const effective = effectiveArtboardMeta({ html, meta: storedMeta, artboardId: frame.id });
 		planned.push({
 			...frame,
@@ -201,8 +202,9 @@ export const exportArtboard = async ({
 		});
 	}
 	const tokensJson =
-		(await readUtf8IfExists(workspaceLayoutFile(workspaceRoot, workspaceTokensPathSegments))) ??
-		STUB_TOKENS_JSON;
+		(await readUtf8IfExists(
+			workspaceLayoutFile(page.workspaceRoot, workspaceTokensPathSegments),
+		)) ?? STUB_TOKENS_JSON;
 
 	const exportId = makeCanvasExportId({ now: exportNow });
 	const exportedAt = exportNow.toISOString();
@@ -227,6 +229,7 @@ export const exportArtboard = async ({
 	const implementMd = buildCanvasImplementMarkdown({
 		exportId,
 		exportedAt,
+		pageId: page.pageId,
 		frames: planned.map(({ id, label, width, group, folder, effective }) => {
 			const implementFrame = { id, label, width, folder, artboardHash: effective.hash };
 			return group === undefined ? implementFrame : { ...implementFrame, group };
@@ -235,7 +238,7 @@ export const exportArtboard = async ({
 	const canvasHtml = buildCanvasPreviewHtml({ exportId, frames: planned });
 
 	await writeHandoffLeaf({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		exportId,
 		files: [
 			{ segments: [IMPLEMENT_FILE], contents: implementMd },
@@ -251,7 +254,7 @@ export const exportArtboard = async ({
 	// since the scan is never overwritten and a read error writes nothing. An unlocked write (an
 	// editor save) can still land between the re-read and the meta write.
 	await withWorkspaceLock({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		operation: async () => {
 			const metaWrites: { id: string; contents: string }[] = [];
 			for (const { id, html, storedMeta, effective, refreshMeta } of planned) {
@@ -259,12 +262,12 @@ export const exportArtboard = async ({
 					continue;
 				}
 				const currentHtml = await readUtf8IfExists(
-					workspaceLayoutFile(workspaceRoot, artboardHtmlPathSegments(id)),
+					workspaceLayoutFile(page.workspaceRoot, artboardHtmlPathSegments(page.pageId, id)),
 				);
 				if (currentHtml !== html) {
 					continue;
 				}
-				const currentMeta = await readStoredMeta(workspaceRoot, id, { rejectUnparsable: true });
+				const currentMeta = await readStoredMeta(page, id, { rejectUnparsable: true });
 				if (!isSameStoredMeta(storedMeta, currentMeta)) {
 					continue;
 				}
@@ -273,10 +276,10 @@ export const exportArtboard = async ({
 					contents: serializeMeta({ ...effective, updatedAt: exportedAt }),
 				});
 			}
-			const currentManifest = await readManifestFile(workspaceRoot);
+			const currentManifest = await readManifestFile(page);
 			for (const { id, contents } of metaWrites) {
 				await writeUtf8({
-					...workspaceLayoutFile(workspaceRoot, artboardMetaPathSegments(id)),
+					...workspaceLayoutFile(page.workspaceRoot, artboardMetaPathSegments(page.pageId, id)),
 					contents,
 				});
 			}
@@ -285,7 +288,7 @@ export const exportArtboard = async ({
 			// lastExport; two racing exports stay last-writer-wins on lastExport. This narrows the
 			// manifest window to the locked tail. Upgrade path: take the lock in writeManifestActive.
 			await writeManifestLastExport({
-				workspaceRoot,
+				page,
 				existing: currentManifest,
 				artboardId: legacyFrame.artboardId,
 				lastExport,
@@ -302,24 +305,24 @@ export const exportArtboard = async ({
 };
 
 export const readHandoffStatus = async ({
-	workspaceRoot,
+	page,
 }: {
-	workspaceRoot: string;
+	page: PageLocation;
 }): Promise<HandoffStatusResult> => {
-	await assertLayoutDirsOwned(workspaceRoot);
-	const manifest = requireActiveManifest(await readManifestFile(workspaceRoot));
+	await assertLayoutDirsOwned(page);
+	const manifest = requireActiveManifest(await readManifestFile(page));
 	const activeArtboardId = manifest.activeArtboardId;
-	const activeHtml = await requireArtboardHtml(workspaceRoot, activeArtboardId);
+	const activeHtml = await requireArtboardHtml(page, activeArtboardId);
 	const activeMeta = effectiveArtboardMeta({
 		html: activeHtml,
-		meta: await readStoredMeta(workspaceRoot, activeArtboardId),
+		meta: await readStoredMeta(page, activeArtboardId),
 		artboardId: activeArtboardId,
 	});
 
 	// Never exported stays stale. Layout never affects staleness, so canvas.json is not read.
 	let stale = true;
 	if (manifest.lastExport !== undefined) {
-		const scanned = await scanArtboardFiles({ workspaceRoot, tolerateHtmlDiskError: true });
+		const scanned = await scanArtboardFiles({ page, tolerateHtmlDiskError: true });
 		stale = compareScannedHandoff(scanned).stale;
 	}
 

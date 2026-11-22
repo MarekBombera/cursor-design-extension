@@ -27,6 +27,7 @@ import {
 	setCommentStatus,
 } from '../disk/comments';
 import { InvalidArgsError, NoWorkspaceError, toSafeArtboardErrorMessage } from '../disk/errors';
+import { resolveOpenPage } from '../disk/openPage';
 import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
 
 // vscode glue only. Neither export ever rejects.
@@ -50,7 +51,12 @@ export const postPanelComments = async ({
 			postCommentsToPanel({ comments: [] });
 			return;
 		}
-		const comments = await readComments({ workspaceRoot: workspaceFolder.uri.fsPath });
+		const comments = await readComments({
+			page: await resolveOpenPage({
+				workspaceRoot: workspaceFolder.uri.fsPath,
+				createIfFresh: false,
+			}),
+		});
 		if (token === readGeneration) {
 			postCommentsToPanel({ comments: comments.map(toPostedComment) });
 		}
@@ -134,12 +140,15 @@ export const answerCommentRequest = async ({
 			);
 			return;
 		}
-		const workspaceRoot = workspaceFolder.uri.fsPath;
+		const page = await resolveOpenPage({
+			workspaceRoot: workspaceFolder.uri.fsPath,
+			createIfFresh: false,
+		});
 		// The clipboard already holds the prompt here, so any throw gets its own copy; the typed
 		// message is only logged. Undefined: refused, stop.
 		const markSent = async (ids: readonly string[]): Promise<number | undefined> => {
 			try {
-				return (await markCommentsSent({ workspaceRoot, ids })).length;
+				return (await markCommentsSent({ page, ids })).length;
 			} catch (error: unknown) {
 				refuse(COPIED_NOT_MARKED_MESSAGE, error);
 				return undefined;
@@ -149,19 +158,19 @@ export const answerCommentRequest = async ({
 		// handled and answered.
 		switch (message.type) {
 			case 'comment:create':
-				await addComment({ workspaceRoot, comment: toNewComment(message) });
+				await addComment({ page, comment: toNewComment(message) });
 				postAnswerToPanel({ type: 'comment:added', requestId });
 				break;
 			case 'comment:reply':
-				await replyToComment({ workspaceRoot, id: message.id, body: message.body });
+				await replyToComment({ page, id: message.id, body: message.body });
 				postAnswerToPanel({ type: 'comment:saved', requestId });
 				break;
 			case 'comment:set-status':
-				await setCommentStatus({ workspaceRoot, id: message.id, status: message.status });
+				await setCommentStatus({ page, id: message.id, status: message.status });
 				postAnswerToPanel({ type: 'comment:saved', requestId });
 				break;
 			case 'comment:copy': {
-				const comment = await getComment({ workspaceRoot, id: message.id });
+				const comment = await getComment({ page, id: message.id });
 				await vscode.env.clipboard.writeText(singleCommentPrompt(comment));
 				const count = await markSent([comment.id]);
 				if (count === undefined) {
@@ -171,7 +180,7 @@ export const answerCommentRequest = async ({
 				break;
 			}
 			case 'comment:copy-open': {
-				const { comments } = await listComments({ workspaceRoot, status: 'open' });
+				const { comments } = await listComments({ page, status: 'open' });
 				if (comments.length === 0) {
 					refuse(
 						NOTHING_OPEN_MESSAGE,

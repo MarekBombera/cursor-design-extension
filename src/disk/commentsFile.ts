@@ -18,7 +18,7 @@ import {
 	MAX_SELECTOR_CHARS,
 	commentsPathSegments,
 } from './layout';
-import { readUtf8IfExists, workspaceLayoutFile, writeUtf8 } from './layoutFs';
+import { type PageLocation, readUtf8IfExists, workspaceLayoutFile, writeUtf8 } from './layoutFs';
 import { isJsonRecord, parseArtboardId } from './parse';
 import {
 	type CommentStyles,
@@ -247,10 +247,10 @@ const hasConsistentTarget = ({
 }: Pick<TargetFields, 'isPage' | 'selector' | 'tagName' | 'rect'>): boolean =>
 	isPage ? selector === 'body' && tagName === 'body' && rect === null : rect !== null;
 
-const parseComment = (value: unknown): Comment => {
+const parseComment = (value: unknown, pageId: string): Comment => {
 	const prepared = isJsonRecord(value) ? preparedTarget(value) : undefined;
 	if (prepared === undefined) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId });
 	}
 	const parsed = commentSchema.safeParse({
 		...prepared,
@@ -267,7 +267,7 @@ const parseComment = (value: unknown): Comment => {
 			: prepared.replies,
 	});
 	if (!parsed.success) {
-		throw new CorruptCommentsError({ cause: parsed.error });
+		throw new CorruptCommentsError({ pageId }, { cause: parsed.error });
 	}
 	const comment = parsed.data;
 	const replyIds = new Set(comment.replies.map((reply) => reply.id));
@@ -276,29 +276,29 @@ const parseComment = (value: unknown): Comment => {
 		!hasConsistentTarget(comment) ||
 		(comment.isPage && comment.targetFingerprint !== undefined)
 	) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId });
 	}
 	return comment;
 };
 
-export const parseCommentsFile = (value: unknown): CommentsFile => {
+export const parseCommentsFile = (value: unknown, pageId: string): CommentsFile => {
 	if (!isJsonRecord(value)) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId });
 	}
 	if (typeof value.version !== 'number' || !Number.isInteger(value.version)) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId });
 	}
 	if (value.version !== COMMENTS_SCHEMA_VERSION) {
-		throw new UnsupportedCommentsVersionError(value.version);
+		throw new UnsupportedCommentsVersionError({ pageId, version: value.version });
 	}
 	if (!Array.isArray(value.comments) || value.comments.length > MAX_COMMENTS) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId });
 	}
 	const seenIds = new Set<string>();
 	const comments = value.comments.map((rawComment: unknown) => {
-		const comment = parseComment(rawComment);
+		const comment = parseComment(rawComment, pageId);
 		if (seenIds.has(comment.id)) {
-			throw new CorruptCommentsError();
+			throw new CorruptCommentsError({ pageId });
 		}
 		seenIds.add(comment.id);
 		return comment;
@@ -309,32 +309,29 @@ export const parseCommentsFile = (value: unknown): CommentsFile => {
 export const serializeCommentsFile = (file: CommentsFile): string =>
 	toPrettyJson({ version: COMMENTS_SCHEMA_VERSION, comments: file.comments });
 
-export const readCommentsFile = async (workspaceRoot: string): Promise<CommentsFile> => {
-	const text = await commentsTextIfExists(workspaceRoot);
+export const readCommentsFile = async (page: PageLocation): Promise<CommentsFile> => {
+	const text = await commentsTextIfExists(page);
 	if (text === undefined) {
 		return emptyCommentsFile();
 	}
 	if (text.length === 0) {
-		throw new CorruptCommentsError();
+		throw new CorruptCommentsError({ pageId: page.pageId });
 	}
 	let parsedJson: unknown;
 	try {
 		parsedJson = JSON.parse(text) as unknown;
 	} catch (error: unknown) {
-		throw new CorruptCommentsError({ cause: error });
+		throw new CorruptCommentsError({ pageId: page.pageId }, { cause: error });
 	}
-	return parseCommentsFile(parsedJson);
+	return parseCommentsFile(parsedJson, page.pageId);
 };
 
-export const commentsTextIfExists = async (workspaceRoot: string): Promise<string | undefined> =>
-	readUtf8IfExists(workspaceLayoutFile(workspaceRoot, commentsPathSegments));
+export const commentsTextIfExists = async (page: PageLocation): Promise<string | undefined> =>
+	readUtf8IfExists(workspaceLayoutFile(page.workspaceRoot, commentsPathSegments(page.pageId)));
 
-export const writeCommentsFile = async (
-	workspaceRoot: string,
-	file: CommentsFile,
-): Promise<void> => {
+export const writeCommentsFile = async (page: PageLocation, file: CommentsFile): Promise<void> => {
 	await writeUtf8({
-		...workspaceLayoutFile(workspaceRoot, commentsPathSegments),
+		...workspaceLayoutFile(page.workspaceRoot, commentsPathSegments(page.pageId)),
 		contents: serializeCommentsFile(file),
 	});
 };

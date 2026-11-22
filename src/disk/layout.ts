@@ -172,25 +172,35 @@ export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 </html>
 `;
 
-export const manifestPathSegments = [CURSOR_DESIGN_DIR, MANIFEST_FILE] as const;
+export const manifestPathSegments = (pageId: string): readonly [string, string, string, string] =>
+	pageEntrySegments(pageId, MANIFEST_FILE);
 
-export const canvasPathSegments = [CURSOR_DESIGN_DIR, CANVAS_FILE] as const;
+export const canvasPathSegments = (pageId: string): readonly [string, string, string, string] =>
+	pageEntrySegments(pageId, CANVAS_FILE);
 
-export const commentsPathSegments = [CURSOR_DESIGN_DIR, COMMENTS_FILE] as const;
+export const commentsPathSegments = (pageId: string): readonly [string, string, string, string] =>
+	pageEntrySegments(pageId, COMMENTS_FILE);
 
-export const artboardsDirSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
+export const artboardsDirSegments = (pageId: string): readonly [string, string, string, string] =>
+	pageEntrySegments(pageId, ARTBOARDS_DIR);
 
 export const artboardHtmlFileName = (artboardId: string): string => `${artboardId}.html`;
 
 const artboardMetaFileName = (artboardId: string): string => `${artboardId}.meta.json`;
 
-export const artboardHtmlPathSegments = (artboardId: string): readonly [string, string, string] => [
-	...artboardsDirSegments,
+export const artboardHtmlPathSegments = (
+	pageId: string,
+	artboardId: string,
+): readonly [string, string, string, string, string] => [
+	...artboardsDirSegments(pageId),
 	artboardHtmlFileName(artboardId),
 ];
 
-export const artboardMetaPathSegments = (artboardId: string): readonly [string, string, string] => [
-	...artboardsDirSegments,
+export const artboardMetaPathSegments = (
+	pageId: string,
+	artboardId: string,
+): readonly [string, string, string, string, string] => [
+	...artboardsDirSegments(pageId),
 	artboardMetaFileName(artboardId),
 ];
 
@@ -204,3 +214,53 @@ export const handoffDirSegments = (exportId: string): readonly [string, string, 
 	...handoffRootSegments,
 	exportId,
 ];
+
+const PROJECT_FILE = 'project.json' as const;
+
+const PAGES_DIR = 'pages' as const;
+
+export const PROJECT_SCHEMA_VERSION = 1 as const;
+
+export const FIRST_PAGE_ID = 'page-1' as const;
+
+// ponytail: the 10d menu lists every page; search is 0.5.1.
+export const MAX_PAGES = 100;
+
+export const MAX_PAGE_TITLE_CHARS = 80;
+
+export const PAGE_ID_PATTERN = /^page-[1-9][0-9]{0,5}$/;
+
+// The four per-page names, in migration order (artboards first).
+export const PAGE_ENTRIES = [ARTBOARDS_DIR, MANIFEST_FILE, CANVAS_FILE, COMMENTS_FILE] as const;
+
+export type PageEntry = (typeof PAGE_ENTRIES)[number];
+
+export const projectPathSegments = [CURSOR_DESIGN_DIR, PROJECT_FILE] as const;
+
+export const pagesDirSegments = [CURSOR_DESIGN_DIR, PAGES_DIR] as const;
+
+// A regular file where 0.4 kept its artboards folder, so a stale 0.4 MCP fails instead of writing.
+export const artboardsTombstoneSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
+
+// Where a page entry lived before pages (0.4).
+export const rootEntrySegments = (name: PageEntry): readonly [string, string] => [
+	CURSOR_DESIGN_DIR,
+	name,
+];
+
+export const pageDirSegments = (pageId: string): readonly [string, string, string] => [
+	...pagesDirSegments,
+	pageId,
+];
+
+export const pageEntrySegments = (
+	pageId: string,
+	name: PageEntry,
+): readonly [string, string, string, string] => [...pageDirSegments(pageId), name];
+
+// Constants only, no builder call: a module-level call would survive tree-shaking into the frame
+// runtime IIFE that imports this file.
+export const ARTBOARDS_TOMBSTONE_TEXT = `cursor-design keeps artboards in ${CURSOR_DESIGN_DIR}/${PAGES_DIR}/<page id>/${ARTBOARDS_DIR}/ now.
+Do not delete or replace this file. It stops an older cursor-design MCP server from writing artboards here, where the extension no longer reads them.
+If a cursor-design tool fails with "${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR} must be a directory (symlinks rejected).", quit and reopen Cursor.
+`;

@@ -1,11 +1,11 @@
 import { normalizeHash } from './hash';
 import {
-	ARTBOARDS_DIR,
 	CANVAS_PREVIEW_FILE,
 	CURSOR_DESIGN_DIR,
 	HANDOFF_INDEX_FILE,
 	TOKENS_FILE,
 	UNGROUPED_FOLDER,
+	artboardsDirSegments,
 } from './layout';
 import { type LastExport } from './parse';
 
@@ -76,12 +76,15 @@ const NO_GROUP_HEADING = '(no group)';
 export const buildCanvasImplementMarkdown = ({
 	exportId,
 	exportedAt,
+	pageId,
 	frames,
 }: {
 	exportId: string;
 	exportedAt: string;
+	pageId: string;
 	frames: readonly CanvasImplementFrame[];
 }): string => {
+	const artboardsDir = artboardsDirSegments(pageId).join('/');
 	// Sections keep first-appearance order; the no-group section counts like any group.
 	const sections = new Map<string | undefined, CanvasImplementFrame[]>();
 	for (const frame of frames) {
@@ -124,7 +127,7 @@ ${fileLines.join('\n')}
 ## Instructions
 
 1. Call \`handoff_status\` first. If \`stale\` is true, call \`export_artboard\` again (it exports the whole canvas) before implementing.
-2. If MCP is unavailable, compare each frame's \`hash\` above with \`${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR}/<id>.meta.json\` \`hash\`, and the frame list with \`${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR}/*.html\`. On any difference, re-export, or ask the user to run **Export Handoff**.
+2. If MCP is unavailable, compare each frame's \`hash\` above with \`${artboardsDir}/<id>.meta.json\` \`hash\`, and the frame list with \`${artboardsDir}/*.html\`. On any difference, re-export, or ask the user to run **Export Handoff**.
 3. Implement each frame from its own \`${HANDOFF_INDEX_FILE}\` (HTML+CSS+JS inline), not from screenshots or \`${CANVAS_PREVIEW_FILE}\`.
 4. Each frame is a complete design at its \`width\`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same \`group\`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on \`body\`.
 5. Target the user's app entry files. Never copy \`${CURSOR_DESIGN_DIR}/\` into the app.

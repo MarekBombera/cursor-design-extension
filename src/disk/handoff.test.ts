@@ -30,6 +30,7 @@ import {
 } from './handoff';
 import { hashHtml } from './hash';
 import {
+	FIRST_PAGE_ID,
 	CANVAS_PREVIEW_FILE,
 	CANVAS_SCHEMA_VERSION,
 	IMPLEMENT_FILE,
@@ -44,6 +45,7 @@ import {
 	manifestPathSegments,
 	workspaceTokensPathSegments,
 } from './layout';
+import { resolveOpenPage } from './openPage';
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
@@ -60,6 +62,7 @@ const tempRoots: string[] = [];
 const makeTempRoot = async (): Promise<string> => {
 	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-handoff-'));
 	tempRoots.push(workspaceRoot);
+	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
 };
 
@@ -82,18 +85,26 @@ const FRAME_HTML: Record<string, string> = {
 
 const readManifestJson = async (workspaceRoot: string): Promise<ArtboardManifest> =>
 	parseManifest(
-		JSON.parse(await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8')) as unknown,
+		JSON.parse(
+			await readFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), 'utf8'),
+		) as unknown,
+		FIRST_PAGE_ID,
 	);
 
 const createFrame = async (workspaceRoot: string, artboardId: string, html: string) =>
-	createArtboard({ workspaceRoot, artboardId, html, writeEnsurePanelMarker: false });
+	createArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId,
+		html,
+		writeEnsurePanelMarker: false,
+	});
 
 const writeCanvas = async (
 	workspaceRoot: string,
 	frames: { id: string; label: string; x: number; y: number; width: number; group?: string }[],
 ): Promise<void> => {
 	await writeFile(
-		join(workspaceRoot, ...canvasPathSegments),
+		join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID)),
 		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames }),
 		'utf8',
 	);
@@ -209,6 +220,7 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 	const markdown = buildCanvasImplementMarkdown({
 		exportId: 'canvas-1',
 		exportedAt: FIXED_NOW.toISOString(),
+		pageId: FIRST_PAGE_ID,
 		frames: [
 			{ id: 'c', label: 'Card\r\nAlt', width: 390, folder: 'ungrouped', artboardHash: hash },
 			{
@@ -256,7 +268,7 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 			'## Instructions',
 			'',
 			'1. Call `handoff_status` first. If `stale` is true, call `export_artboard` again (it exports the whole canvas) before implementing.',
-			"2. If MCP is unavailable, compare each frame's `hash` above with `.cursor-design/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.",
+			"2. If MCP is unavailable, compare each frame's `hash` above with `.cursor-design/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/pages/page-1/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.",
 			'3. Implement each frame from its own `index.html` (HTML+CSS+JS inline), not from screenshots or `canvas.html`.',
 			"4. Each frame is a complete design at its `width`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same `group`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on `body`.",
 			"5. Target the user's app entry files. Never copy `.cursor-design/` into the app.",
@@ -452,10 +464,30 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
 	const beforeManifest = await readManifestJson(workspaceRoot);
-	const exported = await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	const exported = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
 	assert.equal(exported.exportId, FIXED_EXPORT_ID);
 	assert.equal(exported.exportedAt, FIXED_NOW.toISOString());
 	assert.equal(exported.handoffPath, handoffDirSegments(FIXED_EXPORT_ID).join('/'));
+	// Pages: the handoff stays at the root, lastExport lands in the open page's manifest, and
+	// IMPLEMENT.md's MCP-unavailable step names the page's artboards folder.
+	assert.equal(exported.handoffPath, `.cursor-design/handoff/${FIXED_EXPORT_ID}`);
+	const pageManifest = JSON.parse(
+		await readFile(join(workspaceRoot, '.cursor-design/pages/page-1/manifest.json'), 'utf8'),
+	) as { lastExport?: { exportId?: string } };
+	assert.equal(pageManifest.lastExport?.exportId, FIXED_EXPORT_ID);
+	const implementText = await readFile(
+		join(workspaceRoot, '.cursor-design/handoff', FIXED_EXPORT_ID, IMPLEMENT_FILE),
+		'utf8',
+	);
+	assert.ok(
+		implementText.includes(
+			'`.cursor-design/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/pages/page-1/artboards/*.html`',
+		),
+	);
+	assert.ok(!implementText.includes('.cursor-design/artboards/'));
 
 	const leafDir = join(workspaceRoot, ...handoffDirSegments(FIXED_EXPORT_ID));
 	assert.deepEqual(
@@ -478,7 +510,10 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 	};
 	for (const [id, path] of Object.entries(expectedPaths)) {
 		const exportedHtml = await readFile(join(leafDir, path), 'utf8');
-		const diskHtml = await readFile(join(workspaceRoot, ...artboardHtmlPathSegments(id)), 'utf8');
+		const diskHtml = await readFile(
+			join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, id)),
+			'utf8',
+		);
 		assert.equal(exportedHtml, diskHtml);
 		assert.equal(exportedHtml, FRAME_HTML[id]);
 		assert.ok(!exportedHtml.includes('data-cd-'));
@@ -520,10 +555,10 @@ test('legacy lastExport frame falls back to the first frame when active is not e
 	await createFourFrameCanvas(workspaceRoot);
 	const existing = await readManifestJson(workspaceRoot);
 	await writeFile(
-		join(workspaceRoot, ...manifestPathSegments),
+		join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)),
 		serializeManifest({ ...existing, activeArtboardId: '' }),
 	);
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 	const manifest = await readManifestJson(workspaceRoot);
 	assert.equal(manifest.lastExport?.artboardId, 'a');
 	assert.equal(manifest.activeArtboardId, 'a');
@@ -532,7 +567,10 @@ test('legacy lastExport frame falls back to the first frame when active is not e
 test('export without canvas.json puts every frame under ungrouped', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot, { withCanvas: false });
-	const exported = await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	const exported = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
 	assert.deepEqual(
 		await listTree(join(workspaceRoot, ...handoffDirSegments(exported.exportId))),
 		[
@@ -550,9 +588,9 @@ test('export without canvas.json puts every frame under ungrouped', async () => 
 test('export with a missing meta succeeds and creates that meta', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('d'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'd'));
 	await rm(metaPath);
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 	const meta = JSON.parse(await readFile(metaPath, 'utf8')) as Record<string, unknown>;
 	assert.deepEqual(meta, {
 		id: 'd',
@@ -562,14 +600,17 @@ test('export with a missing meta succeeds and creates that meta', async () => {
 		viewport: '1280x800',
 		updatedAt: FIXED_NOW.toISOString(),
 	});
-	assert.equal((await readHandoffStatus({ workspaceRoot })).stale, false);
+	assert.equal(
+		(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+		false,
+	);
 });
 
 test('export with no manifest creates it active on the legacy frame', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
-	await rm(join(workspaceRoot, ...manifestPathSegments));
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	await rm(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)));
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 	const manifest = await readManifestJson(workspaceRoot);
 	assert.equal(manifest.activeArtboardId, 'a');
 	assert.equal(manifest.lastExport?.artboardId, 'a');
@@ -582,18 +623,28 @@ const HERO_LEAF_HTML = 'ungrouped/hero/index.html';
 const readMetaFile = async (workspaceRoot: string, artboardId: string): Promise<ArtboardMeta> =>
 	parseMeta(
 		JSON.parse(
-			await readFile(join(workspaceRoot, ...artboardMetaPathSegments(artboardId)), 'utf8'),
+			await readFile(
+				join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, artboardId)),
+				'utf8',
+			),
 		) as unknown,
+		FIRST_PAGE_ID,
 	);
 
 const writeMetaFile = async (workspaceRoot: string, meta: ArtboardMeta): Promise<void> => {
-	await writeFile(join(workspaceRoot, ...artboardMetaPathSegments(meta.id)), serializeMeta(meta));
+	await writeFile(
+		join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, meta.id)),
+		serializeMeta(meta),
+	);
 };
 
 // hero's HTML edited directly, so its stored meta is stale and export refreshes it.
 const createStaleHero = async (workspaceRoot: string): Promise<ArtboardMeta> => {
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
-	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), STALE_HERO_HTML);
+	await writeFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+		STALE_HERO_HTML,
+	);
 	return readMetaFile(workspaceRoot, 'hero');
 };
 
@@ -619,7 +670,10 @@ const exportAroundLockedWrite = async ({
 	await withWorkspaceLock({
 		workspaceRoot,
 		operation: async () => {
-			exporting = exportArtboard({ workspaceRoot, now: FIXED_NOW });
+			exporting = exportArtboard({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				now: FIXED_NOW,
+			});
 			// Handled at once, so an export that rejects while this still polls is never unhandled.
 			exportSettled = exporting.catch(() => undefined);
 			const deadline = Date.now() + 5000;
@@ -648,9 +702,12 @@ test('export keeps a locked HTML + meta write that lands before its tail', async
 	await exportAroundLockedWrite({
 		workspaceRoot,
 		leafLastFile: HERO_LEAF_HTML,
-		targetPath: join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		targetPath: join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')),
 		lockedWrite: async () => {
-			await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), HERO_HTML);
+			await writeFile(
+				join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+				HERO_HTML,
+			);
 			await writeMetaFile(workspaceRoot, lockedMeta);
 		},
 	});
@@ -669,7 +726,7 @@ test('export keeps a locked meta-only write that lands before its tail', async (
 	await exportAroundLockedWrite({
 		workspaceRoot,
 		leafLastFile: HERO_LEAF_HTML,
-		targetPath: join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		targetPath: join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')),
 		lockedWrite: async () => writeMetaFile(workspaceRoot, lockedMeta),
 	});
 	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), lockedMeta);
@@ -679,7 +736,7 @@ test('export re-reads the manifest so a write before its tail keeps activeArtboa
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
 	await createFrame(workspaceRoot, 'side', '<p>side</p>');
-	const manifestPath = join(workspaceRoot, ...manifestPathSegments);
+	const manifestPath = join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID));
 	const scannedManifest = await readManifestJson(workspaceRoot);
 	assert.equal(scannedManifest.activeArtboardId, 'side');
 	const { lastExport: _dropped, ...withoutLastExport } = scannedManifest;
@@ -704,9 +761,12 @@ test('export reads every meta before any write, so a corrupt second meta writes 
 	const workspaceRoot = await makeTempRoot();
 	await createStaleHero(workspaceRoot);
 	await createFrame(workspaceRoot, 'side', '<p>side</p>');
-	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('side')), '<p>side edited</p>');
-	const heroMetaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
-	const manifestPath = join(workspaceRoot, ...manifestPathSegments);
+	await writeFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'side')),
+		'<p>side edited</p>',
+	);
+	const heroMetaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
+	const manifestPath = join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID));
 	const heroMetaBefore = await readFile(heroMetaPath, 'utf8');
 	const manifestBefore = await readFile(manifestPath, 'utf8');
 	await assert.rejects(
@@ -715,7 +775,10 @@ test('export reads every meta before any write, so a corrupt second meta writes 
 			leafLastFile: 'ungrouped/side/index.html',
 			targetPath: heroMetaPath,
 			lockedWrite: async () =>
-				writeFile(join(workspaceRoot, ...artboardMetaPathSegments('side')), '{ not json'),
+				writeFile(
+					join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'side')),
+					'{ not json',
+				),
 		}),
 		(error: unknown) => {
 			assert.ok(error instanceof CorruptMetaError);
@@ -731,7 +794,7 @@ test('export reads every meta before any write, so a corrupt second meta writes 
 test('export with no competing write refreshes a stale meta', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const storedMeta = await createStaleHero(workspaceRoot);
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), {
 		...storedMeta,
 		hash: hashHtml(STALE_HERO_HTML),
@@ -742,9 +805,9 @@ test('export with no competing write refreshes a stale meta', async () => {
 
 test('read failures write no handoff leaf and keep their codes', async () => {
 	const emptyRoot = await makeTempRoot();
-	await mkdir(join(emptyRoot, ...artboardsDirSegments), { recursive: true });
+	await mkdir(join(emptyRoot, ...artboardsDirSegments(FIRST_PAGE_ID)), { recursive: true });
 	await assert.rejects(
-		exportArtboard({ workspaceRoot: emptyRoot, now: FIXED_NOW }),
+		exportArtboard({ page: { workspaceRoot: emptyRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
 		(error: unknown) => {
 			assert.ok(error instanceof NoArtboardsToExportError);
 			assert.equal(error.code, 'ARTBOARD_NOT_FOUND');
@@ -756,15 +819,25 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 
 	const missingDirRoot = await makeTempRoot();
 	await assert.rejects(
-		exportArtboard({ workspaceRoot: missingDirRoot, now: FIXED_NOW }),
+		exportArtboard({
+			page: { workspaceRoot: missingDirRoot, pageId: FIRST_PAGE_ID },
+			now: FIXED_NOW,
+		}),
 		(error: unknown) => error instanceof NoArtboardsToExportError,
 	);
 
 	const corruptCanvasRoot = await makeTempRoot();
 	await createFourFrameCanvas(corruptCanvasRoot);
-	await writeFile(join(corruptCanvasRoot, ...canvasPathSegments), '{ not json', 'utf8');
+	await writeFile(
+		join(corruptCanvasRoot, ...canvasPathSegments(FIRST_PAGE_ID)),
+		'{ not json',
+		'utf8',
+	);
 	await assert.rejects(
-		exportArtboard({ workspaceRoot: corruptCanvasRoot, now: FIXED_NOW }),
+		exportArtboard({
+			page: { workspaceRoot: corruptCanvasRoot, pageId: FIRST_PAGE_ID },
+			now: FIXED_NOW,
+		}),
 		(error: unknown) => {
 			assert.ok(error instanceof CorruptCanvasError);
 			assert.equal(error.code, 'CORRUPT_CANVAS');
@@ -775,11 +848,14 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 
 	const corruptMetaRoot = await makeTempRoot();
 	await createFourFrameCanvas(corruptMetaRoot);
-	const bMetaPath = join(corruptMetaRoot, ...artboardMetaPathSegments('b'));
+	const bMetaPath = join(corruptMetaRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'b'));
 	const bMeta = JSON.parse(await readFile(bMetaPath, 'utf8')) as Record<string, unknown>;
 	await writeFile(bMetaPath, JSON.stringify({ ...bMeta, id: 'other' }), 'utf8');
 	await assert.rejects(
-		exportArtboard({ workspaceRoot: corruptMetaRoot, now: FIXED_NOW }),
+		exportArtboard({
+			page: { workspaceRoot: corruptMetaRoot, pageId: FIRST_PAGE_ID },
+			now: FIXED_NOW,
+		}),
 		(error: unknown) => {
 			assert.ok(error instanceof CorruptMetaError);
 			assert.equal(error.code, 'CORRUPT_META');
@@ -790,15 +866,19 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 
 	const dotIdRoot = await makeTempRoot();
 	await createFourFrameCanvas(dotIdRoot);
-	await writeFile(join(dotIdRoot, ...artboardsDirSegments, '..html'), '<p>dot</p>', 'utf8');
+	await writeFile(
+		join(dotIdRoot, ...artboardsDirSegments(FIRST_PAGE_ID), '..html'),
+		'<p>dot</p>',
+		'utf8',
+	);
 	await assert.rejects(
-		exportArtboard({ workspaceRoot: dotIdRoot, now: FIXED_NOW }),
+		exportArtboard({ page: { workspaceRoot: dotIdRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
 		(error: unknown) => {
 			assert.ok(error instanceof DiskError);
 			assert.equal(error.code, 'DISK_ERROR');
 			assert.equal(
 				error.message,
-				'Artboard id "." cannot be exported as a folder. Rename .cursor-design/artboards/..html.',
+				'Artboard id "." cannot be exported as a folder. Rename .cursor-design/pages/page-1/artboards/..html.',
 			);
 			return true;
 		},
@@ -809,7 +889,10 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 test('missing tokens writes stub; present tokens are copied byte-for-byte', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
-	const first = await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	const first = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
 	const stubTokens = await readFile(
 		join(workspaceRoot, ...handoffDirSegments(first.exportId), TOKENS_FILE),
 		'utf8',
@@ -818,7 +901,10 @@ test('missing tokens writes stub; present tokens are copied byte-for-byte', asyn
 
 	const tokensBytes = '{\n  "version": 1,\n  "tokens": { "color": " #fff " }\n}';
 	await writeFile(join(workspaceRoot, ...workspaceTokensPathSegments), tokensBytes, 'utf8');
-	const second = await exportArtboard({ workspaceRoot, now: new Date('2026-09-11T17:40:00.000Z') });
+	const second = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: new Date('2026-09-11T17:40:00.000Z'),
+	});
 	assert.equal(
 		await readFile(
 			join(workspaceRoot, ...handoffDirSegments(second.exportId), TOKENS_FILE),
@@ -832,14 +918,17 @@ test('tokens.json that is not a regular file is authored DiskError', async () =>
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
 	await mkdir(join(workspaceRoot, ...workspaceTokensPathSegments));
-	await assert.rejects(exportArtboard({ workspaceRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof DiskError);
-		assert.equal(
-			error.message,
-			`${workspaceTokensPathSegments.join('/')} must be a regular file (symlinks rejected).`,
-		);
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof DiskError);
+			assert.equal(
+				error.message,
+				`${workspaceTokensPathSegments.join('/')} must be a regular file (symlinks rejected).`,
+			);
+			return true;
+		},
+	);
 	assert.deepEqual(await handoffLeaves(workspaceRoot), []);
 });
 
@@ -847,11 +936,14 @@ test('export collision on an existing handoff dir is authored DiskError', async 
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
 	await mkdir(join(workspaceRoot, ...handoffDirSegments(FIXED_EXPORT_ID)), { recursive: true });
-	await assert.rejects(exportArtboard({ workspaceRoot, now: FIXED_NOW }), (error: unknown) => {
-		assert.ok(error instanceof DiskError);
-		assert.equal(error.message, 'Handoff folder already exists. Retry export_artboard.');
-		return true;
-	});
+	await assert.rejects(
+		exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
+		(error: unknown) => {
+			assert.ok(error instanceof DiskError);
+			assert.equal(error.message, 'Handoff folder already exists. Retry export_artboard.');
+			return true;
+		},
+	);
 	assert.deepEqual(await readdir(join(workspaceRoot, ...handoffDirSegments(FIXED_EXPORT_ID))), []);
 });
 
@@ -860,14 +952,17 @@ test('unparsable or invalid meta fails export with CORRUPT_META and writes nothi
 	for (const metaText of corruptMetas) {
 		const workspaceRoot = await makeTempRoot();
 		await createFourFrameCanvas(workspaceRoot);
-		const bMetaPath = join(workspaceRoot, ...artboardMetaPathSegments('b'));
+		const bMetaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'b'));
 		await writeFile(bMetaPath, metaText, 'utf8');
-		await assert.rejects(exportArtboard({ workspaceRoot, now: FIXED_NOW }), (error: unknown) => {
-			assert.ok(error instanceof CorruptMetaError);
-			assert.equal(error.code, 'CORRUPT_META');
-			assert.equal(error.artboardId, 'b');
-			return true;
-		});
+		await assert.rejects(
+			exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
+			(error: unknown) => {
+				assert.ok(error instanceof CorruptMetaError);
+				assert.equal(error.code, 'CORRUPT_META');
+				assert.equal(error.artboardId, 'b');
+				return true;
+			},
+		);
 		assert.deepEqual(await handoffLeaves(workspaceRoot), []);
 		assert.equal(await readFile(bMetaPath, 'utf8'), metaText);
 	}
@@ -876,23 +971,31 @@ test('unparsable or invalid meta fails export with CORRUPT_META and writes nothi
 test('setActiveArtboard and updateArtboard preserve lastExport.frames byte-for-byte', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 	const lastExportText = async (): Promise<string> =>
 		JSON.stringify((await readManifestJson(workspaceRoot)).lastExport);
 	const before = await lastExportText();
-	await setActiveArtboard({ workspaceRoot, artboardId: 'b' });
+	await setActiveArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'b' });
 	assert.equal(await lastExportText(), before);
-	await updateArtboard({ workspaceRoot, artboardId: 'a', html: '<p>a2</p>', baseGeneration: 1 });
+	await updateArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'a',
+		html: '<p>a2</p>',
+		baseGeneration: 1,
+	});
 	assert.equal(await lastExportText(), before);
-	const raw = await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8');
+	const raw = await readFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), 'utf8');
 	assert.ok(raw.includes('"frames": ['));
 });
 
 test('status is stale=false right after a canvas export and keeps active fields', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
-	const exported = await exportArtboard({ workspaceRoot, now: FIXED_NOW });
-	const status = await readHandoffStatus({ workspaceRoot });
+	const exported = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
+	const status = await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(status.stale, false);
 	assert.equal(status.activeArtboardId, 'd');
 	assert.equal(status.activeHash, hashHtml(FRAME_HTML.d ?? ''));
@@ -905,7 +1008,7 @@ test('status turns stale on any frame HTML change, add, or delete', async () => 
 			name: 'update_artboard on one frame',
 			change: async (workspaceRoot) => {
 				await updateArtboard({
-					workspaceRoot,
+					page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 					artboardId: 'b',
 					html: '<p>b2</p>',
 					baseGeneration: 1,
@@ -921,14 +1024,14 @@ test('status turns stale on any frame HTML change, add, or delete', async () => 
 		{
 			name: 'deleting one artboard file',
 			change: async (workspaceRoot) => {
-				await rm(join(workspaceRoot, ...artboardHtmlPathSegments('c')));
+				await rm(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'c')));
 			},
 		},
 		{
 			name: 'direct HTML write without meta',
 			change: async (workspaceRoot) => {
 				await writeFile(
-					join(workspaceRoot, ...artboardHtmlPathSegments('a')),
+					join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'a')),
 					'<p>hand</p>',
 					'utf8',
 				);
@@ -938,21 +1041,37 @@ test('status turns stale on any frame HTML change, add, or delete', async () => 
 	for (const { name, change } of cases) {
 		const workspaceRoot = await makeTempRoot();
 		await createFourFrameCanvas(workspaceRoot);
-		await exportArtboard({ workspaceRoot, now: FIXED_NOW });
+		await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
 		await change(workspaceRoot);
-		assert.equal((await readHandoffStatus({ workspaceRoot })).stale, true, name);
+		assert.equal(
+			(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+			true,
+			name,
+		);
 	}
 });
 
 test('status stays fresh after place_frame and set_active_artboard', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
-	await exportArtboard({ workspaceRoot, now: FIXED_NOW });
-	await placeFrame({ workspaceRoot, id: 'a', x: 5000, y: 300, label: 'Moved' });
-	await placeFrame({ workspaceRoot, id: 'd', group: 'Mobile' });
-	assert.equal((await readHandoffStatus({ workspaceRoot })).stale, false);
-	await setActiveArtboard({ workspaceRoot, artboardId: 'a' });
-	assert.equal((await readHandoffStatus({ workspaceRoot })).stale, false);
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW });
+	await placeFrame({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: 'a',
+		x: 5000,
+		y: 300,
+		label: 'Moved',
+	});
+	await placeFrame({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'd', group: 'Mobile' });
+	assert.equal(
+		(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+		false,
+	);
+	await setActiveArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'a' });
+	assert.equal(
+		(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+		false,
+	);
 });
 
 test('legacy lastExport without frames is stale once a second artboard exists', async () => {
@@ -960,7 +1079,7 @@ test('legacy lastExport without frames is stale once a second artboard exists', 
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
 	const existing = await readManifestJson(workspaceRoot);
 	await writeFile(
-		join(workspaceRoot, ...manifestPathSegments),
+		join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)),
 		serializeManifest({
 			...existing,
 			lastExport: {
@@ -971,15 +1090,21 @@ test('legacy lastExport without frames is stale once a second artboard exists', 
 			},
 		}),
 	);
-	assert.equal((await readHandoffStatus({ workspaceRoot })).stale, false);
+	assert.equal(
+		(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+		false,
+	);
 	await createFrame(workspaceRoot, 'other', '<p>other</p>');
-	assert.equal((await readHandoffStatus({ workspaceRoot })).stale, true);
+	assert.equal(
+		(await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).stale,
+		true,
+	);
 });
 
 test('never exported is stale without lastExport', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
-	const status = await readHandoffStatus({ workspaceRoot });
+	const status = await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(status.stale, true);
 	assert.equal(status.lastExport, undefined);
 });
@@ -998,28 +1123,31 @@ test('malformed lastExport hash or date is CorruptManifestError', async () => {
 		},
 	};
 	assert.throws(
-		() => parseManifest(badHash),
+		() => parseManifest(badHash, FIRST_PAGE_ID),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);
 	await writeFile(
-		join(workspaceRoot, ...manifestPathSegments),
+		join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)),
 		`${JSON.stringify(badHash)}\n`,
 		'utf8',
 	);
 	await assert.rejects(
-		readHandoffStatus({ workspaceRoot }),
+		readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);
 	assert.throws(
 		() =>
-			parseManifest({
-				...validBase,
-				lastExport: {
-					...badHash.lastExport,
-					artboardHash: hashHtml(HERO_HTML),
-					exportedAt: 'not-a-date',
+			parseManifest(
+				{
+					...validBase,
+					lastExport: {
+						...badHash.lastExport,
+						artboardHash: hashHtml(HERO_HTML),
+						exportedAt: 'not-a-date',
+					},
 				},
-			}),
+				FIRST_PAGE_ID,
+			),
 		(error: unknown) => error instanceof CorruptManifestError,
 	);
 });
@@ -1040,7 +1168,7 @@ test('comments.json does not change export files or bytes', async () => {
 	await createFourFrameCanvas(withoutComments);
 	await createFourFrameCanvas(withComments);
 	await writeFile(
-		join(withComments, ...commentsPathSegments),
+		join(withComments, ...commentsPathSegments(FIRST_PAGE_ID)),
 		`${JSON.stringify({
 			version: 1,
 			comments: [
@@ -1065,8 +1193,14 @@ test('comments.json does not change export files or bytes', async () => {
 		})}\n`,
 		'utf8',
 	);
-	const exportedWithout = await exportArtboard({ workspaceRoot: withoutComments, now: FIXED_NOW });
-	const exportedWith = await exportArtboard({ workspaceRoot: withComments, now: FIXED_NOW });
+	const exportedWithout = await exportArtboard({
+		page: { workspaceRoot: withoutComments, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
+	const exportedWith = await exportArtboard({
+		page: { workspaceRoot: withComments, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
 	const withoutDir = join(withoutComments, ...handoffDirSegments(exportedWithout.exportId));
 	const withDir = join(withComments, ...handoffDirSegments(exportedWith.exportId));
 	assert.deepEqual(await listTree(withDir), await listTree(withoutDir));

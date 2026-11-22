@@ -3,8 +3,18 @@ import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import { EDIT_CONFLICT_MESSAGE, MALFORMED_EDIT_MESSAGE } from './panelRequestCopy';
-import { ConflictError, EditRefusedError, NoWorkspaceError } from '../disk/errors';
+import {
+	EDIT_CONFLICT_MESSAGE,
+	EDIT_FALLBACK_MESSAGE,
+	MALFORMED_EDIT_MESSAGE,
+} from './panelRequestCopy';
+import {
+	ConflictError,
+	EditRefusedError,
+	MigrationConflictError,
+	NoWorkspaceError,
+} from '../disk/errors';
+import { FIRST_PAGE_ID } from '../disk/layout';
 import { clearEditHistories, historyFlags, historyStepTarget } from './editHistory';
 import { answerEditRequest } from './panelEdit';
 
@@ -24,6 +34,11 @@ vi.mock('./hostFs', () => ({
 }));
 vi.mock('../panel/openArtboardPanel', () => ({
 	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
+}));
+vi.mock('../disk/openPage', () => ({
+	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
+		Promise.resolve({ workspaceRoot, pageId: 'page-1' }),
+	),
 }));
 vi.mock('../disk/artboardEditFs', () => ({
 	editArtboard: vi.fn(() => {
@@ -51,6 +66,7 @@ vi.mock('./canvasSnapshot', async (importOriginal) => {
 
 const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
 const { editArtboard } = await import('../disk/artboardEditFs');
+const { resolveOpenPage } = await import('../disk/openPage');
 
 const outputChannel = {} as vscode.OutputChannel;
 const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
@@ -87,8 +103,11 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 			canRedo: false,
 		},
 	]);
+	assert.deepEqual(vi.mocked(resolveOpenPage).mock.calls, [
+		[{ workspaceRoot: '/ws', createIfFresh: false }],
+	]);
 	assert.deepEqual(vi.mocked(editArtboard).mock.calls[0]?.[0], {
-		workspaceRoot: '/ws',
+		page: { workspaceRoot: '/ws', pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		baseHash: edit.hash,
 		edit: { sourceNumber: 0, styles: [{ field: 'padding', value: '8' }] },
@@ -122,6 +141,18 @@ test('a conflict or a refusal is logged and answered once with panel copy', asyn
 	assert.deepEqual(host.calls, ['log', 'answer:ui:error', 'log', 'answer:ui:error']);
 });
 
+test('a resolver error is logged and answered once, and nothing is edited', async () => {
+	vi.mocked(resolveOpenPage).mockRejectedValueOnce(
+		new MigrationConflictError({ pageId: FIRST_PAGE_ID, names: ['artboards'] }),
+	);
+	await answerEditRequest({ value: edit, outputChannel });
+	assert.deepEqual(answers(), [
+		{ type: 'ui:error', requestId: 'edit-1', message: EDIT_FALLBACK_MESSAGE },
+	]);
+	assert.deepEqual(host.calls, ['log', 'answer:ui:error']);
+	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
+});
+
 test('malformed, untrusted and folderless attempts are refused before any disk call', async () => {
 	await answerEditRequest({
 		value: { ...edit, styles: [{ field: 'border', value: '1px' }] },
@@ -138,6 +169,8 @@ test('malformed, untrusted and folderless attempts are refused before any disk c
 		{ type: 'ui:error', requestId: 'edit-3', message: new NoWorkspaceError().message },
 	]);
 	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
+	// The resolver may migrate or create files, so it never runs before the trust check.
+	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
 });
 
 test('an attempt without a usable requestId is logged once and never answered', async () => {

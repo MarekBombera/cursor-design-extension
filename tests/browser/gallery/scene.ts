@@ -356,7 +356,7 @@ export const withComments = (extra: Partial<OpenOptions> = {}): OpenOptions => (
 export const MCP_DOWN = { type: 'ui:status', mcpAvailable: false, handoffStale: false } as const;
 export const HANDOFF_STALE = { type: 'ui:status', mcpAvailable: true, handoffStale: true } as const;
 export const COMMENTS_JSON_ERROR =
-	'comments.json is not valid. Fix or delete .cursor-design/comments.json.';
+	'comments.json is not valid. Fix or delete .cursor-design/pages/page-1/comments.json.';
 
 export const openScene = async ({
 	page,

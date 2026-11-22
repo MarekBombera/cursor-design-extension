@@ -9,7 +9,9 @@ description: Use when the cursor-design MCP tools (`set_artboard`, `update_artbo
 
 You design UI by writing complete HTML documents ("artboards") into the workspace through MCP tools. The **Cursor Design** panel shows every artboard as a live frame on a canvas, like Figma, and reloads a frame shortly after each write. The user looks at the panel and talks to you in chat. There is no chat in the panel.
 
-- Disk is the source of truth: `.cursor-design/` in the workspace folder.
+- Disk is the source of truth: `.cursor-design/` in the workspace folder. `.cursor-design/project.json` names the open page (`openPageId`), and the tools work on that page's files in `.cursor-design/pages/<openPageId>/` (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`).
+- The first cursor-design call after an update may move an older design folder into `.cursor-design/pages/page-1/`, once. That is expected.
+- `.cursor-design/artboards` is a file, not a folder. Never delete or replace it. A tool failing with `.cursor-design/artboards must be a directory (symlinks rejected).` means an older cursor-design MCP server is still running: ask the user to quit and reopen Cursor.
 - One artboard = one frame = one complete, standalone page (or one state of a page) at one width.
 - If none of these tools are available, cursor-design is not installed or not enabled here. Ignore this skill.
 - **Tool descriptions can be out of date.** After the extension updates, Cursor keeps the old cursor-design server running, with its old tools and descriptions, until Cursor is quit. If a cursor-design tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen Cursor. What a tool actually returns (results and errors) always wins.
@@ -73,7 +75,7 @@ Size and layout:
 3. `update_artboard({ artboardId, html, baseGeneration })`.
 4. On `conflict`, the user or another Agent changed the artboard since your read. Read it again, re-apply your change to the new HTML, and retry once. Never send your old copy over theirs. On `WORKSPACE_BUSY`, retry the same call; after a crashed write it can last up to 30 s.
 
-For a small change in a very large document, you may edit `.cursor-design/artboards/<id>.html` directly with your file edit tool; the panel picks it up. Call `read_artboard` before the next `update_artboard`, because the generation changed.
+For a small change in a very large document, you may edit `.cursor-design/pages/<openPageId>/artboards/<id>.html` directly with your file edit tool (`openPageId` is in `.cursor-design/project.json`); the panel picks it up. Call `read_artboard` before the next `update_artboard`, because the generation changed.
 
 ### Act on comments
 
@@ -103,6 +105,8 @@ Rules:
 4. The design uses system fonts and placeholder boxes only because of the panel's sandbox. In the real app, use the project's real fonts, images and icons.
 5. You write the app code yourself. The tools never touch it, and nothing under `.cursor-design/` is copied into the app.
 
+A handoff exported before pages names the old artboards folder in its step for when the MCP tools are unavailable. Use `.cursor-design/pages/<openPageId>/artboards/` instead, or export again.
+
 ## Errors
 
 A failed call returns `isError: true` with JSON `{ code, message, ... }`. The message names the next step.
@@ -118,6 +122,8 @@ A failed call returns `isError: true` with JSON `{ code, message, ... }`. The me
 - `COMMENT_NOT_FOUND`: call `list_comments` for current ids.
 - `COMMENT_RESOLVED`: already done. Skip it.
 - `CORRUPT_MANIFEST`, `UNSUPPORTED_SCHEMA_VERSION`, `CORRUPT_META`, `CORRUPT_CANVAS`, `UNSUPPORTED_CANVAS_VERSION`, `CORRUPT_COMMENTS`, `UNSUPPORTED_COMMENTS_VERSION`: a `.cursor-design/` file is broken or from a newer version. Do not overwrite it. Tell the user which file the message names, and fix it only with their agreement.
+- `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`: tell the user which file the message names. Never delete `project.json` yourself.
+- `MIGRATION_CONFLICT`: show the user the message. Never move or delete either copy yourself.
 - `DISK_ERROR`: tell the user. Details are in Output → Cursor Design.
 
-When the tools are unavailable, the files under `.cursor-design/` are plain HTML and JSON you can edit directly; tell the user to enable the cursor-design MCP server. If the user declined a tool call, ask before editing files directly. If Cursor lists the server with 0 tools, ask the user to toggle it off and on in the MCP settings.
+When the tools are unavailable, the files under `.cursor-design/pages/<openPageId>/` are plain HTML and JSON you can edit directly; tell the user to enable the cursor-design MCP server. If `.cursor-design/project.json` is missing, the folder has not moved to pages yet: ask the user to open the panel once (**Cursor Design: Open Artboard**), which moves it. Never create `pages/` or `project.json` by hand. If the user declined a tool call, ask before editing files directly. If Cursor lists the server with 0 tools, ask the user to toggle it off and on in the MCP settings.

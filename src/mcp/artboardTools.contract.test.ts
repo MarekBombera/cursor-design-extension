@@ -1,13 +1,15 @@
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import { registerArtboardTools } from './artboardTools';
 import {
+	ARTBOARDS_TOMBSTONE_TEXT,
+	FIRST_PAGE_ID,
 	CURSOR_DESIGN_DIR,
 	LOCK_FILE,
 	artboardHtmlPathSegments,
@@ -285,7 +287,10 @@ const happyPath: Record<ArtboardToolName, (args: HappyPathArgs) => Promise<CallT
 		const body = assertToolSuccess(result);
 		assert.ok(Array.isArray(body.frames));
 		assert.ok(body.frames.length > 0);
-		const canvasText = await readFile(join(workspaceRoot, ...canvasPathSegments), 'utf8');
+		const canvasText = await readFile(
+			join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID)),
+			'utf8',
+		);
 		assert.ok(canvasText.length > 0);
 		return result;
 	},
@@ -465,8 +470,8 @@ test('update_artboard under a fresh foreign lock returns WORKSPACE_BUSY and writ
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
 		await seedArtboard(client, 'hero', '<p>v1</p>');
-		const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
-		const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+		const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+		const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 		const metaBefore = await readFile(metaPath, 'utf8');
 		await writeFile(join(workspaceRoot, CURSOR_DESIGN_DIR, LOCK_FILE), '1 live-holder', 'utf8');
 		const result = await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
@@ -504,5 +509,103 @@ test('concurrent update_artboard: first Promise.all element wins, second conflic
 		assert.equal(conflictBody.actualGeneration, 2);
 		const readResult = await callArtboardTool(client, READ_ARTBOARD_TOOL, { artboardId: 'hero' });
 		assert.equal(assertToolSuccess(readResult).html, '<p>first</p>');
+	});
+});
+
+test('set_artboard with an invalid id or no html on a fresh root creates nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		requireErrorCode(
+			await callArtboardTool(client, SET_ARTBOARD_TOOL, { artboardId: 'has space!', html: '' }),
+			'INVALID_ARTBOARD_ID',
+		);
+		requireErrorCode(
+			await callArtboardTool(client, SET_ARTBOARD_TOOL, { artboardId: 'hero' }),
+			'INVALID_ARGS',
+		);
+		assert.deepEqual(await readdir(workspaceRoot), []);
+	});
+});
+
+test('set_artboard on a fresh root creates the project, the tombstone and the page-1 artboard', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		assert.deepEqual(
+			JSON.parse(await readFile(join(workspaceRoot, '.cursor-design/project.json'), 'utf8')),
+			{ version: 1, openPageId: 'page-1', pages: [{ id: 'page-1', title: 'Page 1' }] },
+		);
+		assert.equal(
+			await readFile(join(workspaceRoot, '.cursor-design/artboards'), 'utf8'),
+			ARTBOARDS_TOMBSTONE_TEXT,
+		);
+		assert.equal(
+			await readFile(
+				join(workspaceRoot, '.cursor-design/pages/page-1/artboards/hero.html'),
+				'utf8',
+			),
+			'<p>hero</p>',
+		);
+	});
+});
+
+test('set_artboard after the open page folder was deleted is PAGE_NOT_FOUND and recreates nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		const pageDir = join(workspaceRoot, '.cursor-design/pages/page-1');
+		await rm(pageDir, { recursive: true });
+		const body = requireErrorCode(
+			await callArtboardTool(client, SET_ARTBOARD_TOOL, { artboardId: 'side', html: '' }),
+			'PAGE_NOT_FOUND',
+		);
+		assert.equal(
+			body.message,
+			'Page "page-1" has no folder. Restore .cursor-design/pages/page-1/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+		);
+		await assert.rejects(access(pageDir));
+	});
+});
+
+test('a project.json that is not JSON is CORRUPT_PROJECT and is left as it was', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		const projectPath = join(workspaceRoot, '.cursor-design/project.json');
+		await writeFile(projectPath, '{ not json');
+		const body = requireErrorCode(
+			await callArtboardTool(client, LIST_ARTBOARDS_TOOL),
+			'CORRUPT_PROJECT',
+		);
+		assert.equal(
+			body.message,
+			'Project index is invalid. Fix .cursor-design/project.json (version 1), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".',
+		);
+		assert.equal(await readFile(projectPath, 'utf8'), '{ not json');
+	});
+});
+
+test('CORRUPT_META results still carry artboardId and name the page meta path', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		await writeFile(
+			join(workspaceRoot, '.cursor-design/pages/page-1/artboards/hero.meta.json'),
+			'{ not json',
+		);
+		const body = requireErrorCode(
+			await callArtboardTool(client, EXPORT_ARTBOARD_TOOL),
+			'CORRUPT_META',
+		);
+		assert.equal(body.artboardId, 'hero');
+		assert.equal(
+			body.message,
+			'Artboard "hero" meta is invalid. Restore .cursor-design/pages/page-1/artboards/hero.meta.json or set_artboard a new id.',
+		);
 	});
 });

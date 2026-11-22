@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
@@ -9,12 +9,15 @@ import { type CallToolResult, type McpServer } from '@modelcontextprotocol/serve
 import { artboardToolInputSchemas, registerArtboardTools } from './artboardTools';
 import { serializeCanvasLayout } from '../disk/canvasLayout';
 import {
+	FIRST_PAGE_ID,
 	CANVAS_SCHEMA_VERSION,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
 	artboardsDirSegments,
 	canvasPathSegments,
+	manifestPathSegments,
 } from '../disk/layout';
+import { resolveOpenPage } from '../disk/openPage';
 import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 import {
 	EXPORT_ARTBOARD_TOOL,
@@ -208,7 +211,7 @@ test('filesystem errno goes to stderr, never into the tool result', async (conte
 	await withWorkspaceRootsEnv(workspaceRoot, async () => {
 		const setArtboard = handlerFor(SET_ARTBOARD_TOOL);
 		assert.equal((await setArtboard({ artboardId: 'hero', html: '<p>v1</p>' })).isError, false);
-		const artboardsDir = join(workspaceRoot, ...artboardsDirSegments);
+		const artboardsDir = join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID));
 		await chmod(artboardsDir, 0o000);
 		let result: CallToolResult | undefined;
 		try {
@@ -248,7 +251,8 @@ test('export_artboard with any artboardId returns the authored INVALID_ARGS resu
 	});
 });
 
-const canvasFileOf = (workspaceRoot: string): string => join(workspaceRoot, ...canvasPathSegments);
+const canvasFileOf = (workspaceRoot: string): string =>
+	join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID));
 
 const readCanvasText = async (workspaceRoot: string): Promise<string | undefined> => {
 	try {
@@ -488,7 +492,7 @@ test('place_frame surfaces a corrupt manifest and writes nothing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await withWorkspaceRootsEnv(workspaceRoot, async () => {
 		await seedArtboards(['hero']);
-		await writeFile(join(workspaceRoot, '.cursor-design', 'manifest.json'), '{ not json');
+		await writeFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), '{ not json');
 		assert.equal(
 			errorCodeOf(await handlerFor(PLACE_FRAME_TOOL)({ id: 'hero', x: 10 })),
 			'CORRUPT_MANIFEST',
@@ -500,7 +504,8 @@ test('place_frame surfaces a corrupt manifest and writes nothing', async () => {
 test('list_artboards without an artboards dir returns empty frames and skips canvas.json', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await withWorkspaceRootsEnv(workspaceRoot, async () => {
-		await mkdir(join(workspaceRoot, '.cursor-design'));
+		// A page folder with no artboards dir.
+		await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 		await writeFile(canvasFileOf(workspaceRoot), '{ not json');
 		const result = await handlerFor(LIST_ARTBOARDS_TOOL)({});
 		assert.equal(result.isError, false);

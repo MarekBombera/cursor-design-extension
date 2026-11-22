@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { exportArtboard } from '../disk/artboardFs';
 import { CursorDesignError } from '../disk/errors';
+import { resolveOpenPage } from '../disk/openPage';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from '../host/artboardDisk';
 import { firstWorkspaceFolder, logDiskError } from '../host/hostFs';
 
@@ -20,14 +21,17 @@ export const exportHandoff = async (outputChannel: vscode.OutputChannel): Promis
 	}
 
 	try {
-		const { handoffPath } = await exportArtboard({ workspaceRoot: workspaceFolder.uri.fsPath });
+		const { handoffPath } = await exportArtboard({
+			page: await resolveOpenPage({
+				workspaceRoot: workspaceFolder.uri.fsPath,
+				createIfFresh: false,
+			}),
+		});
 		await vscode.window.showInformationMessage(`Handoff exported to ${handoffPath}/.`);
 	} catch (error: unknown) {
-		if (error instanceof CursorDesignError) {
-			await vscode.window.showErrorMessage(error.message);
-			return;
-		}
 		logDiskError({ scope: 'exportHandoff', error, outputChannel });
-		await vscode.window.showErrorMessage(GENERIC_FAILURE_MESSAGE);
+		await vscode.window.showErrorMessage(
+			error instanceof CursorDesignError ? error.message : GENERIC_FAILURE_MESSAGE,
+		);
 	}
 };

@@ -15,16 +15,17 @@ import { serializeCanvasLayout } from './canvasLayout';
 import { CorruptCanvasError, DiskError, UnsupportedCanvasVersionError } from './errors';
 import { hashHtml } from './hash';
 import {
-	ARTBOARDS_DIR,
+	FIRST_PAGE_ID,
 	CANVAS_SCHEMA_VERSION,
-	CURSOR_DESIGN_DIR,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
+	artboardsDirSegments,
 	canvasPathSegments,
 	commentsPathSegments,
 } from './layout';
+import { resolveOpenPage } from './openPage';
 import { serializeMeta } from './parse';
 
 const tempRoots: string[] = [];
@@ -32,6 +33,7 @@ const tempRoots: string[] = [];
 const makeTempRoot = async (): Promise<string> => {
 	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-canvas-view-'));
 	tempRoots.push(workspaceRoot);
+	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
 };
 
@@ -41,7 +43,8 @@ afterEach(async () => {
 	);
 });
 
-const canvasFileOf = (workspaceRoot: string): string => join(workspaceRoot, ...canvasPathSegments);
+const canvasFileOf = (workspaceRoot: string): string =>
+	join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID));
 
 const frameGeometry = ({
 	id,
@@ -66,7 +69,7 @@ const frameGeometry = ({
 
 test('readCanvasView is empty when artboards and canvas.json are missing', async () => {
 	const workspaceRoot = await makeTempRoot();
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(view, { activeArtboardId: '', frames: [], handoffStale: false });
 	assert.equal('layoutErrorMessage' in view, false);
 });
@@ -76,14 +79,14 @@ test('readCanvasView matches listArtboards geometry and keeps html plus generati
 	const heroHtml = '<p>hero</p>';
 	const mobileHtml = '<p>mobile</p>';
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: heroHtml,
 		title: 'Hero',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'mobile',
 		html: mobileHtml,
 		title: 'Mobile',
@@ -102,8 +105,8 @@ test('readCanvasView matches listArtboards geometry and keeps html plus generati
 		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [storedHero] }),
 	);
 
-	const listed = await listArtboards({ workspaceRoot });
-	const view = await readCanvasView({ workspaceRoot });
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.activeArtboardId, listed.activeArtboardId);
 	assert.equal('layoutErrorMessage' in view, false);
 	const listedArtboard = listed.artboards[0];
@@ -124,27 +127,30 @@ test('readCanvasView matches listArtboards geometry and keeps html plus generati
 test('corrupt canvas.json auto-places frames and leaves the file unchanged', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'mobile',
 		html: '<p>mobile</p>',
 		writeEnsurePanelMarker: false,
 	});
 	const corruptText = '{ not json';
 	await writeFile(canvasFileOf(workspaceRoot), corruptText);
-	await assert.rejects(listArtboards({ workspaceRoot }), (error: unknown) => {
-		assert.ok(error instanceof CorruptCanvasError);
-		return true;
-	});
+	await assert.rejects(
+		listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptCanvasError);
+			return true;
+		},
+	);
 
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.activeArtboardId, 'mobile');
-	assert.equal(view.layoutErrorMessage, new CorruptCanvasError().message);
+	assert.equal(view.layoutErrorMessage, new CorruptCanvasError({ pageId: FIRST_PAGE_ID }).message);
 	assert.deepEqual(view.frames.map(frameGeometry), [
 		{ id: 'hero', label: 'Artboard', x: 0, y: 0, width: DEFAULT_FRAME_WIDTH },
 		{
@@ -161,7 +167,7 @@ test('corrupt canvas.json auto-places frames and leaves the file unchanged', asy
 test('unsupported canvas.json version auto-places frames and leaves the file unchanged', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
@@ -169,9 +175,12 @@ test('unsupported canvas.json version auto-places frames and leaves the file unc
 	const unsupportedText = '{"version":2,"frames":[]}\n';
 	await writeFile(canvasFileOf(workspaceRoot), unsupportedText);
 
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.activeArtboardId, 'hero');
-	assert.equal(view.layoutErrorMessage, new UnsupportedCanvasVersionError(2).message);
+	assert.equal(
+		view.layoutErrorMessage,
+		new UnsupportedCanvasVersionError({ pageId: FIRST_PAGE_ID, version: 2 }).message,
+	);
 	assert.deepEqual(
 		view.frames.map(({ id, x, y, width }) => ({ id, x, y, width })),
 		[{ id: 'hero', x: 0, y: 0, width: DEFAULT_FRAME_WIDTH }],
@@ -182,14 +191,14 @@ test('unsupported canvas.json version auto-places frames and leaves the file unc
 test('a zero-length HTML file is listed with empty html and no errorMessage', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'empty',
 		html: '<p>temp</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('empty')), '');
+	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'empty')), '');
 
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.frames.length, 1);
 	assert.equal(view.frames[0]?.id, 'empty');
 	assert.equal(view.frames[0]?.html, '');
@@ -202,23 +211,26 @@ test('directory and symlink html files are skipped the same as listArtboards', a
 	const outsidePath = join(outsideDir, 'secret.html');
 	await writeFile(outsidePath, 'secret', 'utf8');
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'linked',
 		html: '<p>linked</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await rm(join(workspaceRoot, ...artboardHtmlPathSegments('linked')));
-	await symlink(outsidePath, join(workspaceRoot, ...artboardHtmlPathSegments('linked')));
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR, 'weird.html'));
+	await rm(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'linked')));
+	await symlink(
+		outsidePath,
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'linked')),
+	);
+	await mkdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID), 'weird.html'));
 
-	const listed = await listArtboards({ workspaceRoot });
-	const view = await readCanvasView({ workspaceRoot });
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(
 		listed.artboards.map((entry) => entry.artboardId),
 		['hero'],
@@ -237,13 +249,13 @@ test('unreadable meta maps generation to 0', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		writeEnsurePanelMarker: false,
 	});
 	await writeFile(
-		join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')),
 		serializeMeta({
 			id: 'other',
 			title: 'Nope',
@@ -254,7 +266,7 @@ test('unreadable meta maps generation to 0', async () => {
 		}),
 	);
 
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.frames.length, 1);
 	assert.equal(view.frames[0]?.generation, 0);
 	assert.equal(view.frames[0]?.html, html);
@@ -264,14 +276,14 @@ test('the frame hash is hashHtml of the disk html even when the stored meta hash
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		writeEnsurePanelMarker: false,
 	});
 	const lower = hashHtml(html);
 	await writeFile(
-		join(workspaceRoot, ...artboardMetaPathSegments('hero')),
+		join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')),
 		serializeMeta({
 			id: 'hero',
 			title: 'hero',
@@ -282,7 +294,7 @@ test('the frame hash is hashHtml of the disk html even when the stored meta hash
 		}),
 	);
 
-	const view = await readCanvasView({ workspaceRoot });
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.frames[0]?.hash, lower);
 });
 
@@ -293,27 +305,27 @@ test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async 
 	}
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'broken',
 		html: '<p>broken</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'mobile',
 		html: '<p>mobile</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const brokenPath = join(workspaceRoot, ...artboardHtmlPathSegments('broken'));
+	const brokenPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'broken'));
 	await chmod(brokenPath, 0o000);
 	try {
-		const view = await readCanvasView({ workspaceRoot });
+		const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 		const broken = view.frames.find((frame) => frame.id === 'broken');
 		const readError = view.htmlReadErrors?.find((entry) => entry.artboardId === 'broken');
 		assert.deepEqual(
@@ -336,18 +348,30 @@ test('unreadable html tiles FRAME_READ_ERROR_MESSAGE and keeps siblings', async 
 test('handoffStale is off before export and right after it, on after an HTML change', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, false);
+	assert.equal(
+		(await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).handoffStale,
+		false,
+	);
 
-	await exportArtboard({ workspaceRoot });
-	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, false);
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	assert.equal(
+		(await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).handoffStale,
+		false,
+	);
 
-	await writeFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), '<p>edited</p>');
-	assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, true);
+	await writeFile(
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+		'<p>edited</p>',
+	);
+	assert.equal(
+		(await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).handoffStale,
+		true,
+	);
 });
 
 test('handoffStale fails closed on an unreadable frame even when its bytes match the export', async (context) => {
@@ -358,16 +382,19 @@ test('handoffStale fails closed on an unreadable frame even when its bytes match
 	const workspaceRoot = await makeTempRoot();
 	// Exported empty, so a read error that tiles as '' would hash equal without the guard.
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'blank',
 		html: '',
 		writeEnsurePanelMarker: false,
 	});
-	await exportArtboard({ workspaceRoot });
-	const blankPath = join(workspaceRoot, ...artboardHtmlPathSegments('blank'));
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	const blankPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'blank'));
 	await chmod(blankPath, 0o000);
 	try {
-		assert.equal((await readCanvasView({ workspaceRoot })).handoffStale, true);
+		assert.equal(
+			(await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } })).handoffStale,
+			true,
+		);
 	} finally {
 		await chmod(blankPath, 0o644);
 	}
@@ -376,29 +403,29 @@ test('handoffStale fails closed on an unreadable frame even when its bytes match
 test('a corrupt comments.json does not change readCanvasView or listArtboards', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const view = await readCanvasView({ workspaceRoot });
-	const listed = await listArtboards({ workspaceRoot });
-	await writeFile(join(workspaceRoot, ...commentsPathSegments), '{', 'utf8');
-	assert.deepEqual(await readCanvasView({ workspaceRoot }), view);
-	assert.deepEqual(await listArtboards({ workspaceRoot }), listed);
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	await writeFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), '{', 'utf8');
+	assert.deepEqual(await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), view);
+	assert.deepEqual(await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), listed);
 });
 
 test('handoffStale stays off once every exported frame is deleted', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await exportArtboard({ workspaceRoot });
-	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments('hero')));
-	const view = await readCanvasView({ workspaceRoot });
+	await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	await unlink(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')));
+	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(view.frames, []);
 	assert.equal(view.handoffStale, false);
 });

@@ -50,7 +50,8 @@ bannerState(
 		await open(withComments());
 		await postToChrome(page, {
 			type: 'artboard:error',
-			message: 'Could not read .cursor-design/artboards/home.html: file is not valid UTF-8.',
+			message:
+				'Could not read .cursor-design/pages/page-1/artboards/home.html: file is not valid UTF-8.',
 		});
 		await settle(page);
 		await shoot();

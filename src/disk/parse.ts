@@ -3,11 +3,21 @@ import * as z from 'zod/mini';
 import {
 	CorruptManifestError,
 	CorruptMetaError,
+	CorruptProjectError,
 	InvalidArtboardIdError,
+	UnsupportedProjectVersionError,
 	UnsupportedSchemaVersionError,
 } from './errors';
 import { isArtboardHash } from './hash';
-import { DEFAULT_VIEWPORT, SCHEMA_VERSION } from './layout';
+import {
+	DEFAULT_VIEWPORT,
+	MAX_PAGES,
+	MAX_PAGE_TITLE_CHARS,
+	PAGE_ID_PATTERN,
+	PROJECT_SCHEMA_VERSION,
+	SCHEMA_VERSION,
+} from './layout';
+import { hasControlChars } from '../webview/frame/frameMessages';
 
 const ARTBOARD_ID_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -66,6 +76,33 @@ const metaSchema = z.object({
 	updatedAt: nonEmptyString,
 });
 
+// The one page-id check: project.json entries, the page-folder scan, and later MCP args.
+export const isPageId = (value: unknown): value is string =>
+	typeof value === 'string' && PAGE_ID_PATTERN.test(value);
+
+const pageTitleString = z.string().check(
+	z.minLength(1),
+	z.maxLength(MAX_PAGE_TITLE_CHARS),
+	z.refine((value) => value === value.trim() && !hasControlChars(value)),
+);
+
+// Array order is menu order.
+const projectSchema = z
+	.object({
+		version: z.literal(PROJECT_SCHEMA_VERSION),
+		openPageId: z.string(),
+		pages: z
+			.array(z.object({ id: z.string().check(z.refine(isPageId)), title: pageTitleString }))
+			.check(
+				z.minLength(1),
+				z.maxLength(MAX_PAGES),
+				z.refine((pages) => new Set(pages.map(({ id }) => id)).size === pages.length),
+			),
+	})
+	.check(z.refine((project) => project.pages.some(({ id }) => id === project.openPageId)));
+
+export type Project = z.infer<typeof projectSchema>;
+
 export type ExportedFrame = z.infer<typeof exportedFrameSchema>;
 
 export type LastExport = z.infer<typeof lastExportSchema>;
@@ -81,35 +118,54 @@ export const parseArtboardId = (value: unknown): string => {
 	throw new InvalidArtboardIdError(typeof value === 'string' ? value : '');
 };
 
-export const parseManifest = (value: unknown): ArtboardManifest => {
+export const parseManifest = (value: unknown, pageId: string): ArtboardManifest => {
 	// Version dispatch runs before the schema so corrupt and unsupported stay distinct errors.
 	if (!isJsonRecord(value)) {
-		throw new CorruptManifestError();
+		throw new CorruptManifestError({ pageId });
 	}
 	if (typeof value.version !== 'number' || !Number.isInteger(value.version)) {
-		throw new CorruptManifestError();
+		throw new CorruptManifestError({ pageId });
 	}
 	if (value.version !== SCHEMA_VERSION) {
-		throw new UnsupportedSchemaVersionError(value.version);
+		throw new UnsupportedSchemaVersionError({ pageId, version: value.version });
 	}
 	const parsed = manifestSchema.safeParse(value);
 	if (!parsed.success) {
-		throw new CorruptManifestError({ cause: parsed.error });
+		throw new CorruptManifestError({ pageId }, { cause: parsed.error });
 	}
 	return parsed.data;
 };
 
-export const parseMeta = (value: unknown): ArtboardMeta => {
+export const parseMeta = (value: unknown, pageId: string): ArtboardMeta => {
 	if (!isJsonRecord(value)) {
-		throw new CorruptMetaError('');
+		throw new CorruptMetaError({ pageId, artboardId: '' });
 	}
 	const artboardId = parseArtboardId(value.id);
 	const parsed = metaSchema.safeParse(value);
 	if (!parsed.success) {
-		throw new CorruptMetaError(artboardId, { cause: parsed.error });
+		throw new CorruptMetaError({ pageId, artboardId }, { cause: parsed.error });
 	}
 	return parsed.data;
 };
+
+export const parseProject = (value: unknown): Project => {
+	if (!isJsonRecord(value)) {
+		throw new CorruptProjectError();
+	}
+	if (typeof value.version !== 'number' || !Number.isInteger(value.version)) {
+		throw new CorruptProjectError();
+	}
+	if (value.version !== PROJECT_SCHEMA_VERSION) {
+		throw new UnsupportedProjectVersionError(value.version);
+	}
+	const parsed = projectSchema.safeParse(value);
+	if (!parsed.success) {
+		throw new CorruptProjectError({ cause: parsed.error });
+	}
+	return parsed.data;
+};
+
+export const serializeProject = (project: Project): string => toPrettyJson(project);
 
 export const serializeManifest = (manifest: ArtboardManifest): string => toPrettyJson(manifest);
 

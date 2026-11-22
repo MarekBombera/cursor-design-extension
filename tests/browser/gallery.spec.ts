@@ -337,7 +337,8 @@ for (const theme of THEMES) {
 		const createRequest = await lastRequest(page, 'comment:create');
 		await postToChrome(page, {
 			type: 'ui:error',
-			message: 'Could not save the comment. Fix .cursor-design/comments.json and try again.',
+			message:
+				'Could not save the comment. Fix .cursor-design/pages/page-1/comments.json and try again.',
 			requestId: String(createRequest.requestId),
 		});
 		await text(

@@ -6,6 +6,7 @@ import { ConflictError, EditRefusedError, InvalidArgsError } from './errors';
 import { hashHtml, isArtboardHash, normalizeHash } from './hash';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from './layout';
 import {
+	type PageLocation,
 	assertLayoutDirsOwned,
 	readStoredMeta,
 	requireArtboardHtml,
@@ -16,7 +17,7 @@ import { parseArtboardId } from './parse';
 // Not re-exported from artboardFs.ts: this module imports updateArtboard from there.
 
 export type EditArtboardArgs = {
-	workspaceRoot: string;
+	page: PageLocation;
 	artboardId: unknown;
 	// The hash of the disk HTML the panel's frame was built from (canvas:updated `hash`).
 	baseHash: unknown;
@@ -39,7 +40,7 @@ export type EditArtboardResult = {
 // same hash under the lock, so equal hash = the parsed bytes. Never call this while holding
 // withWorkspaceLock: updateArtboard takes it and the lock is not re-entrant.
 export const editArtboard = async ({
-	workspaceRoot,
+	page,
 	artboardId,
 	baseHash,
 	edit,
@@ -48,12 +49,12 @@ export const editArtboard = async ({
 	if (typeof baseHash !== 'string' || !isArtboardHash(baseHash)) {
 		throw new InvalidArgsError('baseHash must be sha256: plus 64 hex characters.');
 	}
-	await assertLayoutDirsOwned(workspaceRoot);
+	await assertLayoutDirsOwned(page);
 	// Read first: a missing file (or artboards dir) is ArtboardNotFoundError, never a readdir
 	// DiskError. Then the same refusal as updateArtboard: on a case-insensitive disk `HERO` reads
 	// hero.html, and the same-bytes path below never reaches updateArtboard's own check.
-	const html = await requireArtboardHtml(workspaceRoot, resolvedId);
-	await requireExactHtmlFileName(workspaceRoot, resolvedId);
+	const html = await requireArtboardHtml(page, resolvedId);
+	await requireExactHtmlFileName(page, resolvedId);
 	// Such a frame is a tile in the panel and has no source numbers.
 	if (html.length > MAX_POSTED_ARTBOARD_HTML_CHARS) {
 		throw new EditRefusedError('too-large');
@@ -65,7 +66,11 @@ export const editArtboard = async ({
 	}
 	const result = editArtboardHtml({
 		html,
-		document: cachedArtboardDocument({ workspaceRoot, frameId: resolvedId, html }),
+		document: cachedArtboardDocument({
+			workspaceRoot: page.workspaceRoot,
+			frameId: resolvedId,
+			html,
+		}),
 		edit,
 	});
 	if (!result.ok) {
@@ -78,7 +83,7 @@ export const editArtboard = async ({
 		// Same bytes: no write, so no watcher echo and no meta bump.
 		const meta = effectiveArtboardMeta({
 			html,
-			meta: await readStoredMeta(workspaceRoot, resolvedId),
+			meta: await readStoredMeta(page, resolvedId),
 			artboardId: resolvedId,
 		});
 		return {
@@ -91,7 +96,7 @@ export const editArtboard = async ({
 		};
 	}
 	const written = await updateArtboard({
-		workspaceRoot,
+		page,
 		artboardId: resolvedId,
 		html: result.html,
 		baseHash: expectedHash,

@@ -51,39 +51,39 @@ const buildFrame = ({ id, label, x, y, width, group }: CanvasFrame): CanvasFrame
 	return frame;
 };
 
-const parseFrameId = (value: unknown): string => {
+const parseFrameId = (value: unknown, pageId: string): string => {
 	try {
 		return parseArtboardId(value);
 	} catch (error: unknown) {
 		if (error instanceof InvalidArtboardIdError) {
-			throw new CorruptCanvasError({ cause: error });
+			throw new CorruptCanvasError({ pageId }, { cause: error });
 		}
 		throw error;
 	}
 };
 
-const parseFrameGroup = (value: unknown): string | undefined => {
+const parseFrameGroup = (value: unknown, pageId: string): string | undefined => {
 	if (value === undefined) {
 		return undefined;
 	}
 	if (typeof value !== 'string') {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
 	return value.length > 0 ? value : undefined;
 };
 
-const parseCanvasFrame = (value: unknown): CanvasFrame => {
+const parseCanvasFrame = (value: unknown, pageId: string): CanvasFrame => {
 	if (!isJsonRecord(value)) {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
-	const id = parseFrameId(value.id);
+	const id = parseFrameId(value.id, pageId);
 	if (
 		typeof value.label !== 'string' ||
 		!isFiniteNumber(value.x) ||
 		!isFiniteNumber(value.y) ||
 		!isFiniteNumber(value.width)
 	) {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
 	return buildFrame({
 		id,
@@ -91,29 +91,29 @@ const parseCanvasFrame = (value: unknown): CanvasFrame => {
 		x: value.x,
 		y: value.y,
 		width: clampFrameWidth(value.width),
-		group: parseFrameGroup(value.group),
+		group: parseFrameGroup(value.group, pageId),
 	});
 };
 
 // Strict: a corrupt or unsupported file throws, so it is never rewritten.
-export const parseCanvasLayout = (value: unknown): CanvasLayout => {
+export const parseCanvasLayout = (value: unknown, pageId: string): CanvasLayout => {
 	if (!isJsonRecord(value)) {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
 	if (!Number.isInteger(value.version)) {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
 	if (value.version !== CANVAS_SCHEMA_VERSION) {
-		throw new UnsupportedCanvasVersionError(value.version as number);
+		throw new UnsupportedCanvasVersionError({ pageId, version: value.version as number });
 	}
 	if (!Array.isArray(value.frames)) {
-		throw new CorruptCanvasError();
+		throw new CorruptCanvasError({ pageId });
 	}
 	const seenIds = new Set<string>();
 	const frames = value.frames.map((rawFrame: unknown) => {
-		const frame = parseCanvasFrame(rawFrame);
+		const frame = parseCanvasFrame(rawFrame, pageId);
 		if (seenIds.has(frame.id)) {
-			throw new CorruptCanvasError();
+			throw new CorruptCanvasError({ pageId });
 		}
 		seenIds.add(frame.id);
 		return frame;

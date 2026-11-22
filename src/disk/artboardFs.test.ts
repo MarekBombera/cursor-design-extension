@@ -38,6 +38,7 @@ import {
 } from './errors';
 import { hashHtml } from './hash';
 import {
+	FIRST_PAGE_ID,
 	ARTBOARDS_DIR,
 	CANVAS_SCHEMA_VERSION,
 	CURSOR_DESIGN_DIR,
@@ -47,15 +48,18 @@ import {
 	SCHEMA_VERSION,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
+	artboardsDirSegments,
 	canvasPathSegments,
 	manifestPathSegments,
 } from './layout';
+import { resolveOpenPage } from './openPage';
 
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
 	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-conflict-'));
 	tempRoots.push(workspaceRoot);
+	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
 };
 
@@ -69,14 +73,14 @@ test('wrong generation does not change HTML', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		writeEnsurePanelMarker: false,
 	});
 	await assert.rejects(
 		updateArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>clobber</p>',
 			baseGeneration: created.generation + 1,
@@ -92,7 +96,7 @@ test('wrong generation does not change HTML', async () => {
 		},
 	);
 	const htmlOnDisk = await readFile(
-		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
 		'utf8',
 	);
 	assert.equal(htmlOnDisk, html);
@@ -102,19 +106,19 @@ test('uppercase on-disk hash does not conflict or extra-bump', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		writeEnsurePanelMarker: false,
 	});
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const storedMeta = (await readFile(metaPath, 'utf8').then((text) => JSON.parse(text))) as {
 		hash: string;
 	};
 	storedMeta.hash = `sha256:${storedMeta.hash.slice('sha256:'.length).toUpperCase()}`;
 	await writeFile(metaPath, JSON.stringify(storedMeta), 'utf8');
 	const updated = await updateArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		baseHash: hashHtml(html),
@@ -126,13 +130,13 @@ test('empty or invalid active id reads as not-found but still lists', async () =
 	for (const activeArtboardId of ['', 'has space!']) {
 		const workspaceRoot = await makeTempRoot();
 		await createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>hero</p>',
 			writeEnsurePanelMarker: false,
 		});
 		await writeFile(
-			join(workspaceRoot, ...manifestPathSegments),
+			join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)),
 			JSON.stringify({
 				version: 1,
 				activeArtboardId,
@@ -141,11 +145,14 @@ test('empty or invalid active id reads as not-found but still lists', async () =
 			}),
 			'utf8',
 		);
-		await assert.rejects(readArtboard({ workspaceRoot }), (error: unknown) => {
-			assert.ok(error instanceof ArtboardNotFoundError);
-			return true;
-		});
-		const listed = await listArtboards({ workspaceRoot });
+		await assert.rejects(
+			readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
+			(error: unknown) => {
+				assert.ok(error instanceof ArtboardNotFoundError);
+				return true;
+			},
+		);
+		const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 		assert.equal(listed.activeArtboardId, '');
 		assert.deepEqual(
 			listed.artboards.map((entry) => entry.artboardId),
@@ -157,22 +164,25 @@ test('empty or invalid active id reads as not-found but still lists', async () =
 test('meta id mismatch reads as corrupt meta', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const storedMeta = (await readFile(metaPath, 'utf8').then((text) => JSON.parse(text))) as {
 		id: string;
 	};
 	storedMeta.id = 'other';
 	await writeFile(metaPath, JSON.stringify(storedMeta), 'utf8');
-	await assert.rejects(readArtboard({ workspaceRoot, artboardId: 'hero' }), (error: unknown) => {
-		assert.ok(error instanceof CorruptMetaError);
-		return true;
-	});
-	const listed = await listArtboards({ workspaceRoot });
+	await assert.rejects(
+		readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'hero' }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptMetaError);
+			return true;
+		},
+	);
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(listed.artboards[0]?.title, '');
 	assert.equal(listed.artboards[0]?.generation, undefined);
 });
@@ -180,43 +190,52 @@ test('meta id mismatch reads as corrupt meta', async () => {
 test('corrupt manifest does not block create or explicit read', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await writeFile(join(workspaceRoot, ...manifestPathSegments), '{not json', 'utf8');
-	const read = await readArtboard({ workspaceRoot, artboardId: 'hero' });
+	await writeFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), '{not json', 'utf8');
+	const read = await readArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
 	assert.equal(read.html, '<p>hero</p>');
 	assert.equal(read.active, false);
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'second',
 		html: '<p>second</p>',
 		writeEnsurePanelMarker: false,
 	});
 	assert.equal(created.generation, 1);
-	const listed = await listArtboards({ workspaceRoot });
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(listed.activeArtboardId, 'second');
 });
 
 test('corrupt manifest still fails list and default read', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await writeFile(join(workspaceRoot, ...manifestPathSegments), '{not json', 'utf8');
-	await assert.rejects(listArtboards({ workspaceRoot }), (error: unknown) => {
-		assert.ok(error instanceof CorruptManifestError);
-		return true;
-	});
-	await assert.rejects(readArtboard({ workspaceRoot }), (error: unknown) => {
-		assert.ok(error instanceof CorruptManifestError);
-		return true;
-	});
+	await writeFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), '{not json', 'utf8');
+	await assert.rejects(
+		listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptManifestError);
+			return true;
+		},
+	);
+	await assert.rejects(
+		readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
+		(error: unknown) => {
+			assert.ok(error instanceof CorruptManifestError);
+			return true;
+		},
+	);
 });
 
 test('symlinked html is rejected without touching the target', async () => {
@@ -225,25 +244,28 @@ test('symlinked html is rejected without touching the target', async () => {
 	const outsidePath = join(outsideDir, 'secret.txt');
 	await writeFile(outsidePath, 'secret', 'utf8');
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 	await rm(htmlPath);
 	await symlink(outsidePath, htmlPath);
-	await assert.rejects(readArtboard({ workspaceRoot, artboardId: 'hero' }), (error: unknown) => {
-		assert.ok(error instanceof DiskError);
-		assert.equal(
-			error.message,
-			'.cursor-design/artboards/hero.html must be a regular file (symlinks rejected).',
-		);
-		return true;
-	});
+	await assert.rejects(
+		readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'hero' }),
+		(error: unknown) => {
+			assert.ok(error instanceof DiskError);
+			assert.equal(
+				error.message,
+				'.cursor-design/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
+			);
+			return true;
+		},
+	);
 	await assert.rejects(
 		updateArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>clobber</p>',
 			baseGeneration: 1,
@@ -263,19 +285,19 @@ test('createArtboard over an existing artboard: a file is ARTBOARD_EXISTS, a sym
 	await writeFile(outsidePath, 'secret', 'utf8');
 	const create = async (): Promise<unknown> =>
 		createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>other</p>',
 			writeEnsurePanelMarker: false,
 		});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const htmlBefore = await readFile(htmlPath, 'utf8');
 	const metaBefore = await readFile(metaPath, 'utf8');
 
@@ -293,7 +315,7 @@ test('createArtboard over an existing artboard: a file is ARTBOARD_EXISTS, a sym
 		assert.ok(error instanceof DiskError);
 		assert.equal(
 			error.message,
-			'.cursor-design/artboards/hero.html must be a regular file (symlinks rejected).',
+			'.cursor-design/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
 		);
 		return true;
 	});
@@ -306,17 +328,17 @@ test('writeUtf8 does not follow a tmp symlink and still replaces dest', async ()
 	const outsidePath = join(outsideDir, 'secret.txt');
 	await writeFile(outsidePath, 'secret', 'utf8');
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 	const tmpPath = `${htmlPath}.${process.pid}.tmp`;
 	await symlink(outsidePath, tmpPath);
 
 	await updateArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>new</p>',
 		baseGeneration: created.generation,
@@ -333,40 +355,55 @@ test('writeUtf8 does not follow a tmp symlink and still replaces dest', async ()
 test('directory named like html is skipped by list', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR, 'weird.html'));
-	const listed = await listArtboards({ workspaceRoot });
+	await mkdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID), 'weird.html'));
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(
 		listed.artboards.map((entry) => entry.artboardId),
 		['hero'],
 	);
 });
 
-test('symlinked artboards dir is rejected', async () => {
+test('the root tombstone passes the dir check; a symlink or a file at the page artboards dir is refused', async () => {
 	const workspaceRoot = await makeTempRoot();
+	// The seeded root already holds the tombstone file at .cursor-design/artboards.
+	assert.ok((await lstat(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR))).isFile());
+	await createArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+
 	const outsideDir = await makeTempRoot();
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
-	await symlink(outsideDir, join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR));
-	await assert.rejects(
-		createArtboard({
-			workspaceRoot,
-			artboardId: 'hero',
-			html: '<p>hero</p>',
-			writeEnsurePanelMarker: false,
-		}),
-		(error: unknown) => {
-			assert.ok(error instanceof DiskError);
-			assert.equal(
-				error.message,
-				'.cursor-design/artboards must be a directory (symlinks rejected).',
-			);
-			return true;
-		},
-	);
+	const pageArtboards = join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID));
+	for (const replace of [
+		() => symlink(outsideDir, pageArtboards),
+		() => writeFile(pageArtboards, ''),
+	]) {
+		await rm(pageArtboards, { recursive: true, force: true });
+		await replace();
+		await assert.rejects(
+			createArtboard({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				artboardId: 'side',
+				html: '<p>side</p>',
+				writeEnsurePanelMarker: false,
+			}),
+			(error: unknown) => {
+				assert.ok(error instanceof DiskError);
+				assert.equal(
+					error.message,
+					'.cursor-design/pages/page-1/artboards must be a directory (symlinks rejected).',
+				);
+				return true;
+			},
+		);
+	}
 });
 
 test('hand-edited HTML bumps read generation without writing meta', async () => {
@@ -374,16 +411,19 @@ test('hand-edited HTML bumps read generation without writing meta', async () => 
 	const originalHtml = '<p>hero</p>';
 	const handEditedHtml = '<p>hand-edit</p>';
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: originalHtml,
 		writeEnsurePanelMarker: false,
 	});
-	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments('hero'));
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	await writeFile(htmlPath, handEditedHtml, 'utf8');
 
-	const read = await readArtboard({ workspaceRoot, artboardId: 'hero' });
+	const read = await readArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
 	assert.equal(read.html, handEditedHtml);
 	assert.equal(read.hash, hashHtml(handEditedHtml));
 	assert.equal(read.generation, created.generation + 1);
@@ -396,7 +436,7 @@ test('hand-edited HTML bumps read generation without writing meta', async () => 
 
 	await assert.rejects(
 		updateArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>clobber</p>',
 			baseGeneration: created.generation,
@@ -409,7 +449,7 @@ test('hand-edited HTML bumps read generation without writing meta', async () => 
 	);
 	assert.equal(await readFile(htmlPath, 'utf8'), handEditedHtml);
 
-	const exported = await exportArtboard({ workspaceRoot });
+	const exported = await exportArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(
 		exported.frames.find(({ artboardId }) => artboardId === 'hero')?.artboardHash,
 		hashHtml(handEditedHtml),
@@ -422,25 +462,28 @@ test('hand-edited HTML bumps read generation without writing meta', async () => 
 	assert.equal(healedMeta.generation, created.generation + 1);
 
 	await writeFile(htmlPath, '<p>second-edit</p>', 'utf8');
-	const status = await readHandoffStatus({ workspaceRoot });
+	const status = await readHandoffStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(status.stale, true);
 });
 
 test('listArtboards generation matches read after a hand-edit', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await writeFile(
-		join(workspaceRoot, ...artboardHtmlPathSegments('hero')),
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
 		'<p>hand-edit</p>',
 		'utf8',
 	);
-	const read = await readArtboard({ workspaceRoot, artboardId: 'hero' });
-	const listed = await listArtboards({ workspaceRoot });
+	const read = await readArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(read.generation, created.generation + 1);
 	assert.equal(listed.artboards[0]?.generation, read.generation);
 });
@@ -449,18 +492,21 @@ test('missing meta still reads and updates at generation 1', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html,
 		writeEnsurePanelMarker: false,
 	});
-	await rm(join(workspaceRoot, ...artboardMetaPathSegments('hero')));
-	const read = await readArtboard({ workspaceRoot, artboardId: 'hero' });
+	await rm(join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')));
+	const read = await readArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		artboardId: 'hero',
+	});
 	assert.equal(read.generation, 1);
 	assert.equal(read.hash, hashHtml(html));
 	assert.equal(read.title, DEFAULT_ARTBOARD_TITLE);
 	const updated = await updateArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>next</p>',
 		baseGeneration: 1,
@@ -472,7 +518,7 @@ test('missing meta still reads and updates at generation 1', async () => {
 test('v2 manifest is not rewritten by createArtboard', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
-	const manifestPath = join(workspaceRoot, ...manifestPathSegments);
+	const manifestPath = join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID));
 	const v2Bytes = `${JSON.stringify({
 		version: 2,
 		activeArtboardId: 'hero',
@@ -482,7 +528,7 @@ test('v2 manifest is not rewritten by createArtboard', async () => {
 	await writeFile(manifestPath, v2Bytes, 'utf8');
 	await assert.rejects(
 		createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>hero</p>',
 			writeEnsurePanelMarker: false,
@@ -494,7 +540,9 @@ test('v2 manifest is not rewritten by createArtboard', async () => {
 		},
 	);
 	assert.equal(await readFile(manifestPath, 'utf8'), v2Bytes);
-	await assert.rejects(access(join(workspaceRoot, ...artboardHtmlPathSegments('hero'))));
+	await assert.rejects(
+		access(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'))),
+	);
 });
 
 test('overlong artboard id is INVALID_ARTBOARD_ID and writes nothing', async () => {
@@ -502,7 +550,7 @@ test('overlong artboard id is INVALID_ARTBOARD_ID and writes nothing', async () 
 	const overlongId = 'a'.repeat(65);
 	await assert.rejects(
 		createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: overlongId,
 			html: '<p>x</p>',
 			writeEnsurePanelMarker: false,
@@ -513,19 +561,21 @@ test('overlong artboard id is INVALID_ARTBOARD_ID and writes nothing', async () 
 			return true;
 		},
 	);
-	await assert.rejects(access(join(workspaceRoot, ...artboardHtmlPathSegments(overlongId))));
+	await assert.rejects(
+		access(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, overlongId))),
+	);
 });
 
 test('setActiveArtboard with a missing id is ARTBOARD_NOT_FOUND', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await assert.rejects(
-		setActiveArtboard({ workspaceRoot, artboardId: 'missing' }),
+		setActiveArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'missing' }),
 		(error: unknown) => {
 			assert.ok(error instanceof ArtboardNotFoundError);
 			assert.equal(error.code, 'ARTBOARD_NOT_FOUND');
@@ -538,16 +588,16 @@ test('setActiveArtboard with a missing id is ARTBOARD_NOT_FOUND', async () => {
 test('setActiveArtboard requires an exact html file name', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const artboardNames = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR));
+	const artboardNames = await readdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID)));
 	assert.ok(artboardNames.includes('hero.html'));
 	assert.ok(!artboardNames.includes('Hero.html'));
 	const foldedHtml = await readFile(
-		join(workspaceRoot, ...artboardHtmlPathSegments('Hero')),
+		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'Hero')),
 		'utf8',
 	).then(
 		(html) => html,
@@ -557,7 +607,7 @@ test('setActiveArtboard requires an exact html file name', async () => {
 		assert.equal(foldedHtml, '<p>hero</p>');
 	}
 	await assert.rejects(
-		setActiveArtboard({ workspaceRoot, artboardId: 'Hero' }),
+		setActiveArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'Hero' }),
 		(error: unknown) => {
 			assert.ok(error instanceof ArtboardNotFoundError);
 			assert.equal(error.code, 'ARTBOARD_NOT_FOUND');
@@ -566,7 +616,7 @@ test('setActiveArtboard requires an exact html file name', async () => {
 		},
 	);
 	const manifest = JSON.parse(
-		await readFile(join(workspaceRoot, ...manifestPathSegments), 'utf8'),
+		await readFile(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)), 'utf8'),
 	) as { activeArtboardId: string };
 	assert.equal(manifest.activeArtboardId, 'hero');
 });
@@ -575,14 +625,19 @@ test('setActiveArtboard requires an exact html file name', async () => {
 test('two unqueued updateArtboard calls on one base: one wins, the other conflicts', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>v1</p>',
 		writeEnsurePanelMarker: false,
 	});
 	const results = await Promise.allSettled(
 		['<p>first</p>', '<p>second</p>'].map((html) =>
-			updateArtboard({ workspaceRoot, artboardId: 'hero', html, baseGeneration: 1 }),
+			updateArtboard({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				artboardId: 'hero',
+				html,
+				baseGeneration: 1,
+			}),
 		),
 	);
 	const fulfilled = results.flatMap((result, index) =>
@@ -596,7 +651,7 @@ test('two unqueued updateArtboard calls on one base: one wins, the other conflic
 	assert.ok(rejected[0] instanceof ConflictError);
 	const winner = fulfilled[0] === 0 ? '<p>first</p>' : '<p>second</p>';
 	assert.equal(
-		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8'),
+		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')), 'utf8'),
 		winner,
 	);
 });
@@ -606,27 +661,27 @@ test('two unqueued updateArtboard calls on one base: one wins, the other conflic
 test('updateArtboard with a case variant id is ARTBOARD_NOT_FOUND and renames nothing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const metaBefore = await readFile(metaPath, 'utf8');
 	await assert.rejects(
 		updateArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'HERO',
 			html: '<p>changed</p>',
 			baseHash: hashHtml('<p>hero</p>'),
 		}),
 		ArtboardNotFoundError,
 	);
-	const names = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR));
+	const names = await readdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID)));
 	assert.ok(names.includes('hero.html'));
 	assert.ok(!names.includes('HERO.html'));
 	assert.equal(
-		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments('hero')), 'utf8'),
+		await readFile(join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')), 'utf8'),
 		'<p>hero</p>',
 	);
 	assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
@@ -636,7 +691,7 @@ test('empty viewport is InvalidArgsError on create and update', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await assert.rejects(
 		createArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>hero</p>',
 			viewport: '',
@@ -649,14 +704,14 @@ test('empty viewport is InvalidArgsError on create and update', async () => {
 		},
 	);
 	const created = await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await assert.rejects(
 		updateArtboard({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			artboardId: 'hero',
 			html: '<p>hero</p>',
 			baseGeneration: created.generation,
@@ -676,21 +731,21 @@ test('listArtboards keeps other ids when one meta is a symlink', async () => {
 	const outsidePath = join(outsideDir, 'poison.json');
 	await writeFile(outsidePath, '{"id":"hero"}', 'utf8');
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
 		html: '<p>hero</p>',
 		writeEnsurePanelMarker: false,
 	});
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'other',
 		html: '<p>other</p>',
 		writeEnsurePanelMarker: false,
 	});
-	const heroMeta = join(workspaceRoot, ...artboardMetaPathSegments('hero'));
+	const heroMeta = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	await rm(heroMeta);
 	await symlink(outsidePath, heroMeta);
-	const listed = await listArtboards({ workspaceRoot });
+	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.deepEqual(
 		listed.artboards.map((entry) => entry.artboardId),
 		['hero', 'other'],
@@ -701,11 +756,12 @@ test('listArtboards keeps other ids when one meta is a symlink', async () => {
 	assert.equal(listed.artboards[1]?.generation, 1);
 });
 
-const canvasFileOf = (workspaceRoot: string): string => join(workspaceRoot, ...canvasPathSegments);
+const canvasFileOf = (workspaceRoot: string): string =>
+	join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID));
 
 const createPlainArtboard = async (workspaceRoot: string, artboardId: string): Promise<void> => {
 	await createArtboard({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId,
 		html: '<p>x</p>',
 		writeEnsurePanelMarker: false,
@@ -716,7 +772,7 @@ test('placeFrame with a matching base writes; a stale base throws FRAME_MOVED an
 	const workspaceRoot = await makeTempRoot();
 	await createPlainArtboard(workspaceRoot, 'a');
 	await placeFrame({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		id: 'a',
 		x: 8,
 		y: 16,
@@ -732,14 +788,21 @@ test('placeFrame with a matching base writes; a stale base throws FRAME_MOVED an
 		{ x: 8, y: 16, width: 408 },
 	]) {
 		await assert.rejects(
-			placeFrame({ workspaceRoot, id: 'a', x: 64, y: 64, width: 480, base }),
+			placeFrame({
+				page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+				id: 'a',
+				x: 64,
+				y: 64,
+				width: 480,
+				base,
+			}),
 			(error: unknown) => error instanceof FrameMovedError && error.code === 'FRAME_MOVED',
 		);
 		assert.equal(await readFile(canvasFileOf(workspaceRoot), 'utf8'), before);
 	}
 
 	const { frames } = await placeFrame({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		id: 'a',
 		x: 64,
 		y: 72,
@@ -754,7 +817,7 @@ test('placeFrame with base appends an auto-placed frame, and a stale base leaves
 	await createPlainArtboard(workspaceRoot, 'a');
 	await assert.rejects(
 		placeFrame({
-			workspaceRoot,
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 			id: 'a',
 			x: 8,
 			y: 8,
@@ -766,7 +829,7 @@ test('placeFrame with base appends an auto-placed frame, and a stale base leaves
 	await assert.rejects(readFile(canvasFileOf(workspaceRoot), 'utf8'), { code: 'ENOENT' });
 
 	await placeFrame({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		id: 'a',
 		x: 8,
 		y: 8,
@@ -783,10 +846,16 @@ test('placeFrame with base appends an auto-placed frame, and a stale base leaves
 test('placeFrame clamps width through the disk path and stores negative x/y as given', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createPlainArtboard(workspaceRoot, 'a');
-	const narrow = await placeFrame({ workspaceRoot, id: 'a', x: -40, y: -8, width: 119 });
+	const narrow = await placeFrame({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: 'a',
+		x: -40,
+		y: -8,
+		width: 119,
+	});
 	assert.deepEqual(narrow.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 120 });
 	const wide = await placeFrame({
-		workspaceRoot,
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		id: 'a',
 		width: 3841,
 		base: { x: -40, y: -8, width: 120 },
