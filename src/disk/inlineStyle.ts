@@ -19,9 +19,9 @@ const longhandsOf = (shorthand: string): readonly string[] =>
 const borderSideLonghands = (suffix: string): readonly string[] =>
 	SIDES.map((side) => `border-${side}-${suffix}`);
 
-export const PADDING_LONGHANDS: readonly string[] = longhandsOf('padding');
+const PADDING_LONGHANDS: readonly string[] = longhandsOf('padding');
 
-export const MARGIN_LONGHANDS: readonly string[] = longhandsOf('margin');
+const MARGIN_LONGHANDS: readonly string[] = longhandsOf('margin');
 
 // Every declaration that can set a side's width, style and colour at once.
 export const BORDER_PARENTS: readonly string[] = ['border', ...longhandsOf('border')];

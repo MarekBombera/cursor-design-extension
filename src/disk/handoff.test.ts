@@ -6,14 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import * as fc from 'fast-check';
 import { afterEach, expect, test } from 'vite-plus/test';
 
-import {
-	createArtboard,
-	exportArtboard,
-	placeFrame,
-	readHandoffStatus,
-	setActiveArtboard,
-	updateArtboard,
-} from './artboardFs';
+import { createArtboard, placeFrame, setActiveArtboard, updateArtboard } from './artboardFs';
 import { serializeCanvasLayout } from './canvasLayout';
 import {
 	CorruptCanvasError,
@@ -22,6 +15,7 @@ import {
 	DiskError,
 	NoArtboardsToExportError,
 } from './errors';
+import { exportArtboard, readHandoffStatus } from './exportFs';
 import {
 	assignGroupFolders,
 	buildCanvasImplementMarkdown,

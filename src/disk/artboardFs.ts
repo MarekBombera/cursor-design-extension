@@ -60,16 +60,6 @@ import {
 } from './parse';
 import { withWorkspaceLock } from './workspaceLock';
 
-// Re-exported so callers import the disk jobs from one path.
-export {
-	FRAME_READ_ERROR_MESSAGE,
-	listArtboards,
-	readCanvasView,
-	type CanvasView,
-	type CanvasViewFrame,
-} from './canvasView';
-export { exportArtboard, readHandoffStatus } from './exportFs';
-
 export type CreateArtboardArgs = {
 	page: PageLocation;
 	artboardId: unknown;

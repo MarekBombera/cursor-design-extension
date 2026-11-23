@@ -5,12 +5,36 @@ import { test } from 'vite-plus/test';
 import {
 	BORDER_PARENTS,
 	clearedProperties,
-	MARGIN_LONGHANDS,
-	PADDING_LONGHANDS,
 	removeStyleProperty,
 	setStyleProperty,
 	splitStyleDeclarations,
 } from './inlineStyle';
+
+// Pinned values: the module keeps these private.
+const PADDING_LONGHANDS = [
+	'padding-top',
+	'padding-right',
+	'padding-bottom',
+	'padding-left',
+	'padding-block',
+	'padding-block-start',
+	'padding-block-end',
+	'padding-inline',
+	'padding-inline-start',
+	'padding-inline-end',
+];
+const MARGIN_LONGHANDS = [
+	'margin-top',
+	'margin-right',
+	'margin-bottom',
+	'margin-left',
+	'margin-block',
+	'margin-block-start',
+	'margin-block-end',
+	'margin-inline',
+	'margin-inline-start',
+	'margin-inline-end',
+];
 
 const set = (styleText: string, property: string, value: string): string | undefined =>
 	setStyleProperty({ styleText, property, value });
@@ -99,6 +123,7 @@ test('a shorthand field drops only its own longhands', () => {
 test('clearedProperties is the field plus only its own longhands', () => {
 	assert.deepEqual(clearedProperties('font-size'), ['font-size']);
 	assert.deepEqual(clearedProperties('padding'), ['padding', ...PADDING_LONGHANDS]);
+	assert.deepEqual(clearedProperties('margin'), ['margin', ...MARGIN_LONGHANDS]);
 	const width = clearedProperties('border-width');
 	assert.ok(width.includes('border-top-width'));
 	// A border field never clears a parent or another aspect: Reset on Border does that (9h).
@@ -106,8 +131,6 @@ test('clearedProperties is the field plus only its own longhands', () => {
 });
 
 test('padding drops its ten longhands and nothing else', () => {
-	assert.equal(PADDING_LONGHANDS.length, 10);
-	assert.equal(MARGIN_LONGHANDS.length, 10);
 	const styleText = [...PADDING_LONGHANDS, 'margin-left', 'padding-x', 'padding']
 		.map((property) => `${property}: 1px`)
 		.join('; ');

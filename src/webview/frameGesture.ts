@@ -219,7 +219,7 @@ export const arrowNudge = ({
 	return { stepX: 0, stepY: key === 'ArrowUp' ? -size : size };
 };
 
-export const REVEAL_MARGIN = 24;
+const REVEAL_MARGIN = 24;
 
 // Screen-px pan along one axis that brings a keyboard-focused label or handle into view with a
 // margin. Something larger than the view aligns its start.

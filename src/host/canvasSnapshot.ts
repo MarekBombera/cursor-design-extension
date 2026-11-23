@@ -1,4 +1,4 @@
-import { type CanvasView, type CanvasViewFrame } from '../disk/artboardFs';
+import { type CanvasView, type CanvasViewFrame } from '../disk/canvasView';
 import { cachedArtboardDocument, frameCacheKey } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
@@ -8,8 +8,7 @@ import type { PostedCanvasFrame } from '../webview/hostMessages';
 export const UNTRUSTED_WORKSPACE_MESSAGE =
 	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
 
-export const ARTBOARD_HTML_TOO_LARGE_MESSAGE =
-	'Artboard HTML is too large to preview in the panel.';
+const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 
 export type CanvasSnapshot = {
 	// The page the snapshot was read from; '' when no page was resolved (never with frames).

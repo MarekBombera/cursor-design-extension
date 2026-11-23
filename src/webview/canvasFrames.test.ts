@@ -5,21 +5,23 @@ import {
 	adoptEditAnswer,
 	applyFrameHeight,
 	demoteToTile,
-	EMPTY_ARTBOARD_COPY,
 	type FrameRecord,
 	frameOutline,
 	frameSizeText,
 	liveIframeIds,
 	mergeCanvasFrames,
-	PROVISIONAL_FRAME_HEIGHT,
 	reloadFrame,
-	RENDER_ERROR_COPY,
-	TILE_HEIGHT,
 	toChromeFrames,
 	withGestureOverride,
 } from './canvasFrames';
 import type { FrameGesture } from './frameGesture';
 import type { PostedCanvasFrame } from './hostMessages';
+
+// Pinned values: the module keeps these private.
+const PROVISIONAL_FRAME_HEIGHT = 800;
+const TILE_HEIGHT = 160;
+const EMPTY_ARTBOARD_COPY = 'Empty artboard file.';
+const RENDER_ERROR_COPY = 'Could not render this frame.';
 
 const posted = (id: string, overrides: Partial<PostedCanvasFrame> = {}): PostedCanvasFrame => ({
 	id,

@@ -112,7 +112,7 @@ const LEGACY_ZERO_ALPHA = new RegExp(String.raw`^(?:rgba|hsla)\(.*,\s*${ZERO_ALP
 const SLASH_ZERO_ALPHA = new RegExp(String.raw`\/\s*${ZERO_ALPHA}`);
 
 // Unknown formats count as painted, which keeps the element (the safe side).
-export const isTransparentColor = (value: string): boolean => {
+const isTransparentColor = (value: string): boolean => {
 	const color = value.trim();
 	return color === 'transparent' || LEGACY_ZERO_ALPHA.test(color) || SLASH_ZERO_ALPHA.test(color);
 };

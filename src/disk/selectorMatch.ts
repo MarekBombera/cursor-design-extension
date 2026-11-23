@@ -29,7 +29,7 @@ type Selector = { steps: Step[]; checks: number };
 // ponytail: a match runs uninterrupted up to MAX_MATCH_WORK checks (about 0.3-0.7 s measured), then
 // reads unchecked; N distinct selectors walk the document N times. Upgrade path: one walk for all
 // of a document's selectors, or a worker thread.
-export const MAX_MATCH_WORK = 10_000_000;
+const MAX_MATCH_WORK = 10_000_000;
 
 // HTML spec "case-sensitivity of selectors": values compared ASCII case-insensitively on HTML
 // elements. https://html.spec.whatwg.org/multipage/semantics-other.html#case-sensitivity-of-selectors

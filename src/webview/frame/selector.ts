@@ -13,6 +13,8 @@ const GENERATED_PREFIXES = ['css-', 'svelte-', 'sc-', 'jsx-', 'emotion-', 'astro
 
 // ponytail: framework prefix list plus finder's own word check (idName / className); a
 // letters-only hash without a known prefix can still pass. Upgrade: entropy scoring.
+// Exported for tests: they pin the scoping-prefix list; a selector shows it only indirectly.
+/** @internal */
 export const isGeneratedName = (name: string): boolean => {
 	const lower = name.toLowerCase();
 	return GENERATED_PREFIXES.some((prefix) => lower.startsWith(prefix));
@@ -51,6 +53,8 @@ const nthOfTypePath = (element: Element): string => {
 };
 
 // A selector unique in the element's document, or null when none fits the cap.
+// Exported for tests: they pass a finder timeout, which describeElement cannot.
+/** @internal */
 export const buildSelector = (
 	element: Element,
 	timeoutMs: number = FINDER_TIMEOUT_MS,
@@ -78,6 +82,8 @@ export const buildSelector = (
 };
 
 // Keeps format chars (\p{Cf}) that toOneLine strips: targetAgrees compares it with raw disk text.
+// Exported for tests: they pin the collapse and cut on raw strings, without DOM innerText.
+/** @internal */
 export const textExcerpt = (raw: string): string => {
 	const text = raw
 		.replaceAll(/[\p{Cc}\s]+/gu, ' ')

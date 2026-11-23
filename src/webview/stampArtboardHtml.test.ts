@@ -4,7 +4,10 @@ import { test } from 'vite-plus/test';
 
 import { CANVAS_RUNTIME_ATTRIBUTE } from './frame/frameMessages';
 import runtimeSource from './frame/runtime.ts?iife';
-import { FRAME_CSP, stampArtboardHtml } from './stampArtboardHtml';
+import { stampArtboardHtml } from './stampArtboardHtml';
+
+// Pinned values: the module keeps these private.
+const FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
 
 const runtimeSelector = `script[${CANVAS_RUNTIME_ATTRIBUTE}]`;
 

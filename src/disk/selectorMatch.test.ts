@@ -4,7 +4,10 @@ import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { test } from 'vite-plus/test';
 
 import { SELECTOR_CASES } from './selectorMatch.cases';
-import { MAX_MATCH_WORK, selectMatches } from './selectorMatch';
+import { selectMatches } from './selectorMatch';
+
+// Pinned values: the module keeps these private.
+const MAX_MATCH_WORK = 10_000_000;
 
 type TreeDocument = DefaultTreeAdapterMap['document'];
 

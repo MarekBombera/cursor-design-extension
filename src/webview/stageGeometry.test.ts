@@ -8,6 +8,10 @@ import stageGeometrySource from './stageGeometry.ts?iife';
 
 const TOLERANCE = 1e-9;
 
+// Pinned values: the module keeps these private.
+const MIN_STAGE_ZOOM = 0.05;
+const MAX_STAGE_ZOOM = 10;
+
 const boxRect = (
 	box: { x: number; y: number; width: number; height: number } | undefined,
 ): Rect | null =>
@@ -54,8 +58,9 @@ test('one zoom step is capped', () => {
 });
 
 test('zoom clamps exactly at the minimum and maximum', () => {
-	assert.equal(geometry.MIN_STAGE_ZOOM, 0.05);
-	assert.equal(geometry.MAX_STAGE_ZOOM, 10);
+	const origin = { view: { x: 0, y: 0, zoom: 1 }, screenX: 0, screenY: 0 };
+	assert.equal(geometry.zoomStageTo({ ...origin, zoom: 0 }).zoom, MIN_STAGE_ZOOM);
+	assert.equal(geometry.zoomStageTo({ ...origin, zoom: 1000 }).zoom, MAX_STAGE_ZOOM);
 	const atMin = geometry.zoomStageAt({
 		view: { x: 0, y: 0, zoom: 0.05 },
 		deltaY: 100,
@@ -367,7 +372,7 @@ test('jumpStageView zooms out to fit, never zooms in, and keeps the zoom without
 	);
 	assert.equal(
 		geometry.jumpStageView({ view, center, fitZoom: 0.001, ...jumpViewport }).zoom,
-		geometry.MIN_STAGE_ZOOM,
+		MIN_STAGE_ZOOM,
 	);
 });
 
@@ -457,8 +462,8 @@ test('the ?iife string has no closing tag sequence', () => {
 
 const finiteCoord = fc.integer({ min: -4000, max: 4000 });
 const inRangeZoom = fc.double({
-	min: geometry.MIN_STAGE_ZOOM,
-	max: geometry.MAX_STAGE_ZOOM,
+	min: MIN_STAGE_ZOOM,
+	max: MAX_STAGE_ZOOM,
 	noNaN: true,
 });
 const finiteZoom = fc.double({ min: -50, max: 50, noNaN: true });
@@ -472,8 +477,8 @@ const viewInRangeArb = fc.record({
 });
 
 const assertZoomClamped = (zoom: number): void => {
-	assert.ok(zoom >= geometry.MIN_STAGE_ZOOM - TOLERANCE);
-	assert.ok(zoom <= geometry.MAX_STAGE_ZOOM + TOLERANCE);
+	assert.ok(zoom >= MIN_STAGE_ZOOM - TOLERANCE);
+	assert.ok(zoom <= MAX_STAGE_ZOOM + TOLERANCE);
 };
 
 const assertKeepVisible = ({
@@ -650,7 +655,7 @@ test('property: fit-all contains every chrome box', () => {
 					(viewportHeight - 2 * 48) / layout.bounds.height,
 				);
 				// Fit clamps zoom up to MIN_STAGE_ZOOM, so oversized bounds overflow.
-				if (neededZoom < geometry.MIN_STAGE_ZOOM) {
+				if (neededZoom < MIN_STAGE_ZOOM) {
 					return;
 				}
 				const view = geometry.fitStageView({
@@ -697,7 +702,8 @@ test('dragFrame follows the delta exactly and rounds the absolute position to wh
 test('dragFrame normalizes -0 and clamps to ±MAX_FRAME_COORDINATE', () => {
 	const near = geometry.dragFrame({ start: { x: -0.3, y: -0.1 }, stageDelta: { x: 0, y: 0 } });
 	assert.ok(Object.is(near.x, 0) && Object.is(near.y, 0));
-	assert.ok(Object.is(geometry.roundToPixel(-0), 0));
+	const zero = geometry.dragFrame({ start: { x: -0, y: -0 }, stageDelta: { x: 0, y: 0 } });
+	assert.ok(Object.is(zero.x, 0) && Object.is(zero.y, 0));
 	assert.deepEqual(
 		geometry.dragFrame({ start: { x: 99_999, y: -99_999 }, stageDelta: { x: 500, y: -500 } }),
 		{ x: 100_000, y: -100_000 },

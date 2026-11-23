@@ -3,12 +3,7 @@ import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import {
-	EDIT_CONFLICT_MESSAGE,
-	EDIT_FALLBACK_MESSAGE,
-	MALFORMED_EDIT_MESSAGE,
-	PAGE_GONE_MESSAGE,
-} from './panelRequestCopy';
+import { MALFORMED_EDIT_MESSAGE, PAGE_GONE_MESSAGE } from './panelRequestCopy';
 import {
 	ConflictError,
 	EditRefusedError,
@@ -19,6 +14,10 @@ import {
 import { FIRST_PAGE_ID } from '../disk/layout';
 import { clearEditHistories, historyFlags, historyStepTarget } from './editHistory';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
+
+// Pinned values: the module keeps these private.
+const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Cursor Design.';
+const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, hasFolder: true, calls: [] as string[] }));

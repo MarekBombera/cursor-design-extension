@@ -4,13 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
-import {
-	createArtboard,
-	exportArtboard,
-	FRAME_READ_ERROR_MESSAGE,
-	listArtboards,
-	readCanvasView,
-} from './artboardFs';
+import { createArtboard } from './artboardFs';
+import { listArtboards, readCanvasView } from './canvasView';
+import { exportArtboard } from './exportFs';
 import { serializeCanvasLayout } from './canvasLayout';
 import { CorruptCanvasError, DiskError, UnsupportedCanvasVersionError } from './errors';
 import { hashHtml } from './hash';
@@ -27,6 +23,10 @@ import {
 } from './layout';
 import { resolveOpenPage } from './openPage';
 import { serializeMeta } from './parse';
+
+// Pinned values: the module keeps these private.
+const FRAME_READ_ERROR_MESSAGE =
+	'Could not read this artboard file. Check the Output panel: Cursor Design.';
 
 const tempRoots: string[] = [];
 

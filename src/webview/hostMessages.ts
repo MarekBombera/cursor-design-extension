@@ -4,6 +4,8 @@ import {
 	type CommentStyles,
 	type FrameRect,
 	hasControlChars,
+	isFiniteNumber,
+	isRecord,
 	isTagName,
 	parseFrameRect,
 } from './frame/frameMessages';
@@ -235,13 +237,8 @@ export type ChromeMessage =
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-	value !== null && typeof value === 'object';
-
 const isOptionalString = (value: unknown): value is string | undefined =>
 	value === undefined || typeof value === 'string';
-
-export const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
 // '' is "no page" on host state messages.
 const isPostedPageId = (value: unknown): value is string => value === '' || isPageId(value);

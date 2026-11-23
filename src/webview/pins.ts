@@ -158,6 +158,8 @@ export const liveAnchor = ({
 // ponytail: the page fraction is of the documentElement box but applied to the frame record's
 // size, so it drifts when they differ (body taller than html, MAX_FRAME_HEIGHT, the growth guard).
 // Upgrade path: anchor page comments to documentElement through the channel.
+// Exported for tests: they pin the stage point before layoutPins offsets, hides or stacks it.
+/** @internal */
 export const pinPoint = ({
 	comment,
 	live,
@@ -180,6 +182,8 @@ const isOutside = (point: StagePoint, rect: FrameRect): boolean =>
 	point.x > rect.x + rect.width + PIN_TOLERANCE_PX ||
 	point.y > rect.y + rect.height + PIN_TOLERANCE_PX;
 
+// Exported for tests: they pin the label per badge and number; layoutPins derives both.
+/** @internal */
 export const pinLabel = ({
 	comment,
 	badge,

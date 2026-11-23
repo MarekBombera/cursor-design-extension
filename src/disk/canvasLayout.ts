@@ -11,6 +11,7 @@ import {
 	MIN_FRAME_WIDTH,
 } from './layout';
 import { isJsonRecord, parseArtboardId } from './parse';
+import { isFiniteNumber } from '../webview/frame/frameMessages';
 
 // Stage px. Height is never stored; the panel measures it.
 export type CanvasFrame = {
@@ -35,9 +36,6 @@ export type CanvasPlacement = {
 	label?: string;
 	group?: string;
 };
-
-const isFiniteNumber = (value: unknown): value is number =>
-	typeof value === 'number' && Number.isFinite(value);
 
 const clampFrameWidth = (width: number): number =>
 	Math.min(MAX_FRAME_WIDTH, Math.max(MIN_FRAME_WIDTH, width));

@@ -1,11 +1,7 @@
 import * as vscode from 'vscode';
 
-import {
-	emptyArtboardSnapshot,
-	initAndLoadArtboard,
-	readActiveArtboardFromDisk,
-	UNTRUSTED_WORKSPACE_MESSAGE,
-} from './artboardDisk';
+import { initAndLoadArtboard, readActiveArtboardFromDisk } from './artboardDisk';
+import { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { firstWorkspaceFolder, NO_FOLDER_MESSAGE } from './hostFs';
 import { postPanelComments } from './panelComments';
 import { ensureArtboardWatcher } from './watchArtboardDisk';

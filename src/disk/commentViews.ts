@@ -30,7 +30,7 @@ const CHECK_BUDGET_MS = 200;
 // changed frames evict comment trees and re-parse. A tree with locations is about 34 MB per
 // realistic 1.5M-char frame, 134 MB for bare tiny tags: 1.1 to 4.3 GB at the cap. Upgrade path:
 // LRU, plus a cap on total HTML chars.
-export const MAX_PARSED_DOCUMENTS = 32;
+const MAX_PARSED_DOCUMENTS = 32;
 const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
 
 export const frameCacheKey = (workspaceRoot: string, frameId: string): string =>

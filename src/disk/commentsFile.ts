@@ -281,7 +281,7 @@ const parseComment = (value: unknown, pageId: string): Comment => {
 	return comment;
 };
 
-export const parseCommentsFile = (value: unknown, pageId: string): CommentsFile => {
+const parseCommentsFile = (value: unknown, pageId: string): CommentsFile => {
 	if (!isJsonRecord(value)) {
 		throw new CorruptCommentsError({ pageId });
 	}
@@ -306,7 +306,7 @@ export const parseCommentsFile = (value: unknown, pageId: string): CommentsFile 
 	return { version: COMMENTS_SCHEMA_VERSION, comments };
 };
 
-export const serializeCommentsFile = (file: CommentsFile): string =>
+const serializeCommentsFile = (file: CommentsFile): string =>
 	toPrettyJson({ version: COMMENTS_SCHEMA_VERSION, comments: file.comments });
 
 export const readCommentsFile = async (page: PageLocation): Promise<CommentsFile> => {

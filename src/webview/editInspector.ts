@@ -44,7 +44,7 @@ const COMPUTED_RGB = /^rgba?\((\d{1,3}), (\d{1,3}), (\d{1,3})(?:, ([0-9.]+))?\)$
 
 // ponytail: a computed colour in a modern colour space (oklch(), color()) has no hex here and the
 // swatch falls back to black; upgrade: a canvas-based normalizer in the chrome.
-export const toHexColor = (value: string): string | undefined => {
+const toHexColor = (value: string): string | undefined => {
 	const match = COMPUTED_RGB.exec(value);
 	if (match === null) {
 		return undefined;
@@ -58,7 +58,7 @@ export const toHexColor = (value: string): string | undefined => {
 
 // What a colour field shows for a computed colour: the text (placeholder), the native swatch's
 // #rrggbb, and whether it is no colour at all.
-export const colorDisplay = (
+const colorDisplay = (
 	computed: string | undefined,
 ): { text: string; swatch: string; none: boolean } => {
 	if (computed === undefined) {
@@ -486,6 +486,8 @@ const contentOf = (edit: PickEditFields): ContentView =>
 
 // drafted: the fields with an open draft for this element. Previewing an emptied box drops its
 // declaration from the frame, so the re-posted pick alone would unmount the field mid-typing.
+// Exported for tests: one pins inspectorView as exactly this model plus kind and target.
+/** @internal */
 export const editableSections = ({
 	pick,
 	edit,

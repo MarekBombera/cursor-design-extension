@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, test } from 'vite-plus/test';
+import { afterEach, test, vi } from 'vite-plus/test';
 
 import { type CallToolResult, type McpServer } from '@modelcontextprotocol/server';
 
@@ -39,10 +39,21 @@ const makeTempRoot = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+	vi.restoreAllMocks();
 	await Promise.all(
 		tempRoots.splice(0).map((workspaceRoot) => rm(workspaceRoot, { recursive: true, force: true })),
 	);
 });
+
+// toMcpToolError logs a DiskError to MCP stderr; a test that expects one asserts the line.
+const spyStderr = () => vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+const loggedSymlinkDiskError = (stderr: ReturnType<typeof spyStderr>): boolean =>
+	stderr.mock.calls.some(
+		([line]) =>
+			String(line).startsWith('cursor-design MCP: DiskError: ') &&
+			String(line).includes('canvas.json must be a regular file (symlinks rejected).'),
+	);
 
 const captureHandlers = (): Map<string, CapturedHandler> => {
 	const handlers = new Map<string, CapturedHandler>();
@@ -410,10 +421,12 @@ test('a symlinked canvas.json is DISK_ERROR and is left alone', async () => {
 		const targetText = serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [] });
 		await writeFile(targetPath, targetText);
 		await symlink(targetPath, canvasFileOf(workspaceRoot));
+		const stderr = spyStderr();
 		assert.equal(
 			errorCodeOf(await handlerFor(PLACE_FRAME_TOOL)({ id: 'hero', x: 10 })),
 			'DISK_ERROR',
 		);
+		assert.ok(loggedSymlinkDiskError(stderr));
 		assert.equal(await readFile(targetPath, 'utf8'), targetText);
 	});
 });
@@ -484,7 +497,9 @@ test('list_artboards fails with DISK_ERROR on a symlinked canvas.json', async ()
 		const targetPath = join(workspaceRoot, 'elsewhere.json');
 		await writeFile(targetPath, '{}');
 		await symlink(targetPath, canvasFileOf(workspaceRoot));
+		const stderr = spyStderr();
 		assert.equal(errorCodeOf(await handlerFor(LIST_ARTBOARDS_TOOL)({})), 'DISK_ERROR');
+		assert.ok(loggedSymlinkDiskError(stderr));
 	});
 });
 

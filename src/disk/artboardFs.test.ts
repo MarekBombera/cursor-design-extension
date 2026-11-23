@@ -16,14 +16,13 @@ import { afterEach, test } from 'vite-plus/test';
 
 import {
 	createArtboard,
-	exportArtboard,
-	listArtboards,
 	placeFrame,
 	readArtboard,
-	readHandoffStatus,
 	setActiveArtboard,
 	updateArtboard,
 } from './artboardFs';
+import { listArtboards } from './canvasView';
+import { exportArtboard, readHandoffStatus } from './exportFs';
 import {
 	ArtboardExistsError,
 	ArtboardNotFoundError,

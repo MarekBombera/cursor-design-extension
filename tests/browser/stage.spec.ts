@@ -5,7 +5,7 @@ import { FRAME_WHEEL_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
 import { parseSavedStageView } from '../../src/webview/savedState';
 import { NUDGE_STEP, type StageView } from '../../src/webview/stageGeometry';
-import { ZOOM_PRESETS } from '../../src/webview/zoomChoices';
+import { zoomChoices } from '../../src/webview/zoomChoices';
 import {
 	type Box,
 	boxOf,
@@ -210,9 +210,9 @@ test('after a ctrl+wheel zoom the zoom select shows the zoom, not a preset', asy
 	}
 	await expect.poll(async () => (await savedView(page))?.zoom).not.toBe(1);
 	const zoom = (await savedView(page))?.zoom ?? 1;
-	expect(ZOOM_PRESETS.map((preset) => Math.round(preset * 100))).not.toContain(
-		Math.round(zoom * 100),
-	);
+	// zoomChoices at a preset zoom lists exactly the presets.
+	const presets = zoomChoices(1).options.map((option) => Math.round(Number(option.value) * 100));
+	expect(presets).not.toContain(Math.round(zoom * 100));
 	const select = zoomSelect(page);
 	await expect(select).toHaveValue(String(zoom));
 	await expect(select.locator('option:checked')).toHaveText(`${Math.round(zoom * 100)}%`);

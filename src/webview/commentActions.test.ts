@@ -9,7 +9,6 @@ import {
 	answerCopyOpen,
 	canSubmitReply,
 	closeReply,
-	copyAnnouncement,
 	editReply,
 	keepLiveActions,
 	openReply,
@@ -319,6 +318,17 @@ test('answerCopyOpen: success copies with its count, an error is kept and announ
 		{ state: {}, announcement: 'Prompt copied.' },
 	);
 });
+
+// The announcement a copy answer carries: answerAction for one comment, answerCopyOpen for a batch.
+const copyAnnouncement = ({ kind, count }: { kind: 'single' | 'batch'; count: number }) => {
+	const answer = { type: 'ui:copied', requestId: 'r1', count } as const;
+	return kind === 'single'
+		? answerAction({
+				actions: actionsOf({ c1: { pending: { requestId: 'r1', kind: 'copy' } } }),
+				answer,
+			}).announcement
+		: answerCopyOpen({ state: { pending: 'r1' }, answer }).announcement;
+};
 
 test('copyAnnouncement for single 0 and 1, batch 0, 1 and 3', () => {
 	assert.equal(copyAnnouncement({ kind: 'single', count: 0 }), 'Prompt copied.');

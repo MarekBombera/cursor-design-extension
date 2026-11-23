@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 
-import { exportArtboard } from '../disk/artboardFs';
+import { exportArtboard } from '../disk/exportFs';
 import { CursorDesignError } from '../disk/errors';
 import { resolveOpenPage } from '../disk/openPage';
-import { UNTRUSTED_WORKSPACE_MESSAGE } from '../host/artboardDisk';
+import { UNTRUSTED_WORKSPACE_MESSAGE } from '../host/canvasSnapshot';
 import { firstWorkspaceFolder, logDiskError } from '../host/hostFs';
 
 const NO_FOLDER_TO_EXPORT_MESSAGE = 'Open a workspace folder to export a handoff.';

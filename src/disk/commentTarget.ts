@@ -43,19 +43,19 @@ export type CommentFlags = {
 	hint?: string;
 };
 
-export const HINT_FRAME_MISSING = "The frame's artboard no longer exists.";
+const HINT_FRAME_MISSING = "The frame's artboard no longer exists.";
 
-export const HINT_FRAME_UNREADABLE = "The frame's artboard file cannot be read.";
+const HINT_FRAME_UNREADABLE = "The frame's artboard file cannot be read.";
 
-export const HINT_UNCHECKED =
+const HINT_UNCHECKED =
 	'The target is generated or changed by script; it cannot be checked from disk.';
 
-export const HINT_NO_SINGLE_MATCH = 'The selector now matches no element or several elements.';
+const HINT_NO_SINGLE_MATCH = 'The selector now matches no element or several elements.';
 
 export const HINT_CHECK_BUDGET =
 	'Too many comments to check at once; read again to check this one.';
 
-export const HINT_CONTAINER =
+const HINT_CONTAINER =
 	'The target contains other elements; edits inside it (including fixes for nested comments) mark it stale.';
 
 // Text in document order, walked with an explicit stack and pushed one child at a time: a deep

@@ -81,11 +81,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
-	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
@@ -109,8 +109,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (!Array.isArray(value) || value.length &gt; 500) return;
 		const entries = [];
 		for (const entry of value) {
-			const record = asRecord(entry);
-			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			const parsed = isRecord(entry) ? parseEntry(entry) : void 0;
 			if (parsed === void 0) return;
 			entries.push(parsed);
 		}
@@ -125,19 +124,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		} : void 0;
 	};
 	var parseChromeFrameMessage = (data) =&gt; {
-		const record = asRecord(data);
-		if (record === void 0) return;
-		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
+		if (!isRecord(data)) return;
+		switch (data.type) {
+			case FRAME_MODE_MESSAGE: return isFrameMode(data.mode) ? {
 				type: FRAME_MODE_MESSAGE,
-				mode: record.mode
+				mode: data.mode
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
 			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
-			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
+			case EDIT_APPLY_MESSAGE: return parseEditApply(data);
 			case FRAME_ANCHORS_MESSAGE: {
-				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				const anchors = parseAnchorList(data.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
 					type: FRAME_ANCHORS_MESSAGE,
 					anchors
@@ -381,6 +379,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
+	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -408,6 +407,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return steps.reverse().join(&quot; &gt; &quot;);
 	};
+	/** @internal */
 	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
 		if (!element.isConnected) return null;
 		let selector;
@@ -419,6 +419,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
 	};
+	/** @internal */
 	var textExcerpt = (raw) =&gt; {
 		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
 		const last = text.charCodeAt(text.length - 1);
@@ -1188,11 +1189,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
-	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
@@ -1216,8 +1217,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (!Array.isArray(value) || value.length &gt; 500) return;
 		const entries = [];
 		for (const entry of value) {
-			const record = asRecord(entry);
-			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			const parsed = isRecord(entry) ? parseEntry(entry) : void 0;
 			if (parsed === void 0) return;
 			entries.push(parsed);
 		}
@@ -1232,19 +1232,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		} : void 0;
 	};
 	var parseChromeFrameMessage = (data) =&gt; {
-		const record = asRecord(data);
-		if (record === void 0) return;
-		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
+		if (!isRecord(data)) return;
+		switch (data.type) {
+			case FRAME_MODE_MESSAGE: return isFrameMode(data.mode) ? {
 				type: FRAME_MODE_MESSAGE,
-				mode: record.mode
+				mode: data.mode
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
 			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
-			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
+			case EDIT_APPLY_MESSAGE: return parseEditApply(data);
 			case FRAME_ANCHORS_MESSAGE: {
-				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				const anchors = parseAnchorList(data.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
 					type: FRAME_ANCHORS_MESSAGE,
 					anchors
@@ -1488,6 +1487,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
+	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -1515,6 +1515,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return steps.reverse().join(&quot; &gt; &quot;);
 	};
+	/** @internal */
 	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
 		if (!element.isConnected) return null;
 		let selector;
@@ -1526,6 +1527,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
 	};
+	/** @internal */
 	var textExcerpt = (raw) =&gt; {
 		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
 		const last = text.charCodeAt(text.length - 1);
@@ -2295,11 +2297,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
-	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
@@ -2323,8 +2325,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (!Array.isArray(value) || value.length &gt; 500) return;
 		const entries = [];
 		for (const entry of value) {
-			const record = asRecord(entry);
-			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			const parsed = isRecord(entry) ? parseEntry(entry) : void 0;
 			if (parsed === void 0) return;
 			entries.push(parsed);
 		}
@@ -2339,19 +2340,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		} : void 0;
 	};
 	var parseChromeFrameMessage = (data) =&gt; {
-		const record = asRecord(data);
-		if (record === void 0) return;
-		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
+		if (!isRecord(data)) return;
+		switch (data.type) {
+			case FRAME_MODE_MESSAGE: return isFrameMode(data.mode) ? {
 				type: FRAME_MODE_MESSAGE,
-				mode: record.mode
+				mode: data.mode
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
 			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
-			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
+			case EDIT_APPLY_MESSAGE: return parseEditApply(data);
 			case FRAME_ANCHORS_MESSAGE: {
-				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				const anchors = parseAnchorList(data.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
 					type: FRAME_ANCHORS_MESSAGE,
 					anchors
@@ -2595,6 +2595,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
+	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -2622,6 +2623,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return steps.reverse().join(&quot; &gt; &quot;);
 	};
+	/** @internal */
 	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
 		if (!element.isConnected) return null;
 		let selector;
@@ -2633,6 +2635,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
 	};
+	/** @internal */
 	var textExcerpt = (raw) =&gt; {
 		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
 		const last = text.charCodeAt(text.length - 1);
@@ -3402,11 +3405,11 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
 	var STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\\p{L}\\p{N}_ #%.,()&#39;&quot;/+-]+$/u;
 	var isSafeStyleValue = (value) =&gt; value.length &lt;= 200 &amp;&amp; STYLE_VALUE_PATTERN.test(value);
-	var asRecord = (data) =&gt; data === null || typeof data !== &quot;object&quot; ? void 0 : data;
 	var parseSelector = (value) =&gt; {
 		if (value === null) return null;
 		return typeof value === &quot;string&quot; &amp;&amp; value.length &gt; 0 &amp;&amp; value.length &lt;= 1e3 &amp;&amp; !hasControlChars(value) ? value : void 0;
@@ -3430,8 +3433,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (!Array.isArray(value) || value.length &gt; 500) return;
 		const entries = [];
 		for (const entry of value) {
-			const record = asRecord(entry);
-			const parsed = record === void 0 ? void 0 : parseEntry(record);
+			const parsed = isRecord(entry) ? parseEntry(entry) : void 0;
 			if (parsed === void 0) return;
 			entries.push(parsed);
 		}
@@ -3446,19 +3448,18 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		} : void 0;
 	};
 	var parseChromeFrameMessage = (data) =&gt; {
-		const record = asRecord(data);
-		if (record === void 0) return;
-		switch (record.type) {
-			case FRAME_MODE_MESSAGE: return isFrameMode(record.mode) ? {
+		if (!isRecord(data)) return;
+		switch (data.type) {
+			case FRAME_MODE_MESSAGE: return isFrameMode(data.mode) ? {
 				type: FRAME_MODE_MESSAGE,
-				mode: record.mode
+				mode: data.mode
 			} : void 0;
 			case PICK_PARENT_MESSAGE: return { type: PICK_PARENT_MESSAGE };
 			case PICK_CHILD_MESSAGE: return { type: PICK_CHILD_MESSAGE };
 			case PICK_REFRESH_MESSAGE: return { type: PICK_REFRESH_MESSAGE };
-			case EDIT_APPLY_MESSAGE: return parseEditApply(record);
+			case EDIT_APPLY_MESSAGE: return parseEditApply(data);
 			case FRAME_ANCHORS_MESSAGE: {
-				const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+				const anchors = parseAnchorList(data.anchors, parseAnchorRequest);
 				return anchors === void 0 ? void 0 : {
 					type: FRAME_ANCHORS_MESSAGE,
 					anchors
@@ -3702,6 +3703,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
+	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -3729,6 +3731,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return steps.reverse().join(&quot; &gt; &quot;);
 	};
+	/** @internal */
 	var buildSelector = (element, timeoutMs = FINDER_TIMEOUT_MS) =&gt; {
 		if (!element.isConnected) return null;
 		let selector;
@@ -3740,6 +3743,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		}
 		return selector === &quot;&quot; || selector.length &gt; 1e3 || hasControlChars(selector) ? null : selector;
 	};
+	/** @internal */
 	var textExcerpt = (raw) =&gt; {
 		const text = raw.replaceAll(/[\\p{Cc}\\s]+/gu, &quot; &quot;).trim().slice(0, 200);
 		const last = text.charCodeAt(text.length - 1);
@@ -4455,6 +4459,7 @@ var stageGeometry = (function(exports) {
 	var MAX_FRAME_HEIGHT = 2e4;
 	var MAX_FRAME_COORDINATE = 1e5;
 	// src/webview/stageGeometry.ts
+	var PROVISIONAL_FRAME_HEIGHT = 800;
 	var MIN_STAGE_ZOOM = .05;
 	var MAX_STAGE_ZOOM = 10;
 	var ZOOM_STEP_CAP = .2;
@@ -4465,7 +4470,7 @@ var stageGeometry = (function(exports) {
 	var clampStageZoom = ({ zoom }) => clampNumber({
 		value: zoom,
 		min: MIN_STAGE_ZOOM,
-		max: 10
+		max: MAX_STAGE_ZOOM
 	});
 	var stageToScreen = ({ view, stageX, stageY }) => ({
 		x: stageX * view.zoom + view.x,
@@ -4515,6 +4520,7 @@ var stageGeometry = (function(exports) {
 		y: view.y - deltaY,
 		zoom: view.zoom
 	});
+	/** @internal */
 	var frameBounds = ({ frames }) => {
 		const [first] = frames;
 		if (first === void 0) return null;
@@ -4709,10 +4715,9 @@ var stageGeometry = (function(exports) {
 	var passedGestureThreshold = ({ startScreen, screen }) => Math.abs(screen.x - startScreen.x) >= GESTURE_THRESHOLD_PX || Math.abs(screen.y - startScreen.y) >= GESTURE_THRESHOLD_PX;
 	var placementChanged = ({ base, next }) => base.x !== next.x || base.y !== next.y || base.width !== next.width;
 	exports.FIT_PADDING = FIT_PADDING;
-	exports.MAX_STAGE_ZOOM = MAX_STAGE_ZOOM;
-	exports.MIN_STAGE_ZOOM = MIN_STAGE_ZOOM;
 	exports.NUDGE_STEP = NUDGE_STEP;
 	exports.NUDGE_STEP_LARGE = NUDGE_STEP_LARGE;
+	exports.PROVISIONAL_FRAME_HEIGHT = PROVISIONAL_FRAME_HEIGHT;
 	exports.clampNumber = clampNumber;
 	exports.clampStageView = clampStageView;
 	exports.dragFrame = dragFrame;
@@ -4727,7 +4732,6 @@ var stageGeometry = (function(exports) {
 	exports.passedGestureThreshold = passedGestureThreshold;
 	exports.placementChanged = placementChanged;
 	exports.resizeFrameWidth = resizeFrameWidth;
-	exports.roundToPixel = roundToPixel;
 	exports.screenToStage = screenToStage;
 	exports.stageToScreen = stageToScreen;
 	exports.zoomStageAt = zoomStageAt;

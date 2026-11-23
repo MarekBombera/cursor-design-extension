@@ -3,10 +3,7 @@ import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import {
-	COMMENT_GONE_MESSAGE,
 	COPIED_NOT_MARKED_MESSAGE,
-	COPY_FAILED_MESSAGE,
-	MALFORMED_CHANGE_MESSAGE,
 	NOTHING_OPEN_MESSAGE,
 	PAGE_GONE_MESSAGE,
 } from './panelRequestCopy';
@@ -19,6 +16,11 @@ import {
 	PageNotFoundError,
 } from '../disk/errors';
 import { answerCommentRequest, postPanelComments } from './panelComments';
+
+// Pinned values: the module keeps these private.
+const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
+const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
+const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, calls: [] as string[], clipboard: '' }));

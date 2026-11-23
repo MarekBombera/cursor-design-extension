@@ -20,13 +20,15 @@ import { resolveOpenPage } from '../disk/openPage';
 import { withWorkspaceLock } from '../disk/workspaceLock';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import {
-	EDIT_FRAME_GONE_MESSAGE,
-	HISTORY_CLEARED_MESSAGE,
 	MALFORMED_HISTORY_MESSAGE,
 	NOTHING_TO_REDO_MESSAGE,
 	NOTHING_TO_UNDO_MESSAGE,
 } from './panelRequestCopy';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
+
+// Pinned values: the module keeps these private.
+const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
+const HISTORY_CLEARED_MESSAGE = 'This artboard changed on disk, so its undo history was cleared.';
 
 // End to end over a real temp workspace: only the vscode glue is stubbed (panelEdit.test.ts mocks
 // the disk lib instead).

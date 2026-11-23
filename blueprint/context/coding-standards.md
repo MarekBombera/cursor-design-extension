@@ -14,7 +14,7 @@ This is a **Cursor/VS Code extension** (WebviewPanel + local MCP). Not Next.js, 
 - **Chrome:** Svelte 5 + Vite, no SvelteKit (`vp build -c vite.webview.config.ts` → `dist/webview/chrome.js` + `chrome.css`). Artboard: nested sandboxed HTML iframe
 - **TypeScript:** package `typescript` is `~6.0.3` for `svelte-check`; lint / type-aware check still run on TS 7 via tsrs (bundled with vite-plus)
 - **Validation:** `zod` v4 (same range as the MCP SDK) via `import * as z from 'zod/mini'` for disk JSON files in `src/disk/parse.ts` (the namespace import keeps tree-shaking; `import { z }` or classic `zod` bundles every locale). MCP tool inputs stay passthrough `fromJsonSchema` + authored errors; chrome stays dependency-free.
-- **Lint / format / type check:** Vite+ `vp check` (Oxlint + Oxfmt + tsrs type check); config in `vite.config.ts`, which also enforces the mechanical code conventions. Unused files/deps: `pnpm knip` (separate from `vp check`)
+- **Lint / format / type check:** Vite+ `vp check` (Oxlint + Oxfmt + tsrs type check); config in `vite.config.ts`, which also enforces the mechanical code conventions. Unused files/deps/exports: `knip` runs in Verify in both modes: plain, and `--production` (shipped entries only, so a test-only export fails; a deliberate test seam carries `/** @internal */`)
 - **Verify UI:** chrome and iframe behavior with `pnpm test:browser` (Playwright Chromium over the built bundle, `tests/browser/`); **F5** Extension Development Host (`fixtures/dev-workspace`) for Cursor-only checks. There is no `npm run dev` / `localhost:3000` app server
 - **MCP register:** `vscode.cursor.mcp.registerServer` (stdio) only
 

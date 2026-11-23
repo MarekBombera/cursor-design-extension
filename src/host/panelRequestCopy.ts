@@ -14,24 +14,21 @@ import type { CommentRequestMessage } from '../webview/hostMessages';
 
 // Allowlists that keep the disk lib's Agent copy out of the panel.
 
-export const CREATE_FALLBACK_MESSAGE =
-	'Could not add the comment. Check the Output panel: Cursor Design.';
+const CREATE_FALLBACK_MESSAGE = 'Could not add the comment. Check the Output panel: Cursor Design.';
 
-export const MALFORMED_CREATE_MESSAGE = 'Could not add the comment. Pick the element again.';
+const MALFORMED_CREATE_MESSAGE = 'Could not add the comment. Pick the element again.';
 
-export const CHANGE_FALLBACK_MESSAGE =
-	'Could not save the change. Check the Output panel: Cursor Design.';
+const CHANGE_FALLBACK_MESSAGE = 'Could not save the change. Check the Output panel: Cursor Design.';
 
-export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
+const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 
-export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
+const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
 
 // Every page-bound request for a page that is gone; PageNotFoundError's own text is Agent copy.
 export const PAGE_GONE_MESSAGE = 'That page no longer exists.';
 
 // The copy types' fallback (a clipboard rejection lands here) and their malformed copy.
-export const COPY_FAILED_MESSAGE =
-	'Could not copy the prompt. Check the Output panel: Cursor Design.';
+const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
 
 // The clipboard holds the prompt, but markCommentsSent threw (busy, corrupt, anything).
 export const COPIED_NOT_MARKED_MESSAGE =
@@ -72,24 +69,21 @@ export const commentRequestErrorMessage = ({
 
 export const MALFORMED_EDIT_MESSAGE = 'Could not save the edit. Try again.';
 
-export const EDIT_FALLBACK_MESSAGE =
-	'Could not save the edit. Check the Output panel: Cursor Design.';
+const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Cursor Design.';
 
-export const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
+const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
 
-export const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
+const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
 
 export const NOTHING_TO_UNDO_MESSAGE = 'Nothing to undo in this frame.';
 
 export const NOTHING_TO_REDO_MESSAGE = 'Nothing to redo in this frame.';
 
-export const HISTORY_CLEARED_MESSAGE =
-	'This artboard changed on disk, so its undo history was cleared.';
+const HISTORY_CLEARED_MESSAGE = 'This artboard changed on disk, so its undo history was cleared.';
 
 export const MALFORMED_HISTORY_MESSAGE = 'Could not undo or redo. Try again.';
 
-export const HISTORY_FALLBACK_MESSAGE =
-	'Could not undo or redo. Check the Output panel: Cursor Design.';
+const HISTORY_FALLBACK_MESSAGE = 'Could not undo or redo. Check the Output panel: Cursor Design.';
 
 // Panel copy for a failed artboard:edit or artboard:history, an allowlist in this order: every
 // other domain error's own message is Agent copy (ConflictError says to call read_artboard,

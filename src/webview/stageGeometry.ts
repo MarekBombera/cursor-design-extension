@@ -30,8 +30,11 @@ export type CanvasChromeLayout = {
 
 export type FrameHeightGuard = { lastGrowth: number; frozen: boolean };
 
-export const MIN_STAGE_ZOOM = 0.05;
-export const MAX_STAGE_ZOOM = 10;
+// A frame's height before its first cd:frame-height, in the panel and the exported canvas.html alike.
+export const PROVISIONAL_FRAME_HEIGHT = 800;
+
+const MIN_STAGE_ZOOM = 0.05;
+const MAX_STAGE_ZOOM = 10;
 const ZOOM_STEP_CAP = 0.2;
 const ZOOM_SENSITIVITY = 0.01;
 // Also the exported canvas.html page padding.
@@ -154,6 +157,8 @@ export const panStage = ({
 	zoom: view.zoom,
 });
 
+// Exported for tests: the fit property's union oracle; layoutCanvasChrome adds chrome boxes.
+/** @internal */
 export const frameBounds = ({ frames }: { frames: readonly StageRect[] }): StageRect | null => {
 	const [first] = frames;
 	if (first === undefined) {
@@ -395,7 +400,7 @@ export const NUDGE_STEP = 8;
 export const NUDGE_STEP_LARGE = 64;
 
 // Gestures land on whole stage px (no grid). `+ 0` turns -0 into 0 so it never serializes as -0.
-export const roundToPixel = (value: number): number => Math.round(value) + 0;
+const roundToPixel = (value: number): number => Math.round(value) + 0;
 
 const clampCoordinate = (value: number): number =>
 	clampNumber({ value, min: -MAX_FRAME_COORDINATE, max: MAX_FRAME_COORDINATE });

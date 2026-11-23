@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
 
-import { FRAME_READ_ERROR_MESSAGE, type CanvasViewFrame } from '../disk/artboardFs';
+import { type CanvasViewFrame } from '../disk/canvasView';
 import { parseArtboardDocument } from '../disk/commentTarget';
 import { cachedArtboardDocument } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
@@ -9,7 +9,6 @@ import { hashHtml } from '../disk/hash';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
 import {
-	ARTBOARD_HTML_TOO_LARGE_MESSAGE,
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
 	emptyArtboardSnapshot,
@@ -18,6 +17,11 @@ import {
 	postedFrameFromSnapshot,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
+
+// Pinned values: the module keeps these private.
+const FRAME_READ_ERROR_MESSAGE =
+	'Could not read this artboard file. Check the Output panel: Cursor Design.';
+const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 
 // The real implementations behind counters; a case overrides one call with mockImplementationOnce.
 vi.mock('../disk/sourceTags', async (importOriginal) => {

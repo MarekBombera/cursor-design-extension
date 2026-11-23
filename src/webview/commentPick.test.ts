@@ -14,7 +14,11 @@ import {
 	pickCounts,
 	pressedMode,
 } from './commentPick';
-import { FRAME_MODES, type FrameMode, type PickEditFields } from './frame/frameMessages';
+import { type FrameMode, type PickEditFields } from './frame/frameMessages';
+
+// Every FrameMode, by type: a new mode fails the type check here until the matrix covers it.
+const MODES: Record<FrameMode, true> = { interact: true, comment: true, edit: true };
+const FRAME_MODES = Object.keys(MODES) as FrameMode[];
 
 const rect = { x: 1, y: 2, width: 3, height: 4 };
 const pickFields = {

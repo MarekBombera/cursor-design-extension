@@ -26,15 +26,9 @@ import {
 	resolveComment,
 	setCommentStatus,
 } from './comments';
-import { MAX_PARSED_DOCUMENTS, cachedArtboardDocument } from './commentViews';
+import { cachedArtboardDocument } from './commentViews';
 import type { NewComment } from './commentsFile';
-import {
-	HINT_CHECK_BUDGET,
-	HINT_FRAME_MISSING,
-	HINT_FRAME_UNREADABLE,
-	HINT_UNCHECKED,
-	parseArtboardDocument,
-} from './commentTarget';
+import { HINT_CHECK_BUDGET, parseArtboardDocument } from './commentTarget';
 import {
 	ArtboardNotFoundError,
 	CommentNotFoundError,
@@ -55,6 +49,13 @@ import {
 	commentsPathSegments,
 } from './layout';
 import { resolveOpenPage } from './openPage';
+
+// Pinned values: the module keeps these private.
+const MAX_PARSED_DOCUMENTS = 32;
+const HINT_FRAME_MISSING = "The frame's artboard no longer exists.";
+const HINT_FRAME_UNREADABLE = "The frame's artboard file cannot be read.";
+const HINT_UNCHECKED =
+	'The target is generated or changed by script; it cannot be checked from disk.';
 
 // The real parser behind a counter, so the parse cache's reuse and eviction are observable.
 vi.mock('./commentTarget', async (importOriginal) => {
@@ -656,7 +657,13 @@ test('an unreadable frame still lists every comment', async () => {
 	const target = join(workspaceRoot, 'elsewhere.html');
 	await writeFile(target, html, 'utf8');
 	await symlink(target, htmlPath);
+	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 	const listed = await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	assert.ok(
+		stderr.mock.calls.some(([line]) =>
+			String(line).startsWith('cursor-design: comment target read failed: '),
+		),
+	);
 	assert.equal(listed.comments.length, 2);
 	const heroView = listed.comments.find((comment) => comment.id === heroComment.id);
 	const otherView = listed.comments.find((comment) => comment.id === otherComment.id);

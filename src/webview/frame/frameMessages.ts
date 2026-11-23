@@ -48,7 +48,7 @@ export const FRAME_ANCHOR_RECTS_MESSAGE = 'cd:anchor-rects';
 // Frame-local CSS px (the frame's client coordinates).
 export type FrameRect = { x: number; y: number; width: number; height: number };
 
-export const FRAME_MODES = ['interact', 'comment', 'edit'] as const;
+const FRAME_MODES = ['interact', 'comment', 'edit'] as const;
 
 export type FrameMode = (typeof FRAME_MODES)[number];
 
@@ -164,7 +164,11 @@ export type ChromeFrameMessage =
 	| EditApplyMessage
 	| FrameAnchorsMessage;
 
-const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
+export const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
+
+// Accepts arrays; disk JSON uses `isJsonRecord` (parse.ts), which rejects them.
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+	value !== null && typeof value === 'object';
 
 const isCoordinate = (value: unknown): value is number =>
 	isFiniteNumber(value) && Math.abs(value) <= MAX_FRAME_COORDINATE;
@@ -203,15 +207,11 @@ const STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\p{L}\p{N}_ #%.,()'"/+-]+$/u;
 export const isSafeStyleValue = (value: string): boolean =>
 	value.length <= MAX_STYLE_VALUE_CHARS && STYLE_VALUE_PATTERN.test(value);
 
-const asRecord = (data: unknown): Record<string, unknown> | undefined =>
-	data === null || typeof data !== 'object' ? undefined : (data as Record<string, unknown>);
-
 export const parseFrameRect = (value: unknown): FrameRect | undefined => {
-	const record = asRecord(value);
-	if (record === undefined) {
+	if (!isRecord(value)) {
 		return undefined;
 	}
-	const { x, y, width, height } = record;
+	const { x, y, width, height } = value;
 	if (
 		!isCoordinate(x) ||
 		!isCoordinate(y) ||
@@ -262,23 +262,17 @@ const isPointCoordinate = (value: unknown): value is number =>
 	isFiniteNumber(value) && value >= 0 && value <= MAX_FRAME_COORDINATE;
 
 const parsePoint = (value: unknown): { x: number; y: number } | undefined => {
-	const record = asRecord(value);
-	if (record === undefined || !isPointCoordinate(record.x) || !isPointCoordinate(record.y)) {
+	if (!isRecord(value) || !isPointCoordinate(value.x) || !isPointCoordinate(value.y)) {
 		return undefined;
 	}
-	return { x: record.x, y: record.y };
+	return { x: value.x, y: value.y };
 };
 
 const parseBox = (value: unknown): { width: number; height: number } | undefined => {
-	const record = asRecord(value);
-	if (
-		record === undefined ||
-		!isPointCoordinate(record.width) ||
-		!isPointCoordinate(record.height)
-	) {
+	if (!isRecord(value) || !isPointCoordinate(value.width) || !isPointCoordinate(value.height)) {
 		return undefined;
 	}
-	return { width: record.width, height: record.height };
+	return { width: value.width, height: value.height };
 };
 
 const isKeyOf = <Key extends string>(keys: readonly Key[], key: string): key is Key =>
@@ -290,12 +284,11 @@ const parseStyles = <Key extends string>(
 	value: unknown,
 	keys: readonly Key[],
 ): Partial<Record<Key, string>> | undefined => {
-	const record = asRecord(value);
-	if (record === undefined || Array.isArray(value)) {
+	if (!isRecord(value) || Array.isArray(value)) {
 		return undefined;
 	}
 	const styles: Partial<Record<Key, string>> = {};
-	for (const [key, style] of Object.entries(record)) {
+	for (const [key, style] of Object.entries(value)) {
 		if (!isKeyOf(keys, key) || typeof style !== 'string' || !isSafeStyleValue(style)) {
 			return undefined;
 		}
@@ -354,12 +347,11 @@ const isPickTextState = (value: unknown): value is PickEditFields['textState'] =
 // Rebuilt, so extra keys are dropped. `text` and `style` may hold control characters: both are
 // the page's own text, shown only as field values and never put in an Agent prompt.
 const parsePickEdit = (value: unknown): PickEditFields | undefined => {
-	const record = asRecord(value);
-	if (record === undefined || Array.isArray(value)) {
+	if (!isRecord(value) || Array.isArray(value)) {
 		return undefined;
 	}
-	const { sourceNumber, sharedNumber, textState, text, style } = record;
-	const computed = parseStyles(record.computed, EDIT_STYLE_FIELDS);
+	const { sourceNumber, sharedNumber, textState, text, style } = value;
+	const computed = parseStyles(value.computed, EDIT_STYLE_FIELDS);
 	if (
 		computed === undefined ||
 		!isSourceNumber(sourceNumber) ||
@@ -401,8 +393,7 @@ const parseAnchorList = <Entry>(
 	}
 	const entries: Entry[] = [];
 	for (const entry of value as unknown[]) {
-		const record = asRecord(entry);
-		const parsed = record === undefined ? undefined : parseEntry(record);
+		const parsed = isRecord(entry) ? parseEntry(entry) : undefined;
 		if (parsed === undefined) {
 			return undefined;
 		}
@@ -434,29 +425,28 @@ const parseAnchorRect = (record: Record<string, unknown>): AnchorRect | undefine
 // Untrusted. The bridge already matched event.source to a live frame; this checks and rebuilds the
 // payload, dropping extra fields.
 export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
-	const record = asRecord(data);
-	if (record === undefined) {
+	if (!isRecord(data)) {
 		return undefined;
 	}
-	switch (record.type) {
+	switch (data.type) {
 		case FRAME_HEIGHT_MESSAGE:
-			return isFiniteNumber(record.height)
-				? { type: FRAME_HEIGHT_MESSAGE, height: record.height }
+			return isFiniteNumber(data.height)
+				? { type: FRAME_HEIGHT_MESSAGE, height: data.height }
 				: undefined;
 		case FRAME_WHEEL_MESSAGE:
-			return parseFrameWheel(record);
+			return parseFrameWheel(data);
 		case FRAME_READY_MESSAGE:
 			return { type: FRAME_READY_MESSAGE };
 		case FRAME_HOVER_MESSAGE: {
-			const rect = parseNullableRect(record.rect);
+			const rect = parseNullableRect(data.rect);
 			return rect === undefined ? undefined : { type: FRAME_HOVER_MESSAGE, rect };
 		}
 		case FRAME_PICK_MESSAGE:
-			return parseFramePick(record);
+			return parseFramePick(data);
 		case FRAME_KEY_MESSAGE:
-			return isFrameKey(record.key) ? { type: FRAME_KEY_MESSAGE, key: record.key } : undefined;
+			return isFrameKey(data.key) ? { type: FRAME_KEY_MESSAGE, key: data.key } : undefined;
 		case FRAME_ANCHOR_RECTS_MESSAGE: {
-			const anchors = parseAnchorList(record.anchors, parseAnchorRect);
+			const anchors = parseAnchorList(data.anchors, parseAnchorRect);
 			return anchors === undefined ? undefined : { type: FRAME_ANCHOR_RECTS_MESSAGE, anchors };
 		}
 		default:
@@ -466,13 +456,12 @@ export const parseFrameMessage = (data: unknown): FrameMessage | undefined => {
 
 // Chrome → frame, checked by the runtime after it matched event.source to its captured parent.
 export const parseChromeFrameMessage = (data: unknown): ChromeFrameMessage | undefined => {
-	const record = asRecord(data);
-	if (record === undefined) {
+	if (!isRecord(data)) {
 		return undefined;
 	}
-	switch (record.type) {
+	switch (data.type) {
 		case FRAME_MODE_MESSAGE:
-			return isFrameMode(record.mode) ? { type: FRAME_MODE_MESSAGE, mode: record.mode } : undefined;
+			return isFrameMode(data.mode) ? { type: FRAME_MODE_MESSAGE, mode: data.mode } : undefined;
 		case PICK_PARENT_MESSAGE:
 			return { type: PICK_PARENT_MESSAGE };
 		case PICK_CHILD_MESSAGE:
@@ -480,9 +469,9 @@ export const parseChromeFrameMessage = (data: unknown): ChromeFrameMessage | und
 		case PICK_REFRESH_MESSAGE:
 			return { type: PICK_REFRESH_MESSAGE };
 		case EDIT_APPLY_MESSAGE:
-			return parseEditApply(record);
+			return parseEditApply(data);
 		case FRAME_ANCHORS_MESSAGE: {
-			const anchors = parseAnchorList(record.anchors, parseAnchorRequest);
+			const anchors = parseAnchorList(data.anchors, parseAnchorRequest);
 			return anchors === undefined ? undefined : { type: FRAME_ANCHORS_MESSAGE, anchors };
 		}
 		default:

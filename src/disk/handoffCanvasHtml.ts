@@ -5,14 +5,16 @@ import {
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
 } from '../webview/frame/frameMessages';
-import { FIT_PADDING, layoutCanvasChrome } from '../webview/stageGeometry';
+import {
+	FIT_PADDING,
+	layoutCanvasChrome,
+	PROVISIONAL_FRAME_HEIGHT,
+} from '../webview/stageGeometry';
 
 // Frame index.html files stay pristine; only the srcdoc copies here carry the measuring runtime.
 // ponytail: no size cap (every frame's HTML twice), assets/ not copied (relative images may be
 // missing), a frame that never reports stays PROVISIONAL_FRAME_HEIGHT tall, an empty file previews
 // empty. Upgrade path: copy assets/ and cap per frame once a real handoff hits these.
-
-const PROVISIONAL_FRAME_HEIGHT = 800;
 
 export type CanvasPreviewFrame = {
 	id: string;
@@ -47,7 +49,7 @@ const injectionIndex = (html: string): number => {
 };
 
 // The frame's exact HTML plus one inserted block (base + runtime). String insertion only.
-export const buildPreviewFrameHtml = ({
+const buildPreviewFrameHtml = ({
 	html,
 	folder,
 	id,

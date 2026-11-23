@@ -2,16 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import {
-	HINT_CONTAINER,
-	HINT_FRAME_MISSING,
-	HINT_FRAME_UNREADABLE,
-	HINT_NO_SINGLE_MATCH,
-	HINT_UNCHECKED,
 	commentFlags,
 	matchCommentTarget,
 	parseArtboardDocument,
 	targetAgrees,
 } from './commentTarget';
+
+// Pinned values: the module keeps these private.
+const HINT_FRAME_MISSING = "The frame's artboard no longer exists.";
+const HINT_FRAME_UNREADABLE = "The frame's artboard file cannot be read.";
+const HINT_UNCHECKED =
+	'The target is generated or changed by script; it cannot be checked from disk.';
+const HINT_NO_SINGLE_MATCH = 'The selector now matches no element or several elements.';
+const HINT_CONTAINER =
+	'The target contains other elements; edits inside it (including fixes for nested comments) mark it stale.';
 
 const fingerprintOf = (html: string, selector: string): string => {
 	const match = matchCommentTarget({ document: parseArtboardDocument(html), selector });

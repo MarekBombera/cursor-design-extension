@@ -1,7 +1,12 @@
 import { COMMENT_ID_PATTERN, isPageId, MAX_COMMENT_BODY_CHARS, MAX_COMMENTS } from '../disk/layout';
 import type { CommentDraft, CommentDraftSlot } from './commentPopover';
-import { type FrameMode, isFrameMode, parsePickFields } from './frame/frameMessages';
-import { isFiniteNumber, isRecord } from './hostMessages';
+import {
+	type FrameMode,
+	isFiniteNumber,
+	isFrameMode,
+	isRecord,
+	parsePickFields,
+} from './frame/frameMessages';
 import type { StageView } from './stageGeometry';
 
 // Webview state (getState / setState) survives a tab switch, which reloads the webview. Read it

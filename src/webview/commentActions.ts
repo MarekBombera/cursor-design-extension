@@ -178,13 +178,7 @@ export const copyPending = ({
 	copyOpen.pending !== undefined ||
 	[...actions.values()].some((action) => action.pending?.kind === 'copy');
 
-export const copyAnnouncement = ({
-	kind,
-	count,
-}: {
-	kind: 'single' | 'batch';
-	count: number;
-}): string => {
+const copyAnnouncement = ({ kind, count }: { kind: 'single' | 'batch'; count: number }): string => {
 	if (count === 0) {
 		return 'Prompt copied.';
 	}

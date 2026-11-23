@@ -3,7 +3,6 @@ import { test } from 'vite-plus/test';
 
 import {
 	clipRect,
-	isTransparentColor,
 	isUnchangedPick,
 	paintsFromStyle,
 	pickTarget,
@@ -136,6 +135,10 @@ test('paintsFromStyle is true for any visible paint', () => {
 	assert.equal(paints({ localName: 'svg' }), true);
 	assert.equal(paints({ localName: 'button' }), true);
 });
+
+// A background colour paints exactly when it is not transparent.
+const isTransparentColor = (color: string): boolean =>
+	!paints({ style: { backgroundColor: color } });
 
 test('isTransparentColor matches only zero alpha', () => {
 	for (const color of [

@@ -14,8 +14,11 @@ import {
 	toPostedComment,
 	isArtboardHistoryAttempt,
 } from './chromeMessages';
-import { COPY_FAILED_MESSAGE, malformedRequestMessage } from './panelRequestCopy';
+import { malformedRequestMessage } from './panelRequestCopy';
 import type { CommentCreateMessage } from '../webview/hostMessages';
+
+// Pinned values: the module keeps these private.
+const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
 
 const validPlace = {
 	type: 'frame:place',

@@ -10,13 +10,8 @@ import {
 	UNTRUSTED_WORKSPACE_MESSAGE,
 	type CanvasSnapshot,
 } from './canvasSnapshot';
-import {
-	type CanvasView,
-	createArtboard,
-	placeFrame,
-	readCanvasView,
-	setActiveArtboard,
-} from '../disk/artboardFs';
+import { createArtboard, placeFrame, setActiveArtboard } from '../disk/artboardFs';
+import { type CanvasView, readCanvasView } from '../disk/canvasView';
 import {
 	ArtboardExistsError,
 	InvalidArgsError,
@@ -28,8 +23,6 @@ import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from
 import type { PageLocation } from '../disk/layoutFs';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
-
-export { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE, type CanvasSnapshot };
 
 type WorkspaceDiskArgs = {
 	workspaceFolder: vscode.WorkspaceFolder;

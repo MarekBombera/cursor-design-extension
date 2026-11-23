@@ -1,6 +1,6 @@
 // Chrome-only: kept out of stageGeometry.ts, which the exported canvas.html embeds whole.
 
-export const ZOOM_PRESETS = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2] as const;
+const ZOOM_PRESETS = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2] as const;
 
 type ZoomChoice = { value: string; label: string };
 

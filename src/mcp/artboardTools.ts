@@ -2,15 +2,14 @@ import { type McpServer } from '@modelcontextprotocol/server';
 
 import {
 	createArtboard,
-	exportArtboard,
-	listArtboards,
 	placeFrame,
 	readArtboard,
-	readHandoffStatus,
 	setActiveArtboard,
 	updateArtboard,
 	validateNewArtboardArgs,
 } from '../disk/artboardFs';
+import { listArtboards } from '../disk/canvasView';
+import { exportArtboard, readHandoffStatus } from '../disk/exportFs';
 import { InvalidArgsError } from '../disk/errors';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 import { resolveOpenPage } from '../disk/openPage';
@@ -133,6 +132,8 @@ const placeFrameInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
+// Exported for tests: agentSkill.test.ts reads the tool names (skill drift guard).
+/** @internal */
 export const artboardToolInputSchemas = {
 	[SET_ARTBOARD_TOOL]: setArtboardInputSchema,
 	[UPDATE_ARTBOARD_TOOL]: updateArtboardInputSchema,

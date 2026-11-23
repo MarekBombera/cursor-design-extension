@@ -67,7 +67,7 @@ Approval boundaries:
 - Fix: `pnpm exec vp check --fix`
 - Debug: **F5** opens `fixtures/dev-workspace` in the Extension Development Host for Cursor-only checks (CSP, MCP registration, Extension Host, webview hide/show, Cursor focus). Confirm `dist/mcp.js` exists first.
 - Package `.vsix`: `pnpm vsix`
-- Other scripts: `package.json` (coverage, compile, watch, package, knip).
+- Other scripts: `package.json` (coverage, compile, watch, package, knip; Verify also runs `knip` and `knip --production`).
 
 Lint (`vite.config.ts`) enforces the mechanical conventions. Fix the code, not the rule.
 

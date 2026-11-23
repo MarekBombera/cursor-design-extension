@@ -1,28 +1,30 @@
-# Page test gaps and parallel browser tests (fix) - Overview for review
+# Lean export and helper sweep (fix) - Overview for review
 
-Source of truth: `blueprint/history/fixes/page-test-gaps-and-parallel-browser-tests.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/fixes/lean-export-and-helper-sweep.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Three small follow-ups to 10b. The comments panel tests now check that reply, status and copy requests name their page (F-20). The panel stops holding a page's first canvas snapshot and comment list after the page has used them (F-21). The browser tests run in parallel, apart from a few timing-sensitive ones that still run alone, after the rest.
+Quality wave 1. Verify now runs knip in normal and production mode, so an export only tests use, or a dead one, fails the build. The 51 test-only exports found today are gone from module interfaces: 41 un-exported, 9 kept as tagged test seams, 1 pass-through re-export deleted. Twin helpers (`isFiniteNumber`, `isRecord` / `asRecord`, `PROVISIONAL_FRAME_HEIGHT`) now live once each, and passing tests stop printing error stacks. No behavior change.
 
 ## What you will see
 
-- Nothing in the panel: no behavior change.
-- `pnpm test:browser` finishes faster: the Playwright run went from 170 s to about 85 s. The output shows two projects, `parallel` and `serial`; all 209 tests pass.
-- `pnpm gallery` works as before.
+- Nothing in the panel, the exported `canvas.html` or the Agent tools.
+- `pnpm verify` runs `knip && knip --production`; adding `export` to an internal constant fails it.
+- `pnpm test` output on a green run has no `DiskError` stack traces.
 
-## Scope at a glance
+## Architecture decisions
 
-| In | Out |
-|---|---|
-| `pageId` in four `commentsPanel.spec.ts` assertions | New tests for other requests (already pinned) |
-| Drop `stage.canvas` / `stage.comments` after mount; no `initial` object | Heap-profile test |
-| `parallel` (5 workers, `CD_BROWSER_WORKERS`) and `serial` (`@serial`, 1 worker, after) projects | Browser tests in Verify or CI |
-| AGENTS.md and rule 09 lines | Other config changes |
+- knip production mode marks the three bundle entries and the `src` project globs with `!`; `*.cases.ts` test tables are excluded.
+- A test-only export is un-exported first (test asserts through the real interface), deleted second, kept with `/** @internal */` only when a test must pin it. The 9 keeps: the two MCP tool input schemas (Agent skill drift guard), `editableSections`, `isGeneratedName`, `buildSelector`, `textExcerpt`, `pinPoint`, `pinLabel`, `frameBounds`.
+- `frameMessages.ts` owns `isFiniteNumber` and the array-accepting `isRecord`; disk's array-rejecting `isJsonRecord` stays a separate job. `stageGeometry.ts` owns `PROVISIONAL_FRAME_HEIGHT` for the panel and `canvas.html`.
+- Exported types are out of scope: knip cannot gate them.
 
-## Constraints
+## Out of scope
 
-- The page must not remount when App drops the payload (`{#key stage.pageId}`).
-- Serial tests never share CPU with parallel ones: the serial project depends on the parallel one. If a parallel test fails, the serial tests are skipped.
-- Fixes F-20 and F-21, both closed by `/audit current`. The `page-9` mutation now fails exactly the 4 updated tests.
+Dispose-hooked flags, request preamble, panel refresh race, frame cache key, ports, `parseHostMessage`, comments restructure: build-plan item 11 (next: 11f test effectiveness review, then 11a).
+
+## Done means
+
+- `pnpm verify` green (836 unit tests, both knip runs), `pnpm test:browser` 209 pass.
+- Mutation checks: re-exporting `HINT_UNCHECKED` or un-tagging `artboardToolInputSchemas` fails `knip --production`.
+- Audit F-01..F-05 (all P3) fixed and closed by re-review.

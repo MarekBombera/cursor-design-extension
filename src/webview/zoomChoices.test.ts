@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import { ZOOM_PRESETS, zoomChoices } from './zoomChoices';
+import { zoomChoices } from './zoomChoices';
 
 test('zoomChoices selects a preset, slots a non-preset zoom in sorted place, and rounds onto a preset', () => {
-	const presetValues = ZOOM_PRESETS.map(String);
+	const presetValues = ['0.5', '0.75', '0.9', '1', '1.1', '1.25', '1.5', '1.75', '2'];
 	const exact = zoomChoices(1.5);
 	assert.deepEqual(
 		exact.options.map((option) => option.value),

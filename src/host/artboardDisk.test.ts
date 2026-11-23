@@ -35,13 +35,16 @@ vi.mock('../disk/artboardFs', () => ({
 	createArtboard: vi.fn(() => Promise.resolve()),
 	setActiveArtboard: vi.fn(() => Promise.resolve()),
 	placeFrame: vi.fn(() => Promise.resolve()),
+}));
+vi.mock('../disk/canvasView', () => ({
 	readCanvasView: vi.fn(() =>
 		Promise.resolve({ activeArtboardId: '', frames: [], handoffStale: false }),
 	),
 }));
 
 const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
-const { createArtboard, placeFrame, readCanvasView } = await import('../disk/artboardFs');
+const { createArtboard, placeFrame } = await import('../disk/artboardFs');
+const { readCanvasView } = await import('../disk/canvasView');
 const { fileExists, logDiskError } = await import('./hostFs');
 
 const workspaceFolder = { uri: { fsPath: '/ws' } } as vscode.WorkspaceFolder;

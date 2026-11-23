@@ -5,7 +5,6 @@ import {
 	arrowNudge,
 	failFrameGesture,
 	type FrameGesture,
-	REVEAL_MARGIN,
 	revealOffset,
 	type StageFrameGesture,
 	settleFrameGesture,
@@ -14,6 +13,9 @@ import {
 	wheelToView,
 } from './frameGesture';
 import type { FramePlacement } from './hostMessages';
+
+// Pinned values: the module keeps these private.
+const REVEAL_MARGIN = 24;
 
 const VIEW = { x: 0, y: 0, zoom: 1 };
 const disk: Record<string, FramePlacement> = {

@@ -3,11 +3,7 @@ import { tmpdir } from 'node:os';
 import { runInNewContext } from 'node:vm';
 import { expect, test } from 'vite-plus/test';
 
-import {
-	type CanvasPreviewFrame,
-	buildCanvasPreviewHtml,
-	buildPreviewFrameHtml,
-} from './handoffCanvasHtml';
+import { type CanvasPreviewFrame, buildCanvasPreviewHtml } from './handoffCanvasHtml';
 import canvasRuntimeSource from '../webview/frame/runtime.ts?iife';
 import { nextFrameHeight } from '../webview/stageGeometry';
 import stageGeometrySource from '../webview/stageGeometry.ts?iife';
@@ -58,6 +54,15 @@ const styleNumber = (tag: string, property: string): number => {
 const runtimeBlock = (folder: string, id: string): string =>
 	`<base href="${folder}/${id}/"><script data-cd-canvas-runtime>${canvasRuntimeSource}</script>`;
 
+// One frame's decoded srcdoc: the preview copy buildCanvasPreviewHtml embeds.
+const previewFrameHtml = ({ html, folder, id }: { html: string; folder: string; id: string }) => {
+	const tag = iframeTags(
+		buildCanvasPreviewHtml({ exportId: 'canvas-1', frames: [frame({ id, folder, html })] }),
+	)[0];
+	assert.ok(tag !== undefined);
+	return decodeAttribute(attributeOf(tag, 'srcdoc') ?? '');
+};
+
 test('labels and group headings are escaped and appear only as text', () => {
 	const hostile = `<img src=x onerror=alert(1)> & "q" 'a'`;
 	const html = buildCanvasPreviewHtml({
@@ -92,22 +97,21 @@ test('one sandboxed srcdoc iframe per frame with title and data-cd-frame', () =>
 });
 
 test('decoded srcdoc is exactly the preview copy and its tail is the frame HTML', () => {
-	const inputs = [
-		'<p class="x">a &amp; b</p><script>console.log("</script>")</script>',
-		'',
-		'<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>"q"</body></html>',
+	const block = runtimeBlock('desktop', 'a');
+	const inputs: [string, string][] = [
+		[
+			'<p class="x">a &amp; b</p><script>console.log("</script>")</script>',
+			`${block}<p class="x">a &amp; b</p><script>console.log("</script>")</script>`,
+		],
+		['', block],
+		[
+			'<!DOCTYPE html><html lang="en"><head><title>t</title></head><body>"q"</body></html>',
+			`<!DOCTYPE html><html lang="en"><head>${block}<title>t</title></head><body>"q"</body></html>`,
+		],
 	];
-	for (const input of inputs) {
-		const html = buildCanvasPreviewHtml({
-			exportId: 'canvas-1',
-			frames: [frame({ id: 'a', folder: 'desktop', html: input })],
-		});
-		const tag = iframeTags(html)[0];
-		assert.ok(tag !== undefined);
-		const decoded = decodeAttribute(attributeOf(tag, 'srcdoc') ?? '');
-		const preview = buildPreviewFrameHtml({ html: input, folder: 'desktop', id: 'a' });
-		assert.equal(decoded, preview);
-		const block = runtimeBlock('desktop', 'a');
+	for (const [input, expected] of inputs) {
+		const preview = previewFrameHtml({ html: input, folder: 'desktop', id: 'a' });
+		assert.equal(preview, expected);
 		const blockIndex = preview.indexOf(block);
 		assert.ok(blockIndex >= 0);
 		assert.equal(preview.slice(0, blockIndex) + preview.slice(blockIndex + block.length), input);
@@ -116,7 +120,7 @@ test('decoded srcdoc is exactly the preview copy and its tail is the frame HTML'
 
 test('runtime injects after head, else after html, else at the start', () => {
 	const block = runtimeBlock('g', 'a');
-	const inject = (html: string): string => buildPreviewFrameHtml({ html, folder: 'g', id: 'a' });
+	const inject = (html: string): string => previewFrameHtml({ html, folder: 'g', id: 'a' });
 	assert.equal(
 		inject('<html><HEAD data-x="1"><title>t</title></HEAD></html>'),
 		`<html><HEAD data-x="1">${block}<title>t</title></HEAD></html>`,

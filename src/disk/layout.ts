@@ -228,7 +228,7 @@ export const MAX_PAGES = 100;
 
 export const MAX_PAGE_TITLE_CHARS = 80;
 
-export const PAGE_ID_PATTERN = /^page-[1-9][0-9]{0,5}$/;
+const PAGE_ID_PATTERN = /^page-[1-9][0-9]{0,5}$/;
 
 // The one page-id check: project.json entries, the page-folder scan, chrome messages and later MCP
 // args.

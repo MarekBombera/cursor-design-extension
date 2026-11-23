@@ -5,8 +5,7 @@ import { CANVAS_RUNTIME_ATTRIBUTE } from './frame/frameMessages';
 // every remote script, style, image, font or fetch.
 // ponytail: Chromium's CSP does not govern WebRTC or DNS prefetch hints; the sandbox (opaque
 // origin, no VS Code API) is the wall that matters. Upgrade path: none short of a network proxy.
-export const FRAME_CSP =
-	"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
+const FRAME_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
 
 // Nonces every artboard script and style (the blob frame inherits the chrome's nonce CSP), strips
 // every meta http-equiv so the artboard cannot loosen or stack policies, and adds FRAME_CSP and the

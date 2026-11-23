@@ -6,6 +6,7 @@ import {
 	type FrameHeightGuard,
 	frameRectToScreen,
 	nextFrameHeight,
+	PROVISIONAL_FRAME_HEIGHT,
 	type StageRect,
 	type StageView,
 } from './stageGeometry';
@@ -45,10 +46,9 @@ export type FrameRecord = StageFrame & {
 	guard: FrameHeightGuard;
 };
 
-export const PROVISIONAL_FRAME_HEIGHT = 800;
-export const TILE_HEIGHT = 160;
-export const EMPTY_ARTBOARD_COPY = 'Empty artboard file.';
-export const RENDER_ERROR_COPY = 'Could not render this frame.';
+const TILE_HEIGHT = 160;
+const EMPTY_ARTBOARD_COPY = 'Empty artboard file.';
+const RENDER_ERROR_COPY = 'Could not render this frame.';
 
 const resetGuard = (): FrameHeightGuard => ({ lastGrowth: 0, frozen: false });
 

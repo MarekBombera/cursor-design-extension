@@ -69,7 +69,7 @@ export type ReadCanvasViewArgs = {
 	page: PageLocation;
 };
 
-export const FRAME_READ_ERROR_MESSAGE =
+const FRAME_READ_ERROR_MESSAGE =
 	'Could not read this artboard file. Check the Output panel: Cursor Design.';
 
 type ScannedArtboard = {

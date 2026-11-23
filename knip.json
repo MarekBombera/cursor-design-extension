@@ -1,16 +1,17 @@
 {
 	"entry": [
-		"src/extension.ts",
-		"src/mcp/server.ts",
+		"src/extension.ts!",
+		"src/mcp/server.ts!",
 		"src/**/*.test.ts",
 		"vite.webview.config.ts",
-		"src/webview/main.ts",
+		"src/webview/main.ts!",
 		"tests/browser/playwright.config.ts",
 		"tests/browser/*.spec.ts"
 	],
 	"project": [
-		"src/**/*.ts",
-		"src/webview/**/*.{ts,svelte}",
+		"src/**/*.ts!",
+		"src/webview/**/*.{ts,svelte}!",
+		"!src/**/*.cases.ts!",
 		"scripts/iifeStringPlugin.ts",
 		"tests/browser/**/*.ts"
 	],

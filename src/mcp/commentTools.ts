@@ -38,6 +38,8 @@ const resolveCommentInputSchema = toolInputSchema<CommentToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
+// Exported for tests: agentSkill.test.ts reads the tool names (skill drift guard).
+/** @internal */
 export const commentToolInputSchemas = {
 	[LIST_COMMENTS_TOOL]: listCommentsInputSchema,
 	[GET_COMMENT_TOOL]: getCommentInputSchema,

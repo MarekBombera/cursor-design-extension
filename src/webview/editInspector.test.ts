@@ -4,14 +4,12 @@ import { test } from 'vite-plus/test';
 import type { StyleField } from '../disk/editValues';
 import type { ChromePick } from './commentPick';
 import {
-	colorDisplay,
 	editability,
 	editableSections,
 	type FieldView,
 	inlineValue,
 	inspectorView,
 	pickAnnouncementText,
-	toHexColor,
 } from './editInspector';
 import type { PickEditFields } from './frame/frameMessages';
 
@@ -137,22 +135,6 @@ test('the toolbar announcement says not editable only in Edit mode', () => {
 	assert.equal(pickAnnouncementText({ mode: 'edit', pick: undefined }), '');
 });
 
-test('toHexColor reads only Chromium computed rgb() and rgba()', () => {
-	assert.equal(toHexColor('rgb(255, 0, 0)'), '#ff0000');
-	assert.equal(toHexColor('rgba(0, 0, 255, 0.5)'), '#0000ff');
-	assert.equal(toHexColor('rgb(10, 20, 30)'), '#0a141e');
-	for (const value of [
-		'rgb(256, 0, 0)',
-		'rgb(255 0 0)',
-		'#ff0000',
-		'red',
-		'oklch(0.7 0.1 200)',
-		'',
-	]) {
-		assert.equal(toHexColor(value), undefined, value);
-	}
-});
-
 const sectionsOf = (
 	fields: Partial<PickEditFields>,
 	overrides: Partial<ChromePick> = {},
@@ -239,6 +221,34 @@ test('set: through a longhand or a border parent; never through font or backgrou
 	assert.equal(fieldOf(view, 'text-style')?.set, false);
 	assert.equal(sectionOf(view, 'appearance')?.action.enabled, false);
 	assert.equal(sectionOf(view, 'spacing')?.action.enabled, true);
+});
+
+// The colour display of a computed colour, read off the colour field that shows it.
+const colorDisplay = (computed: string | undefined) => {
+	const field = fieldOf(
+		sectionsOf({ computed: computed === undefined ? {} : { color: computed } }),
+		'color',
+	);
+	assert.ok(field?.control === 'color');
+	return { text: field.placeholder, swatch: field.swatch, none: field.none };
+};
+
+// Only Chromium's computed rgb() / rgba() parse: a parsed colour fills the swatch, an unparsed one
+// is echoed as text over the black fallback.
+test('the colour field reads only Chromium computed rgb() and rgba()', () => {
+	assert.equal(colorDisplay('rgb(255, 0, 0)').swatch, '#ff0000');
+	assert.equal(colorDisplay('rgba(0, 0, 255, 0.5)').swatch, '#0000ff');
+	assert.equal(colorDisplay('rgb(10, 20, 30)').swatch, '#0a141e');
+	for (const value of [
+		'rgb(256, 0, 0)',
+		'rgb(255 0 0)',
+		'#ff0000',
+		'red',
+		'oklch(0.7 0.1 200)',
+		'',
+	]) {
+		assert.deepEqual(colorDisplay(value), { text: value, swatch: '#000000', none: false }, value);
+	}
 });
 
 test('colorDisplay: lowercase hex, None for no colour, translucent and other spaces as given', () => {
