@@ -84,19 +84,18 @@ beforeEach(() => {
 const createIfFreshFlags = (): unknown[] =>
 	vi.mocked(resolveOpenPage).mock.calls.map(([call]) => call.createIfFresh);
 
-test("Open resolves with createIfFresh; the refresh and frame:place's refresh do not", async () => {
+test('Open resolves with createIfFresh; the refresh does not', async () => {
 	await initAndLoadArtboard(args);
 	assert.deepEqual(createIfFreshFlags(), [true]);
 	vi.mocked(resolveOpenPage).mockClear();
 	await readActiveArtboardFromDisk(args);
-	await placeFrameFromChrome({ value: framePlace, outputChannel });
-	assert.deepEqual(createIfFreshFlags(), [false, false]);
+	assert.deepEqual(createIfFreshFlags(), [false]);
 });
 
 test("a frame:place for page-1 while page-2 is open places on page-1's location", async () => {
 	const pageOne = { workspaceRoot: '/ws', pageId: 'page-1' };
 	vi.mocked(resolveRequestedPage).mockResolvedValueOnce(pageOne);
-	const snapshot = await placeFrameFromChrome({ value: framePlace, outputChannel });
+	const result = await placeFrameFromChrome({ value: framePlace, outputChannel });
 	assert.deepEqual(vi.mocked(resolveRequestedPage).mock.calls, [
 		[{ workspaceRoot: '/ws', pageId: 'page-1' }],
 	]);
@@ -108,17 +107,14 @@ test("a frame:place for page-1 while page-2 is open places on page-1's location"
 		width: 400,
 		base: { x: 0, y: 0, width: 400 },
 	});
-	// The answer is the open page's snapshot.
-	assert.equal(snapshot.pageId, 'page-2');
-	assert.equal(snapshot.errorMessage, undefined);
+	assert.equal(result, undefined);
 });
 
-test('a frame:place for a gone page answers the open page with the page copy', async () => {
+test('a frame:place for a gone page returns the page copy', async () => {
 	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(new PageNotFoundError('page-1'));
-	const snapshot = await placeFrameFromChrome({ value: framePlace, outputChannel });
+	const result = await placeFrameFromChrome({ value: framePlace, outputChannel });
 	assert.equal(vi.mocked(placeFrame).mock.calls.length, 0);
-	assert.equal(snapshot.pageId, 'page-2');
-	assert.equal(snapshot.errorMessage, PAGE_GONE_MESSAGE);
+	assert.equal(result, PAGE_GONE_MESSAGE);
 });
 
 test('a rejected resolve logs once and yields the safe message with no page', async () => {
@@ -169,26 +165,28 @@ test('a read failure after the resolve keeps the resolved page id', async () => 
 // The resolver can migrate or create files, so an untrusted folder never reaches it.
 test('an untrusted Open, refresh or frame:place touches no page', async () => {
 	host.isTrusted = false;
-	const snapshots = [
+	for (const snapshot of [
 		await initAndLoadArtboard(args),
 		await readActiveArtboardFromDisk(args),
-		await placeFrameFromChrome({ value: framePlace, outputChannel }),
-	];
-	for (const snapshot of snapshots) {
+	]) {
 		assert.equal(snapshot.errorMessage, UNTRUSTED_WORKSPACE_MESSAGE);
 	}
+	assert.equal(
+		await placeFrameFromChrome({ value: framePlace, outputChannel }),
+		UNTRUSTED_WORKSPACE_MESSAGE,
+	);
 	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
 	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
 	assert.equal(vi.mocked(placeFrame).mock.calls.length, 0);
 });
 
 test('a malformed frame:place places nothing and answers the move copy', async () => {
-	const snapshot = await placeFrameFromChrome({
+	const result = await placeFrameFromChrome({
 		value: { ...framePlace, x: 'far' },
 		outputChannel,
 	});
 	assert.equal(vi.mocked(placeFrame).mock.calls.length, 0);
-	assert.equal(snapshot.errorMessage, 'Could not move the frame. Try again.');
+	assert.equal(result, 'Could not move the frame. Try again.');
 });
 
 test('Open on a page with artboard.html but no manifest keeps its bytes and makes it active', async () => {

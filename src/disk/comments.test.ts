@@ -891,7 +891,7 @@ test('cachedArtboardDocument and a later flag read share one parse', async () =>
 		'utf8',
 	);
 	const before = parseCount();
-	cachedArtboardDocument({ workspaceRoot, frameId: 'hero', html });
+	cachedArtboardDocument({ workspaceRoot, pageId: FIRST_PAGE_ID, frameId: 'hero', html });
 	assert.equal(
 		(await readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }))[0]?.stale,
 		false,

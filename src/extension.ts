@@ -9,16 +9,16 @@ import { exportHandoff } from './commands/exportHandoff';
 import { revealDesignFolder } from './commands/revealDesignFolder';
 import { syncAgentSkill } from './host/agentSkill';
 import { placeFrameFromChrome } from './host/artboardDisk';
-import { handleOpenArtboard, reloadVisibleArtboardFromDisk } from './host/handleOpenArtboard';
+import { handleOpenArtboard } from './host/handleOpenArtboard';
 import { logDiskError } from './host/hostFs';
 import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
 import { isArtboardHistoryAttempt } from './host/chromeMessages';
 import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
+import { refreshPanel } from './host/refreshPanel';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
 import {
-	postArtboardSnapshotToPanel,
 	postUiStatusToPanel,
 	setArtboardPanelOnCommentRequest,
 	setArtboardPanelOnEditRequest,
@@ -41,14 +41,12 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	};
 
 	setArtboardPanelOnVisible(() => {
-		void reloadVisibleArtboardFromDisk(outputChannel);
+		void refreshPanel({ outputChannel });
 	});
 
 	setArtboardPanelOnFramePlace((value) => {
 		void placeFrameFromChrome({ value, outputChannel })
-			.then((snapshot) => {
-				postArtboardSnapshotToPanel(snapshot);
-			})
+			.then((errorMessage) => refreshPanel({ outputChannel, errorMessage }))
 			.catch((error: unknown) => {
 				logDiskError({ scope: 'extension.framePlace', error, outputChannel });
 			});
@@ -85,7 +83,7 @@ export const activate = (context: vscode.ExtensionContext): void => {
 			} else {
 				syncHostRuntime(true);
 			}
-			void reloadVisibleArtboardFromDisk(outputChannel);
+			void refreshPanel({ outputChannel });
 		}),
 		vscode.commands.registerCommand(OPEN_ARTBOARD_COMMAND, () => {
 			void handleOpenArtboard({ context, outputChannel });

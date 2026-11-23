@@ -24,7 +24,7 @@ export type CommentView = Comment & CommentFlags;
 // Per read: past it, a comment that needs a target match reports unchecked.
 const CHECK_BUDGET_MS = 200;
 
-// One parse per workspace and frame, reused while the HTML text is identical (which also keeps
+// One parse per workspace, page and frame, reused while the HTML text is identical (which also keeps
 // matchCommentTarget's per-document match cache, so an unchanged frame runs no match).
 // ponytail: FIFO at MAX_PARSED_DOCUMENTS; source tags and edits insert here too, so more than 32
 // changed frames evict comment trees and re-parse. A tree with locations is about 34 MB per
@@ -33,19 +33,28 @@ const CHECK_BUDGET_MS = 200;
 const MAX_PARSED_DOCUMENTS = 32;
 const parsedDocuments = new Map<string, { html: string; document: ArtboardDocument }>();
 
-export const frameCacheKey = (workspaceRoot: string, frameId: string): string =>
-	`${workspaceRoot}\0${frameId}`;
+export const frameCacheKey = ({
+	workspaceRoot,
+	pageId,
+	frameId,
+}: {
+	workspaceRoot: string;
+	pageId: string;
+	frameId: string;
+}): string => `${workspaceRoot}\0${pageId}\0${frameId}`;
 
 export const cachedArtboardDocument = ({
 	workspaceRoot,
+	pageId,
 	frameId,
 	html,
 }: {
 	workspaceRoot: string;
+	pageId: string;
 	frameId: string;
 	html: string;
 }): ArtboardDocument => {
-	const key = frameCacheKey(workspaceRoot, frameId);
+	const key = frameCacheKey({ workspaceRoot, pageId, frameId });
 	const cached = parsedDocuments.get(key);
 	if (cached?.html === html) {
 		return cached.document;
@@ -65,7 +74,7 @@ const loadArtboardDocument = async (
 	page: PageLocation,
 	frameId: string,
 ): Promise<CommentDocument> => {
-	const key = frameCacheKey(page.workspaceRoot, frameId);
+	const key = frameCacheKey({ workspaceRoot: page.workspaceRoot, pageId: page.pageId, frameId });
 	try {
 		const html = await readUtf8IfExists(
 			workspaceLayoutFile(page.workspaceRoot, artboardHtmlPathSegments(page.pageId, frameId)),
@@ -74,7 +83,12 @@ const loadArtboardDocument = async (
 			parsedDocuments.delete(key);
 			return 'missing';
 		}
-		return cachedArtboardDocument({ workspaceRoot: page.workspaceRoot, frameId, html });
+		return cachedArtboardDocument({
+			workspaceRoot: page.workspaceRoot,
+			pageId: page.pageId,
+			frameId,
+			html,
+		});
 	} catch (error: unknown) {
 		if (error instanceof DiskError) {
 			logStderr('comment target read', error);

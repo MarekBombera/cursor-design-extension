@@ -105,6 +105,7 @@ const postEdited = ({
 }): void => {
 	const posted = panelFrameHtml({
 		workspaceRoot: page.workspaceRoot,
+		pageId: page.pageId,
 		frameId: written.artboardId,
 		html: written.html,
 		onTagError: (frameId, error) => {

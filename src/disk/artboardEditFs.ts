@@ -68,6 +68,7 @@ export const editArtboard = async ({
 		html,
 		document: cachedArtboardDocument({
 			workspaceRoot: page.workspaceRoot,
+			pageId: page.pageId,
 			frameId: resolvedId,
 			html,
 		}),

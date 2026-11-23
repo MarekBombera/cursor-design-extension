@@ -2,14 +2,9 @@ import * as vscode from 'vscode';
 
 import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { isLockOrTempPath } from '../disk/workspaceLock';
-import { readActiveArtboardFromDisk } from './artboardDisk';
 import { fileExists, firstWorkspaceFolder, isFileNotFound, logDiskError } from './hostFs';
-import { postPanelComments } from './panelComments';
-import {
-	hasCurrentArtboardPanel,
-	openArtboardPanel,
-	postArtboardSnapshotToPanel,
-} from '../panel/openArtboardPanel';
+import { refreshPanel } from './refreshPanel';
+import { hasCurrentArtboardPanel, openArtboardPanel } from '../panel/openArtboardPanel';
 
 const WATCH_DEBOUNCE_MS = 200;
 
@@ -26,7 +21,6 @@ let artboardWatcher: vscode.FileSystemWatcher | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingMarkerEnsure = false;
 let watcherDisposeHooked = false;
-let watchGeneration = 0;
 let watchChain: Promise<void> = Promise.resolve();
 
 const clearDebounceTimer = (): void => {
@@ -39,30 +33,15 @@ const clearDebounceTimer = (): void => {
 const disposeArtboardWatcher = (): void => {
 	clearDebounceTimer();
 	pendingMarkerEnsure = false;
-	watchGeneration += 1;
 	artboardWatcher?.dispose();
 	artboardWatcher = undefined;
 };
 
 const refreshWatchedArtboard = async ({
-	workspaceFolder,
 	outputChannel,
-	token,
 }: {
-	workspaceFolder: vscode.WorkspaceFolder;
 	outputChannel: vscode.OutputChannel;
-	token: number;
-}): Promise<void> => {
-	if (!hasCurrentArtboardPanel()) {
-		return;
-	}
-	const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
-	if (token !== watchGeneration) {
-		return;
-	}
-	postArtboardSnapshotToPanel(snapshot);
-	void postPanelComments({ outputChannel });
-};
+}): Promise<void> => (hasCurrentArtboardPanel() ? refreshPanel({ outputChannel }) : undefined);
 
 const deleteEnsurePanelMarker = async (
 	markerUri: vscode.Uri,
@@ -96,7 +75,6 @@ export const replaceArtboardWatcher = ({
 	const isMarkerUri = (uri: vscode.Uri): boolean => uri.fsPath === markerUri.fsPath;
 
 	const runDebouncedWatch = async (): Promise<void> => {
-		const token = ++watchGeneration;
 		const currentFirstFolder = firstWorkspaceFolder();
 		if (!currentFirstFolder || currentFirstFolder.uri.fsPath !== workspaceFolder.uri.fsPath) {
 			pendingMarkerEnsure = false;
@@ -120,12 +98,12 @@ export const replaceArtboardWatcher = ({
 				return;
 			}
 			openArtboardPanel({ context, preserveFocus: true });
-			await refreshWatchedArtboard({ workspaceFolder, outputChannel, token });
+			await refreshWatchedArtboard({ outputChannel });
 			await deleteEnsurePanelMarker(markerUri, outputChannel);
 			pendingMarkerEnsure = false;
 			return;
 		}
-		await refreshWatchedArtboard({ workspaceFolder, outputChannel, token });
+		await refreshWatchedArtboard({ outputChannel });
 	};
 
 	const scheduleDebounce = (): void => {

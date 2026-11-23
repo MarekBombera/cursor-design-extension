@@ -40,7 +40,7 @@ Grep the owner before writing a helper; extend it, never add a twin; a new share
 
 **Host** (`src/host/`; no `vscode` in `chromeMessages`, `panelRequestCopy`, `editHistory`, `commentPrompt`, `panelOutbox`):
 
-- `src/commands/` → `commandIds.ts`, one file per command handler (`exportHandoff`, `revealDesignFolder`); `handleOpenArtboard.ts` → Open Artboard and reload of the visible artboard.
+- `src/commands/` → `commandIds.ts`, one file per command handler (`exportHandoff`, `revealDesignFolder`); `handleOpenArtboard.ts` → Open Artboard; `refreshPanel.ts` → the one panel refresh (snapshot, then comments, last started wins; every snapshot post goes through it).
 - `hostFs.ts` → folder lookup, `logDiskError`, chrome-asset checks; `watchArtboardDisk.ts` → the disk watcher; `agentSkill.ts` → `syncAgentSkill` (shipped skill to `~/.cursor/skills/`).
 - `canvasSnapshot.ts` → panel frames from disk; `artboardDisk.ts` → host disk calls (never re-implement disk I/O).
 - `chromeMessages.ts` → `parseChromeMessage` and request guards; `panelRequestCopy.ts` → all panel answer copy, never Agent copy; `commentPrompt.ts` → locked Agent prompts.

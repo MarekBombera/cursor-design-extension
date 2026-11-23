@@ -1,45 +1,26 @@
 import * as vscode from 'vscode';
 
-import { initAndLoadArtboard, readActiveArtboardFromDisk } from './artboardDisk';
-import { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { firstWorkspaceFolder, NO_FOLDER_MESSAGE } from './hostFs';
-import { postPanelComments } from './panelComments';
+import { refreshPanel } from './refreshPanel';
 import { ensureArtboardWatcher } from './watchArtboardDisk';
-import { openArtboardPanel, postArtboardSnapshotToPanel } from '../panel/openArtboardPanel';
+import { openArtboardPanel } from '../panel/openArtboardPanel';
 
 type HandleOpenArtboardArgs = {
 	context: vscode.ExtensionContext;
 	outputChannel: vscode.OutputChannel;
 };
 
-export const reloadVisibleArtboardFromDisk = async (
-	outputChannel: vscode.OutputChannel,
-): Promise<void> => {
-	const workspaceFolder = firstWorkspaceFolder();
-	if (!workspaceFolder) {
-		postArtboardSnapshotToPanel(
-			emptyArtboardSnapshot(vscode.workspace.isTrusted ? undefined : UNTRUSTED_WORKSPACE_MESSAGE),
-		);
-		void postPanelComments({ outputChannel });
-		return;
-	}
-	postArtboardSnapshotToPanel(await readActiveArtboardFromDisk({ workspaceFolder, outputChannel }));
-	void postPanelComments({ outputChannel });
-};
-
 export const handleOpenArtboard = async ({
 	context,
 	outputChannel,
 }: HandleOpenArtboardArgs): Promise<void> => {
-	const workspaceFolder = firstWorkspaceFolder();
-	if (!workspaceFolder) {
+	if (!firstWorkspaceFolder()) {
 		await vscode.window.showErrorMessage(NO_FOLDER_MESSAGE);
 		openArtboardPanel({ context });
 		return;
 	}
 
-	postArtboardSnapshotToPanel(await initAndLoadArtboard({ workspaceFolder, outputChannel }));
-	void postPanelComments({ outputChannel });
+	await refreshPanel({ outputChannel, initialize: true });
 	openArtboardPanel({ context });
 	ensureArtboardWatcher({ context, outputChannel });
 };

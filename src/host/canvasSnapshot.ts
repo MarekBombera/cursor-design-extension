@@ -29,7 +29,7 @@ export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => 
 	errorMessage,
 });
 
-// The last posted copy per workspace and frame, reused while the disk HTML is identical, so an
+// The last posted copy per workspace, page and frame, reused while the disk HTML is identical, so an
 // unchanged frame is never re-parsed or re-tagged on a watcher event.
 // ponytail: a changed frame (and every frame on the first load) is parsed and tagged synchronously
 // on the extension host thread; a pathological 1.5M-char file costs about 0.5 s. Upgrade path:
@@ -40,11 +40,13 @@ const taggedFrames = new Map<string, { html: string; posted: string }>();
 // edit) posts this exact string. A tagging failure is reported once per HTML and posts untagged.
 export const panelFrameHtml = ({
 	workspaceRoot,
+	pageId,
 	frameId,
 	html,
 	onTagError,
 }: {
 	workspaceRoot: string;
+	pageId: string;
 	frameId: string;
 	html: string;
 	onTagError: (frameId: string, error: unknown) => void;
@@ -52,7 +54,7 @@ export const panelFrameHtml = ({
 	if (html.length > MAX_POSTED_ARTBOARD_HTML_CHARS) {
 		return { html: '', errorMessage: ARTBOARD_HTML_TOO_LARGE_MESSAGE };
 	}
-	const key = frameCacheKey(workspaceRoot, frameId);
+	const key = frameCacheKey({ workspaceRoot, pageId, frameId });
 	const memo = taggedFrames.get(key);
 	if (memo?.html === html) {
 		return { html: memo.posted };
@@ -61,7 +63,7 @@ export const panelFrameHtml = ({
 	try {
 		posted = sourceTaggedHtml({
 			html,
-			document: cachedArtboardDocument({ workspaceRoot, frameId, html }),
+			document: cachedArtboardDocument({ workspaceRoot, pageId, frameId, html }),
 		});
 	} catch (error: unknown) {
 		onTagError(frameId, error);
@@ -73,16 +75,18 @@ export const panelFrameHtml = ({
 // Every frame stays on the stage; memo entries of frames no longer posted are dropped.
 export const panelFrames = ({
 	workspaceRoot,
+	pageId,
 	frames,
 	onTagError,
 }: {
 	workspaceRoot: string;
+	pageId: string;
 	frames: readonly CanvasViewFrame[];
 	onTagError: (frameId: string, error: unknown) => void;
 }): CanvasViewFrame[] => {
 	const keys = new Set<string>();
 	const posted = frames.map((frame) => {
-		keys.add(frameCacheKey(workspaceRoot, frame.id));
+		keys.add(frameCacheKey({ workspaceRoot, pageId, frameId: frame.id }));
 		// Size cap first: an over-cap frame is the too-large tile whatever else it carries.
 		if (
 			frame.html.length <= MAX_POSTED_ARTBOARD_HTML_CHARS &&
@@ -92,7 +96,13 @@ export const panelFrames = ({
 		}
 		return {
 			...frame,
-			...panelFrameHtml({ workspaceRoot, frameId: frame.id, html: frame.html, onTagError }),
+			...panelFrameHtml({
+				workspaceRoot,
+				pageId,
+				frameId: frame.id,
+				html: frame.html,
+				onTagError,
+			}),
 		};
 	});
 	for (const key of taggedFrames.keys()) {

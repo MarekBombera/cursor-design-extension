@@ -11,6 +11,7 @@ import { sourceTaggedHtml } from '../disk/sourceTags';
 import {
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
+	panelFrameHtml,
 	panelFrames,
 	postedFrameFromSnapshot,
 } from './canvasSnapshot';
@@ -70,12 +71,13 @@ test('postedFrameFromSnapshot maps fields only: no cap, errorMessage and group p
 });
 
 const ROOT = '/workspace';
+const PAGE_ID = 'page-1';
 const onTagError = vi.fn<(frameId: string, error: unknown) => void>();
 const tagCalls = (): number => vi.mocked(sourceTaggedHtml).mock.calls.length;
 const parseCalls = (): number => vi.mocked(parseArtboardDocument).mock.calls.length;
 
 const postFrames = (frames: CanvasViewFrame[]): CanvasViewFrame[] =>
-	panelFrames({ workspaceRoot: ROOT, frames, onTagError });
+	panelFrames({ workspaceRoot: ROOT, pageId: PAGE_ID, frames, onTagError });
 
 beforeEach(() => {
 	// An empty list prunes every memo entry (every root's: the prune keeps only the keys posted).
@@ -87,10 +89,23 @@ test('panelFrames tags a normal frame', () => {
 	const [posted] = postFrames([viewFrame({ id: 'hero', html: '<p>ok</p>' })]);
 	assert.equal(posted?.html, '<p data-cd-src="0">ok</p>');
 	assert.equal(onTagError.mock.calls.length, 0);
-	// The comment flags' cache key: one parse per workspace and frame while the html is identical.
+	// The comment flags' cache key: one parse per workspace, page and frame while the html is
+	// identical.
 	assert.deepEqual(vi.mocked(cachedArtboardDocument).mock.calls, [
-		[{ workspaceRoot: ROOT, frameId: 'hero', html: '<p>ok</p>' }],
+		[{ workspaceRoot: ROOT, pageId: PAGE_ID, frameId: 'hero', html: '<p>ok</p>' }],
 	]);
+});
+
+test('the same frame id on another page keeps its own memo entry', () => {
+	// HTML unique to this test: the memo is module state shared across the file.
+	const pageOneHtml = '<p>page-key one</p>';
+	const tag = (pageId: string, html: string): string =>
+		panelFrameHtml({ workspaceRoot: ROOT, pageId, frameId: 'hero', html, onTagError }).html;
+	const first = tag('page-1', pageOneHtml);
+	tag('page-2', '<p>page-key two</p>');
+	const before = vi.mocked(cachedArtboardDocument).mock.calls.length;
+	assert.equal(tag('page-1', pageOneHtml), first);
+	assert.equal(vi.mocked(cachedArtboardDocument).mock.calls.length, before);
 });
 
 test('the size cap is on the disk HTML: exactly MAX is tagged past it, MAX + 1 is not parsed', () => {

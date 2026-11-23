@@ -87,9 +87,10 @@ const snapshotFromCanvasView = async ({
 		pageId: page.pageId,
 		activeArtboardId: view.activeArtboardId,
 		generation: activeFrame?.generation ?? 0,
-		// Same root string as panelComments' readComments, so the shared parse cache keys match.
+		// Same root and page as panelComments' readComments, so the shared parse cache keys match.
 		frames: panelFrames({
 			workspaceRoot: page.workspaceRoot,
+			pageId: page.pageId,
 			frames: view.frames,
 			onTagError: (frameId, error) => {
 				logDiskError({ scope: `artboardDisk.sourceTags:${frameId}`, error, outputChannel });
@@ -113,7 +114,12 @@ const loadActiveSnapshot = async ({
 }: LoadActiveSnapshotArgs): Promise<CanvasSnapshot> => {
 	if (!vscode.workspace.isTrusted) {
 		// No frames are posted, so drop every tagged copy the memo still holds.
-		panelFrames({ workspaceRoot: workspaceFolder.uri.fsPath, frames: [], onTagError: () => {} });
+		panelFrames({
+			workspaceRoot: workspaceFolder.uri.fsPath,
+			pageId: '',
+			frames: [],
+			onTagError: () => {},
+		});
 		return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 	}
 
@@ -154,24 +160,23 @@ export const readActiveArtboardFromDisk = async (
 
 const MALFORMED_FRAME_PLACE_MESSAGE = 'Could not move the frame. Try again.';
 
-// Panel drag/resize commit. Never rejects: every attempt is answered with one fresh snapshot,
-// carrying errorMessage when the write failed (posted as artboard:error after canvas:updated).
+// Panel drag/resize commit. Never rejects: returns the error copy for the banner, or undefined;
+// the caller refreshes the panel after it.
 export const placeFrameFromChrome = async ({
 	value,
 	outputChannel,
 }: {
 	value: unknown;
 	outputChannel: vscode.OutputChannel;
-}): Promise<CanvasSnapshot> => {
+}): Promise<string | undefined> => {
 	try {
 		if (!vscode.workspace.isTrusted) {
-			return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
+			return UNTRUSTED_WORKSPACE_MESSAGE;
 		}
 		const workspaceFolder = firstWorkspaceFolder();
 		if (!workspaceFolder) {
-			return emptyArtboardSnapshot(new NoWorkspaceError().message);
+			return new NoWorkspaceError().message;
 		}
-		let placeErrorMessage: string | undefined;
 		const message = parseChromeMessage(value);
 		if (message?.type !== 'frame:place') {
 			logDiskError({
@@ -179,38 +184,31 @@ export const placeFrameFromChrome = async ({
 				error: new InvalidArgsError('Malformed frame:place message from the panel.'),
 				outputChannel,
 			});
-			placeErrorMessage = MALFORMED_FRAME_PLACE_MESSAGE;
-		} else {
-			try {
-				await placeFrame({
-					page: await resolveRequestedPage({
-						workspaceRoot: workspaceFolder.uri.fsPath,
-						pageId: message.pageId,
-					}),
-					id: message.id,
-					x: message.x,
-					y: message.y,
-					width: message.width,
-					base: message.base,
-				});
-			} catch (error: unknown) {
-				logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
-				// ponytail: a gone requested page is never the open page, so this banner shows over the
-				// open page's snapshot and names no page. Upgrade path: 10d's page menu names it.
-				placeErrorMessage =
-					error instanceof PageNotFoundError
-						? PAGE_GONE_MESSAGE
-						: toSafeArtboardErrorMessage(error);
-			}
+			return MALFORMED_FRAME_PLACE_MESSAGE;
 		}
-		const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });
-		if (placeErrorMessage === undefined) {
-			return snapshot;
+		try {
+			await placeFrame({
+				page: await resolveRequestedPage({
+					workspaceRoot: workspaceFolder.uri.fsPath,
+					pageId: message.pageId,
+				}),
+				id: message.id,
+				x: message.x,
+				y: message.y,
+				width: message.width,
+				base: message.base,
+			});
+			return undefined;
+		} catch (error: unknown) {
+			logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
+			// ponytail: a gone requested page is never the open page, so this banner shows over the
+			// open page's snapshot and names no page. Upgrade path: 10d's page menu names it.
+			return error instanceof PageNotFoundError
+				? PAGE_GONE_MESSAGE
+				: toSafeArtboardErrorMessage(error);
 		}
-		// A layout error already on the snapshot is the more severe one.
-		return { ...snapshot, errorMessage: snapshot.errorMessage ?? placeErrorMessage };
 	} catch (error: unknown) {
 		logDiskError({ scope: 'artboardDisk.placeFrameFromChrome', error, outputChannel });
-		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
+		return toSafeArtboardErrorMessage(error);
 	}
 };
