@@ -36,7 +36,7 @@
 		"vsix": "pnpm dlx @vscode/vsce@3.9.2 package --no-dependencies",
 		"test": "vp test",
 		"test:browser": "vp build -c vite.webview.config.ts && playwright test -c tests/browser",
-		"gallery": "CD_GALLERY=1 pnpm test:browser gallery",
+		"gallery": "CD_GALLERY=1 pnpm test:browser gallery --no-deps",
 		"coverage": "vp test --coverage",
 		"knip": "knip"
 	},

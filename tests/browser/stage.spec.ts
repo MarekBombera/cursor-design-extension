@@ -90,6 +90,7 @@ const SEEDED_VIEW: StageView = { x: 0, y: 0, zoom: 1 };
 
 // ponytail: a fixed quiet window, not an event (a reload loop has no "done" signal). Raise it if
 // it flakes; never remove it.
+// Its tests and the CDP pan are tagged @serial: playwright.config.ts runs them alone.
 const QUIET_WINDOW_MS = 1000;
 
 const savedView = async (page: Page): Promise<StageView | undefined> => {
@@ -117,34 +118,38 @@ const openSeededStage = async (page: Page): Promise<Point> => {
 
 const quietWindow = (page: Page): Promise<void> => page.waitForTimeout(QUIET_WINDOW_MS);
 
-test('frames load once and reload only when their html changes', async ({ page }) => {
-	await openSeededStage(page);
-	await quietWindow(page);
-	expect(await loadsOf(page, 'a')).toBe(1);
-	expect(await loadsOf(page, 'b')).toBe(1);
+test(
+	'frames load once and reload only when their html changes',
+	{ tag: '@serial' },
+	async ({ page }) => {
+		await openSeededStage(page);
+		await quietWindow(page);
+		expect(await loadsOf(page, 'a')).toBe(1);
+		expect(await loadsOf(page, 'b')).toBe(1);
 
-	await postToChrome(page, canvasUpdated([frameA(), frameB()]));
-	await quietWindow(page);
-	expect(await loadsOf(page, 'a')).toBe(1);
-	expect(await loadsOf(page, 'b')).toBe(1);
+		await postToChrome(page, canvasUpdated([frameA(), frameB()]));
+		await quietWindow(page);
+		expect(await loadsOf(page, 'a')).toBe(1);
+		expect(await loadsOf(page, 'b')).toBe(1);
 
-	const edited = `${TALL_PAGE}<!-- edited -->`;
-	await postToChrome(page, canvasUpdated([frameA({ html: edited, generation: 2 }), frameB()]));
-	await quietWindow(page);
-	expect(await loadsOf(page, 'a')).toBe(2);
-	expect(await loadsOf(page, 'b')).toBe(1);
+		const edited = `${TALL_PAGE}<!-- edited -->`;
+		await postToChrome(page, canvasUpdated([frameA({ html: edited, generation: 2 }), frameB()]));
+		await quietWindow(page);
+		expect(await loadsOf(page, 'a')).toBe(2);
+		expect(await loadsOf(page, 'b')).toBe(1);
 
-	await postToChrome(
-		page,
-		canvasUpdated([
-			frameA({ html: edited, generation: 2, x: 40, label: 'Renamed', width: 480 }),
-			frameB(),
-		]),
-	);
-	await quietWindow(page);
-	expect(await loadsOf(page, 'a')).toBe(2);
-	expect(await loadsOf(page, 'b')).toBe(1);
-});
+		await postToChrome(
+			page,
+			canvasUpdated([
+				frameA({ html: edited, generation: 2, x: 40, label: 'Renamed', width: 480 }),
+				frameB(),
+			]),
+		);
+		await quietWindow(page);
+		expect(await loadsOf(page, 'a')).toBe(2);
+		expect(await loadsOf(page, 'b')).toBe(1);
+	},
+);
 
 test('a wheel over a frame pans like a wheel over the empty stage', async ({ page }) => {
 	const stage = await openSeededStage(page);
@@ -307,24 +312,28 @@ test('ctrl+wheel over the empty stage zooms at the cursor', async ({ page }) => 
 // precise-scroll gesture latches to the out-of-process frame it starts in, like a trackpad, and
 // its remainder reaches the chrome only as root scroll. CDP distance sign is the reverse of wheel
 // delta: -600 moves the content left.
-test('a trackpad pan keeps panning after the pointer leaves the frame', async ({ page }) => {
-	await openSeededStage(page);
-	const before = await frameBox(page, 'a');
-	const viewBefore = await savedView(page);
-	const session = await page.context().newCDPSession(page);
-	await session.send('Input.synthesizeScrollGesture', {
-		x: before.x + before.width - 50,
-		y: before.y + before.height / 2,
-		xDistance: -600,
-		yDistance: 0,
-		speed: 800,
-		gestureSourceType: 'mouse',
-	});
-	await expect
-		.poll(async () => (viewBefore?.x ?? 0) - ((await savedView(page))?.x ?? 0))
-		.toBeGreaterThanOrEqual(590);
-	expect(before.x - (await frameBox(page, 'a')).x).toBeGreaterThanOrEqual(590);
-});
+test(
+	'a trackpad pan keeps panning after the pointer leaves the frame',
+	{ tag: '@serial' },
+	async ({ page }) => {
+		await openSeededStage(page);
+		const before = await frameBox(page, 'a');
+		const viewBefore = await savedView(page);
+		const session = await page.context().newCDPSession(page);
+		await session.send('Input.synthesizeScrollGesture', {
+			x: before.x + before.width - 50,
+			y: before.y + before.height / 2,
+			xDistance: -600,
+			yDistance: 0,
+			speed: 800,
+			gestureSourceType: 'mouse',
+		});
+		await expect
+			.poll(async () => (viewBefore?.x ?? 0) - ((await savedView(page))?.x ?? 0))
+			.toBeGreaterThanOrEqual(590);
+		expect(before.x - (await frameBox(page, 'a')).x).toBeGreaterThanOrEqual(590);
+	},
+);
 
 const isInside = (box: Box, stage: Box): boolean =>
 	box.x >= stage.x - 1 &&
@@ -397,46 +406,48 @@ const startLabelDrag = async (page: Page, frameId = 'a'): Promise<void> => {
 	await page.mouse.move(start.x + 53, start.y + 21, { steps: 10 });
 };
 
-test('dragging a label posts one whole-pixel frame:place; after the host answer the next drag posts again', async ({
-	page,
-}) => {
-	const stage = await openDraggableStage(page);
-	await startLabelDrag(page);
-	await page.mouse.up();
-	await expect.poll(() => framePlaces(page)).toHaveLength(1);
-	expect((await framePlaces(page))[0]).toEqual({
-		type: 'frame:place',
-		pageId: 'page-1',
-		id: 'a',
-		x: 53,
-		y: 21,
-		width: 400,
-		base: { x: 0, y: 0, width: 400 },
-	});
-	expect(await loadsOf(page, 'a')).toBe(1);
+test(
+	'dragging a label posts one whole-pixel frame:place; after the host answer the next drag posts again',
+	{ tag: '@serial' },
+	async ({ page }) => {
+		const stage = await openDraggableStage(page);
+		await startLabelDrag(page);
+		await page.mouse.up();
+		await expect.poll(() => framePlaces(page)).toHaveLength(1);
+		expect((await framePlaces(page))[0]).toEqual({
+			type: 'frame:place',
+			pageId: 'page-1',
+			id: 'a',
+			x: 53,
+			y: 21,
+			width: 400,
+			base: { x: 0, y: 0, width: 400 },
+		});
+		expect(await loadsOf(page, 'a')).toBe(1);
 
-	await postToChrome(page, canvasUpdated([frameA({ x: 53, y: 21 }), frameB()]));
-	await quietWindow(page);
-	const box = await frameBox(page, 'a');
-	expect(box.x).toBeCloseTo(stage.x + 53, 0);
-	expect(box.y).toBeCloseTo(stage.y + 60 + 21, 0);
-	expect(await loadsOf(page, 'a')).toBe(1);
-	expect(await framePlaces(page)).toHaveLength(1);
+		await postToChrome(page, canvasUpdated([frameA({ x: 53, y: 21 }), frameB()]));
+		await quietWindow(page);
+		const box = await frameBox(page, 'a');
+		expect(box.x).toBeCloseTo(stage.x + 53, 0);
+		expect(box.y).toBeCloseTo(stage.y + 60 + 21, 0);
+		expect(await loadsOf(page, 'a')).toBe(1);
+		expect(await framePlaces(page)).toHaveLength(1);
 
-	// The answer settled the gesture, so a second drag starts from the new disk placement.
-	await startLabelDrag(page);
-	await page.mouse.up();
-	await expect.poll(() => framePlaces(page)).toHaveLength(2);
-	expect((await framePlaces(page))[1]).toEqual({
-		type: 'frame:place',
-		pageId: 'page-1',
-		id: 'a',
-		x: 106,
-		y: 42,
-		width: 400,
-		base: { x: 53, y: 21, width: 400 },
-	});
-});
+		// The answer settled the gesture, so a second drag starts from the new disk placement.
+		await startLabelDrag(page);
+		await page.mouse.up();
+		await expect.poll(() => framePlaces(page)).toHaveLength(2);
+		expect((await framePlaces(page))[1]).toEqual({
+			type: 'frame:place',
+			pageId: 'page-1',
+			id: 'a',
+			x: 106,
+			y: 42,
+			width: 400,
+			base: { x: 53, y: 21, width: 400 },
+		});
+	},
+);
 
 test('a posted request names the page of the last canvas:updated', async ({ page }) => {
 	await openDraggableStage(page);

@@ -105,6 +105,14 @@ never by hand. Contract: `blueprint/workflow.md` → Dashboard activity.
 
 Lint (`vite.config.ts`) enforces the mechanical conventions. Fix the code, not the rule.
 
-Browser tests: `pnpm test:browser` (builds chrome, then Playwright Chromium over `tests/browser/` proves chrome and frame behavior; first run needs `pnpm exec playwright install chromium`; local only, not Verify or CI).
+Browser tests: `pnpm test:browser` (builds chrome, then Playwright Chromium over `tests/browser/` proves chrome and frame behavior; first run needs `pnpm exec playwright install chromium`; local only, not Verify or CI). Two projects: `parallel` (5 workers, `CD_BROWSER_WORKERS=n` to change) then `serial` (tests tagged `@serial`: quiet window, CDP pan, gallery; one worker; skipped when a parallel test fails).
 
-Gallery: `pnpm gallery` (every chrome state, both themes, WCAG contrast, into `test-results/gallery/`; local only).
+Gallery: `pnpm gallery` (every chrome state, both themes, WCAG contrast, into `test-results/gallery/`; local only; `--no-deps` so only the gallery runs).
+
+Agent test runs (keep cycles short):
+
+- Iterate on one spec or one test (`vp build -c vite.webview.config.ts`, then `playwright test -c tests/browser <file> --grep "<test>"`); run the full `pnpm test:browser` once per round, at the end.
+- Mutation probes target the one test meant to catch them; prefer probes on pure `.ts` rule modules (Vitest).
+- `pnpm gallery` only when the chrome's look changed.
+- Reviewers reuse the last green full run on the same commit and only run probes. Test- or config-only work gets one reviewer.
+- Parallel agents never share one tree's `dist/`: one browser-running agent per tree, probes in a scratch copy.

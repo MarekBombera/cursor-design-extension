@@ -45,20 +45,28 @@
 		handoffStale,
 	}: { start: PageStart; mcpUnavailable: boolean; handoffStale: boolean } = $props();
 
-	// Read once, untracked: App never changes a mounted page's start (another page remounts).
-	const initial = untrack(() => start);
-	const { pageId } = initial;
+	// Read once, untracked: App never changes a mounted page's start (another page remounts), and
+	// drops its canvas and comments once this page has applied them.
+	const {
+		pageId,
+		mode,
+		replyDrafts,
+		heldThreadId,
+		heldDraft,
+		canvas: startCanvas,
+		comments: startComments,
+	} = untrack(() => start);
 	// One module per domain, in dependency order: PinThread's $effect.pre runs on creation and reads
 	// the canvas and the comments.
 	const canvas = new CanvasState(pageId);
-	const comments = new CommentsState({ pageId, replyDrafts: initial.replyDrafts });
-	const pinThread = new PinThread({ canvas, comments, heldThreadId: initial.heldThreadId });
+	const comments = new CommentsState({ pageId, replyDrafts });
+	const pinThread = new PinThread({ canvas, comments, heldThreadId });
 	const picker = new CommentPicker({
 		canvas,
 		pinThread,
 		pageId,
-		mode: initial.mode,
-		heldDraft: initial.heldDraft,
+		mode,
+		heldDraft,
 	});
 	const edit = new EditState({ canvas, picker, pageId });
 
@@ -201,11 +209,11 @@
 	};
 
 	// The page starts from what staged it: the canvas first, so the list finds its frames.
-	if (initial.canvas !== undefined) {
-		applyCanvas(initial.canvas);
+	if (startCanvas !== undefined) {
+		applyCanvas(startCanvas);
 	}
-	if (initial.comments !== undefined) {
-		applyComments(initial.comments);
+	if (startComments !== undefined) {
+		applyComments(startComments);
 	}
 
 	// Idempotent body styles: safe on every mount.

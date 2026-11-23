@@ -52,6 +52,8 @@
 		});
 		realPageMounted = true;
 		flushSync();
+		// The page has applied its start; holding it would keep every frame's first HTML alive.
+		stage = { ...stage, canvas: undefined, comments: undefined };
 	};
 
 	const handleHostMessage = (message: HostMessage): void => {

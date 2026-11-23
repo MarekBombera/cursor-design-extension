@@ -101,7 +101,7 @@ const states: StateDefinition[] = [
 const pad2 = (value: number): string => String(value).padStart(2, '0');
 
 for (const theme of THEMES) {
-	test.describe(`${theme} shots`, () => {
+	test.describe(`${theme} shots`, { tag: '@serial' }, () => {
 		states.forEach((definition, index) => {
 			const number = pad2(index + 1);
 			test(`${number} ${definition.surface} ${definition.state}`, async ({ page }) => {
@@ -152,7 +152,7 @@ for (const theme of THEMES) {
 const TEXT = 'text' as const;
 
 for (const theme of THEMES) {
-	test(`contrast ${theme}`, async ({ page }) => {
+	test(`contrast ${theme}`, { tag: '@serial' }, async ({ page }) => {
 		const measure = (
 			pair: string,
 			request: MeasureRequest,

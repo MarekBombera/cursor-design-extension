@@ -131,7 +131,7 @@ test('Resolve posts one set-status, and the saved answer turns it into a focused
 	const resolve = threadButton(page, 'Resolve');
 	await clickChrome(resolve);
 	const request = await nthRequest(page, 'comment:set-status', 1);
-	expect(request).toMatchObject({ id: TITLE.id, status: 'resolved' });
+	expect(request).toMatchObject({ pageId: 'page-1', id: TITLE.id, status: 'resolved' });
 	await expect(resolve).toHaveAttribute('aria-disabled', 'true');
 	// A second click while pending posts nothing.
 	await clickChrome(resolve);
@@ -178,7 +178,7 @@ test('Reply opens a focused composer; Enter posts the trimmed body and saved emp
 	await expect(box).toHaveValue('  Make it \nbolder  ');
 	await page.keyboard.press('Enter');
 	const request = await nthRequest(page, 'comment:reply', 1);
-	expect(request).toMatchObject({ id: TITLE.id, body: 'Make it \nbolder' });
+	expect(request).toMatchObject({ pageId: 'page-1', id: TITLE.id, body: 'Make it \nbolder' });
 	await expect(box).not.toBeEditable();
 	const pending = thread(page).getByRole('button', { name: 'Adding…', exact: true });
 	await expect(pending).toHaveAttribute('aria-busy', 'true');
@@ -860,7 +860,7 @@ test('Copy for Agent posts one copy, blocks every other copy, and shows the answ
 	const copy = panelButton(page, TITLE.id, 'Copy for Agent');
 	await clickChrome(copy);
 	const request = await nthRequest(page, 'comment:copy', 1);
-	expect(request).toMatchObject({ type: 'comment:copy', id: TITLE.id });
+	expect(request).toMatchObject({ type: 'comment:copy', pageId: 'page-1', id: TITLE.id });
 	await expect(copy).toHaveAttribute('aria-disabled', 'true');
 	// One copy at a time: the same button, another card and the batch all post nothing.
 	await clickChrome(copy);
@@ -930,7 +930,7 @@ test('Copy open counts open comments only, posts once, and announces the marked 
 	await expect(button).toHaveText('Copy 2 open comments for Agent');
 	await clickChrome(button);
 	const request = await nthRequest(page, 'comment:copy-open', 1);
-	expect(request).toMatchObject({ type: 'comment:copy-open' });
+	expect(request).toMatchObject({ type: 'comment:copy-open', pageId: 'page-1' });
 	await clickChrome(panelButton(page, TITLE.id, 'Copy for Agent'));
 	await nextAnimationFrame(page);
 	expect(await requestsOf(page, 'comment:copy')).toHaveLength(0);
