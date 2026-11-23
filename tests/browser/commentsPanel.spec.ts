@@ -109,7 +109,7 @@ const openStage = async (
 	await openHarness(page, { savedView });
 	await postToChrome(page, canvasUpdated([FRAME]));
 	await untilHeightReported(page, 'a');
-	await postToChrome(page, { type: 'comments:updated', comments });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments });
 	await expect
 		.poll(
 			async () =>
@@ -141,6 +141,7 @@ test('Resolve posts one set-status, and the saved answer turns it into a focused
 	await postToChrome(page, { type: 'comment:saved', requestId: String(request.requestId) });
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [{ ...TITLE, status: 'resolved' }, SENT],
 	});
 	const reopen = threadButton(page, 'Reopen');
@@ -319,7 +320,7 @@ test('the panel toggle keeps the saved view, narrows the stage, and both keys su
 	await openPanel(page);
 	await expect
 		.poll(async () => savedRecord(page))
-		.toEqual({ stageView: savedView, commentsPanelOpen: true });
+		.toEqual({ stageView: { ...savedView, pageId: 'page-1' }, commentsPanelOpen: true });
 
 	await openStage(page, [TITLE]);
 	await expect(panelToggle(page)).toHaveAttribute('aria-expanded', 'false');
@@ -339,13 +340,18 @@ test('the panel toggle keeps the saved view, narrows the stage, and both keys su
 	expect(await savedRecord(page)).toMatchObject({ stageView: expect.any(Object) });
 });
 
-test('a tab switch reopens the open pin thread', async ({ page }) => {
+test('a tab switch reopens the open pin thread, even after a second switch before any canvas', async ({
+	page,
+}) => {
 	await openStage(page, [TITLE, SENT]);
 	await openThread(page, TITLE.id);
 	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
 
+	// The first paint's '' page must not overwrite the saved thread before the second switch.
 	await reload(page);
-	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await nextAnimationFrame(page);
+	await reload(page);
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [TITLE, SENT] });
 	await postToChrome(page, canvasUpdated([FRAME]));
 	await expect(thread(page)).toBeVisible();
 	await expect(thread(page)).toContainText(TITLE.body);
@@ -368,7 +374,7 @@ test('a tab switch keeps reply text typed in a panel card and in a pin thread', 
 
 	await reload(page);
 	await postToChrome(page, canvasUpdated([FRAME]));
-	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [TITLE, SENT] });
 	await expect(panelReplyBox(page, SENT.id)).toHaveValue('From the panel');
 	await expect(replyBox(page)).toHaveValue('From the thread');
 });
@@ -381,11 +387,11 @@ test('a restored thread whose comment is gone does not open, even when it comes 
 	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
 
 	await reload(page);
-	await postToChrome(page, { type: 'comments:updated', comments: [SENT] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [SENT] });
 	await postToChrome(page, canvasUpdated([FRAME]));
 	await expect(pinOf(page, SENT.id)).toBeVisible();
 	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBeUndefined();
-	await postToChrome(page, { type: 'comments:updated', comments: [TITLE, SENT] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [TITLE, SENT] });
 	await expect(pinOf(page, TITLE.id)).toBeVisible();
 	await nextAnimationFrame(page);
 	await expect(thread(page)).toHaveCount(0);
@@ -490,6 +496,7 @@ test('keyboard Resolve in the panel lands on the Reopen of that comment in the R
 	await postToChrome(page, { type: 'comment:saved', requestId: String(request.requestId) });
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [{ ...TITLE, status: 'resolved' }, SENT],
 	});
 	await expect(panelItem(page, TITLE.id)).toHaveAttribute('data-cd-status', 'resolved');
@@ -507,6 +514,7 @@ test('the Agent resolving a comment while you type its panel reply keeps focus a
 
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [{ ...TITLE, status: 'resolved' }, SENT],
 	});
 	await expect(panelItem(page, TITLE.id)).toHaveAttribute('data-cd-status', 'resolved');
@@ -540,7 +548,11 @@ test('list updates never move focus that is outside the panel', async ({ page })
 			},
 			{ type: FRAME_ANCHOR_RECTS_MESSAGE, id: TITLE.id },
 		);
-		await postToChrome(page, { type: 'comments:updated', comments: [{ ...TITLE, status }, SENT] });
+		await postToChrome(page, {
+			type: 'comments:updated',
+			pageId: 'page-1',
+			comments: [{ ...TITLE, status }, SENT],
+		});
 		await nextAnimationFrame(page);
 	};
 
@@ -566,13 +578,14 @@ test('a comments:updated with error keeps the text of an open composer', async (
 
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [],
 		error: 'Could not read comments.',
 	});
 	await expect(panel(page)).toContainText('Comments are unavailable');
 	await expect(panelReplyBox(page, TITLE.id)).toHaveCount(0);
 
-	await postToChrome(page, { type: 'comments:updated', comments: [TITLE] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [TITLE] });
 	await expect(panelReplyBox(page, TITLE.id)).toHaveValue('Keep me');
 });
 
@@ -668,7 +681,9 @@ test('a comment whose frame is absent is listed without a jump', async ({ page }
 
 test('the panel shows the empty state and the error state', async ({ page }) => {
 	await openHarness(page);
-	await postToChrome(page, { type: 'comments:updated', comments: [] });
+	// A list shows only on its own page, so page-1 is staged first (with no frames).
+	await postToChrome(page, canvasUpdated([]));
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [] });
 	await expect(panelToggle(page)).toHaveAccessibleName('Comments');
 	await expect(panelToggle(page)).toHaveText('');
 	await openPanel(page);
@@ -677,6 +692,7 @@ test('the panel shows the empty state and the error state', async ({ page }) => 
 	await expect(panel(page)).toContainText('Press C, then click an element to add one.');
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [],
 		error: 'Could not read comments.',
 	});
@@ -720,7 +736,7 @@ const openJumpStage = async (
 	await openPanel(page);
 	await postToChrome(page, canvasUpdated([JUMP_FRAME]));
 	await untilHeightReported(page, JUMP_FRAME.id);
-	await postToChrome(page, { type: 'comments:updated', comments });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments });
 	await expect
 		.poll(
 			async () =>
@@ -983,6 +999,7 @@ test('a list update that marks the comment sent keeps focus on its Copy for Agen
 	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 1 });
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [{ ...TITLE, status: 'sent' }, SENT],
 	});
 	await expect(panelItem(page, TITLE.id)).toHaveAttribute('data-cd-status', 'sent');

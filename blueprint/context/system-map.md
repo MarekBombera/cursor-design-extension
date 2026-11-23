@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** feature 10a Pages on disk + migration (`feature/pages-on-disk-migration`): no message change. Disk format: the per-page files (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`) move byte for byte into `.cursor-design/pages/<pageId>/`, a new root `project.json` (version 1: `openPageId`, `pages`) names the open page, and root `artboards` becomes a tombstone file that makes a still-running 0.4 MCP fail with `DISK_ERROR`; handoffs, `tokens.json`, `assets/`, `.lock` and `.ensure-panel` stay at the root, and `lastExport` is recorded in the page's manifest. Flows: every MCP tool and host entry point calls `resolveOpenPage` once per call (new section Open page and migration (10a): classify, resumable migration, index rebuild, fresh create only for `set_artboard` and Open Artboard), and the Runtime map, comment, pin, drag and Export charts name the page paths. Before it, fix System map charts parse (`fix/system-map-charts-parse`): no message, disk format or process flow change; the 8 charts that failed `mermaid.parse` now parse (`;` in sequence text → `,` or `.`, quoted Runtime map edge labels), and the Chart checklist gains item 7. Before it, feature 9i Inspector redesign (`feature/inspector-redesign`): the chrome becomes the first multi-change `artboard:edit {styles}` sender (a choice is one change, a section Reset or Add border several, through `handleStyleChanges` → `stylesCommit`: one preview, one write, one undo step); a new draft or a choice first ends the element's other open drafts (valid ones save, invalid ones end silently), and `cd:pick-refresh` now goes out when focus enters any inspector control. No message, disk or host change. Before it, feature 9h More edit fields: saving (`feature/more-edit-fields-saving`): `artboard:edit` becomes text `{field: 'text', value, liveText}` or styles `{styles: StyleChange[]}` (1..19 distinct `EDIT_STYLE_FIELDS`, one write and one undo step; the field inspector sends one change), and the edit core and the chrome preview share `applyStyleChanges`; `cd:pick`'s `edit` gains `computed` and the text states `mixed` / `elements` replace `children`. No disk format or process flow change; the inspector looks as before. Before it, fix Chrome load error and export lock (`fix/chrome-load-error-and-export-lock`). The Export section now shows the locked, re-reading tail of `exportArtboard`, checked against `exportFs.ts`. The extension host's new `missingChromeAssets` check on panel creation calls `showErrorMessage` and sends no message to the chrome. No other message, disk format or process flow changed. Before it, feature 9g Verify (`feature/verify`): no message, disk format or process flow change. Docs and the Agent skill changed, and the 9c and 9e `artboard:edited` lines now show `canUndo, canRedo`, which `postEdited` has sent since 9f. The flows were checked against the installed `.vsix` in a real Cursor run (spec cases A–K). Before it, fix Backlog: small product fixes (`fix/backlog-small-product-fixes`): no message, disk format or process flow change; in Chromium a click into an artboard frame blurs the field before the frame's `cd:pick` arrives (the Edit drafts bullet now says so), a pick of another element ends an invalid draft with its field's own copy in the request error (`invalidDraftCopy`), and `saveCommentUi` also drops the pre-9d `commentMode` key. Before it, fix Backlog: tests and dev tooling (`fix/backlog-tests-and-dev-tooling`): no message, disk format or process flow change; tests, the `watch:webview` task matcher and one CSS comment; `frameMessages.test.ts` now also fails when the message contract table's `host → chrome` / `chrome → host` names differ from the `HostMessage` / `ChromeMessage` types. Before it, fix Share browser test helpers (`fix/share-browser-test-helpers`): no message, disk format or process flow change; test-only, the Playwright specs' twin helpers move into `tests/browser/harness.ts`. Before it, fix Audit code problems (`fix/audit-code-problems`): no message, disk format or process flow change; the disk lib's two stderr writers become one `logStderr` (same bytes), and the MCP logs an invalid `CURSOR_DESIGN_WORKSPACE_ROOTS` to stderr once per process before the unchanged fallback to ROOT. Before it, feature 9f Undo/redo (`feature/undo-redo`): new chrome → host `artboard:history {requestId, frameId, step}` (the inspector's Undo / Redo, sharing the edit route, the one-in-flight queue and the one-answer rule), answered by `artboard:edited` (which, like every `canvas:updated` frame, now carries `canUndo` / `canRedo`) or `ui:error`; the host keeps whole-file undo snapshots per frame in memory (`editHistory.ts`, 20 steps) and writes a step through `updateArtboard` with the history's current hash; the outbox checks every new snapshot against the history (`keepUnchangedHistories`) and reads the flags at every `canvas:updated` send, replays included; a written step reloads the frame; `cd:key` gains `undo` / `redo` (Cmd/Ctrl+Z with frame focus; the chrome acts only from the focused history frame in Edit mode), and a capture-phase window listener handles Cmd/Ctrl+Z with chrome focus. Before it, feature 9e Edit fields + save (`feature/edit-fields-save`): the Edit-mode inspector is the first `artboard:edit` sender (drafts keyed to the element they started on, one save in flight, the next with the answered hash); new chrome → frame `cd:pick-refresh` and `cd:edit-apply` (Edit mode only; the runtime's one design-DOM write is that preview); `edit.style` is `''` when absent and `null` only over the cap; the chrome parses `artboard:edited` and adopts it without a frame reload (`documentHtml` / `documentVersion` vs `html`), skips stale pre-write posts (`replacedHashes`), and reloads a refused edit's frame from the latest adopted copy; a pick re-post keeps its announcement `sequence`; no host or disk change. Before it, feature 9d Edit mode + selection (`feature/edit-mode-selection`): no host or disk change; `cd:mode` gains `edit`, and in Edit mode the frame picker (shared with Comment mode) adds `edit {sourceNumber|null, sharedNumber, textState, text, style|null}` to each `cd:pick` (`describeEditTarget`, DOM reads only); the chrome's one acceptance rule `pickCounts` drops a `cd:hover` / `cd:pick` in Interact mode and a `cd:pick` whose `edit` does not match the mode, for the pick and the comment draft alike; the Edit-mode inspector (`inspectorView`, disabled fields) and the saved `mode` key (replacing `commentMode`). Before it, feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
+**Last verified against code:** 2026-11-22, feature 10b Page-scoped panel (`feature/page-scoped-panel`): `canvas:updated` and `comments:updated` carry `pageId` (`''` = no page resolved), and the 8 page-bound chrome → host requests (`frame:place`, `artboard:edit`, `artboard:history`, the 5 comment requests) carry a `pageId` that passes `isPageId`; the host acts on that page through `resolveRequestedPage` (answer `That page no longer exists.` when it is gone), undo history is keyed by page and frame, and the chrome splits into `App.svelte` (host bridge, state that spans pages) and a per-page `DesignPage.svelte` under `{#key}` on the stage page id (new section Page-scoped panel (10b)). No disk format, MCP or skill change. Before it, feature 10a Pages on disk + migration (`feature/pages-on-disk-migration`): no message change. Disk format: the per-page files (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`) move byte for byte into `.cursor-design/pages/<pageId>/`, a new root `project.json` (version 1: `openPageId`, `pages`) names the open page, and root `artboards` becomes a tombstone file that makes a still-running 0.4 MCP fail with `DISK_ERROR`; handoffs, `tokens.json`, `assets/`, `.lock` and `.ensure-panel` stay at the root, and `lastExport` is recorded in the page's manifest. Flows: every MCP tool and host entry point calls `resolveOpenPage` once per call (new section Open page and migration (10a): classify, resumable migration, index rebuild, fresh create only for `set_artboard` and Open Artboard), and the Runtime map, comment, pin, drag and Export charts name the page paths. Before it, fix System map charts parse (`fix/system-map-charts-parse`): no message, disk format or process flow change; the 8 charts that failed `mermaid.parse` now parse (`;` in sequence text → `,` or `.`, quoted Runtime map edge labels), and the Chart checklist gains item 7. Before it, feature 9i Inspector redesign (`feature/inspector-redesign`): the chrome becomes the first multi-change `artboard:edit {styles}` sender (a choice is one change, a section Reset or Add border several, through `handleStyleChanges` → `stylesCommit`: one preview, one write, one undo step); a new draft or a choice first ends the element's other open drafts (valid ones save, invalid ones end silently), and `cd:pick-refresh` now goes out when focus enters any inspector control. No message, disk or host change. Before it, feature 9h More edit fields: saving (`feature/more-edit-fields-saving`): `artboard:edit` becomes text `{field: 'text', value, liveText}` or styles `{styles: StyleChange[]}` (1..19 distinct `EDIT_STYLE_FIELDS`, one write and one undo step; the field inspector sends one change), and the edit core and the chrome preview share `applyStyleChanges`; `cd:pick`'s `edit` gains `computed` and the text states `mixed` / `elements` replace `children`. No disk format or process flow change; the inspector looks as before. Before it, fix Chrome load error and export lock (`fix/chrome-load-error-and-export-lock`). The Export section now shows the locked, re-reading tail of `exportArtboard`, checked against `exportFs.ts`. The extension host's new `missingChromeAssets` check on panel creation calls `showErrorMessage` and sends no message to the chrome. No other message, disk format or process flow changed. Before it, feature 9g Verify (`feature/verify`): no message, disk format or process flow change. Docs and the Agent skill changed, and the 9c and 9e `artboard:edited` lines now show `canUndo, canRedo`, which `postEdited` has sent since 9f. The flows were checked against the installed `.vsix` in a real Cursor run (spec cases A–K). Before it, fix Backlog: small product fixes (`fix/backlog-small-product-fixes`): no message, disk format or process flow change; in Chromium a click into an artboard frame blurs the field before the frame's `cd:pick` arrives (the Edit drafts bullet now says so), a pick of another element ends an invalid draft with its field's own copy in the request error (`invalidDraftCopy`), and `saveCommentUi` also drops the pre-9d `commentMode` key. Before it, fix Backlog: tests and dev tooling (`fix/backlog-tests-and-dev-tooling`): no message, disk format or process flow change; tests, the `watch:webview` task matcher and one CSS comment; `frameMessages.test.ts` now also fails when the message contract table's `host → chrome` / `chrome → host` names differ from the `HostMessage` / `ChromeMessage` types. Before it, fix Share browser test helpers (`fix/share-browser-test-helpers`): no message, disk format or process flow change; test-only, the Playwright specs' twin helpers move into `tests/browser/harness.ts`. Before it, fix Audit code problems (`fix/audit-code-problems`): no message, disk format or process flow change; the disk lib's two stderr writers become one `logStderr` (same bytes), and the MCP logs an invalid `CURSOR_DESIGN_WORKSPACE_ROOTS` to stderr once per process before the unchanged fallback to ROOT. Before it, feature 9f Undo/redo (`feature/undo-redo`): new chrome → host `artboard:history {requestId, frameId, step}` (the inspector's Undo / Redo, sharing the edit route, the one-in-flight queue and the one-answer rule), answered by `artboard:edited` (which, like every `canvas:updated` frame, now carries `canUndo` / `canRedo`) or `ui:error`; the host keeps whole-file undo snapshots per frame in memory (`editHistory.ts`, 20 steps) and writes a step through `updateArtboard` with the history's current hash; the outbox checks every new snapshot against the history (`keepUnchangedHistories`) and reads the flags at every `canvas:updated` send, replays included; a written step reloads the frame; `cd:key` gains `undo` / `redo` (Cmd/Ctrl+Z with frame focus; the chrome acts only from the focused history frame in Edit mode), and a capture-phase window listener handles Cmd/Ctrl+Z with chrome focus. Before it, feature 9e Edit fields + save (`feature/edit-fields-save`): the Edit-mode inspector is the first `artboard:edit` sender (drafts keyed to the element they started on, one save in flight, the next with the answered hash); new chrome → frame `cd:pick-refresh` and `cd:edit-apply` (Edit mode only; the runtime's one design-DOM write is that preview); `edit.style` is `''` when absent and `null` only over the cap; the chrome parses `artboard:edited` and adopts it without a frame reload (`documentHtml` / `documentVersion` vs `html`), skips stale pre-write posts (`replacedHashes`), and reloads a refused edit's frame from the latest adopted copy; a pick re-post keeps its announcement `sequence`; no host or disk change. Before it, feature 9d Edit mode + selection (`feature/edit-mode-selection`): no host or disk change; `cd:mode` gains `edit`, and in Edit mode the frame picker (shared with Comment mode) adds `edit {sourceNumber|null, sharedNumber, textState, text, style|null}` to each `cd:pick` (`describeEditTarget`, DOM reads only); the chrome's one acceptance rule `pickCounts` drops a `cd:hover` / `cd:pick` in Interact mode and a `cd:pick` whose `edit` does not match the mode, for the pick and the comment draft alike; the Edit-mode inspector (`inspectorView`, disabled fields) and the saved `mode` key (replacing `commentMode`). Before it, feature 9c Checked write + edit message (`feature/checked-write-edit-message`): `update_artboard`'s read-compare-write now runs under `withWorkspaceLock` (pre-checks for the file and its exact-case name first; `WORKSPACE_BUSY` after a 2 s wait); every `canvas:updated` frame carries `hash` (`hashHtml` of the disk HTML, `''` when unreadable); new chrome → host `artboard:edit`, answered once by `artboard:edited` (the tagged frame copy the watcher echo will post) or `ui:error`, through `editArtboard` → `updateArtboard`; no chrome sender until 9e. Before it, feature 9b Edit core (`feature/edit-core`): no flow change; a pure disk module (`artboardEdit.ts` over `inlineStyle.ts`, sharing `numberedElements` with the source tags) that nothing calls yet; 9c wires it into the checked write and the panel edit message. Before it, feature 9a Source tags + inline-style CSP (`feature/source-tags-inline-style-csp`): no new message; each `canvas:updated` frame's `html` is now the disk HTML with host-added `data-cd-src="N"` source numbers (`panelFrames` in `canvasSnapshot.ts`: size cap on disk HTML, then `sourceTaggedHtml` over the comment flags' shared parse cache, with a tagged-copy memo per frame), and the chrome CSP gains `style-src-attr 'unsafe-inline'`. Before it, fix Drop the Electron test suite and css-select (`fix/drop-the-electron-test-suite-and-css-select`): no message or process change; comment flags now match through the in-house `selectMatches` (`selectorMatch.ts`) over parse5's own tree, unchecked past `MAX_MATCH_WORK`. Before it, fix Keep comment drafts across a tab switch (`fix/keep-comment-drafts-across-a-tab-switch`): no host or frame message change; the webview state record gains `commentMode`, `commentDraft`, `openThreadId` and `replyDrafts`. Before it, feature 8i Verify (`feature/verify`): no flow change; docs and agent-run checks only (headless stdio Agent loop, `.vsix` smoke). Before it, fix Pin stacking and zero-count copy (`fix/pin-stacking-and-zero-copy`): no flow change; coinciding pins line up in the chrome, and a 0-count `ui:copied` shows no Copied feedback. Before it, fix Chrome design system (`fix/chrome-design-system`): no flow change; the Parent / Child and Copy labels follow the restyled chrome. Before it, fix Share the copy-type check (`fix/share-the-copy-type-check`): no flow change; `refuse` reuses `isCopyType` for the refresh after every copy `ui:error`. Before it, feature 8h Copy prompt (`feature/copy-prompt`): `comment:copy` / `comment:copy-open` answered once by `ui:copied` or `ui:error`, the host clipboard written before `markCommentsSent`, a `comments:updated` refresh after every copy answer, and one copy at a time in the chrome.
 
 ## Chart checklist
 
@@ -71,7 +71,7 @@ flowchart LR
   Cmds -->|"exportHandoff: resolveOpenPage, then exportArtboard"| Disk
   Panel -->|canvas:updated, artboard:error, ui:status,<br/>comments:updated, comment:added, comment:saved, ui:copied,<br/>artboard:edited, ui:error| Chrome
   Chrome -->|"artboard:ready, frame:place, comment:create,<br/>comment:reply, comment:set-status, comment:copy, comment:copy-open,<br/>artboard:edit (Edit-mode inspector, 9e), artboard:history (Undo / Redo, 9f)"| Panel
-  Panel -->|"resolveOpenPage once per request (10a), then placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent, editArtboard → updateArtboard under the lock,<br/>undo / redo: updateArtboard with a snapshot from editHistory (9f);<br/>readComments, getComment, listComments"| Disk
+  Panel -->|"resolveRequestedPage once per request (10b, the request's pageId), then placeFrameFromChrome, addComment, replyToComment,<br/>setCommentStatus, markCommentsSent, editArtboard → updateArtboard under the lock,<br/>undo / redo: updateArtboard with a snapshot from editHistory (9f);<br/>readComments, getComment, listComments"| Disk
   Panel -->|"vscode.env.clipboard.writeText: the locked Agent prompt (8h)"| Clip
   Chrome -->|"getState on load (parseSavedCommentUi), setState: each save keeps the other keys"| State
   Chrome -->|blob URL: stamped HTML + runtime| Frames
@@ -105,7 +105,7 @@ flowchart TD
     MCPSet["MCP set_artboard, inside runQueued:<br/>validateNewArtboardArgs, then createIfFresh true"]
     MCPOther["MCP, the other 10 tools, inside runQueued:<br/>createIfFresh false"]
     HostOpen["Host loadActiveSnapshot via initAndLoadArtboard<br/>(Open Artboard): createIfFresh true"]
-    HostOther["Host, after the trust check, createIfFresh false:<br/>readActiveArtboardFromDisk, placeFrameFromChrome,<br/>answerEditRequest, answerHistoryRequest,<br/>postPanelComments, answerCommentRequest, exportHandoff"]
+    HostOther["Host, after the trust check, createIfFresh false:<br/>readActiveArtboardFromDisk, postPanelComments, exportHandoff.<br/>Chrome requests (placeFrameFromChrome, answerEditRequest,<br/>answerHistoryRequest, answerCommentRequest) call resolveRequestedPage (10b),<br/>which calls it once, then checks the requested page"]
   end
   MCPSet -->|"invalid artboardId, html, title or viewport"| ArgErr["INVALID_ARTBOARD_ID or INVALID_ARGS,<br/>resolver not called, nothing written"]
   MCPSet -->|"resolveOpenPage"| Classify
@@ -220,12 +220,12 @@ sequenceDiagram
   H->>D: delete .ensure-panel
   C->>H: artboard:ready (after the message listener exists)
   H->>H: panelFrames (9a): cap on disk HTML, tag changed frames with data-cd-src (memo)
-  H->>C: canvas:updated {activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, hash, html}]}
+  H->>C: canvas:updated {pageId, activeArtboardId, generation, cspNonce, frames[{id, label, x, y, width, group?, generation, hash, html, errorMessage?, canUndo, canRedo}]}
   opt snapshot has an error
     H->>C: artboard:error {message}
   end
   H->>C: ui:status {mcpAvailable, handoffStale}
-  H->>C: comments:updated {comments, error?}
+  H->>C: comments:updated {pageId, comments, error?}
 ```
 
 - Before `artboard:ready`, the host keeps only the latest snapshot, status and comment list, and
@@ -233,11 +233,76 @@ sequenceDiagram
   reload) re-sends all three; `ui:status` waits until `mcpAvailable` is known. Answers to a chrome
   request (`comment:added`, `comment:saved`, `ui:error`) are posted only while ready and never
   replayed.
+- `pageId` (10b) is the page the snapshot or list was read from: the resolved `PageLocation.pageId`,
+  also on a read failure after the resolve. It is `''` only when no page resolved (untrusted
+  workspace, no folder, the resolver threw). The outbox holds it with the view and with the list and
+  replays both. The chrome drops a message whose `pageId` is neither `''` nor a valid page id. A
+  `canvas:updated` with a non-empty `pageId` that differs from the staged page rebuilds the page
+  (Page-scoped panel (10b)).
 - The panel can also open from the **Open Artboard** command.
 - When the panel becomes visible, `reloadVisibleArtboardFromDisk` posts a fresh snapshot and
   comment list. Every watcher refresh re-reads the comment list too; the last read started wins.
 - In an untrusted workspace the host posts `frames: []` plus the untrusted error, and `ui:status`
   reports `mcpAvailable: false`. No watcher runs and no artboard script loads.
+
+## Page-scoped panel (10b)
+
+The panel knows which page each snapshot and comment list came from, and every page-bound request
+names its page. No page UI yet: the Pages menu is 10d, the Agent's page tools are 10c. A page
+change today comes from a hand edit of `project.json`, which the watcher refresh re-reads.
+
+- **Host → chrome.** `canvas:updated.pageId` and `comments:updated.pageId` are the resolved
+  `PageLocation.pageId`, or `''` when no page resolved (see Panel open and handshake). `''` is "no
+  page", never a page to switch to.
+- **Chrome → host.** The 8 page-bound requests carry `pageId`, added in one place by the three post
+  functions in `hostBridge.svelte.ts` (the state classes pass their constructor `pageId`). The host
+  parser requires `isPageId` before any path is built.
+- **Request path.** `answerEditRequest`, `answerHistoryRequest`, `answerCommentRequest` and
+  `placeFrameFromChrome` call `resolveRequestedPage({ workspaceRoot, pageId })` once per request, in
+  place of `resolveOpenPage`, and every disk op of the request uses the returned `PageLocation`, not
+  the page open now. It runs `resolveOpenPage` first (`createIfFresh: false`, so the migration, the
+  index rebuild and the lock are unchanged), returns the open page as is, and otherwise requires the
+  id in `project.json` `pages` and a `pages/<id>/` directory. An id that fails `isPageId`, is not
+  indexed or has no folder throws `PageNotFoundError`. The history keys use the request's `pageId`,
+  and `answerHistoryRequest`'s no-I/O "Nothing to undo" path still runs before the resolve.
+- **Gone page.** `PageNotFoundError` answers `That page no longer exists.` (`PAGE_GONE_MESSAGE`,
+  `panelRequestCopy.ts`): a `ui:error` for edit, history and comment requests. For `frame:place`
+  it is the `errorMessage` of the open page's snapshot, so `artboard:error` shows over the open
+  page. A page deleted between the check and the write answers the generic disk-error copy
+  (`ponytail:` on `resolveRequestedPage`); nothing recreates the folder.
+- **Chrome structure.** `App.svelte` keeps the host bridge, the stage page id (`stage.pageId`,
+  `''` at first paint), the latest `ui:status` and `comments:updated`, the comment draft slot (with
+  its page) and the one comment-UI save `$effect`. `DesignPage.svelte` sits under `{#key
+  stage.pageId}` and holds the five per-page objects and today's markup. App reaches the mounted
+  page through `bind:this` (`handleHostMessage`, `handleFrameMessage`, `iframes`, `savable`,
+  `leave`).
+- **Page change.** Only a `canvas:updated` with a non-empty `pageId` that differs from the staged
+  page. App reads the mounted page's mode, keeps its draft in the slot (`keptCommentDraft`), calls
+  `page.leave()` (open inspector drafts end unsaved: `EditState.discardDrafts`), stages the new id
+  with that canvas, the held comment list, the mode and the slot's draft for that page, and
+  `flushSync()` mounts the new page before the handler returns. Everything else goes to the mounted
+  page, a `canvas:updated` with `pageId: ''` included: it applies as today's error snapshot (no
+  remount, no frames, so the mode falls back to Interact by the no-frames rule) and the next
+  snapshot for the same page merges as before.
+- **Thrown away.** Frame records and iframes, pick, hover and gesture, pins, anchors, the open
+  thread, reply composers, edit drafts and queue, `replacedHashes`, the history frame, copy
+  feedback, request errors, announcements. **Carried.** The mode, the comments panel's open state,
+  `ui:status`, and the comment draft slot (a draft is restored only on its own page, in Comment
+  mode, while its frame is live). The stage fits all after a switch. The saved `stageView` and
+  `commentDraft` carry their `pageId` and come back only for their own page.
+- **Comment lists.** A page draws a list only when `list.pageId` is its own page id or `''`; a
+  list for another page is held, never drawn, never sent to a frame as `cd:anchors`.
+  `ponytail:` only the latest list is held, so two refreshes whose posts overtake each other can
+  leave a page with no comments until the next refresh.
+- **Stale answers.** An answer to a request of the old page (`artboard:edited`, `comment:added`,
+  `comment:saved`, `ui:copied`, `ui:error`) carries no `pageId`. The new page's objects hold no
+  pending request with that `requestId` (UUIDs never cross-match), so they drop it. A comment
+  request in flight at a switch is still answered on its page by the host.
+- **First page after a webview reload.** The first page with a real id gets the saved reply drafts
+  and, when it got no held draft, the saved open thread. The `''` page and later pages get
+  neither. The save `$effect` writes nothing while no page is mounted or the page's `pageId` is
+  `''`.
+- Focus is not moved on a switch (`ponytail:` in `App.svelte`; 10d's menu owns it).
 
 ## Agent edit to live frame
 
@@ -304,7 +369,7 @@ sequenceDiagram
   participant C as Chrome
   participant H as Host
   participant D as Disk
-  C->>H: artboard:edit {requestId, frameId, sourceNumber, hash, field: 'text', value, liveText | styles}
+  C->>H: artboard:edit {requestId, pageId, frameId, sourceNumber, hash, field: 'text', value, liveText | styles}
   alt no valid requestId
     H->>H: log panelEdit.answer, no answer
   else untrusted / no folder / malformed
@@ -569,9 +634,9 @@ sequenceDiagram
   participant O as Host outbox
   participant D as Disk
   participant A as Agent / editor
-  C->>H: artboard:edit {…} (9e)
-  H->>D: editArtboard → updateArtboard
-  H->>H: recordEdit (same epoch): base onto undo (max 20), redo emptied. Same bytes: nothing
+  C->>H: artboard:edit {pageId, …} (9e)
+  H->>D: editArtboard → updateArtboard (on the requested page)
+  H->>H: recordEdit (same epoch): base onto undo (max 20), redo emptied, keyed by pageId and frameId. Same bytes: nothing
   H->>C: artboard:edited {requestId, frameId, hash, generation, html, canUndo, canRedo}
   alt Undo / Redo button (aria-disabled without the flag: click ignored)
     U->>C: click
@@ -582,10 +647,10 @@ sequenceDiagram
     C->>C: forwardedHistoryStep: Edit mode, sender = history frame, sender holds focus. Else ignored
   end
   C->>C: handleHistoryStep: open drafts commit, enqueueStep. nextSend: one in flight, drop a step whose frame left, is a tile or lost its flag
-  C->>H: artboard:history {requestId, frameId, step}
+  C->>H: artboard:history {requestId, pageId, frameId, step}
   alt no requestId
     H->>H: log panelEdit.history, no answer
-  else untrusted / no folder / malformed / bad frame id / nothing held
+  else untrusted / no folder / malformed / bad frame id / nothing held / page gone
     H->>C: ui:error {requestId, message}
   else
     H->>D: updateArtboard {html: snapshot, baseHash: history current} (lock, compare, write html + meta)
@@ -607,23 +672,26 @@ sequenceDiagram
   end
   D-->>H: watcher (200 ms)
   H->>O: postSnapshot
-  O->>O: keepUnchangedHistories: a held hash keeps, any other (or '') forgets
-  O->>C: canvas:updated (frames + canUndo, canRedo read at send)
+  O->>O: keepUnchangedHistories {pageId, frames}: that page's held hash keeps, any other (or '') forgets, other pages untouched
+  O->>C: canvas:updated (pageId, frames + canUndo, canRedo read for that page at send)
   H->>C: comments:updated (via the outbox)
   A->>D: update_artboard / editor save
   D-->>H: watcher
   H->>O: postSnapshot
-  O->>O: keepUnchangedHistories: unknown hash, forget
+  O->>O: keepUnchangedHistories: unknown hash on that page, forget
   O->>C: canvas:updated (canUndo false, canRedo false): the frame reloads as today
 ```
 
-- History lives in extension memory (`editHistory.ts`): per frame, up to 20 whole-file steps
+- History lives in extension memory (`editHistory.ts`): per page and frame (`{pageId, frameId}`
+  at every function, 10b), up to 20 whole-file steps
   between undo and redo plus the file last written. It is cleared on panel dispose and on any
   workspace-folder change (`clearEditHistories`, which bumps an epoch so a request still awaiting
   the lock records nothing). It survives the webview being hidden: the outbox replays
-  `canvas:updated` with flags read at send time.
-- The outside-change rule accepts any hash the history holds, so a stale refresh (the 9c ceiling)
-  does not wipe it; an outside write that recreates a held state is caught at the next step's
+  `canvas:updated` with flags read at send time for the posted page.
+- The outside-change rule (`keepUnchangedHistories`) checks only the posted snapshot's page and
+  leaves every other page's histories alone, so a page that is not on stage keeps its history until
+  the panel closes, and the same frame id on two pages has two histories. It accepts any hash the
+  history holds, so a stale refresh (the 9c ceiling) does not wipe it; an outside write that recreates a held state is caught at the next step's
   checked write.
 - Undo / Redo act on the frame of the latest accepted Edit-mode pick from a frame that holds focus
   (`historyFrameId`; a pick without focus, e.g. one a design script posts, never moves it, F-146),
@@ -658,7 +726,7 @@ sequenceDiagram
   C->>F: cd:pick-parent / cd:pick-child
   F->>C: cd:pick {repost: false}
   U->>C: Enter (box has text)
-  C->>H: comment:create {requestId (UUID), frameId, generation, pick fields, body}
+  C->>H: comment:create {requestId (UUID), pageId, frameId, generation, pick fields, body}
   alt no valid requestId
     H->>H: logged, no answer
   else untrusted, no folder, malformed, or addComment fails (PICK_OUTDATED, busy, corrupt)
@@ -751,10 +819,10 @@ sequenceDiagram
   participant A as Agent
   alt Reply
     U->>C: Reply, type, Enter
-    C->>H: comment:reply {requestId (UUID), id, body (trimmed)}
+    C->>H: comment:reply {requestId (UUID), pageId, id, body (trimmed)}
   else Resolve or Reopen
     U->>C: Resolve / Reopen
-    C->>H: comment:set-status {requestId (UUID), id, status: resolved | open}
+    C->>H: comment:set-status {requestId (UUID), pageId, id, status: resolved | open}
   end
   Note over C: nothing is sent for blank text, or while this comment has a request pending
   alt no valid requestId
@@ -832,7 +900,7 @@ sequenceDiagram
   alt any copy pending (copyPending), anything pending on that comment, or N = 0
     C->>C: nothing posted (button aria-disabled)
   else
-    C->>H: comment:copy {requestId (UUID), id} / comment:copy-open {requestId}
+    C->>H: comment:copy {requestId (UUID), pageId, id} / comment:copy-open {requestId, pageId}
     alt no valid requestId
       H->>H: logged, no answer
     else untrusted, no folder, malformed, gone id, zero open, clipboard rejects
@@ -885,7 +953,7 @@ sequenceDiagram
   U->>C: drag label / right handle (or arrow nudge)
   C->>C: local preview (frameGesture), Escape reverts
   U->>C: release (or last arrow up)
-  C->>H: frame:place {id, x, y, width, base: {x, y, width}}
+  C->>H: frame:place {pageId, id, x, y, width, base: {x, y, width}}
   H->>H: parseChromeMessage, refuse if untrusted
   H->>D: withWorkspaceLock: compare base, write
   H->>C: canvas:updated (always)
@@ -921,18 +989,18 @@ settles the gesture to disk (the Agent wins).
 | Direction | Message | Payload |
 |---|---|---|
 | chrome → host | `artboard:ready` | none |
-| chrome → host | `frame:place` | `{id, x, y, width, base: {x, y, width}}` |
-| chrome → host | `comment:create` | `{requestId, frameId, generation, selector, tagName, text, rect \| null, point, box, styles, isPage, body}` |
-| chrome → host | `comment:reply` | `{requestId, id, body}` |
-| chrome → host | `comment:set-status` | `{requestId, id, status: 'open' \| 'resolved'}` |
-| chrome → host | `comment:copy` | `{requestId, id}` (8h) |
-| chrome → host | `comment:copy-open` | `{requestId}` (8h) |
-| chrome → host | `artboard:edit` | `{requestId, frameId, sourceNumber, hash}` plus either `{field: 'text', value, liveText}` or `{styles: StyleChange[]}`, `StyleChange` `{field, value}` with `field` in `EDIT_STYLE_FIELDS` (9c; `styles` 9h: 1..`EDIT_STYLE_FIELDS.length` distinct fields set or cleared together, one write and one undo step; a message with the text fields and `styles` parses as text; the pre-9h single-style shape is malformed; sent by the Edit-mode inspector since 9e, one in flight per panel; a choice sends one change, a section Reset or Add border several, 9i) |
-| chrome → host | `artboard:history` | `{requestId, frameId, step: 'undo' \| 'redo'}` (9f; the inspector's Undo / Redo or Cmd/Ctrl+Z; one in flight per panel, shared with `artboard:edit`) |
-| host → chrome | `canvas:updated` | `{activeArtboardId, generation, cspNonce, frames[]}` (each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a; each frame's `hash` is `hashHtml` of the disk HTML, `''` when unreadable, 9c; each frame's `canUndo` / `canRedo` is read from the undo history when the outbox sends, 9f) |
+| chrome → host | `frame:place` | `{pageId, id, x, y, width, base: {x, y, width}}` |
+| chrome → host | `comment:create` | `{requestId, pageId, frameId, generation, selector, tagName, text, rect \| null, point, box, styles, isPage, body}` |
+| chrome → host | `comment:reply` | `{requestId, pageId, id, body}` |
+| chrome → host | `comment:set-status` | `{requestId, pageId, id, status: 'open' \| 'resolved'}` |
+| chrome → host | `comment:copy` | `{requestId, pageId, id}` (8h) |
+| chrome → host | `comment:copy-open` | `{requestId, pageId}` (8h) |
+| chrome → host | `artboard:edit` | `{requestId, pageId, frameId, sourceNumber, hash}` plus either `{field: 'text', value, liveText}` or `{styles: StyleChange[]}`, `StyleChange` `{field, value}` with `field` in `EDIT_STYLE_FIELDS` (9c; `styles` 9h: 1..`EDIT_STYLE_FIELDS.length` distinct fields set or cleared together, one write and one undo step; a message with the text fields and `styles` parses as text; the pre-9h single-style shape is malformed; sent by the Edit-mode inspector since 9e, one in flight per panel; a choice sends one change, a section Reset or Add border several, 9i) |
+| chrome → host | `artboard:history` | `{requestId, pageId, frameId, step: 'undo' \| 'redo'}` (9f; the inspector's Undo / Redo or Cmd/Ctrl+Z; one in flight per panel, shared with `artboard:edit`) |
+| host → chrome | `canvas:updated` | `{pageId, activeArtboardId, generation, cspNonce, frames[]}` (`pageId` 10b: the page the snapshot was read from, `''` when no page resolved, else a valid page id; each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a; each frame's `hash` is `hashHtml` of the disk HTML, `''` when unreadable, 9c; each frame's `canUndo` / `canRedo` is read from the undo history when the outbox sends, 9f) |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
-| host → chrome | `comments:updated` | `{comments[], error?}` (each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
+| host → chrome | `comments:updated` | `{pageId, comments[], error?}` (`pageId` 10b: as on `canvas:updated`, `''` always with no comments; each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
 | host → chrome | `comment:added` | `{requestId}` |
 | host → chrome | `comment:saved` | `{requestId}` (answer to `comment:reply` / `comment:set-status`, posted before the `comments:updated` it causes) |
 | host → chrome | `ui:copied` | `{requestId, count}` (answer to `comment:copy` / `comment:copy-open`; `count` = comments moved open → sent; posted before the `comments:updated` it causes) |
@@ -952,6 +1020,9 @@ settles the gesture to disk (the Agent wins).
 | chrome → frame | `cd:edit-apply` | `{sourceNumber, text}` or `{sourceNumber, style}` (9e, Edit mode only; the live preview of the one element with that number; display only) |
 
 This table is the normative message contract; rule 02 keeps only the cross-cutting invariants.
+The `pageId` on the 8 chrome → host rows is required and must pass `isPageId` (10b): a missing or
+malformed one makes the message malformed, with that message's existing refusal copy. Answers
+(`artboard:edited`, `comment:added`, `comment:saved`, `ui:copied`, `ui:error`) carry no `pageId`.
 If the table and the code disagree, fix whichever is wrong. `frameMessages.test.ts` fails when
 this section's `cd:*` names differ from the frame message constants, or its `host → chrome` /
 `chrome → host` names differ from the `HostMessage` / `ChromeMessage` types.

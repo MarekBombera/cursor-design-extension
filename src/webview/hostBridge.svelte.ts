@@ -9,11 +9,16 @@ import {
 	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
+	type PageFree,
 	parseHostMessage,
 	routeMessage,
 } from './hostMessages';
-import { parseSavedCommentUi, parseSavedStageView, type SavedCommentUi } from './savedState';
-import type { StageView } from './stageGeometry';
+import {
+	parseSavedCommentUi,
+	parseSavedStageView,
+	type SavedCommentUi,
+	type SavedStageView,
+} from './savedState';
 
 type VsCodeApi = {
 	postMessage: (message: unknown) => void;
@@ -31,10 +36,10 @@ const savedRecord = (): Record<string, unknown> => {
 	return state !== null && typeof state === 'object' ? { ...state } : {};
 };
 
-export const readSavedStageView = (): StageView | undefined =>
+export const readSavedStageView = (): SavedStageView | undefined =>
 	parseSavedStageView(savedRecord().stageView);
 
-export const saveStageView = (stageView: StageView): void => {
+export const saveStageView = (stageView: SavedStageView): void => {
 	vscodeApi.setState({ ...savedRecord(), stageView });
 };
 
@@ -68,19 +73,26 @@ export const saveCommentUi = (ui: SavedCommentUi): void => {
 	});
 };
 
+// The only place a page-bound request gets its page: the pure rules build it page-free.
 // Snapshot: callers pass gesture fields that are $state proxies, and postMessage's structured
 // clone throws DataCloneError on a Proxy.
-export const postFramePlace = (message: FramePlaceMessage): void => {
-	vscodeApi.postMessage($state.snapshot(message));
+export const postFramePlace = (pageId: string, message: PageFree<FramePlaceMessage>): void => {
+	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
 };
 
 // Snapshot for the same reason: the draft target is $state.
-export const postCommentRequest = (message: CommentRequestMessage): void => {
-	vscodeApi.postMessage($state.snapshot(message));
+export const postCommentRequest = (
+	pageId: string,
+	message: PageFree<CommentRequestMessage>,
+): void => {
+	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
 };
 
-export const postEditRequest = (message: ArtboardEditMessage | ArtboardHistoryMessage): void => {
-	vscodeApi.postMessage($state.snapshot(message));
+export const postEditRequest = (
+	pageId: string,
+	message: PageFree<ArtboardEditMessage | ArtboardHistoryMessage>,
+): void => {
+	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
 };
 
 // The only chrome → frame send. '*' because a sandboxed frame has an opaque origin; the frame can
@@ -92,8 +104,8 @@ export const postToFrame = (iframe: HTMLIFrameElement, message: ChromeFrameMessa
 };
 
 type HostBridgeArgs = {
-	// Matched against event.source at message time, so it may change after connecting.
-	iframes: ReadonlyMap<string, HTMLIFrameElement>;
+	// Read at message time (the mounted page's iframes), so a page change needs no new subscription.
+	iframes: () => ReadonlyMap<string, HTMLIFrameElement>;
 	onHostMessage: (message: HostMessage) => void;
 	onFrameMessage: (frameId: string, message: FrameMessage) => void;
 };
@@ -106,7 +118,11 @@ export const connectHostBridge = ({
 }: HostBridgeArgs): void => {
 	$effect(() => {
 		const handleMessage = (event: MessageEvent): void => {
-			const route = routeMessage({ source: event.source, origin: event.origin, iframes });
+			const route = routeMessage({
+				source: event.source,
+				origin: event.origin,
+				iframes: iframes(),
+			});
 			if (route.kind === 'frame') {
 				// ponytail: rejects are not logged (wheel fires at 60+ Hz), and a late cd:frame-height or
 				// cd:frame-wheel from a previous document is accepted. Upgrade: a sampled reject count

@@ -21,11 +21,13 @@ import {
 	ArtboardExistsError,
 	InvalidArgsError,
 	NoWorkspaceError,
+	PageNotFoundError,
 	toSafeArtboardErrorMessage,
 } from '../disk/errors';
 import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from '../disk/layout';
 import type { PageLocation } from '../disk/layoutFs';
-import { resolveOpenPage } from '../disk/openPage';
+import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
+import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
 
 export { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE, type CanvasSnapshot };
 
@@ -89,6 +91,7 @@ const snapshotFromCanvasView = async ({
 	});
 
 	return {
+		pageId: page.pageId,
 		activeArtboardId: view.activeArtboardId,
 		generation: activeFrame?.generation ?? 0,
 		// Same root string as panelComments' readComments, so the shared parse cache keys match.
@@ -121,21 +124,30 @@ const loadActiveSnapshot = async ({
 		return emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE);
 	}
 
+	const failed = (error: unknown): CanvasSnapshot => {
+		logDiskError({ scope, error, outputChannel });
+		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
+	};
+	// Resolved outside the read's try, so a read failure still names the page it came from.
+	let page: PageLocation;
 	try {
-		const page = await resolveOpenPage({
+		page = await resolveOpenPage({
 			workspaceRoot: workspaceFolder.uri.fsPath,
 			createIfFresh: initializeWhenMissing,
 		});
+	} catch (error: unknown) {
+		return failed(error);
+	}
+	try {
 		if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
 			if (!initializeWhenMissing) {
-				return emptyArtboardSnapshot();
+				return { ...emptyArtboardSnapshot(), pageId: page.pageId };
 			}
 			await initializeDefaultArtboard(page);
 		}
 		return await snapshotFromCanvasView({ page, outputChannel });
 	} catch (error: unknown) {
-		logDiskError({ scope, error, outputChannel });
-		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
+		return { ...failed(error), pageId: page.pageId };
 	}
 };
 
@@ -178,9 +190,9 @@ export const placeFrameFromChrome = async ({
 		} else {
 			try {
 				await placeFrame({
-					page: await resolveOpenPage({
+					page: await resolveRequestedPage({
 						workspaceRoot: workspaceFolder.uri.fsPath,
-						createIfFresh: false,
+						pageId: message.pageId,
 					}),
 					id: message.id,
 					x: message.x,
@@ -190,7 +202,12 @@ export const placeFrameFromChrome = async ({
 				});
 			} catch (error: unknown) {
 				logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
-				placeErrorMessage = toSafeArtboardErrorMessage(error);
+				// ponytail: a gone requested page is never the open page, so this banner shows over the
+				// open page's snapshot and names no page. Upgrade path: 10d's page menu names it.
+				placeErrorMessage =
+					error instanceof PageNotFoundError
+						? PAGE_GONE_MESSAGE
+						: toSafeArtboardErrorMessage(error);
 			}
 		}
 		const snapshot = await readActiveArtboardFromDisk({ workspaceFolder, outputChannel });

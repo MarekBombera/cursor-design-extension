@@ -7,6 +7,7 @@ import {
 	InvalidArgsError,
 	InvalidArtboardIdError,
 	LockTimeoutError,
+	PageNotFoundError,
 	toSafeArtboardErrorMessage,
 } from '../disk/errors';
 import type { CommentRequestMessage } from '../webview/hostMessages';
@@ -24,6 +25,9 @@ export const CHANGE_FALLBACK_MESSAGE =
 export const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 
 export const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
+
+// Every page-bound request for a page that is gone; PageNotFoundError's own text is Agent copy.
+export const PAGE_GONE_MESSAGE = 'That page no longer exists.';
 
 // The copy types' fallback (a clipboard rejection lands here) and their malformed copy.
 export const COPY_FAILED_MESSAGE =
@@ -62,7 +66,9 @@ export const commentRequestErrorMessage = ({
 }): string =>
 	error instanceof CommentNotFoundError
 		? COMMENT_GONE_MESSAGE
-		: toSafeArtboardErrorMessage(error, fallbackMessage(type));
+		: error instanceof PageNotFoundError
+			? PAGE_GONE_MESSAGE
+			: toSafeArtboardErrorMessage(error, fallbackMessage(type));
 
 export const MALFORMED_EDIT_MESSAGE = 'Could not save the edit. Try again.';
 
@@ -95,6 +101,9 @@ export const editRequestErrorMessage = (error: unknown, kind: 'edit' | 'history'
 	}
 	if (error instanceof ArtboardNotFoundError) {
 		return EDIT_FRAME_GONE_MESSAGE;
+	}
+	if (error instanceof PageNotFoundError) {
+		return PAGE_GONE_MESSAGE;
 	}
 	if (error instanceof InvalidArgsError || error instanceof InvalidArtboardIdError) {
 		return kind === 'edit' ? MALFORMED_EDIT_MESSAGE : MALFORMED_HISTORY_MESSAGE;

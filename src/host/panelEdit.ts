@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { UNTRUSTED_WORKSPACE_MESSAGE, panelFrameHtml } from './canvasSnapshot';
 import { claimedRequestId, parseChromeMessage } from './chromeMessages';
 import {
+	type HistoryKey,
 	forgetHistory,
 	historyEpoch,
 	historyFlags,
@@ -27,7 +28,8 @@ import {
 	InvalidArgsError,
 	NoWorkspaceError,
 } from '../disk/errors';
-import { resolveOpenPage } from '../disk/openPage';
+import type { PageLocation } from '../disk/layoutFs';
+import { resolveRequestedPage } from '../disk/openPage';
 import { parseArtboardId } from '../disk/parse';
 import { postAnswerToPanel } from '../panel/openArtboardPanel';
 import type { ArtboardEditMessage } from '../webview/hostMessages';
@@ -92,17 +94,17 @@ const checkedWorkspaceRoot = ({
 // writes a file that was under it, so panelFrameHtml returns no too-large errorMessage here.
 const postEdited = ({
 	requestId,
-	workspaceRoot,
+	page,
 	written,
 	outputChannel,
 }: {
 	requestId: string;
-	workspaceRoot: string;
+	page: PageLocation;
 	written: { artboardId: string; hash: string; generation: number; html: string };
 	outputChannel: vscode.OutputChannel;
 }): void => {
 	const posted = panelFrameHtml({
-		workspaceRoot,
+		workspaceRoot: page.workspaceRoot,
 		frameId: written.artboardId,
 		html: written.html,
 		onTagError: (frameId, error) => {
@@ -116,7 +118,7 @@ const postEdited = ({
 		hash: written.hash,
 		generation: written.generation,
 		html: posted.html,
-		...historyFlags(written.artboardId),
+		...historyFlags({ pageId: page.pageId, frameId: written.artboardId }),
 	});
 };
 
@@ -155,8 +157,9 @@ export const answerEditRequest = async ({
 			return;
 		}
 		const epoch = historyEpoch();
+		const page = await resolveRequestedPage({ workspaceRoot, pageId: message.pageId });
 		const edited = await editArtboard({
-			page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
+			page,
 			artboardId: message.frameId,
 			baseHash: message.hash,
 			edit: toArtboardEdit(message),
@@ -169,13 +172,14 @@ export const answerEditRequest = async ({
 		// a fresh history. Upgrade path: keepUnchangedHistories skips a frame mid-edit.
 		if (edited.html !== edited.baseHtml) {
 			recordEdit({
+				pageId: message.pageId,
 				frameId: edited.artboardId,
 				base: { html: edited.baseHtml, hash: edited.baseHash },
 				next: { html: edited.html, hash: edited.hash },
 				epoch,
 			});
 		}
-		postEdited({ requestId, workspaceRoot, written: edited, outputChannel });
+		postEdited({ requestId, page, written: edited, outputChannel });
 	} catch (error: unknown) {
 		refuse(editRequestErrorMessage(error, 'edit'), error);
 	}
@@ -196,7 +200,7 @@ export const answerHistoryRequest = async ({
 }): Promise<void> => {
 	const requestId = claimedRequestId(value);
 	const refuse = refuser({ requestId, scope: HISTORY_SCOPE, outputChannel });
-	let frameId: string | undefined;
+	let key: HistoryKey | undefined;
 	try {
 		const workspaceRoot = checkedWorkspaceRoot({ type: 'artboard:history', requestId, refuse });
 		if (workspaceRoot === undefined || requestId === undefined) {
@@ -211,8 +215,10 @@ export const answerHistoryRequest = async ({
 			return;
 		}
 		// Its InvalidArtboardIdError maps to the same malformed copy, by design.
-		frameId = parseArtboardId(message.frameId);
-		const restore = historyStepTarget({ frameId, step: message.step });
+		const frameId = parseArtboardId(message.frameId);
+		key = { pageId: message.pageId, frameId };
+		// Before the resolve, so "Nothing to undo" does no I/O.
+		const restore = historyStepTarget({ ...key, step: message.step });
 		if (restore === undefined) {
 			refuse(
 				message.step === 'undo' ? NOTHING_TO_UNDO_MESSAGE : NOTHING_TO_REDO_MESSAGE,
@@ -221,26 +227,27 @@ export const answerHistoryRequest = async ({
 			return;
 		}
 		const epoch = historyEpoch();
+		const page = await resolveRequestedPage({ workspaceRoot, pageId: message.pageId });
 		const written = await updateArtboard({
-			page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
+			page,
 			artboardId: frameId,
 			html: restore.target.html,
 			baseHash: restore.base.hash,
 		});
 		// No await from here to the post (answerEditRequest's ceilings apply).
-		recordStep({ frameId, step: message.step, baseHash: restore.base.hash, epoch });
+		recordStep({ ...key, step: message.step, baseHash: restore.base.hash, epoch });
 		postEdited({
 			requestId,
-			workspaceRoot,
+			page,
 			written: { ...written, html: restore.target.html },
 			outputChannel,
 		});
 	} catch (error: unknown) {
 		if (
-			frameId !== undefined &&
+			key !== undefined &&
 			(error instanceof ConflictError || error instanceof ArtboardNotFoundError)
 		) {
-			forgetHistory(frameId);
+			forgetHistory(key);
 		}
 		refuse(editRequestErrorMessage(error, 'history'), error);
 	}

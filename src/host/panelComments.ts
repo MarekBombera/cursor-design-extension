@@ -27,7 +27,7 @@ import {
 	setCommentStatus,
 } from '../disk/comments';
 import { InvalidArgsError, NoWorkspaceError, toSafeArtboardErrorMessage } from '../disk/errors';
-import { resolveOpenPage } from '../disk/openPage';
+import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
 import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
 
 // vscode glue only. Neither export ever rejects.
@@ -43,27 +43,30 @@ export const postPanelComments = async ({
 	outputChannel: vscode.OutputChannel;
 }): Promise<void> => {
 	const token = ++readGeneration;
+	// '' until the resolve succeeds; a read failure after it still names the page.
+	let pageId = '';
 	// ponytail: no total payload cap; 500 comments × 100 replies × 2000 chars is the ceiling, the
 	// same as for canvas:updated. Upgrade path: page the list if a real workspace gets close.
 	try {
 		const workspaceFolder = firstWorkspaceFolder();
 		if (!vscode.workspace.isTrusted || !workspaceFolder) {
-			postCommentsToPanel({ comments: [] });
+			postCommentsToPanel({ pageId, comments: [] });
 			return;
 		}
-		const comments = await readComments({
-			page: await resolveOpenPage({
-				workspaceRoot: workspaceFolder.uri.fsPath,
-				createIfFresh: false,
-			}),
+		const page = await resolveOpenPage({
+			workspaceRoot: workspaceFolder.uri.fsPath,
+			createIfFresh: false,
 		});
+		pageId = page.pageId;
+		const comments = await readComments({ page });
 		if (token === readGeneration) {
-			postCommentsToPanel({ comments: comments.map(toPostedComment) });
+			postCommentsToPanel({ pageId, comments: comments.map(toPostedComment) });
 		}
 	} catch (error: unknown) {
 		logDiskError({ scope: 'panelComments.read', error, outputChannel });
 		if (token === readGeneration) {
 			postCommentsToPanel({
+				pageId,
 				comments: [],
 				error: toSafeArtboardErrorMessage(error, READ_FALLBACK_MESSAGE),
 			});
@@ -140,9 +143,9 @@ export const answerCommentRequest = async ({
 			);
 			return;
 		}
-		const page = await resolveOpenPage({
+		const page = await resolveRequestedPage({
 			workspaceRoot: workspaceFolder.uri.fsPath,
-			createIfFresh: false,
+			pageId: message.pageId,
 		});
 		// The clipboard already holds the prompt here, so any throw gets its own copy; the typed
 		// message is only logged. Undefined: refused, stop.

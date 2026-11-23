@@ -51,8 +51,6 @@ export class CanvasState {
 	generation = $state('');
 	nonce = $state('');
 	errorMessage: string | undefined = $state();
-	mcpUnavailable = $state(false);
-	handoffStale = $state(false);
 	committedView: StageView | undefined = $state();
 	gesture: FrameGesture | undefined = $state();
 	// Set by the first canvas:updated, even one with no frames.
@@ -63,8 +61,11 @@ export class CanvasState {
 
 	// Not $state: read at message or handler time only.
 	readonly iframes = new Map<string, HTMLIFrameElement>();
-	readonly #savedView = readSavedStageView();
-	#stageView: StageView = this.#savedView ?? { x: 0, y: 0, zoom: 1 };
+	// The page this state belongs to ('' is "no page"), named by every page-bound request.
+	readonly pageId: string;
+	// The saved view, only when it is this page's: another page's fits all instead.
+	readonly #savedView: StageView | undefined;
+	#stageView: StageView;
 	#initialViewApplied = false;
 	// Scroll sink: where the last recentre landed, and the last frame wheel or sink pan.
 	#sinkRestX = 0;
@@ -91,6 +92,14 @@ export class CanvasState {
 			: `translate(${this.committedView.x}px, ${this.committedView.y}px) scale(${this.committedView.zoom})`,
 	);
 
+	constructor(pageId: string) {
+		this.pageId = pageId;
+		const saved = readSavedStageView();
+		this.#savedView =
+			saved?.pageId === pageId ? { x: saved.x, y: saved.y, zoom: saved.zoom } : undefined;
+		this.#stageView = this.#savedView ?? { x: 0, y: 0, zoom: 1 };
+	}
+
 	jumpFrame = (comment: PostedComment): FrameRecord | undefined =>
 		liveIframeIds(this.frames).has(comment.frameId)
 			? this.displayFrames.find((frame) => frame.id === comment.frameId)
@@ -109,10 +118,10 @@ export class CanvasState {
 			viewportHeight: this.viewportHeight,
 		});
 		this.committedView = this.#stageView;
-		saveStageView(this.#stageView);
+		saveStageView({ ...this.#stageView, pageId: this.pageId });
 	};
 
-	// Once per webview load: later edits and artboard switches keep the user's view.
+	// Once per page mount: later edits and artboard switches keep the user's view.
 	#applyInitialView = (): void => {
 		if (this.#initialViewApplied) {
 			return;
@@ -257,7 +266,7 @@ export class CanvasState {
 		});
 		this.gesture = step.gesture;
 		if (step.commit !== undefined) {
-			postFramePlace(step.commit);
+			postFramePlace(this.pageId, step.commit);
 		}
 	};
 

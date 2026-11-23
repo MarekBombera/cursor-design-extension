@@ -52,17 +52,17 @@ If `svelte-check` fails, never weaken lint, remove `typeAware` / `typeCheck` or 
 
 Rule 05's contract: grep before writing a helper, extend the owner, update this list in the same change.
 
-**State and I/O.** `src/webview/App.svelte` is the composition root: it creates one `*.svelte.ts` class per domain in dependency order, routes host and frame messages, and owns the one comment-UI save `$effect`. Host I/O only in `src/webview/hostBridge.svelte.ts` (`postToFrame`, `postCommentRequest`, `postEditRequest`, `saveStageView`, `saveCommentsPanelOpen`, `saveCommentUi`, `readSavedCommentUi`).
+**State and I/O.** `src/webview/App.svelte` holds what spans pages: the host bridge, the staged page id (a `canvas:updated` with a non-empty `pageId` for another page remounts the page, `flushSync`; `''` never does), `ui:status`, the latest `comments:updated`, the comment draft slot, the mode handed to the next page, and the one comment-UI save `$effect` (writes nothing for no page or the `''` page). `src/webview/DesignPage.svelte` is one page under `{#key}`: it creates the per-page `*.svelte.ts` classes in dependency order with its `pageId`, holds the toolbar, banners, workspace and live region, applies a comment list only for its own page (or `''`), and exposes `handleHostMessage`, `handleFrameMessage`, `iframes`, `savable` (with the mode) and `leave` to App via `bind:this`. Host I/O only in `src/webview/hostBridge.svelte.ts` (`postToFrame`, the page-bound senders `postFramePlace` / `postCommentRequest` / `postEditRequest` (page id first, page-free message second: the only place a request gets its `pageId`), `saveStageView` (with its page), `saveCommentsPanelOpen`, `saveCommentUi`, `readSavedCommentUi`; `connectHostBridge` reads the mounted page's iframes through a getter).
 
 - `CanvasState` (`src/webview/canvasState.svelte.ts`): frames, the view's one write path `commitStageView`, gesture, scroll sink, `sendToFrame` (every chrome to frame send), `adoptEditAnswer`.
 - `CommentsState` (`src/webview/commentsState.svelte.ts`): comments, panel, reply / status / copy requests.
 - `PinThread` (`src/webview/pinThread.svelte.ts`): anchors (`sendAnchors`), pins, open thread, the one focus gate `canTakeFocus`.
 - `CommentPicker` (`src/webview/commentPicker.svelte.ts`): the mode through one setter, hover and pick, add-comment draft, `isTextEntry`.
-- `EditState` (`src/webview/editState.svelte.ts`): inspector drafts and the picked element's `drafted` fields, the one save path for choices, Reset and Add border `handleStyleChanges`, the one-in-flight edit queue, undo / redo, the one live region `announcement`.
+- `EditState` (`src/webview/editState.svelte.ts`): inspector drafts and the picked element's `drafted` fields (`discardDrafts` when its page leaves), the one save path for choices, Reset and Add border `handleStyleChanges`, the one-in-flight edit queue, undo / redo, the one live region `announcement`.
 
 **Pure rules:**
 
-- `src/webview/hostMessages.ts`: `parseHostMessage`, `routeMessage`, guards `isRecord`, `isFiniteNumber`. `src/webview/savedState.ts`: `parseSavedStageView`, `parseSavedCommentUi`.
+- `src/webview/hostMessages.ts`: `parseHostMessage`, `routeMessage`, guards `isRecord`, `isFiniteNumber`. `src/webview/savedState.ts`: `parseSavedStageView` (`SavedStageView`, with its `pageId`), `parseSavedCommentUi` (the draft slot with its `pageId`).
 - `src/webview/frame/frameMessages.ts`: `parseFrameMessage`, `parseChromeFrameMessage`, `parsePickFields`, `PickEditFields`, `FRAME_MODES`, `isFrameMode`, `FrameKey`, `hasControlChars`, the one prompt line `toOneLine`, `isSafeStyleValue`, `isTagName`, `parseFrameRect`.
 - `src/webview/stampArtboardHtml.ts`: `stampArtboardHtml`, frame policy `FRAME_CSP`.
 - `src/webview/stageGeometry.ts` (embedded whole in `canvas.html`): `frameRectToScreen`, the one fit-zoom rule `fitZoom` (`fitStageView`, `jumpStageView`). Chrome-only zoom menu: `src/webview/zoomChoices.ts` (`ZOOM_PRESETS`, `zoomChoices`).
@@ -73,7 +73,8 @@ Rule 05's contract: grep before writing a helper, extend the owner, update this 
 - `src/webview/pins.ts`: `AnchorState`, `applyAnchorRects`, `dropFrameAnchors`, `anchorSends`, `pinBadge`, `pinPoint`, the one live-answer lookup `liveAnchor`, `layoutPins`, `pinLabel`, `keepOpenThread`, `resolveHeldThread`, `jumpTarget`, `JUMP_FLASH_MS`, the one comment number `commentNumber`, `statusBadge`, `flagBadge`.
 - `src/webview/commentsPanel.ts`: `panelItems`, the one frame name `frameLabel`, `panelSummary`, `summaryParts`, `handoffCopy`, `relativeTime`, the one count wording `commentsText`, `liveRegionText`.
 - `src/webview/commentActions.ts`: `openReply`, `editReply`, `closeReply`, `replyPending`, `anythingPending`, `canSubmitReply`, `submitReply`, `submitStatus`, `answerAction`, `keepLiveActions`, `copyPending`, `submitCopy`, `submitCopyOpen`, `answerCopyOpen`, `copyAnnouncement`, `COPY_FEEDBACK_MS`.
-- `src/webview/commentPopover.ts`: `popoverKeyAction`, `draftFromPick`, `editDraftBody`, `resolveHeldDraft`, `canSubmit`, `blockedTargetCopy`, `submitDraft`, `answerDraft`, `keepLiveDraft`, `targetChipText`, `popoverAnchor`, `placePopover`.
+- `src/webview/commentPopover.ts`: `popoverKeyAction`, `draftFromPick`, `editDraftBody`, `resolveHeldDraft`, the draft slot `CommentDraftSlot` and its one rule `keptCommentDraft`, `canSubmit`, `blockedTargetCopy`, `submitDraft`, `answerDraft`, `keepLiveDraft`, `targetChipText`, `popoverAnchor`, `placePopover`.
+- `src/webview/pageStart.ts`: what App hands a page, `PageStart`; the page-change test `isPageChange`, the next page's start `nextPageStart` (held draft only on its own page; saved thread only on the first real page and only without a held draft; reply drafts only on the first page; mode carried), the comment-list guard `isPageComments`.
 
 **Views:** `Stage.svelte` (focused-frame ring, `focusViewport`), `Overlay.svelte` (hover and pick outlines), `Pins.svelte`, `CommentThread.svelte`, `CommentsPanel.svelte`, `CommentCard.svelte` (panel and thread, via `shell`), the one composer `Composer.svelte`, `CommentPopover.svelte`, `Inspector.svelte`, `PinChip.svelte`, `TargetRef.svelte`.
 

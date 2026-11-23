@@ -142,6 +142,7 @@ test('under the chrome CSP, a styled frame and its pin log no violation', async 
 	await untilHeightReported(page, 'a');
 	await postToChrome(page, {
 		type: 'comments:updated',
+		pageId: 'page-1',
 		comments: [
 			{
 				id: 'c1',

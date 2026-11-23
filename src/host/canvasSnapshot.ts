@@ -12,6 +12,8 @@ export const ARTBOARD_HTML_TOO_LARGE_MESSAGE =
 	'Artboard HTML is too large to preview in the panel.';
 
 export type CanvasSnapshot = {
+	// The page the snapshot was read from; '' when no page was resolved (never with frames).
+	pageId: string;
 	activeArtboardId: string;
 	generation: number;
 	frames: CanvasViewFrame[];
@@ -20,6 +22,7 @@ export type CanvasSnapshot = {
 };
 
 export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => ({
+	pageId: '',
 	activeArtboardId: '',
 	generation: 0,
 	frames: [],

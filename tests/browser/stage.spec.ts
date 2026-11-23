@@ -406,6 +406,7 @@ test('dragging a label posts one whole-pixel frame:place; after the host answer 
 	await expect.poll(() => framePlaces(page)).toHaveLength(1);
 	expect((await framePlaces(page))[0]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 53,
 		y: 21,
@@ -428,12 +429,23 @@ test('dragging a label posts one whole-pixel frame:place; after the host answer 
 	await expect.poll(() => framePlaces(page)).toHaveLength(2);
 	expect((await framePlaces(page))[1]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 106,
 		y: 42,
 		width: 400,
 		base: { x: 53, y: 21, width: 400 },
 	});
+});
+
+test('a posted request names the page of the last canvas:updated', async ({ page }) => {
+	await openDraggableStage(page);
+	// The same frames, now read from page-2 (as after the open page changed on disk).
+	await postToChrome(page, { ...canvasUpdated([frameA(), frameB()]), pageId: 'page-2' });
+	await startLabelDrag(page);
+	await page.mouse.up();
+	await expect.poll(() => framePlaces(page)).toHaveLength(1);
+	expect((await framePlaces(page))[0]).toMatchObject({ type: 'frame:place', pageId: 'page-2' });
 });
 
 test('resizing below the minimum clamps the width and keeps the position', async ({ page }) => {
@@ -447,6 +459,7 @@ test('resizing below the minimum clamps the width and keeps the position', async
 	await expect.poll(() => framePlaces(page)).toHaveLength(1);
 	expect((await framePlaces(page))[0]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 0,
 		y: 0,
@@ -467,6 +480,7 @@ test('drag and resize at 50% zoom move by stage px, not screen px', async ({ pag
 	const moved = { x: Math.round(53 / zoom), y: Math.round(21 / zoom), width: 400 };
 	expect((await framePlaces(page))[0]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		...moved,
 		base: { x: 0, y: 0, width: 400 },
@@ -481,6 +495,7 @@ test('drag and resize at 50% zoom move by stage px, not screen px', async ({ pag
 	await expect.poll(() => framePlaces(page)).toHaveLength(2);
 	expect((await framePlaces(page))[1]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: moved.x,
 		y: moved.y,
@@ -533,6 +548,7 @@ test('a refused frame:place returns the frame, shows the error, and the next dra
 	await expect.poll(() => framePlaces(page)).toHaveLength(2);
 	expect((await framePlaces(page))[1]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 53,
 		y: 21,
@@ -584,6 +600,7 @@ test('arrow keys on a focused label nudge and commit once on release', async ({ 
 	await expect.poll(() => framePlaces(page)).toHaveLength(1);
 	expect((await framePlaces(page))[0]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 3 * NUDGE_STEP,
 		y: 0,
@@ -602,6 +619,7 @@ test('arrow keys on a focused label nudge and commit once on release', async ({ 
 	await expect.poll(() => framePlaces(page)).toHaveLength(2);
 	expect((await framePlaces(page))[1]).toEqual({
 		type: 'frame:place',
+		pageId: 'page-1',
 		id: 'a',
 		x: 4 * NUDGE_STEP,
 		y: NUDGE_STEP,

@@ -6,6 +6,7 @@ import type {
 	CommentSavedMessage,
 	CommentSetStatusMessage,
 	CopiedMessage,
+	PageFree,
 	PostedComment,
 	UiErrorMessage,
 } from './hostMessages';
@@ -119,7 +120,7 @@ export const submitReply = ({
 	actions: CommentActions;
 	id: string;
 	requestId: string;
-}): { actions: CommentActions; message?: CommentReplyMessage } => {
+}): { actions: CommentActions; message?: PageFree<CommentReplyMessage> } => {
 	const action = actions.get(id);
 	if (action?.reply === undefined || !canSubmitReply(action)) {
 		return { actions };
@@ -142,7 +143,7 @@ export const submitStatus = ({
 	actions: CommentActions;
 	comment: PostedComment;
 	requestId: string;
-}): { actions: CommentActions; message?: CommentSetStatusMessage } => {
+}): { actions: CommentActions; message?: PageFree<CommentSetStatusMessage> } => {
 	const action = actions.get(comment.id);
 	if (anythingPending(action)) {
 		return { actions };
@@ -203,7 +204,7 @@ export const submitCopy = ({
 	copyOpen: CopyOpenState;
 	id: string;
 	requestId: string;
-}): { actions: CommentActions; message?: CommentCopyMessage } => {
+}): { actions: CommentActions; message?: PageFree<CommentCopyMessage> } => {
 	const action = actions.get(id);
 	if (copyPending({ actions, copyOpen }) || anythingPending(action)) {
 		return { actions };
@@ -231,7 +232,7 @@ export const submitCopyOpen = ({
 	openCount: number;
 	copiedShowing: boolean;
 	requestId: string;
-}): { copyOpen: CopyOpenState; message?: CommentCopyOpenMessage } => {
+}): { copyOpen: CopyOpenState; message?: PageFree<CommentCopyOpenMessage> } => {
 	if (openCount === 0 || copiedShowing || copyPending({ actions, copyOpen })) {
 		return { copyOpen };
 	}

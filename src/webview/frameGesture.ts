@@ -1,4 +1,4 @@
-import type { FramePlaceMessage, FramePlacement } from './hostMessages';
+import type { FramePlaceMessage, FramePlacement, PageFree } from './hostMessages';
 import {
 	dragFrame,
 	NUDGE_STEP,
@@ -43,7 +43,10 @@ export type FrameGesture = {
 	phase: 'active' | 'committing';
 };
 
-export type FrameGestureStep = { gesture: FrameGesture | undefined; commit?: FramePlaceMessage };
+export type FrameGestureStep = {
+	gesture: FrameGesture | undefined;
+	commit?: PageFree<FramePlaceMessage>;
+};
 
 type DiskPlacementOf = (id: string) => FramePlacement | undefined;
 

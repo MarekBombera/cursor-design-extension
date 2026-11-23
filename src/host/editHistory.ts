@@ -20,6 +20,12 @@ type FrameHistory = {
 
 export type HistoryFlags = { canUndo: boolean; canRedo: boolean };
 
+// One frame's history on one page: the same frame id on two pages is two histories.
+export type HistoryKey = { pageId: string; frameId: string };
+
+// A page id has no '/' (PAGE_ID_PATTERN), so the first one splits the key unambiguously.
+const keyText = ({ pageId, frameId }: HistoryKey): string => `${pageId}/${frameId}`;
+
 const histories = new Map<string, FrameHistory>();
 
 // Bumped by every clear: a request that read the epoch before its awaited write records nothing
@@ -33,12 +39,12 @@ const stepEntry = (history: FrameHistory, step: HistoryStep): HistoryEntry | und
 
 // One written edit: base = the disk file it replaced, next = the file written.
 export const recordEdit = ({
+	pageId,
 	frameId,
 	base,
 	next,
 	epoch: requestEpoch,
-}: {
-	frameId: string;
+}: HistoryKey & {
 	base: HistoryEntry;
 	next: HistoryEntry;
 	epoch: number;
@@ -46,9 +52,9 @@ export const recordEdit = ({
 	if (requestEpoch !== epoch) {
 		return;
 	}
-	const history = histories.get(frameId);
+	const history = histories.get(keyText({ pageId, frameId }));
 	histories.set(
-		frameId,
+		keyText({ pageId, frameId }),
 		history?.current.hash === base.hash
 			? {
 					undo: [...history.undo, history.current].slice(-MAX_HISTORY_STEPS),
@@ -61,13 +67,13 @@ export const recordEdit = ({
 
 // What a step would write (target) over what the extension last wrote (base).
 export const historyStepTarget = ({
+	pageId,
 	frameId,
 	step,
-}: {
-	frameId: string;
+}: HistoryKey & {
 	step: HistoryStep;
 }): { base: HistoryEntry; target: HistoryEntry } | undefined => {
-	const history = histories.get(frameId);
+	const history = histories.get(keyText({ pageId, frameId }));
 	const target = history === undefined ? undefined : stepEntry(history, step);
 	return history === undefined || target === undefined
 		? undefined
@@ -77,27 +83,27 @@ export const historyStepTarget = ({
 // After a step's write succeeded over baseHash. A history that moved meanwhile is forgotten: it
 // no longer describes the file. A frame without history never gains one here.
 export const recordStep = ({
+	pageId,
 	frameId,
 	step,
 	baseHash,
 	epoch: requestEpoch,
-}: {
-	frameId: string;
+}: HistoryKey & {
 	step: HistoryStep;
 	baseHash: string;
 	epoch: number;
 }): void => {
-	const history = histories.get(frameId);
+	const history = histories.get(keyText({ pageId, frameId }));
 	if (requestEpoch !== epoch || history === undefined) {
 		return;
 	}
 	const target = stepEntry(history, step);
 	if (history.current.hash !== baseHash || target === undefined) {
-		histories.delete(frameId);
+		histories.delete(keyText({ pageId, frameId }));
 		return;
 	}
 	histories.set(
-		frameId,
+		keyText({ pageId, frameId }),
 		step === 'undo'
 			? {
 					undo: history.undo.slice(0, -1),
@@ -112,27 +118,33 @@ export const recordStep = ({
 	);
 };
 
-export const forgetHistory = (frameId: string): void => {
-	histories.delete(frameId);
+export const forgetHistory = (key: HistoryKey): void => {
+	histories.delete(keyText(key));
 };
 
 // The outside-change rule, per posted frame: a hash the history holds (current, undo or redo) is
 // its own write or a refresh that read disk before it; any other hash, '' (unreadable) included,
-// is a change from elsewhere and forgets that frame's history. Frames not listed are left alone.
+// is a change from elsewhere and forgets that frame's history. Frames not listed, and every other
+// page's histories, are left alone.
 // ponytail: an outside write that recreates exactly a held state (an editor undo in the .html, a
 // git checkout) is caught only by the next step's checked write, which then forgets the history.
 // Upgrade path: store each entry's generation; a held hash at a newer generation is outside.
-export const keepUnchangedHistories = (
-	frames: ReadonlyArray<{ id: string; hash: string }>,
-): void => {
+export const keepUnchangedHistories = ({
+	pageId,
+	frames,
+}: {
+	pageId: string;
+	frames: ReadonlyArray<{ id: string; hash: string }>;
+}): void => {
 	for (const frame of frames) {
-		const history = histories.get(frame.id);
+		const key = keyText({ pageId, frameId: frame.id });
+		const history = histories.get(key);
 		if (history === undefined) {
 			continue;
 		}
 		const held = [history.current, ...history.undo, ...history.redo];
 		if (!held.some((entry) => entry.hash === frame.hash)) {
-			histories.delete(frame.id);
+			histories.delete(key);
 		}
 	}
 };
@@ -143,8 +155,8 @@ export const clearEditHistories = (): void => {
 	epoch += 1;
 };
 
-export const historyFlags = (frameId: string): HistoryFlags => {
-	const history = histories.get(frameId);
+export const historyFlags = (key: HistoryKey): HistoryFlags => {
+	const history = histories.get(keyText(key));
 	return {
 		canUndo: history !== undefined && history.undo.length > 0,
 		canRedo: history !== undefined && history.redo.length > 0,

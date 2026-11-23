@@ -13,8 +13,8 @@ import {
 	DEFAULT_VIEWPORT,
 	MAX_PAGES,
 	MAX_PAGE_TITLE_CHARS,
-	PAGE_ID_PATTERN,
 	PROJECT_SCHEMA_VERSION,
+	isPageId,
 	SCHEMA_VERSION,
 } from './layout';
 import { hasControlChars } from '../webview/frame/frameMessages';
@@ -75,10 +75,6 @@ const metaSchema = z.object({
 	viewport: z.catch(nonEmptyString, DEFAULT_VIEWPORT),
 	updatedAt: nonEmptyString,
 });
-
-// The one page-id check: project.json entries, the page-folder scan, and later MCP args.
-export const isPageId = (value: unknown): value is string =>
-	typeof value === 'string' && PAGE_ID_PATTERN.test(value);
 
 const pageTitleString = z.string().check(
 	z.minLength(1),

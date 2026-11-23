@@ -9,16 +9,17 @@ import { createPanelOutbox } from './panelOutbox';
 const setup = () => {
 	const posted: HostMessage[] = [];
 	const nonce = { value: 'nonce-1' };
-	// A stand-in for the history store: flags per frame id, and every frame list it was asked to
-	// check.
+	// A stand-in for the history store: flags per `pageId/frameId`, and every page and frame list
+	// it was asked to check.
 	const flags = new Map<string, HistoryFlags>();
 	const checked: string[][] = [];
 	const outbox = createPanelOutbox({
 		post: (message) => posted.push(message),
 		readCspNonce: () => nonce.value,
-		readHistoryFlags: (frameId) => flags.get(frameId) ?? { canUndo: false, canRedo: false },
-		keepUnchangedHistories: (frames) => {
-			checked.push(frames.map((frame) => `${frame.id}@${frame.hash}`));
+		readHistoryFlags: ({ pageId, frameId }) =>
+			flags.get(`${pageId}/${frameId}`) ?? { canUndo: false, canRedo: false },
+		keepUnchangedHistories: ({ pageId, frames }) => {
+			checked.push(frames.map((frame) => `${pageId}/${frame.id}@${frame.hash}`));
 		},
 	});
 	const types = (): string[] => posted.map(({ type }) => type);
@@ -37,6 +38,7 @@ const frame = (id: string, hash: string): CanvasSnapshot['frames'][number] => ({
 });
 
 const snapshot = (overrides: Partial<CanvasSnapshot> = {}): CanvasSnapshot => ({
+	pageId: 'page-1',
 	activeArtboardId: 'hero',
 	generation: 3,
 	frames: [],
@@ -57,7 +59,9 @@ test('a second artboard:ready (webview reload) re-sends the last view, error and
 	const { outbox, posted } = setup();
 	outbox.postUiStatus({ mcpAvailable: true });
 	outbox.postSnapshot(snapshot({ generation: 1 }));
-	outbox.postSnapshot(snapshot({ generation: 2, errorMessage: 'broken', handoffStale: true }));
+	outbox.postSnapshot(
+		snapshot({ pageId: 'page-2', generation: 2, errorMessage: 'broken', handoffStale: true }),
+	);
 	outbox.markReady();
 	const first = posted.splice(0);
 	outbox.markReady();
@@ -65,6 +69,7 @@ test('a second artboard:ready (webview reload) re-sends the last view, error and
 	assert.deepEqual(posted, [
 		{
 			type: 'canvas:updated',
+			pageId: 'page-2',
 			activeArtboardId: 'hero',
 			generation: 2,
 			frames: [],
@@ -118,15 +123,17 @@ test('reset (dispose) drops the view and stale flag and waits for ready, keeping
 
 test('comments queued before ready flush after the view and status, and every ready re-sends them', () => {
 	const { outbox, posted, types } = setup();
-	outbox.postComments({ comments: [], error: 'broken' });
+	outbox.postComments({ pageId: 'page-2', comments: [], error: 'broken' });
 	outbox.postSnapshot(snapshot());
 	outbox.postUiStatus({ mcpAvailable: true });
 	outbox.markReady();
 	assert.deepEqual(types(), ['canvas:updated', 'ui:status', 'comments:updated']);
-	assert.deepEqual(posted.at(-1), { type: 'comments:updated', comments: [], error: 'broken' });
+	const comments = { type: 'comments:updated', pageId: 'page-2', comments: [], error: 'broken' };
+	assert.deepEqual(posted.at(-1), comments);
 	posted.length = 0;
 	outbox.markReady();
 	assert.deepEqual(types(), ['canvas:updated', 'ui:status', 'comments:updated']);
+	assert.deepEqual(posted.at(-1), comments);
 });
 
 test('an answer before ready is dropped and never replayed; after ready it posts once', () => {
@@ -161,7 +168,7 @@ test('an artboard:edited answer before ready is dropped and never replayed', () 
 
 test('reset drops the cached comments', () => {
 	const { outbox, types } = setup();
-	outbox.postComments({ comments: [] });
+	outbox.postComments({ pageId: 'page-1', comments: [] });
 	outbox.reset();
 	outbox.markReady();
 	assert.deepEqual(types(), []);
@@ -172,8 +179,10 @@ test('every new snapshot is checked against the history; a replay is not', () =>
 	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:a')] }));
 	outbox.markReady();
 	outbox.markReady();
-	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:b'), frame('card', '')] }));
-	assert.deepEqual(checked, [['hero@sha256:a'], ['hero@sha256:b', 'card@']]);
+	outbox.postSnapshot(
+		snapshot({ pageId: 'page-2', frames: [frame('hero', 'sha256:b'), frame('card', '')] }),
+	);
+	assert.deepEqual(checked, [['page-1/hero@sha256:a'], ['page-2/hero@sha256:b', 'page-2/card@']]);
 });
 
 test('canvas:updated reads the history flags when sent, so a replay sees later changes', () => {
@@ -185,9 +194,9 @@ test('canvas:updated reads the history flags when sent, so a replay sees later c
 				message.frames.map(({ id, canUndo, canRedo }) => ({ id, canUndo, canRedo })),
 			);
 	outbox.postSnapshot(snapshot({ frames: [frame('hero', 'sha256:a'), frame('card', 'sha256:c')] }));
-	flags.set('hero', { canUndo: true, canRedo: false });
+	flags.set('page-1/hero', { canUndo: true, canRedo: false });
 	outbox.markReady();
-	flags.set('hero', { canUndo: false, canRedo: true });
+	flags.set('page-1/hero', { canUndo: false, canRedo: true });
 	outbox.markReady();
 	assert.deepEqual(sentFlags(), [
 		[
@@ -198,5 +207,18 @@ test('canvas:updated reads the history flags when sent, so a replay sees later c
 			{ id: 'hero', canUndo: false, canRedo: true },
 			{ id: 'card', canUndo: false, canRedo: false },
 		],
+	]);
+});
+
+test('canvas:updated reads the flags of the posted page only', () => {
+	const { outbox, posted, flags } = setup();
+	flags.set('page-1/hero', { canUndo: true, canRedo: true });
+	outbox.markReady();
+	outbox.postSnapshot(snapshot({ pageId: 'page-2', frames: [frame('hero', 'sha256:a')] }));
+	const [sent] = posted;
+	assert.ok(sent?.type === 'canvas:updated');
+	assert.deepEqual(sent.frames[0] && [sent.frames[0].canUndo, sent.frames[0].canRedo], [
+		false,
+		false,
 	]);
 });

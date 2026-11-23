@@ -19,6 +19,7 @@ import type { CommentCreateMessage } from '../webview/hostMessages';
 
 const validPlace = {
 	type: 'frame:place',
+	pageId: 'page-1',
 	id: 'hero',
 	x: -16,
 	y: 64,
@@ -79,6 +80,7 @@ test('isFramePlaceAttempt flags any frame:place, valid or not, and nothing else'
 const validCreate: CommentCreateMessage = {
 	type: 'comment:create',
 	requestId: 'a1b2-C3_d4',
+	pageId: 'page-1',
 	frameId: 'hero',
 	generation: 2,
 	selector: '.card:nth-of-type(3)',
@@ -126,8 +128,20 @@ test('comment:create rejects bad ids, tags, text, numbers, styles and shapes', (
 	}
 });
 
-const validReply = { type: 'comment:reply', requestId: 'r-2', id: 'c_1', body: 'More detail' };
-const validStatus = { type: 'comment:set-status', requestId: 'r-3', id: 'c_1', status: 'resolved' };
+const validReply = {
+	type: 'comment:reply',
+	requestId: 'r-2',
+	pageId: 'page-1',
+	id: 'c_1',
+	body: 'More detail',
+};
+const validStatus = {
+	type: 'comment:set-status',
+	requestId: 'r-3',
+	pageId: 'page-1',
+	id: 'c_1',
+	status: 'resolved',
+};
 
 test('comment:reply and comment:set-status parse', () => {
 	assert.deepEqual(parseChromeMessage(validReply), validReply);
@@ -156,8 +170,8 @@ test('comment:reply and comment:set-status reject sent, bad ids, missing body an
 });
 
 test('comment:copy and comment:copy-open parse; bad ids and requestIds are rejected but answerable', () => {
-	const copy = { type: 'comment:copy', requestId: 'r-4', id: 'c-1' };
-	const copyOpen = { type: 'comment:copy-open', requestId: 'r-5' };
+	const copy = { type: 'comment:copy', requestId: 'r-4', pageId: 'page-1', id: 'c-1' };
+	const copyOpen = { type: 'comment:copy-open', requestId: 'r-5', pageId: 'page-1' };
 	assert.deepEqual(parseChromeMessage({ ...copy, extra: 1 }), copy);
 	assert.deepEqual(parseChromeMessage(copyOpen), copyOpen);
 	for (const broken of [
@@ -263,6 +277,7 @@ const HASH = `sha256:${'a'.repeat(64)}`;
 const textEdit = {
 	type: 'artboard:edit',
 	requestId: 'edit-1',
+	pageId: 'page-1',
 	frameId: 'hero',
 	sourceNumber: 3,
 	hash: HASH,
@@ -274,6 +289,7 @@ const textEdit = {
 const styleEdit = {
 	type: 'artboard:edit',
 	requestId: 'edit-2',
+	pageId: 'page-1',
 	frameId: 'hero',
 	sourceNumber: 0,
 	hash: HASH,
@@ -334,7 +350,13 @@ test('a malformed artboard:edit is still an attempt with an answerable requestId
 });
 
 test('artboard:history parses its shape only; every claim is an attempt', () => {
-	const undo = { type: 'artboard:history', requestId: 'step-1', frameId: 'hero', step: 'undo' };
+	const undo = {
+		type: 'artboard:history',
+		requestId: 'step-1',
+		pageId: 'page-1',
+		frameId: 'hero',
+		step: 'undo',
+	};
 	assert.deepEqual(parseChromeMessage(undo), undo);
 	assert.deepEqual(parseChromeMessage({ ...undo, step: 'redo', extra: 1 }), {
 		...undo,
@@ -351,4 +373,34 @@ test('artboard:history parses its shape only; every claim is an attempt', () => 
 	}
 	assert.equal(isArtboardHistoryAttempt({ type: 'artboard:edit' }), false);
 	assert.equal(isArtboardEditAttempt(undo), false);
+});
+
+test('every page-bound request needs a valid pageId; a missing or bad one is malformed', () => {
+	const requests: Record<string, unknown>[] = [
+		validPlace,
+		validCreate,
+		validReply,
+		validStatus,
+		{ type: 'comment:copy', requestId: 'r-4', pageId: 'page-1', id: 'c-1' },
+		{ type: 'comment:copy-open', requestId: 'r-5', pageId: 'page-1' },
+		textEdit,
+		{
+			type: 'artboard:history',
+			requestId: 'step-1',
+			pageId: 'page-2',
+			frameId: 'hero',
+			step: 'undo',
+		},
+	];
+	for (const request of requests) {
+		assert.deepEqual(parseChromeMessage(request), request, String(request.type));
+		const { pageId: _pageId, ...withoutPageId } = request;
+		for (const broken of [
+			withoutPageId,
+			{ ...request, pageId: '../x' },
+			{ ...request, pageId: '' },
+		]) {
+			assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken).slice(0, 120));
+		}
+	}
 });

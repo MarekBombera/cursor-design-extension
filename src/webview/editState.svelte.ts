@@ -49,14 +49,24 @@ export class EditState {
 
 	readonly #canvas: CanvasState;
 	readonly #picker: CommentPicker;
+	readonly #pageId: string;
 
 	readonly requestError = $derived(this.requests.error?.message);
 	// After a written step or a saved Reset / Add border; a repeat still speaks (liveRegionText).
 	readonly announcement = $derived(liveRegionText(this.#announcement));
 
-	constructor({ canvas, picker }: { canvas: CanvasState; picker: CommentPicker }) {
+	constructor({
+		canvas,
+		picker,
+		pageId,
+	}: {
+		canvas: CanvasState;
+		picker: CommentPicker;
+		pageId: string;
+	}) {
 		this.#canvas = canvas;
 		this.#picker = picker;
+		this.#pageId = pageId;
 	}
 
 	// A getter, not a field $derived: #canvas is set in the constructor, after field initializers.
@@ -88,7 +98,7 @@ export class EditState {
 		});
 		this.requests = step.state;
 		if (step.send !== undefined) {
-			postEditRequest(step.send);
+			postEditRequest(this.#pageId, step.send);
 		}
 	};
 
@@ -190,6 +200,12 @@ export class EditState {
 			this.#announce(announcement);
 		}
 		return true;
+	};
+
+	// The page is going away: open drafts end unsaved, before the unmount blurs their field (a blur
+	// commits). No revert: their document goes too.
+	discardDrafts = (): void => {
+		this.drafts = {};
 	};
 
 	handleFieldCommit = (field: EditField): void => {

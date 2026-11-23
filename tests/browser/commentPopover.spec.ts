@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 
 import { FRAME_KEY_MESSAGE } from '../../src/webview/frame/frameMessages';
 import type { PostedCanvasFrame } from '../../src/webview/hostMessages';
+import { parseSavedCommentUi } from '../../src/webview/savedState';
 import {
 	type Box,
 	boxOf,
@@ -85,7 +86,7 @@ test('a broken comments.json shows its own banner and never blanks the stage', a
 	await expect(banner).toBeHidden();
 	const error =
 		'comments.json is not valid. Fix or delete .cursor-design/pages/page-1/comments.json.';
-	await postToChrome(page, { type: 'comments:updated', comments: [], error });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [], error });
 	await expect(banner).toBeVisible();
 	await expect(banner).toHaveText(error);
 	await expect(banner).toHaveAttribute('role', 'alert');
@@ -96,7 +97,7 @@ test('a broken comments.json shows its own banner and never blanks the stage', a
 	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
 	await expect(banner).toHaveText(error);
 
-	await postToChrome(page, { type: 'comments:updated', comments: [] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [] });
 	await expect(banner).toBeHidden();
 });
 
@@ -323,6 +324,7 @@ test('Enter posts one comment:create from the last pick; Shift+Enter is a newlin
 		requestId: expect.stringMatching(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 		),
+		pageId: 'page-1',
 		frameId: 'a',
 		generation: 1,
 		...pick,
@@ -531,10 +533,9 @@ test('a forged cd:key from the design never discards the open draft', async ({ p
 	await expect(commentBox(page)).toHaveValue('Draft');
 });
 
-const savedDraftBody = async (page: Page): Promise<unknown> => {
-	const draft = (await savedRecord(page)).commentDraft;
-	return typeof draft === 'object' && draft !== null && 'body' in draft ? draft.body : undefined;
-};
+// The saved draft slot is { pageId, draft }.
+const savedDraftBody = async (page: Page): Promise<unknown> =>
+	parseSavedCommentUi(await savedRecord(page)).commentDraft?.draft.body;
 
 const typeDraft = async (page: Page, text: string): Promise<void> => {
 	await openTwoFrames(page);
@@ -549,7 +550,7 @@ test('a tab switch keeps Comment mode and the typed draft on its target, focused
 	await typeDraft(page, 'Make it bolder');
 	await reload(page);
 	await postToChrome(page, canvasUpdated([FRAME_A, FRAME_B]));
-	await postToChrome(page, { type: 'comments:updated', comments: [] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [] });
 	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
 	await expect(popover(page)).toBeVisible();
 	await expect(popoverTarget(page)).toHaveText('Title A');

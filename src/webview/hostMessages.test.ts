@@ -17,6 +17,7 @@ const validFrame = {
 };
 const validUpdate = {
 	type: 'canvas:updated',
+	pageId: 'page-1',
 	activeArtboardId: 'a',
 	generation: 3,
 	cspNonce: 'n',
@@ -34,6 +35,9 @@ test('a valid canvas:updated parses with its frames', () => {
 
 test('canvas:updated with any top-level field wrong is rejected', () => {
 	for (const broken of [
+		{ pageId: undefined },
+		{ pageId: '../x' },
+		{ pageId: 'page-0' },
 		{ activeArtboardId: 1 },
 		{ cspNonce: undefined },
 		{ generation: Number.NaN },
@@ -47,6 +51,14 @@ test('canvas:updated with any top-level field wrong is rejected', () => {
 			JSON.stringify(broken),
 		);
 	}
+});
+
+test("canvas:updated accepts pageId '' (no page resolved)", () => {
+	assert.deepEqual(parseHostMessage({ ...validUpdate, pageId: '', frames: [] }), {
+		...validUpdate,
+		pageId: '',
+		frames: [],
+	});
 });
 
 test('invalid frame entries are dropped and the valid ones kept in order', () => {
@@ -156,9 +168,10 @@ test('comments:updated drops a malformed comment and keeps the valid one', () =>
 	assert.deepEqual(
 		parseHostMessage({
 			type: 'comments:updated',
+			pageId: 'page-1',
 			comments: [{ ...validComment, selector: 'h1\nh2' }, validComment],
 		}),
-		{ type: 'comments:updated', comments: [validComment] },
+		{ type: 'comments:updated', pageId: 'page-1', comments: [validComment] },
 	);
 });
 
@@ -169,6 +182,7 @@ test('comments:updated keeps true, false and null flags and drops anything else'
 	assert.deepEqual(
 		parseHostMessage({
 			type: 'comments:updated',
+			pageId: 'page-1',
 			comments: [
 				validComment,
 				{ ...validComment, id: 'c4', stale: 'yes' },
@@ -176,16 +190,24 @@ test('comments:updated keeps true, false and null flags and drops anything else'
 				unchecked,
 			],
 		}),
-		{ type: 'comments:updated', comments: [validComment, unchecked] },
+		{ type: 'comments:updated', pageId: 'page-1', comments: [validComment, unchecked] },
 	);
 });
 
-test('comments:updated with a non-array list or a non-string error is rejected', () => {
-	assert.equal(parseHostMessage({ type: 'comments:updated', comments: {} }), undefined);
-	assert.equal(parseHostMessage({ type: 'comments:updated', comments: [], error: 7 }), undefined);
-	// An empty error is kept; Banners hides it.
-	assert.deepEqual(parseHostMessage({ type: 'comments:updated', comments: [], error: '' }), {
+test('comments:updated with a bad pageId, a non-array list or a non-string error is rejected', () => {
+	const list = { type: 'comments:updated', pageId: 'page-1', comments: [] };
+	for (const broken of [
+		{ pageId: undefined },
+		{ pageId: '../x' },
+		{ comments: {} },
+		{ error: 7 },
+	]) {
+		assert.equal(parseHostMessage({ ...list, ...broken }), undefined, JSON.stringify(broken));
+	}
+	// An empty error is kept; Banners hides it. '' is "no page".
+	assert.deepEqual(parseHostMessage({ ...list, pageId: '', error: '' }), {
 		type: 'comments:updated',
+		pageId: '',
 		comments: [],
 		error: '',
 	});

@@ -56,6 +56,7 @@ const viewFrame = (
 };
 
 const snapshotWithFrames = (frames: CanvasViewFrame[]): CanvasSnapshot => ({
+	pageId: 'page-1',
 	activeArtboardId: frames[0]?.id ?? '',
 	generation: frames[0]?.generation ?? 0,
 	frames,

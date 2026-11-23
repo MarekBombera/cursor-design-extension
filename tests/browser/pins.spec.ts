@@ -147,7 +147,7 @@ const openPinStage = async (page: Page, comments: PostedComment[] = ALL): Promis
 	await openHarness(page, { savedView: { x: 40, y: 60, zoom: 1 } });
 	await postToChrome(page, canvasUpdated([FRAME]));
 	await untilHeightReported(page, 'a');
-	await postToChrome(page, { type: 'comments:updated', comments });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments });
 	await expect.poll(() => anchorAnswers(page)).toBeGreaterThan(0);
 	return stageBox(page);
 };
@@ -384,7 +384,7 @@ test('the pin observer watches only current targets and stops on empty anchors',
 	// Every comments:updated makes the frame answer once (a forced measurement).
 	const sendComments = async (comments: PostedComment[]): Promise<void> => {
 		const answers = await anchorAnswers(page);
-		await postToChrome(page, { type: 'comments:updated', comments });
+		await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments });
 		await expect.poll(() => anchorAnswers(page)).toBeGreaterThan(answers);
 	};
 	const observed = (): Promise<unknown> =>
@@ -515,7 +515,7 @@ test('a comments:updated without the open comment closes it and focuses the stag
 	await openPinStage(page, [THREADED, MOVER]);
 	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
 	await openThread(page, TITLE.id);
-	await postToChrome(page, { type: 'comments:updated', comments: [MOVER] });
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [MOVER] });
 	await expect(thread(page)).toHaveCount(0);
 	await expect(page.locator('.viewport')).toBeFocused();
 });

@@ -11,12 +11,11 @@ import {
 	UnsupportedProjectVersionError,
 } from './errors';
 import { hashHtml } from './hash';
-import { DEFAULT_VIEWPORT, FIRST_PAGE_ID } from './layout';
+import { DEFAULT_VIEWPORT, FIRST_PAGE_ID, isPageId } from './layout';
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
 	type Project,
-	isPageId,
 	parseManifest,
 	parseMeta,
 	parseProject,

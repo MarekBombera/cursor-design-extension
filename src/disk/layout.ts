@@ -230,6 +230,11 @@ export const MAX_PAGE_TITLE_CHARS = 80;
 
 export const PAGE_ID_PATTERN = /^page-[1-9][0-9]{0,5}$/;
 
+// The one page-id check: project.json entries, the page-folder scan, chrome messages and later MCP
+// args.
+export const isPageId = (value: unknown): value is string =>
+	typeof value === 'string' && PAGE_ID_PATTERN.test(value);
+
 // The four per-page names, in migration order (artboards first).
 export const PAGE_ENTRIES = [ARTBOARDS_DIR, MANIFEST_FILE, CANVAS_FILE, COMMENTS_FILE] as const;
 

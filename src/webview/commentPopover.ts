@@ -1,7 +1,12 @@
 import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { CommentStyles, FramePickMessage, FrameRect } from './frame/frameMessages';
-import type { CommentAddedMessage, CommentCreateMessage, UiErrorMessage } from './hostMessages';
+import type {
+	CommentAddedMessage,
+	CommentCreateMessage,
+	PageFree,
+	UiErrorMessage,
+} from './hostMessages';
 import { clampNumber, stageToScreen, type StagePoint, type StageView } from './stageGeometry';
 
 export type DraftTarget = {
@@ -157,7 +162,7 @@ export const submitDraft = ({
 	draft: CommentDraft;
 	body: string;
 	requestId: string;
-}): { draft: CommentDraft; message: CommentCreateMessage } | undefined => {
+}): { draft: CommentDraft; message: PageFree<CommentCreateMessage> } | undefined => {
 	const { selector } = draft.target;
 	if (!canSubmit(draft, body) || selector === null) {
 		return undefined;
@@ -222,6 +227,27 @@ export const resolveHeldDraft = ({
 }): { draft?: CommentDraft } => {
 	const draft = keepLiveDraft({ draft: held, commentMode, liveFrameIds: liveIframeIds(frames) });
 	return draft === undefined ? {} : { draft };
+};
+
+// The one comment draft slot: a saved draft (never pending, never with an error) and its page.
+export type CommentDraftSlot = { pageId: string; draft: CommentDraft };
+
+// The slot after a read of the mounted page (undefined: none mounted). A '' page is "no page" and
+// never writes it; a page with no draft clears only its own draft, never another page's.
+export const keptCommentDraft = ({
+	slot,
+	page,
+}: {
+	slot: CommentDraftSlot | undefined;
+	page: { pageId: string; draft: CommentDraft | undefined } | undefined;
+}): CommentDraftSlot | undefined => {
+	if (page === undefined || page.pageId === '') {
+		return slot;
+	}
+	if (page.draft !== undefined) {
+		return { pageId: page.pageId, draft: page.draft };
+	}
+	return slot?.pageId === page.pageId ? undefined : slot;
 };
 
 // Frame data, rendered as text only.

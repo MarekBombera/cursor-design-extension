@@ -4,13 +4,17 @@ import { test } from 'vite-plus/test';
 import { MAX_COMMENTS } from '../disk/layout';
 import { parseSavedCommentUi, parseSavedStageView } from './savedState';
 
-test('saved stage view needs finite x, y and a positive finite zoom', () => {
-	assert.deepEqual(parseSavedStageView({ x: -5, y: 2, zoom: 0.5, extra: 1 }), {
+test('saved stage view needs finite x, y, a positive finite zoom and a page id', () => {
+	assert.deepEqual(parseSavedStageView({ x: -5, y: 2, zoom: 0.5, pageId: 'page-2', extra: 1 }), {
 		x: -5,
 		y: 2,
 		zoom: 0.5,
+		pageId: 'page-2',
 	});
 	for (const value of [
+		{ x: 0, y: 0, zoom: 1 },
+		{ x: 0, y: 0, zoom: 1, pageId: '' },
+		{ x: 0, y: 0, zoom: 1, pageId: '../x' },
 		null,
 		undefined,
 		'view',
@@ -35,9 +39,10 @@ const savedTarget = {
 	isPage: false,
 };
 const savedDraft = { frameId: 'a', generation: 2, target: savedTarget, body: 'Bolder' };
+const savedSlot = { pageId: 'page-1', draft: savedDraft };
 const savedUi = {
 	mode: 'comment',
-	commentDraft: savedDraft,
+	commentDraft: savedSlot,
 	replyDrafts: { c1: 'Thanks', c2: '' },
 };
 
@@ -96,7 +101,10 @@ test('saved comment UI: a malformed draft is dropped alone', () => {
 		{ target: null },
 	]) {
 		assert.deepEqual(
-			parseSavedCommentUi({ ...savedUi, commentDraft: { ...savedDraft, ...broken } }),
+			parseSavedCommentUi({
+				...savedUi,
+				commentDraft: { ...savedSlot, draft: { ...savedDraft, ...broken } },
+			}),
 			{ mode: 'comment', replyDrafts: savedUi.replyDrafts },
 			JSON.stringify(broken),
 		);
@@ -105,19 +113,37 @@ test('saved comment UI: a malformed draft is dropped alone', () => {
 	const atCap = { ...savedDraft, body: 'a'.repeat(2000) };
 	assert.deepEqual(
 		parseSavedCommentUi({
-			commentDraft: { ...atCap, pendingRequestId: 'r1', error: 'Pick it again.' },
+			commentDraft: {
+				pageId: 'page-1',
+				draft: { ...atCap, pendingRequestId: 'r1', error: 'Pick it again.' },
+			},
 		}).commentDraft,
-		atCap,
+		{ pageId: 'page-1', draft: atCap },
 	);
 });
 
-test('saved comment UI: a bad thread id is dropped, and a draft wins over a thread', () => {
+test('saved comment UI: a draft without a good page id is dropped alone', () => {
+	for (const commentDraft of [
+		savedDraft,
+		{ draft: savedDraft },
+		{ pageId: '', draft: savedDraft },
+		{ pageId: '../x', draft: savedDraft },
+	]) {
+		assert.deepEqual(
+			parseSavedCommentUi({ ...savedUi, commentDraft, openThreadId: 'c1' }),
+			{ mode: 'comment', openThreadId: 'c1', replyDrafts: savedUi.replyDrafts },
+			JSON.stringify(commentDraft),
+		);
+	}
+});
+
+test('saved comment UI: a bad thread id is dropped, and a draft and a thread are both kept', () => {
 	for (const openThreadId of ['', 'c 1', 'a'.repeat(65), 7]) {
 		assert.equal(parseSavedCommentUi({ openThreadId }).openThreadId, undefined);
 	}
-	const both = parseSavedCommentUi({ commentDraft: savedDraft, openThreadId: 'c1' });
-	assert.deepEqual(both.commentDraft, savedDraft);
-	assert.equal(both.openThreadId, undefined);
+	const both = parseSavedCommentUi({ commentDraft: savedSlot, openThreadId: 'c1' });
+	assert.deepEqual(both.commentDraft, savedSlot);
+	assert.equal(both.openThreadId, 'c1');
 });
 
 test('saved reply drafts drop bad entries one by one and keep at most MAX_COMMENTS', () => {

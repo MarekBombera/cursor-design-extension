@@ -20,10 +20,11 @@ import {
 	CorruptProjectError,
 	DiskError,
 	MigrationConflictError,
+	PageNotFoundError,
 	UnsupportedProjectVersionError,
 } from './errors';
 import { PAGE_ENTRIES, type PageEntry } from './layout';
-import { resolveOpenPage } from './openPage';
+import { resolveOpenPage, resolveRequestedPage } from './openPage';
 import type { WithWorkspaceLockArgs } from './workspaceLock';
 
 // onLocked runs once the resolver holds the lock, before its locked work: another process that
@@ -525,4 +526,64 @@ test('a file at pages/page-1 in a legacy folder is the directory DiskError and m
 			error.message === '.cursor-design/pages/page-1 must be a directory (symlinks rejected).',
 	);
 	assert.deepEqual(await readTree(root), before);
+});
+
+// page-1 open, page-2 indexed with its folder, page-3 indexed with no folder.
+const seedTwoPageProject = async (root: string): Promise<void> => {
+	await mkdir(pageOneDir(root), { recursive: true });
+	await mkdir(designDir(root, 'pages', 'page-2'));
+	await writeFile(designDir(root, 'artboards'), TOMBSTONE_TEXT);
+	await writeFile(
+		designDir(root, 'project.json'),
+		JSON.stringify({
+			...PAGE_ONE_PROJECT,
+			pages: [
+				{ id: 'page-1', title: 'Page 1' },
+				{ id: 'page-2', title: 'Page 2' },
+				{ id: 'page-3', title: 'Page 3' },
+			],
+		}),
+	);
+};
+
+test('resolveRequestedPage returns the open page or another indexed page with a folder', async () => {
+	const root = await makeTempRoot();
+	await seedTwoPageProject(root);
+	const before = await readTree(root, { withMtime: true });
+	for (const pageId of ['page-1', 'page-2']) {
+		assert.deepEqual(await resolveRequestedPage({ workspaceRoot: root, pageId }), {
+			workspaceRoot: root,
+			pageId,
+		});
+	}
+	assert.deepEqual(await readTree(root, { withMtime: true }), before);
+});
+
+test('resolveRequestedPage refuses an unindexed id, an unindexed folder, a missing folder and a malformed id', async () => {
+	const root = await makeTempRoot();
+	await seedTwoPageProject(root);
+	// page-5 has a folder that project.json does not list: only the index check refuses it.
+	await mkdir(designDir(root, 'pages', 'page-5'));
+	const before = await readTree(root, { withMtime: true });
+	for (const pageId of ['page-4', 'page-5', 'page-3', '../x']) {
+		await assert.rejects(
+			resolveRequestedPage({ workspaceRoot: root, pageId }),
+			(error: unknown) => error instanceof PageNotFoundError && error.pageId === pageId,
+			pageId,
+		);
+	}
+	assert.deepEqual(await readTree(root, { withMtime: true }), before);
+});
+
+test('on a fresh folder page-1 is the open page and page-2 is not found; nothing is written', async () => {
+	const root = await makeTempRoot();
+	assert.deepEqual(await resolveRequestedPage({ workspaceRoot: root, pageId: 'page-1' }), {
+		workspaceRoot: root,
+		pageId: 'page-1',
+	});
+	await assert.rejects(
+		resolveRequestedPage({ workspaceRoot: root, pageId: 'page-2' }),
+		(error: unknown) => error instanceof PageNotFoundError && error.code === 'PAGE_NOT_FOUND',
+	);
+	assert.deepEqual(await readdir(root), []);
 });

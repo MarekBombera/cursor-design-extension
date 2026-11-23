@@ -370,7 +370,7 @@ export const openScene = async ({
 	await openHarness(page, {
 		vscodeHost: theme,
 		state: {
-			stageView: options.view ?? VIEW,
+			stageView: { ...(options.view ?? VIEW), pageId: 'page-1' },
 			...(options.panel === true ? { commentsPanelOpen: true } : {}),
 		},
 	});
@@ -398,7 +398,7 @@ export const openScene = async ({
 				)
 				.map((definition) => buildComment(page, definition)),
 		);
-		await postToChrome(page, { type: 'comments:updated', comments });
+		await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments });
 		for (const id of IFRAME_IDS) {
 			const wanted = definitions.some(
 				(definition) => definition.frameId === id && definition.isPage !== true,

@@ -1,7 +1,7 @@
 import { expect, type Locator, test } from '@playwright/test';
 
 import type { PostedComment } from '../../src/webview/hostMessages';
-import { clickChrome, openHarness, panelItem, postToChrome } from './harness';
+import { canvasUpdated, clickChrome, openHarness, panelItem, postToChrome } from './harness';
 import { VSCODE_THEME_VARIABLES } from './vscodeHost';
 
 // theme.css against Cursor's real _defaultStyles (vscodeHost.ts), mostly in Light Modern: the global layer
@@ -48,7 +48,9 @@ test('a primary button gets the offset 2px ring and the textarea the inset 1px r
 	page,
 }) => {
 	await openHarness(page, { vscodeHost: 'light' });
-	await postToChrome(page, { type: 'comments:updated', comments: [COMMENT] });
+	// A list shows only on its own page, so page-1 is staged first (with no frames).
+	await postToChrome(page, canvasUpdated([]));
+	await postToChrome(page, { type: 'comments:updated', pageId: 'page-1', comments: [COMMENT] });
 	await clickChrome(page.getByRole('button', { name: /^Comments/ }));
 	await clickChrome(
 		panelItem(page, COMMENT.id).getByRole('button', { name: 'Reply', exact: true }),

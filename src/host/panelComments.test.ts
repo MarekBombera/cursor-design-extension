@@ -8,11 +8,17 @@ import {
 	COPY_FAILED_MESSAGE,
 	MALFORMED_CHANGE_MESSAGE,
 	NOTHING_OPEN_MESSAGE,
+	PAGE_GONE_MESSAGE,
 } from './panelRequestCopy';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import type { CommentView } from '../disk/commentViews';
-import { CommentNotFoundError, LockTimeoutError, MigrationConflictError } from '../disk/errors';
-import { answerCommentRequest } from './panelComments';
+import {
+	CommentNotFoundError,
+	LockTimeoutError,
+	MigrationConflictError,
+	PageNotFoundError,
+} from '../disk/errors';
+import { answerCommentRequest, postPanelComments } from './panelComments';
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, calls: [] as string[], clipboard: '' }));
@@ -40,9 +46,14 @@ vi.mock('../panel/openArtboardPanel', () => ({
 	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
 	postCommentsToPanel: vi.fn(() => host.calls.push('comments:updated')),
 }));
+// page-1 is open; the requests below name page-2.
 vi.mock('../disk/openPage', () => ({
 	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
 		Promise.resolve({ workspaceRoot, pageId: 'page-1' }),
+	),
+	resolveRequestedPage: vi.fn(
+		({ workspaceRoot, pageId }: { workspaceRoot: string; pageId: string }) =>
+			Promise.resolve({ workspaceRoot, pageId }),
 	),
 }));
 vi.mock('../disk/comments', () => ({
@@ -58,10 +69,17 @@ vi.mock('../disk/comments', () => ({
 	}),
 }));
 
-const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
-const { addComment, replyToComment, setCommentStatus, getComment, listComments, markCommentsSent } =
-	await import('../disk/comments');
-const { resolveOpenPage } = await import('../disk/openPage');
+const { postAnswerToPanel, postCommentsToPanel } = await import('../panel/openArtboardPanel');
+const {
+	addComment,
+	replyToComment,
+	setCommentStatus,
+	getComment,
+	listComments,
+	markCommentsSent,
+	readComments,
+} = await import('../disk/comments');
+const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
 const { logDiskError } = await import('./hostFs');
 
 const outputChannel = {} as vscode.OutputChannel;
@@ -71,6 +89,7 @@ const flushRefresh = (): Promise<void> => new Promise((resolve) => setImmediate(
 const create = {
 	type: 'comment:create',
 	requestId: 'req-1',
+	pageId: 'page-2',
 	frameId: 'hero',
 	generation: 1,
 	selector: 'h1',
@@ -83,11 +102,23 @@ const create = {
 	isPage: false,
 	body: 'Fix this',
 };
-const reply = { type: 'comment:reply', requestId: 'req-2', id: 'c-1', body: 'Done' };
-const setStatus = { type: 'comment:set-status', requestId: 'req-3', id: 'c-1', status: 'resolved' };
+const reply = {
+	type: 'comment:reply',
+	requestId: 'req-2',
+	pageId: 'page-2',
+	id: 'c-1',
+	body: 'Done',
+};
+const setStatus = {
+	type: 'comment:set-status',
+	requestId: 'req-3',
+	pageId: 'page-2',
+	id: 'c-1',
+	status: 'resolved',
+};
 
-const copy = { type: 'comment:copy', requestId: 'req-4', id: 'c-1' };
-const copyOpen = { type: 'comment:copy-open', requestId: 'req-5' };
+const copy = { type: 'comment:copy', requestId: 'req-4', pageId: 'page-2', id: 'c-1' };
+const copyOpen = { type: 'comment:copy-open', requestId: 'req-5', pageId: 'page-2' };
 
 // Only the fields the prompt reads matter here; commentPrompt.test.ts pins the text.
 const stored = (id: string): CommentView =>
@@ -129,12 +160,12 @@ test('an untrusted workspace posts one ui:error and writes nothing', async () =>
 		{ type: 'ui:error', requestId: 'req-1', message: UNTRUSTED_WORKSPACE_MESSAGE },
 	]);
 	assert.deepEqual(host.calls, ['answer:ui:error']);
-	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
+	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
 });
 
 test('a resolver error posts one ui:error with its message and writes nothing', async () => {
 	const conflict = new MigrationConflictError({ pageId: 'page-1', names: ['manifest.json'] });
-	vi.mocked(resolveOpenPage).mockRejectedValueOnce(conflict);
+	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(conflict);
 	await answerCommentRequest({ value: reply, outputChannel });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
@@ -150,19 +181,20 @@ test('a resolver error posts one ui:error with its message and writes nothing', 
 	assert.equal(vi.mocked(setCommentStatus).mock.calls.length, 0);
 });
 
-test('each copy resolves the page once, never creating, and reads and marks on that page', async () => {
+test('each copy resolves the requested page once and reads and marks on that page', async () => {
 	for (const value of [copy, copyOpen]) {
 		vi.clearAllMocks();
 		await answerCommentRequest({ value, outputChannel });
 		await flushRefresh();
-		const resolve = vi.mocked(resolveOpenPage).mock;
-		// The request's one resolve, then the comments:updated refresh's own read after the answer.
-		assert.deepEqual(resolve.calls, [
-			[{ workspaceRoot: '/ws', createIfFresh: false }],
-			[{ workspaceRoot: '/ws', createIfFresh: false }],
+		// The request's one resolve, then the comments:updated refresh's own open-page read after
+		// the answer.
+		assert.deepEqual(vi.mocked(resolveRequestedPage).mock.calls, [
+			[{ workspaceRoot: '/ws', pageId: 'page-2' }],
 		]);
+		const refresh = vi.mocked(resolveOpenPage).mock;
+		assert.deepEqual(refresh.calls, [[{ workspaceRoot: '/ws', createIfFresh: false }]]);
 		const [answerOrder] = vi.mocked(postAnswerToPanel).mock.invocationCallOrder;
-		assert.ok(answerOrder !== undefined && (resolve.invocationCallOrder[1] ?? 0) > answerOrder);
+		assert.ok(answerOrder !== undefined && (refresh.invocationCallOrder[0] ?? 0) > answerOrder);
 		const readPage =
 			value === copy
 				? vi.mocked(getComment).mock.calls[0]?.[0].page
@@ -275,5 +307,66 @@ test('an untrusted workspace refuses a copy before the clipboard', async () => {
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-4', message: UNTRUSTED_WORKSPACE_MESSAGE },
 	]);
-	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
+	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
+});
+
+test("a request for page-2 while page-1 is open acts on page-2's location", async () => {
+	const page2 = { workspaceRoot: '/ws', pageId: 'page-2' };
+	for (const value of [create, reply, setStatus, copy, copyOpen]) {
+		vi.mocked(resolveRequestedPage).mockResolvedValueOnce(page2);
+		await answerCommentRequest({ value, outputChannel });
+	}
+	await flushRefresh();
+	assert.deepEqual(
+		vi.mocked(resolveRequestedPage).mock.calls.map(([args]) => args.pageId),
+		['page-2', 'page-2', 'page-2', 'page-2', 'page-2'],
+	);
+	// The exact returned location, never one the handler rebuilt or re-resolved.
+	for (const page of [
+		vi.mocked(addComment).mock.calls[0]?.[0].page,
+		vi.mocked(replyToComment).mock.calls[0]?.[0].page,
+		vi.mocked(setCommentStatus).mock.calls[0]?.[0].page,
+		vi.mocked(getComment).mock.calls[0]?.[0].page,
+		vi.mocked(listComments).mock.calls[0]?.[0].page,
+		...vi.mocked(markCommentsSent).mock.calls.map(([args]) => args.page),
+	]) {
+		assert.equal(page, page2);
+	}
+});
+
+test('a gone page answers one ui:error with the page copy and writes nothing', async () => {
+	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(new PageNotFoundError('page-2'));
+	await answerCommentRequest({ value: create, outputChannel });
+	await flushRefresh();
+	assert.deepEqual(answers(), [
+		{ type: 'ui:error', requestId: 'req-1', message: PAGE_GONE_MESSAGE },
+	]);
+	assert.equal(vi.mocked(addComment).mock.calls.length, 0);
+});
+
+const postedLists = (): unknown[] =>
+	vi.mocked(postCommentsToPanel).mock.calls.map(([list]) => list);
+
+test('the posted list names the resolved page, kept on a read failure, empty when nothing resolved', async () => {
+	await postPanelComments({ outputChannel });
+	assert.deepEqual(postedLists(), [{ pageId: 'page-1', comments: [] }]);
+
+	vi.mocked(postCommentsToPanel).mockClear();
+	vi.mocked(readComments).mockRejectedValueOnce(new LockTimeoutError());
+	await postPanelComments({ outputChannel });
+	assert.deepEqual(
+		postedLists().map((list) => (list as { pageId: string }).pageId),
+		['page-1'],
+	);
+	assert.equal((postedLists()[0] as { error?: string }).error !== undefined, true);
+
+	vi.mocked(postCommentsToPanel).mockClear();
+	vi.mocked(resolveOpenPage).mockRejectedValueOnce(new LockTimeoutError());
+	await postPanelComments({ outputChannel });
+	assert.equal((postedLists()[0] as { pageId: string }).pageId, '');
+
+	vi.mocked(postCommentsToPanel).mockClear();
+	host.isTrusted = false;
+	await postPanelComments({ outputChannel });
+	assert.deepEqual(postedLists(), [{ pageId: '', comments: [] }]);
 });

@@ -11,6 +11,7 @@ import {
 	MAX_FRAME_COORDINATE,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
+	isPageId,
 } from '../disk/layout';
 import { hasControlChars, isTagName } from '../webview/frame/frameMessages';
 import type {
@@ -35,11 +36,17 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const noControlChars = z.refine<string>((value) => !hasControlChars(value));
 
+const requestIdField = z.string().check(z.regex(REQUEST_ID_PATTERN));
+
+// Untrusted: the page-id pattern is what keeps `../x` out of a path.
+const pageIdField = z.string().check(z.refine(isPageId));
+
 // The pick fields get the cd:pick guards; addComment owns the frame id charset, generation ≥ 1,
 // the style allowlist and the body rule (trim, 1..MAX_COMMENT_BODY_CHARS) and their copy.
 const commentCreateSchema = z.object({
 	type: z.literal('comment:create'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	frameId: z.string(),
 	generation: z.int().check(z.gte(0)),
 	selector: z.string().check(z.minLength(1), z.maxLength(MAX_SELECTOR_CHARS), noControlChars),
@@ -56,7 +63,8 @@ const commentCreateSchema = z.object({
 // The body rule (trim, 1..MAX_COMMENT_BODY_CHARS) is the disk lib's, before it takes the lock.
 const commentReplySchema = z.object({
 	type: z.literal('comment:reply'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
 	body: z.string(),
 });
@@ -64,27 +72,31 @@ const commentReplySchema = z.object({
 // `sent` is the host's to set, so it fails the parse here.
 const commentSetStatusSchema = z.object({
 	type: z.literal('comment:set-status'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
 	status: z.enum(['open', 'resolved']),
 });
 
 const commentCopySchema = z.object({
 	type: z.literal('comment:copy'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	id: z.string().check(z.regex(COMMENT_ID_PATTERN)),
 });
 
 const commentCopyOpenSchema = z.object({
 	type: z.literal('comment:copy-open'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 });
 
 // Shape and size only: text encoding, control characters, style value safety and the live text
 // compare are the edit core's; the frame id charset and exact file name the disk lib's.
 const artboardEditShape = {
 	type: z.literal('artboard:edit'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	frameId: z.string(),
 	sourceNumber: z.int().check(z.gte(0), z.lte(Number.MAX_SAFE_INTEGER)),
 	hash: z.string().check(z.refine(isArtboardHash)),
@@ -112,7 +124,8 @@ const artboardEditStylesSchema = z.object({
 // writes, so nothing else crosses this boundary.
 const artboardHistorySchema = z.object({
 	type: z.literal('artboard:history'),
-	requestId: z.string().check(z.regex(REQUEST_ID_PATTERN)),
+	requestId: requestIdField,
+	pageId: pageIdField,
 	frameId: z.string(),
 	step: z.enum(HISTORY_STEPS),
 });
@@ -125,6 +138,7 @@ const chromeMessageSchema = z.union([
 		z.object({ type: z.literal('artboard:ready') }),
 		z.object({
 			type: z.literal('frame:place'),
+			pageId: pageIdField,
 			id: z.string(),
 			...placementShape,
 			base: z.object(placementShape),

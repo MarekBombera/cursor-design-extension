@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test, vi } from 'vite-plus/test';
@@ -9,7 +9,13 @@ import { createArtboard, readArtboard } from '../disk/artboardFs';
 import { LockTimeoutError } from '../disk/errors';
 import { hashHtml } from '../disk/hash';
 import { clearEditHistories, historyFlags } from './editHistory';
-import { FIRST_PAGE_ID, MAX_HISTORY_STEPS, artboardHtmlPathSegments } from '../disk/layout';
+import {
+	FIRST_PAGE_ID,
+	MAX_HISTORY_STEPS,
+	artboardHtmlPathSegments,
+	pageDirSegments,
+	projectPathSegments,
+} from '../disk/layout';
 import { resolveOpenPage } from '../disk/openPage';
 import { withWorkspaceLock } from '../disk/workspaceLock';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
@@ -61,20 +67,25 @@ let requestCount = 0;
 
 const lastAnswer = (): Answer => vi.mocked(postAnswerToPanel).mock.calls.at(-1)?.[0] as Answer;
 
-const htmlPath = (): string => join(host.root, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+const htmlPath = (pageId: string = FIRST_PAGE_ID): string =>
+	join(host.root, ...artboardHtmlPathSegments(pageId, 'hero'));
 
-const diskHtml = (): Promise<string> => readFile(htmlPath(), 'utf8');
+const diskHtml = (pageId?: string): Promise<string> => readFile(htmlPath(pageId), 'utf8');
 
 // One style edit on the <p> (source number 1) against the file's current hash.
-const editStyles = async (styles: Array<{ field: string; value: string }>): Promise<Answer> => {
+const editStyles = async (
+	styles: Array<{ field: string; value: string }>,
+	pageId: string = FIRST_PAGE_ID,
+): Promise<Answer> => {
 	requestCount += 1;
 	await answerEditRequest({
 		value: {
 			type: 'artboard:edit',
 			requestId: `edit-${requestCount}`,
+			pageId,
 			frameId: 'hero',
 			sourceNumber: 1,
-			hash: hashHtml(await diskHtml()),
+			hash: hashHtml(await diskHtml(pageId)),
 			styles,
 		},
 		outputChannel,
@@ -82,7 +93,8 @@ const editStyles = async (styles: Array<{ field: string; value: string }>): Prom
 	return lastAnswer();
 };
 
-const editPadding = (value: string): Promise<Answer> => editStyles([{ field: 'padding', value }]);
+const editPadding = (value: string, pageId?: string): Promise<Answer> =>
+	editStyles([{ field: 'padding', value }], pageId);
 
 const historyStep = async (
 	step: string,
@@ -94,6 +106,7 @@ const historyStep = async (
 		value: {
 			type: 'artboard:history',
 			requestId: `step-${requestCount}`,
+			pageId: FIRST_PAGE_ID,
 			frameId: 'hero',
 			step,
 			...overrides,
@@ -240,7 +253,10 @@ test('an edit in flight across a clear is written but starts no history', async 
 	const answer = await clearWhileLocked(() => editPadding('9'));
 	assert.equal(answer.type, 'artboard:edited');
 	assert.match(await diskHtml(), /padding: 9px/);
-	assert.deepEqual(historyFlags('hero'), { canUndo: false, canRedo: false });
+	assert.deepEqual(historyFlags({ pageId: FIRST_PAGE_ID, frameId: 'hero' }), {
+		canUndo: false,
+		canRedo: false,
+	});
 });
 
 test('a step in flight across a clear is written but records nothing', async () => {
@@ -248,7 +264,10 @@ test('a step in flight across a clear is written but records nothing', async () 
 	const answer = await clearWhileLocked(() => historyStep('undo'));
 	assert.equal(answer?.type, 'artboard:edited');
 	assert.equal(await diskHtml(), ORIGINAL);
-	assert.deepEqual(historyFlags('hero'), { canUndo: false, canRedo: false });
+	assert.deepEqual(historyFlags({ pageId: FIRST_PAGE_ID, frameId: 'hero' }), {
+		canUndo: false,
+		canRedo: false,
+	});
 });
 
 test('untrusted, malformed and unanswerable attempts write nothing', async () => {
@@ -267,4 +286,81 @@ test('untrusted, malformed and unanswerable attempts write nothing', async () =>
 	assert.equal(host.logs, logsBefore + 1);
 	assert.equal(await diskHtml(), editedHtml);
 	assert.equal((await historyStep('undo'))?.type, 'artboard:edited');
+});
+
+test('undo for page-2 while page-1 is open steps page-2 and reads and records its history only', async () => {
+	const PAGE_2 = 'page-2';
+	await mkdir(join(host.root, ...pageDirSegments(PAGE_2)));
+	await writeFile(
+		join(host.root, ...projectPathSegments),
+		JSON.stringify({
+			version: 1,
+			openPageId: FIRST_PAGE_ID,
+			pages: [
+				{ id: FIRST_PAGE_ID, title: 'Page 1' },
+				{ id: PAGE_2, title: 'Page 2' },
+			],
+		}),
+	);
+	await createArtboard({
+		page: { workspaceRoot: host.root, pageId: PAGE_2 },
+		artboardId: 'hero',
+		html: ORIGINAL,
+		writeEnsurePanelMarker: false,
+	});
+	await editPadding('8');
+	const pageOneHtml = await diskHtml();
+	await editPadding('9', PAGE_2);
+	assert.match(await diskHtml(PAGE_2), /padding: 9px/);
+
+	const undone = await historyStep('undo', { pageId: PAGE_2 });
+	assert.equal(undone?.type, 'artboard:edited');
+	assert.deepEqual([undone?.canUndo, undone?.canRedo], [false, true]);
+	assert.equal(await diskHtml(PAGE_2), ORIGINAL);
+	// page-1's file and history are untouched.
+	assert.equal(await diskHtml(), pageOneHtml);
+	assert.deepEqual(historyFlags({ pageId: FIRST_PAGE_ID, frameId: 'hero' }), {
+		canUndo: true,
+		canRedo: false,
+	});
+	assert.deepEqual(historyFlags({ pageId: PAGE_2, frameId: 'hero' }), {
+		canUndo: false,
+		canRedo: true,
+	});
+});
+
+test("a page-2 step's conflict forgets page-2's history and keeps page-1's for the same frame id", async () => {
+	const PAGE_2 = 'page-2';
+	await mkdir(join(host.root, ...pageDirSegments(PAGE_2)));
+	await writeFile(
+		join(host.root, ...projectPathSegments),
+		JSON.stringify({
+			version: 1,
+			openPageId: FIRST_PAGE_ID,
+			pages: [
+				{ id: FIRST_PAGE_ID, title: 'Page 1' },
+				{ id: PAGE_2, title: 'Page 2' },
+			],
+		}),
+	);
+	await createArtboard({
+		page: { workspaceRoot: host.root, pageId: PAGE_2 },
+		artboardId: 'hero',
+		html: ORIGINAL,
+		writeEnsurePanelMarker: false,
+	});
+	await editPadding('8');
+	await editPadding('9', PAGE_2);
+	// An outside write on page-2 only: its step hits a ConflictError.
+	await writeFile(htmlPath(PAGE_2), '<main>\n  <p>agent</p>\n</main>\n');
+
+	assert.equal((await historyStep('undo', { pageId: PAGE_2 }))?.message, HISTORY_CLEARED_MESSAGE);
+	assert.deepEqual(historyFlags({ pageId: PAGE_2, frameId: 'hero' }), {
+		canUndo: false,
+		canRedo: false,
+	});
+	assert.deepEqual(historyFlags({ pageId: FIRST_PAGE_ID, frameId: 'hero' }), {
+		canUndo: true,
+		canRedo: false,
+	});
 });

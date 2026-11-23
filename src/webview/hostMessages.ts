@@ -1,5 +1,5 @@
 import type { StyleChange } from '../disk/editValues';
-import type { HISTORY_STEPS } from '../disk/layout';
+import { type HISTORY_STEPS, isPageId } from '../disk/layout';
 import {
 	type CommentStyles,
 	type FrameRect,
@@ -29,8 +29,10 @@ export type PostedCanvasFrame = {
 	canRedo: boolean;
 };
 
+// pageId: the page the snapshot was read from; '' when no page was resolved (no frames then).
 export type CanvasUpdatedMessage = {
 	type: 'canvas:updated';
+	pageId: string;
 	activeArtboardId: string;
 	generation: number;
 	cspNonce: string;
@@ -75,8 +77,10 @@ export type PostedComment = {
 };
 
 // `error` is safe copy for the comments banner; the list is then empty and the canvas unaffected.
+// pageId as on canvas:updated.
 export type CommentsUpdatedMessage = {
 	type: 'comments:updated';
+	pageId: string;
 	comments: PostedComment[];
 	error?: string;
 };
@@ -123,6 +127,7 @@ export type FramePlacement = { x: number; y: number; width: number };
 // Sent once per drag/resize/nudge on release. `base` is the frame's placement at gesture start.
 export type FramePlaceMessage = {
 	type: 'frame:place';
+	pageId: string;
 	id: string;
 	x: number;
 	y: number;
@@ -135,6 +140,7 @@ export type FramePlaceMessage = {
 export type CommentCreateMessage = {
 	type: 'comment:create';
 	requestId: string;
+	pageId: string;
 	frameId: string;
 	generation: number;
 	selector: string;
@@ -151,6 +157,7 @@ export type CommentCreateMessage = {
 export type CommentReplyMessage = {
 	type: 'comment:reply';
 	requestId: string;
+	pageId: string;
 	id: string;
 	body: string;
 };
@@ -158,16 +165,27 @@ export type CommentReplyMessage = {
 export type CommentSetStatusMessage = {
 	type: 'comment:set-status';
 	requestId: string;
+	pageId: string;
 	id: string;
 	status: 'open' | 'resolved';
 };
 
-export type CommentCopyMessage = { type: 'comment:copy'; requestId: string; id: string };
+export type CommentCopyMessage = {
+	type: 'comment:copy';
+	requestId: string;
+	pageId: string;
+	id: string;
+};
 
 // One prompt for every open comment, in comments.json order.
-export type CommentCopyOpenMessage = { type: 'comment:copy-open'; requestId: string };
+export type CommentCopyOpenMessage = {
+	type: 'comment:copy-open';
+	requestId: string;
+	pageId: string;
+};
 
-// Every chrome → host comment write; each attempt with a valid requestId is answered once.
+// Every chrome → host comment write; each attempt with a valid requestId is answered once. Every
+// page-bound request names its page (`pageId`); the host acts on that page, never the open one.
 export type CommentRequestMessage =
 	| CommentCreateMessage
 	| CommentReplyMessage
@@ -180,6 +198,7 @@ export type CommentRequestMessage =
 export type ArtboardEditMessage = {
 	type: 'artboard:edit';
 	requestId: string;
+	pageId: string;
 	frameId: string;
 	sourceNumber: number;
 	hash: string;
@@ -198,9 +217,14 @@ export type HistoryStep = (typeof HISTORY_STEPS)[number];
 export type ArtboardHistoryMessage = {
 	type: 'artboard:history';
 	requestId: string;
+	pageId: string;
 	frameId: string;
 	step: HistoryStep;
 };
+
+// A page-bound request as the pure rules build it; only hostBridge's post functions add `pageId`.
+// Distributive, so a union (the edit variants, the comment requests) keeps its members.
+export type PageFree<Message> = Message extends unknown ? Omit<Message, 'pageId'> : never;
 
 export type ChromeMessage =
 	| { type: 'artboard:ready' }
@@ -218,6 +242,9 @@ const isOptionalString = (value: unknown): value is string | undefined =>
 	value === undefined || typeof value === 'string';
 
 export const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
+
+// '' is "no page" on host state messages.
+const isPostedPageId = (value: unknown): value is string => value === '' || isPageId(value);
 
 const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 	if (
@@ -262,6 +289,7 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 // missing from a valid canvas:updated.
 const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage | undefined => {
 	if (
+		!isPostedPageId(data.pageId) ||
 		typeof data.activeArtboardId !== 'string' ||
 		typeof data.cspNonce !== 'string' ||
 		!isFiniteNumber(data.generation) ||
@@ -278,6 +306,7 @@ const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage
 	}
 	return {
 		type: 'canvas:updated',
+		pageId: data.pageId,
 		activeArtboardId: data.activeArtboardId,
 		generation: data.generation,
 		cspNonce: data.cspNonce,
@@ -356,7 +385,11 @@ const parsePostedComment = (entry: unknown): PostedComment | undefined => {
 const parseCommentsUpdated = (
 	data: Record<string, unknown>,
 ): CommentsUpdatedMessage | undefined => {
-	if (!Array.isArray(data.comments) || !isOptionalString(data.error)) {
+	if (
+		!isPostedPageId(data.pageId) ||
+		!Array.isArray(data.comments) ||
+		!isOptionalString(data.error)
+	) {
 		return undefined;
 	}
 	const comments: PostedComment[] = [];
@@ -367,8 +400,8 @@ const parseCommentsUpdated = (
 		}
 	}
 	return data.error === undefined
-		? { type: 'comments:updated', comments }
-		: { type: 'comments:updated', comments, error: data.error };
+		? { type: 'comments:updated', pageId: data.pageId, comments }
+		: { type: 'comments:updated', pageId: data.pageId, comments, error: data.error };
 };
 
 const parseUiError = (data: Record<string, unknown>): UiErrorMessage | undefined => {

@@ -394,6 +394,8 @@ test('a tab switch keeps Edit mode; leaving it is saved too', async ({ page }) =
 
 test('the first save drops the pre-9d commentMode key', async ({ page }) => {
 	await openHarness(page, { state: { commentMode: true } });
+	// Nothing is saved before a page with a real id mounts.
+	await postToChrome(page, canvasUpdated([]));
 	await expect.poll(async () => 'commentMode' in (await savedRecord(page))).toBe(false);
 	await expect(editButton(page)).toHaveAttribute('aria-pressed', 'false');
 });

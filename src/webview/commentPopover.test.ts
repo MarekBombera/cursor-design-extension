@@ -9,6 +9,7 @@ import {
 	draftFromPick,
 	editDraftBody,
 	keepLiveDraft,
+	keptCommentDraft,
 	placePopover,
 	popoverAnchor,
 	popoverKeyAction,
@@ -233,5 +234,32 @@ test('the popover flips at the right and bottom edges and stays inside a small v
 	assert.deepEqual(
 		placePopover({ ...size, viewportWidth: 150, viewportHeight: 80, anchor: { x: 100, y: 60 } }),
 		{ x: 8, y: 8 },
+	);
+});
+
+test('the draft slot: a page writes its own draft and clears only its own slot', () => {
+	const draftA = draftOf({ body: 'On A' });
+	const draftB = draftOf({ body: 'On B' });
+	const slotA = { pageId: 'page-1', draft: draftA };
+	// A new draft on B replaces A's slot.
+	assert.deepEqual(keptCommentDraft({ slot: slotA, page: { pageId: 'page-2', draft: draftB } }), {
+		pageId: 'page-2',
+		draft: draftB,
+	});
+	// B with no draft leaves A's slot alone; A with no draft clears it (added, cancelled, dropped).
+	assert.equal(
+		keptCommentDraft({ slot: slotA, page: { pageId: 'page-2', draft: undefined } }),
+		slotA,
+	);
+	assert.equal(
+		keptCommentDraft({ slot: slotA, page: { pageId: 'page-1', draft: undefined } }),
+		undefined,
+	);
+	// No page mounted, or the '' page (even with a draft), never writes the slot.
+	assert.equal(keptCommentDraft({ slot: slotA, page: undefined }), slotA);
+	assert.equal(keptCommentDraft({ slot: slotA, page: { pageId: '', draft: draftB } }), slotA);
+	assert.equal(
+		keptCommentDraft({ slot: undefined, page: { pageId: '', draft: draftB } }),
+		undefined,
 	);
 });

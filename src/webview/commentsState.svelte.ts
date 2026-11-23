@@ -50,8 +50,17 @@ export class CommentsState {
 		copyPending({ actions: this.actions, copyOpen: this.copyOpen }),
 	);
 	readonly summary = $derived(panelSummary(this.comments));
+	// The page this state belongs to, named by every comment request.
+	readonly #pageId: string;
 
-	constructor(replyDrafts: Readonly<Record<string, string>>) {
+	constructor({
+		pageId,
+		replyDrafts,
+	}: {
+		pageId: string;
+		replyDrafts: Readonly<Record<string, string>>;
+	}) {
+		this.#pageId = pageId;
 		this.actions = $state.raw(
 			new Map<string, CommentAction>(
 				Object.entries(replyDrafts).map(([id, reply]) => [id, { reply }]),
@@ -122,7 +131,7 @@ export class CommentsState {
 		const submitted = submitReply({ actions: this.actions, id, requestId: crypto.randomUUID() });
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(submitted.message);
+			postCommentRequest(this.#pageId, submitted.message);
 		}
 	};
 
@@ -138,7 +147,7 @@ export class CommentsState {
 		});
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(submitted.message);
+			postCommentRequest(this.#pageId, submitted.message);
 		}
 	};
 
@@ -151,7 +160,7 @@ export class CommentsState {
 		});
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(submitted.message);
+			postCommentRequest(this.#pageId, submitted.message);
 		}
 	};
 
@@ -165,7 +174,7 @@ export class CommentsState {
 		});
 		this.copyOpen = submitted.copyOpen;
 		if (submitted.message !== undefined) {
-			postCommentRequest(submitted.message);
+			postCommentRequest(this.#pageId, submitted.message);
 		}
 	};
 

@@ -138,7 +138,9 @@ export const openHarness = async (
 	let aborted = 0;
 	const initialState =
 		options.state ??
-		(options.savedView === undefined ? undefined : { stageView: options.savedView });
+		(options.savedView === undefined
+			? undefined
+			: { stageView: { ...options.savedView, pageId: 'page-1' } });
 	// A second open on the same page (a reload) replaces the first route.
 	await page.context().unrouteAll();
 	await page.context().route('**/*', async (route) => {
@@ -293,6 +295,7 @@ export const editFrame = ({ id, label }: { id: string; label: string }): PostedC
 
 export const canvasUpdated = (frames: PostedCanvasFrame[]): CanvasUpdatedMessage => ({
 	type: 'canvas:updated',
+	pageId: 'page-1',
 	activeArtboardId: frames[0]?.id ?? '',
 	generation: 1,
 	cspNonce: HARNESS_NONCE,

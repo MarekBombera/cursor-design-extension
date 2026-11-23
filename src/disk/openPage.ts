@@ -1,6 +1,13 @@
 import { mkdir, readdir, rename, writeFile } from 'node:fs/promises';
 
-import { DiskError, MigrationConflictError, isErrno, logStderr, throwDiskError } from './errors';
+import {
+	DiskError,
+	MigrationConflictError,
+	PageNotFoundError,
+	isErrno,
+	logStderr,
+	throwDiskError,
+} from './errors';
 import {
 	ARTBOARDS_DIR,
 	ARTBOARDS_TOMBSTONE_TEXT,
@@ -11,6 +18,7 @@ import {
 	PROJECT_SCHEMA_VERSION,
 	type PageEntry,
 	artboardsTombstoneSegments,
+	isPageId,
 	pageDirSegments,
 	pageEntrySegments,
 	pagesDirSegments,
@@ -27,7 +35,7 @@ import {
 	workspaceLayoutFile,
 	writeUtf8,
 } from './layoutFs';
-import { type Project, isPageId, serializeProject } from './parse';
+import { type Project, serializeProject } from './parse';
 import { withWorkspaceLock } from './workspaceLock';
 
 type PageIds = readonly [string, ...string[]];
@@ -287,4 +295,36 @@ export const resolveOpenPage = async ({
 		workspaceRoot,
 		operation: () => settleFolderLocked(workspaceRoot, createIfFresh),
 	});
+};
+
+// The page a panel request names, checked against the index and its folder. The open page comes
+// back unchanged (no extra check); any other page must be indexed and have a folder. Writes
+// nothing beyond what resolveOpenPage writes, and takes no lock itself beyond its call.
+// ponytail: a page deleted between this check and the op's write: createArtboard hits the
+// page-scoped write guard; every other op fails on writeUtf8 with the generic disk copy, not
+// PAGE_NOT_FOUND. Nothing recreates the folder, so no data is at risk. Upgrade path: re-check the
+// folder inside each op's lock.
+export const resolveRequestedPage = async ({
+	workspaceRoot,
+	pageId,
+}: {
+	workspaceRoot: string;
+	pageId: string;
+}): Promise<PageLocation> => {
+	if (!isPageId(pageId)) {
+		throw new PageNotFoundError(pageId);
+	}
+	const openPage = await resolveOpenPage({ workspaceRoot, createIfFresh: false });
+	if (pageId === openPage.pageId) {
+		return openPage;
+	}
+	const project = await readProjectFile(workspaceRoot);
+	if (project === undefined || !project.pages.some((entry) => entry.id === pageId)) {
+		throw new PageNotFoundError(pageId);
+	}
+	const folderStats = await lstatOrUndefined(workspaceJoin(workspaceRoot, pageDirSegments(pageId)));
+	if (folderStats?.isDirectory() !== true) {
+		throw new PageNotFoundError(pageId);
+	}
+	return { workspaceRoot, pageId };
 };

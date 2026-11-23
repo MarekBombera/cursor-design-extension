@@ -310,6 +310,7 @@ for (const theme of THEMES) {
 		await open({ definitions: [], panel: true });
 		await postToChrome(page, {
 			type: 'comments:updated',
+			pageId: 'page-1',
 			comments: [],
 			error: COMMENTS_JSON_ERROR,
 		});

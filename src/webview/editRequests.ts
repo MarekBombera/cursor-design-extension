@@ -6,6 +6,7 @@ import type {
 	ArtboardEditMessage,
 	ArtboardHistoryMessage,
 	HistoryStep,
+	PageFree,
 	UiErrorMessage,
 } from './hostMessages';
 import { canStep } from './undoRedo';
@@ -113,7 +114,7 @@ export const nextSend = ({
 	newRequestId: () => string;
 }): {
 	state: EditRequestsState;
-	send: ArtboardEditMessage | ArtboardHistoryMessage | undefined;
+	send: PageFree<ArtboardEditMessage | ArtboardHistoryMessage> | undefined;
 } => {
 	if (state.inFlight !== undefined) {
 		return { state, send: undefined };
@@ -141,7 +142,7 @@ export const nextSend = ({
 			continue;
 		}
 		const requestId = newRequestId();
-		const send: ArtboardEditMessage = {
+		const send: PageFree<ArtboardEditMessage> = {
 			type: 'artboard:edit',
 			requestId,
 			frameId: commit.key.frameId,

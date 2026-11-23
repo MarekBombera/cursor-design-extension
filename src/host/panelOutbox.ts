@@ -16,6 +16,7 @@ import type * as editHistory from './editHistory';
 
 type CanvasHostView = {
 	updated: {
+		pageId: string;
 		activeArtboardId: string;
 		generation: number;
 		frames: UnflaggedPostedFrame[];
@@ -67,12 +68,14 @@ export const createPanelOutbox = ({
 		if (!chromeReady || pendingView === undefined) {
 			return;
 		}
+		const { updated } = pendingView;
 		post({
 			type: 'canvas:updated',
-			...pendingView.updated,
-			frames: pendingView.updated.frames.map((frame) => ({
+			...updated,
+			// The posted page's flags only: the same frame id on another page is another history.
+			frames: updated.frames.map((frame) => ({
 				...frame,
-				...readHistoryFlags(frame.id),
+				...readHistoryFlags({ pageId: updated.pageId, frameId: frame.id }),
 			})),
 			cspNonce: readCspNonce(),
 		});
@@ -110,9 +113,10 @@ export const createPanelOutbox = ({
 
 	return {
 		postSnapshot: (snapshot) => {
-			keepUnchangedHistories(snapshot.frames);
+			keepUnchangedHistories({ pageId: snapshot.pageId, frames: snapshot.frames });
 			pendingView = {
 				updated: {
+					pageId: snapshot.pageId,
 					activeArtboardId: snapshot.activeArtboardId,
 					generation: snapshot.generation,
 					frames: snapshot.frames.map(postedFrameFromSnapshot),

@@ -13,6 +13,7 @@ import {
 	InvalidArgsError,
 	InvalidArtboardIdError,
 	LockTimeoutError,
+	PageNotFoundError,
 } from '../disk/errors';
 import {
 	CHANGE_FALLBACK_MESSAGE,
@@ -31,6 +32,7 @@ import {
 	HISTORY_CLEARED_MESSAGE,
 	HISTORY_FALLBACK_MESSAGE,
 	MALFORMED_HISTORY_MESSAGE,
+	PAGE_GONE_MESSAGE,
 } from './panelRequestCopy';
 
 test('a copy error: gone comment remapped, domain copy kept, anything else the copy fallback', () => {
@@ -113,4 +115,13 @@ test('history copy differs from edit copy for conflict, malformed and fallback o
 	for (const [error, expected] of rows) {
 		assert.equal(editRequestErrorMessage(error, 'history'), expected);
 	}
+});
+
+test('a gone page maps to the panel copy on every page-bound request kind', () => {
+	const error = new PageNotFoundError('page-2');
+	assert.equal(PAGE_GONE_MESSAGE, 'That page no longer exists.');
+	assert.equal(commentRequestErrorMessage({ type: 'comment:create', error }), PAGE_GONE_MESSAGE);
+	assert.equal(commentRequestErrorMessage({ type: 'comment:copy', error }), PAGE_GONE_MESSAGE);
+	assert.equal(editRequestErrorMessage(error, 'edit'), PAGE_GONE_MESSAGE);
+	assert.equal(editRequestErrorMessage(error, 'history'), PAGE_GONE_MESSAGE);
 });

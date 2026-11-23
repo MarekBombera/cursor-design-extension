@@ -7,16 +7,18 @@ import {
 	EDIT_CONFLICT_MESSAGE,
 	EDIT_FALLBACK_MESSAGE,
 	MALFORMED_EDIT_MESSAGE,
+	PAGE_GONE_MESSAGE,
 } from './panelRequestCopy';
 import {
 	ConflictError,
 	EditRefusedError,
 	MigrationConflictError,
 	NoWorkspaceError,
+	PageNotFoundError,
 } from '../disk/errors';
 import { FIRST_PAGE_ID } from '../disk/layout';
 import { clearEditHistories, historyFlags, historyStepTarget } from './editHistory';
-import { answerEditRequest } from './panelEdit';
+import { answerEditRequest, answerHistoryRequest } from './panelEdit';
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, hasFolder: true, calls: [] as string[] }));
@@ -35,9 +37,14 @@ vi.mock('./hostFs', () => ({
 vi.mock('../panel/openArtboardPanel', () => ({
 	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
 }));
+// page-1 is open; the edit below names page-2.
 vi.mock('../disk/openPage', () => ({
 	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
 		Promise.resolve({ workspaceRoot, pageId: 'page-1' }),
+	),
+	resolveRequestedPage: vi.fn(
+		({ workspaceRoot, pageId }: { workspaceRoot: string; pageId: string }) =>
+			Promise.resolve({ workspaceRoot, pageId }),
 	),
 }));
 vi.mock('../disk/artboardEditFs', () => ({
@@ -66,7 +73,7 @@ vi.mock('./canvasSnapshot', async (importOriginal) => {
 
 const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
 const { editArtboard } = await import('../disk/artboardEditFs');
-const { resolveOpenPage } = await import('../disk/openPage');
+const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
 
 const outputChannel = {} as vscode.OutputChannel;
 const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
@@ -74,6 +81,7 @@ const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([a
 const edit = {
 	type: 'artboard:edit',
 	requestId: 'edit-1',
+	pageId: 'page-2',
 	frameId: 'hero',
 	sourceNumber: 0,
 	hash: `sha256:${'a'.repeat(64)}`,
@@ -103,11 +111,12 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 			canRedo: false,
 		},
 	]);
-	assert.deepEqual(vi.mocked(resolveOpenPage).mock.calls, [
-		[{ workspaceRoot: '/ws', createIfFresh: false }],
+	assert.deepEqual(vi.mocked(resolveRequestedPage).mock.calls, [
+		[{ workspaceRoot: '/ws', pageId: 'page-2' }],
 	]);
+	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
 	assert.deepEqual(vi.mocked(editArtboard).mock.calls[0]?.[0], {
-		page: { workspaceRoot: '/ws', pageId: FIRST_PAGE_ID },
+		page: { workspaceRoot: '/ws', pageId: 'page-2' },
 		artboardId: 'hero',
 		baseHash: edit.hash,
 		edit: { sourceNumber: 0, styles: [{ field: 'padding', value: '8' }] },
@@ -142,7 +151,7 @@ test('a conflict or a refusal is logged and answered once with panel copy', asyn
 });
 
 test('a resolver error is logged and answered once, and nothing is edited', async () => {
-	vi.mocked(resolveOpenPage).mockRejectedValueOnce(
+	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(
 		new MigrationConflictError({ pageId: FIRST_PAGE_ID, names: ['artboards'] }),
 	);
 	await answerEditRequest({ value: edit, outputChannel });
@@ -170,7 +179,7 @@ test('malformed, untrusted and folderless attempts are refused before any disk c
 	]);
 	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
 	// The resolver may migrate or create files, so it never runs before the trust check.
-	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
+	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
 });
 
 test('an attempt without a usable requestId is logged once and never answered', async () => {
@@ -203,10 +212,39 @@ test('a same-bytes edit records nothing and answers the current flags', async ()
 		{ canUndo: true, canRedo: false },
 		{ canUndo: true, canRedo: false },
 	]);
-	assert.deepEqual(historyFlags('hero'), { canUndo: true, canRedo: false });
+	assert.deepEqual(historyFlags({ pageId: 'page-2', frameId: 'hero' }), {
+		canUndo: true,
+		canRedo: false,
+	});
 	// The same-bytes edit pushed no step: the one undo still restores the written edit's base.
 	assert.equal(
-		historyStepTarget({ frameId: 'hero', step: 'undo' })?.target.hash,
+		historyStepTarget({ pageId: 'page-2', frameId: 'hero', step: 'undo' })?.target.hash,
 		`sha256:${'a'.repeat(64)}`,
 	);
+});
+
+test('a gone page is answered once with the page copy, and nothing is edited', async () => {
+	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(new PageNotFoundError('page-2'));
+	await answerEditRequest({ value: edit, outputChannel });
+	assert.deepEqual(answers(), [
+		{ type: 'ui:error', requestId: 'edit-1', message: PAGE_GONE_MESSAGE },
+	]);
+	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
+});
+
+test('nothing to undo or redo is answered without resolving a page', async () => {
+	for (const step of ['undo', 'redo']) {
+		await answerHistoryRequest({
+			value: {
+				type: 'artboard:history',
+				requestId: `step-${step}`,
+				pageId: 'page-2',
+				frameId: 'hero',
+				step,
+			},
+			outputChannel,
+		});
+	}
+	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
+	assert.equal(answers().length, 2);
 });

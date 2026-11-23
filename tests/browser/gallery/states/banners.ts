@@ -64,6 +64,7 @@ bannerState(
 		await open(withComments());
 		await postToChrome(page, {
 			type: 'comments:updated',
+			pageId: 'page-1',
 			comments: [],
 			error: COMMENTS_JSON_ERROR,
 		});
@@ -80,6 +81,7 @@ bannerState(
 		await postToChrome(page, { type: 'artboard:error', message: 'Could not move frame "home".' });
 		await postToChrome(page, {
 			type: 'comments:updated',
+			pageId: 'page-1',
 			comments: [],
 			error: COMMENTS_JSON_ERROR,
 		});

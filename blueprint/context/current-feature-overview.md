@@ -1,99 +1,133 @@
-# Pages on disk + migration (10a) - Overview for review
+# Page-scoped panel (10b) - Overview for review
 
-Source of truth: `blueprint/history/features/10a-pages-on-disk-migration.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/10b-page-scoped-panel.md`. This file is the steering summary, not the build spec. Open in Markdown preview to render the diagrams.
 
 ## TL;DR
 
-The workspace's single design folder now lives as page one of a project on disk: `.cursor-design/project.json` names the open page, and each page's files sit in `.cursor-design/pages/<pageId>/`. Nothing changes in the panel or the Agent's tools. An existing 0.4 folder moves itself the first time anything touches it, and a small `artboards` text file blocks an old 0.4 MCP server that Cursor may still be running. This is the disk base for 10b (page-scoped panel), 10c (page tools), 10d (Pages menu) and 10e (verify).
+The panel learns which page it is showing. Every canvas snapshot and comment list from the host names its page. When the page changes, the chrome throws away everything it built for the old page and starts clean: frames, picks, pins, the inspector, open threads and reply boxes. It never draws one page's comments on another. Every request the chrome sends names its page, and the host acts on that page even if another page is open by then. If the page is gone, the answer is "That page no longer exists.". Undo history is kept per page. There is still no page UI: today a page changes only when someone edits `project.json`. 10c adds the Agent's page tools and 10d the Pages menu.
+
+Also folded in: F-11, a test for the host's snapshot and frame-place wiring to the resolver.
 
 ## What you will see
 
-Nothing new on screen. After the first open with this build:
+Nothing new in normal use: one page, same panel, same first paint. With a second page made by hand (edit `project.json`'s `openPageId`):
+- The stage switches to the other page's frames and fits them all in view.
+- Pins, comment cards, the open thread, reply boxes, the pick outline and the inspector reset. Nothing from the old page shows on the new one, even when both have a frame with the same id.
+- A comment you were typing on page A disappears on B and comes back when you return to A.
+- Your mode (Interact / Comment / Edit) and the comments panel's open state stay as they were.
+- A failed read (busy lock, corrupt file) shows today's error banner on the current page; it does not count as a page switch.
+- After a tab switch, which reloads the webview, the page keeps its zoom and pan.
+- Keyboard focus is not moved after a switch (10d's menu owns that).
 
-```txt
-.cursor-design/
-  project.json              # { version 1, openPageId "page-1", pages [{ id "page-1", title "Page 1" }] }
-  pages/page-1/             # manifest.json, canvas.json, comments.json, artboards/ (moved byte for byte)
-  artboards                 # small text FILE: "do not delete; quit and reopen Cursor"
-  handoff/  tokens.json  assets/  .lock  .ensure-panel   # unchanged, at the root
-```
+## Scope at a glance
 
-The same frames, comments, flags and handoff status as before. An old 0.4 MCP server now fails every tool with "`.cursor-design/artboards` must be a directory" instead of writing where 0.5 no longer looks.
+| In | Out (later) |
+|---|---|
+| `pageId` on `canvas:updated` and `comments:updated` | Pages menu, `page:*` messages, page list (10d) |
+| `pageId` on the 8 page-bound chrome requests; host acts on that page | `list_pages` / `create_page` / `open_page`, page ops, delete (10c) |
+| "That page no longer exists." for a gone page | `COMMENT_NOT_FOUND` page hint, `IMPLEMENT.md` page line (10c) |
+| Undo history keyed by page and frame | Forget a deleted page's history (10c, when delete exists) |
+| Chrome rebuilds per-page state on a switch; comments only for their page | F-09 silent empty stage for a missing open-page folder (10c) |
+| Comment draft and saved stage view remember their page; fit-all on switch | Remembering zoom per page (not asked; fit-all stays) |
+| `isPageId` moves to `layout.ts` (no zod or `node:crypto` in the chrome) | Focus target after a switch (10d) |
+| F-11 host wiring test; system map, rules 02/05/08 | Disk format, MCP, Agent skill, README: unchanged |
 
-## System map
-
-```mermaid
-flowchart TD
-  Agent["Agent: any of the 11 MCP tools"] -->|"resolveOpenPage once per call<br/>(set_artboard: args checked first, may create)"| Resolver
-  Panel["Extension host: Open Artboard, refresh, drag, edit, undo,<br/>comments, Export Handoff (after the trust check)"] -->|"resolveOpenPage once per call<br/>(Open Artboard may create)"| Resolver
-  Resolver{"resolveOpenPage:<br/>classify the folder"}
-  Resolver -->|"project.json present"| Open["open page from project.json"]
-  Resolver -->|"empty folder, a read"| Empty["page-1, nothing written"]
-  Resolver -->|"0.4 layout, lost index, or a create"| Lock["under the workspace lock:<br/>classify again, then migrate, rebuild or create"]
-  Lock --> Open
-  Open --> Disk[(".cursor-design/pages/page-id/<br/>manifest, canvas, comments, artboards")]
-  Empty --> Disk
-  Stale["old 0.4 MCP process"] -->|"any tool"| Tomb[".cursor-design/artboards is a file"]
-  Tomb -->|"DISK_ERROR, nothing written"| Stale
-```
-
-## Key loop
-
-The first open of a 0.4 folder:
+## Data flow
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant Host as Extension host
-  participant Resolver as resolveOpenPage
-  participant Disk as .cursor-design
-  User->>Host: Cursor Design: Open Artboard
-  Host->>Resolver: resolve (createIfFresh true), after the trust check
-  Resolver->>Disk: lstat root entries, read project.json (missing)
-  Note over Resolver: 0.4 layout found, take the workspace lock and classify again
-  Resolver->>Disk: conflict check, then mkdir pages/page-1
-  Resolver->>Disk: rename artboards/ into pages/page-1/
-  Resolver->>Disk: write the tombstone file artboards (wx)
-  Resolver->>Disk: rename manifest, canvas, comments
-  Resolver->>Disk: write project.json (page-1, "Page 1")
-  Resolver-->>Host: open page page-1
-  Host->>Disk: read the page's frames and comments
-  Host-->>User: same stage as before
+  participant D as Disk (project.json, pages/id/)
+  participant H as Host (watcher, outbox, panelEdit, panelComments)
+  participant A as App.svelte (bridge, stagePageId, draft slot)
+  participant P as DesignPage (per-page objects, keyed by stagePageId)
+  Note over A,P: First paint. stagePageId is empty, so a no-page DesignPage shows the disabled toolbar and the empty state. It saves nothing.
+  A->>H: artboard:ready
+  H->>A: replay canvas:updated and comments:updated, each with pageId
+  H->>A: ui:status {mcpAvailable, handoffStale}, held in App and passed to every page
+  D-->>H: watcher (200 ms), openPageId now page-2
+  H->>D: resolveOpenPage, then read page-2
+  H->>H: keepUnchangedHistories {pageId page-2, frames}, historyFlags per frame
+  H->>A: canvas:updated {pageId, activeArtboardId, generation, cspNonce, frames[]}
+  alt pageId non-empty and differs from stagePageId
+    A->>P: read the old page's mode
+    A->>A: stagePageId = page-2, hold this canvas, flushSync
+    A->>P: unmount the old page (objects, iframes, pins, inspector)
+    A->>P: mount page-2 with the held canvas, the mode, the slot draft if its pageId matches, the held list if it matches or is empty
+  else same page, or pageId empty (resolve or read failed)
+    A->>P: canvas:updated, merge as today (an empty one shows the error banner, no remount)
+  end
+  P-->>A: savable read {pageId, mode, draft, thread, replyDrafts}
+  A->>A: keptCommentDraft, saveCommentUi (nothing while the page id is empty)
+  H->>A: comments:updated {pageId, comments[], error?}
+  A->>A: hold as the latest list
+  alt list.pageId equals the page's pageId, or is empty
+    A->>P: apply (pins, cards, cd:anchors)
+  else another page
+    A->>A: held, never drawn
+  end
+  P->>H: artboard:edit / artboard:history / comment:* / frame:place {..., pageId}
+  H->>D: resolveRequestedPage {pageId}
+  alt open page, or indexed with its folder
+    H->>D: write that page's files, each op under the lock
+    H->>H: recordEdit / recordStep {pageId, frameId}
+    H->>A: artboard:edited / comment:added / comment:saved / ui:copied {requestId}
+    A->>P: route. A rebuilt page has no such requestId, so it drops it
+  else not in the index, or no folder
+    H->>A: ui:error {requestId, message That page no longer exists.}
+  else malformed or missing pageId
+    H->>A: ui:error {requestId, malformed copy as today}
+  end
+  Note over H,A: frame:place has no requestId. The host answers with the open page's snapshot, plus artboard:error on failure (a gone page shows the gone-page copy there)
 ```
 
-A crash at any step resumes on the next call to the same result. An entry already present in both places stops with `MIGRATION_CONFLICT` and moves nothing.
+## Locked decisions
 
-## Decisions locked
+- **One message rule.** `pageId` is the page the host read, also when the read fails after the page resolved. It is `''` only when no page was resolved: untrusted workspace, no folder, or a resolver error. A fresh folder reads as `page-1` and nothing is written.
+- **`''` means "no page".** It is the stage id of the first paint, so the first paint is unchanged. A `''` snapshot or list applies to the page on stage as today's error and never triggers a switch.
+- **The host acts on the requested page, never the page open now.** One new disk resolver, `resolveRequestedPage`:
+  - it refuses an id that fails `isPageId`, then runs today's `resolveOpenPage`;
+  - the open page passes as is;
+  - any other page must be listed in `project.json` and have its folder, or the answer is `PAGE_NOT_FOUND` → "That page no longer exists.".
+- **A rebuild, not a clear-out.** A new `DesignPage.svelte` under `{#key}` holds the five per-page state objects and the stage. App keeps only what spans pages:
+  - the bridge;
+  - status;
+  - the latest comment list;
+  - the draft slot;
+  - the mode to hand to the next page (the picker still owns it).
 
-- **One open page, stored on disk.** Bombic, 2026-11-21, together with the other 0.5 answers: `create_page` opens its page, delete goes to `deleted/`, no `pageId` guard on write tools, migrated title "Page 1".
-- **Migration never overwrites.** It moves `artboards/` first, then the tombstone, the JSON files, and finally `project.json`. Unknown root entries (`picking-harness/`) stay where they are.
-- **Reads never create a project.** Only a valid `set_artboard` or the panel's first open does. An empty folder reads as today, and `.cursor-design/` is not created.
-- **The tombstone guards for good.** It is written wherever `project.json` is first written, and restored if deleted. A root `artboards/` folder next to an index stops with `MIGRATION_CONFLICT`.
-- **New codes:** `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`, `MIGRATION_CONFLICT`. Panel edit and undo show their generic copy for these, while the panel banner shows the real message.
-- **Accepted at audit:** reads can now write (the first move, or restoring a deleted tombstone), so a read-only `.cursor-design/` is not supported (F-08). An index whose open page folder is missing reads as an empty stage; this is carried to 10c (F-09).
-- **Unchanged:** file schemas, the one root lock, handoff at the root, read-only tool hints, no new tool, message or UI. Zero new dependencies.
+  Same-id frames on two pages become fresh documents.
+- **One comment draft slot** `{pageId, draft}`. The page reports its draft with its own `pageId`, so a mid-switch read never stamps the wrong page. The staged page's draft takes the slot and replaces another page's. A draft that ends on its own page clears the slot. It returns only on its page, in Comment mode, with its frame still there.
+- **Saved stage view carries its page.** A switch fits all in view, and a reload on the same page restores the saved view. No 0.4 compatibility is needed, because no serializer means webview state never survives an update.
+- **Undo history is per page and frame.** Switching away and back keeps it while the page's files are unchanged.
+- **Zero new dependencies; no disk, MCP or skill change.**
 
-## Out of scope
+## Choices a reviewer may flip
 
-Page tools and `page` in results (10c), `pageId` on panel messages and per-page chrome state (10b), the Pages menu (10d), the real-Cursor `.vsix` run, README update and downgrade notes (10e).
+None of these is a blocking question; each is reversible.
+- The mode carries across a switch.
+- The comments panel's open state carries across a switch.
+- `''` never remounts a staged page.
+- No focus move after a switch until 10d.
 
-## Glossary
+## Steps
 
-| Term | Why it exists |
-|---|---|
-| Page | One whole design (its frames, layout and comments) in its own folder under `pages/` |
-| `project.json` | The page index: which pages exist and which one is open |
-| Tombstone | A text file at the old `artboards` path so an old 0.4 server fails instead of writing where 0.5 doesn't look |
-| Stale 0.4 MCP | Cursor keeps the old MCP server process after an extension update until a full quit and reopen (F-135) |
-| Migration | Moving a 0.4 folder's files into `pages/page-1/`, once, resumable |
+1. `pageId` on host → chrome state, `isPageId` to `layout.ts`, F-11 test.
+2. Undo history keyed by page.
+3. Page-bound requests carry `pageId`; `resolveRequestedPage`; gone-page copy.
+4. Pure chrome rules: saved-state parsers, `keptCommentDraft`.
+5. `DesignPage` restructure and `pages.spec.ts`.
+6. System map, rules 02/05/08, F-11 resolution, Verify.
 
-## Your actions
+## Try it now
 
-None required. Opening `fixtures/dev-workspace` with this build migrates it, which is expected. The original 0.4 copy and the 0.4 MCP bundle are kept locally (gitignored) in `fixtures/legacy-0.4-workspace/` for 10e.
+In the dev fixture:
+1. Copy `pages/page-1/` to `pages/page-2/`.
+2. Add `{ "id": "page-2", "title": "Page 2" }` to `project.json` `pages`.
+3. Flip `openPageId`. The panel switches on the next watcher refresh, with nothing carried over.
+4. Flip it back. The page-1 comment draft returns, and Undo still works on page 1.
+
+`/check` can drive this, and 10e is the real `.vsix` run.
 
 ## Done means
 
-- 803 unit tests, `pnpm verify` exit 0, browser tests 196 passed.
-- Over stdio, the new MCP on a copy of the 0.4 dev folder returns results identical to the 0.4 baseline, field for field. The old 0.4 server fails all 11 tools on migrated and fresh folders and changes nothing.
-- Audit (Opus + Sonnet): no P0 or P1; F-01 to F-07 and F-10 closed after a re-audit; F-11 (a P3 host test gap) stays open for 10b.
-- Independent review passed on checkpoint `a7af7dc` (fresh Opus 5.5 subagent).
+Shipped on 2026-11-23: `pnpm verify` passes (836 unit tests), `pnpm test:browser` passes (209), and a fresh Fable 5.2 independent review passed with findings F-11 to F-19 closed. Two non-blocking findings stay open for a follow-up `/fix`: F-20 [P2] (no test pins `pageId` on the reply, status and copy requests) and F-21 [P3] (the staging `canvas:updated` stays referenced for the page's life). No real Cursor run yet; 10e covers it.

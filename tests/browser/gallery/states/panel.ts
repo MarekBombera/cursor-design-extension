@@ -47,7 +47,12 @@ panelState('empty', 'Panel open, no comments.', async ({ open, shoot }) => {
 });
 panelState('error', 'Panel open, comments:updated with error.', async ({ open, shoot, page }) => {
 	await open({ definitions: [], panel: true });
-	await postToChrome(page, { type: 'comments:updated', comments: [], error: COMMENTS_JSON_ERROR });
+	await postToChrome(page, {
+		type: 'comments:updated',
+		pageId: 'page-1',
+		comments: [],
+		error: COMMENTS_JSON_ERROR,
+	});
 	await settle(page);
 	await shoot();
 });
