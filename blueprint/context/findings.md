@@ -7,4 +7,10 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-_No findings recorded. `/audit` appends findings here when it finds them._
+### F-05 [P3] open - `sc-` in GENERATED_PREFIXES is unreachable behind finder's word check
+
+**File:** src/webview/frame/selector.ts:12
+**Found:** 2026-11-23 by /audit (scope: current; lens: quality; F-02 re-audit)
+**Why it matters:** finder's `wordLike` rejects every word of 2 letters or fewer, so no `sc-*` name ever reaches `isGeneratedName`; the entry is dead today and only guards against a future finder change.
+**Suggested fix:** drop `'sc-'`, or keep it with a `ponytail:` note that it guards a finder upgrade. Pre-existing (not introduced by 11f); behavior-neutral either way.
+**Resolution:**

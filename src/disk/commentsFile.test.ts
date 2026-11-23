@@ -75,7 +75,8 @@ test('a missing comments file reads as an empty list', async () => {
 	});
 });
 
-test('empty file, {}, string version, 1.5 and a non-array comments are corrupt', async () => {
+test('null, {}, string version, 1.5 and a non-array comments are corrupt', async () => {
+	await assert.rejects(parseOnDisk(null), CorruptCommentsError);
 	await assert.rejects(parseOnDisk({}), CorruptCommentsError);
 	await assert.rejects(parseOnDisk({ version: '1' }), CorruptCommentsError);
 	await assert.rejects(parseOnDisk({ version: 1.5, comments: [] }), CorruptCommentsError);
@@ -158,7 +159,15 @@ test('over the comment count or reply cap is corrupt', async () => {
 	);
 });
 
-test('a non-hash fingerprint, newline selector, and upper-case tagName are corrupt', async () => {
+// A stored frameId is later joined into an artboard path with no containment check.
+test('a path-like or empty frameId, non-hash fingerprint, newline selector, and upper-case tagName are corrupt', async () => {
+	for (const frameId of ['../x', '']) {
+		await assert.rejects(
+			parseOnDisk({ version: 1, comments: [validComment({ frameId })] }),
+			CorruptCommentsError,
+			frameId,
+		);
+	}
 	await assert.rejects(
 		parseOnDisk({ version: 1, comments: [validComment({ targetFingerprint: 'nope' })] }),
 		CorruptCommentsError,

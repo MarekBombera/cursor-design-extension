@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentDraft } from './commentPopover';
-import type { CanvasUpdatedMessage } from './hostMessages';
+import type { CanvasUpdatedMessage, CommentsUpdatedMessage } from './hostMessages';
 import { isPageChange, isPageComments, nextPageStart, type PageStart } from './pageStart';
 
 const canvasOf = (pageId: string): CanvasUpdatedMessage => ({
@@ -75,6 +75,16 @@ test('the saved thread and reply drafts go only to the first real page', () => {
 test('the mode carries over from the leaving page, else from the staged start', () => {
 	assert.equal(startOf({ mountedMode: 'edit' }).mode, 'edit');
 	assert.equal(startOf().mode, 'comment');
+});
+
+test('a comment list already received goes with the page start; none leaves no key', () => {
+	const comments: CommentsUpdatedMessage = {
+		type: 'comments:updated',
+		pageId: 'page-2',
+		comments: [],
+	};
+	assert.equal(startOf({ comments }).comments, comments);
+	assert.ok(!('comments' in startOf()));
 });
 
 test('a comment list applies to its own page or as a no-page list, never to another page', () => {

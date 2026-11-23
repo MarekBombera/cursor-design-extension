@@ -51,9 +51,14 @@ const dragTo = (screenX: number, screenY = 0): FrameGesture | undefined => {
 };
 
 test('a pointer drag previews whole px and commits once with the base', () => {
-	const moved = dragTo(25.4, 7.6);
+	const started = step(undefined, pointer('start', 0, 40)).gesture;
+	const moved = step(started, pointer('move', 25.4, 47.6)).gesture;
 	assert.deepEqual(moved?.override, { x: 35, y: 28, width: 400 });
-	const ended = step(moved, pointer('end', 25.4, 7.6));
+	// Back under the threshold after passing it: the preview follows, and end writes nothing.
+	const back = step(moved, pointer('move', 0, 40)).gesture;
+	assert.deepEqual(back?.override, disk.a);
+	assert.deepEqual(step(back, pointer('end', 0, 40)), { gesture: undefined });
+	const ended = step(moved, pointer('end', 25.4, 47.6));
 	assert.equal(ended.gesture?.phase, 'committing');
 	assert.deepEqual(ended.commit, {
 		type: 'frame:place',
@@ -70,7 +75,9 @@ test('a pointer drag previews whole px and commits once with the base', () => {
 
 test('a plain click (under the 3px threshold) writes nothing', () => {
 	const clicked = dragTo(2, 2);
-	assert.equal(clicked?.override, undefined);
+	// 1px jitter keeps the gesture; it just has no preview yet.
+	assert.ok(clicked !== undefined);
+	assert.equal(clicked.override, undefined);
 	assert.deepEqual(step(clicked, pointer('end', 2, 2)), { gesture: undefined });
 });
 
@@ -97,6 +104,12 @@ test('Escape cancels an active gesture; one gesture at a time; source and id mus
 		moved,
 	);
 	assert.equal(step(moved, pointer('end', 50, 0, 'b')).gesture, moved);
+	const keyed = step(undefined, nudge(8)).gesture;
+	const resizeNudge: StageFrameGesture = { ...nudge(8), kind: 'resize' };
+	assert.equal(step(keyed, resizeNudge).gesture, keyed);
+	// A frame the Agent just removed from disk starts nothing.
+	assert.deepEqual(step(undefined, pointer('start', 0, 0, 'gone')), { gesture: undefined });
+	assert.equal(settleFrameGesture({ gesture: undefined, diskPlacement }), undefined);
 });
 
 test('keyboard nudges step from the last preview; end commits', () => {
@@ -139,8 +152,17 @@ test('settle: active drops on a disk move, committing waits for the host answer'
 test('arrowNudge: resize ignores up/down, chords and other keys pass through', () => {
 	const key = (value: string, extra: Partial<Parameters<typeof arrowNudge>[0]> = {}) =>
 		arrowNudge({ key: value, shiftKey: false, hasModifier: false, kind: 'move', ...extra });
+	for (const [name, stepX, stepY] of [
+		['ArrowRight', 8, 0],
+		['ArrowLeft', -8, 0],
+		['ArrowDown', 0, 8],
+		['ArrowUp', 0, -8],
+	] as const) {
+		assert.deepEqual(key(name), { stepX, stepY });
+	}
 	assert.deepEqual(key('ArrowUp', { shiftKey: true }), { stepX: 0, stepY: -64 });
 	assert.deepEqual(key('ArrowLeft', { kind: 'resize' }), { stepX: -8, stepY: 0 });
+	assert.deepEqual(key('ArrowRight', { kind: 'resize' }), { stepX: 8, stepY: 0 });
 	// Each of these would otherwise preventDefault and trap the key.
 	assert.equal(key('ArrowUp', { kind: 'resize' }), undefined);
 	assert.equal(key('ArrowDown', { kind: 'resize' }), undefined);
@@ -156,6 +178,11 @@ test('revealOffset: pans only as far as needed; too-large targets align their st
 	assert.equal(revealOffset({ ...view, start: -300, end: -200 }), -300 - REVEAL_MARGIN);
 	assert.equal(revealOffset({ ...view, start: 950, end: 1100 }), 1100 - (1000 - REVEAL_MARGIN));
 	assert.equal(revealOffset({ ...view, start: 400, end: 1400 }), 400 - REVEAL_MARGIN);
+	// Too large for a view that is not at 0: 960 > 1000 - 2 * margin.
+	assert.equal(
+		revealOffset({ viewStart: 40, viewEnd: 1040, start: 100, end: 1060 }),
+		100 - (40 + REVEAL_MARGIN),
+	);
 });
 
 test('failFrameGesture drops only a committing gesture, never a drag in progress', () => {
@@ -188,14 +215,23 @@ test('the scroll sink pans by the offset from where it was re-centred, only duri
 		recentre: true,
 		pan: { deltaX: 40, deltaY: -10 },
 	});
+	// A horizontal-only scroll pans too.
+	assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5040, scrollY: 4999.5, now: 1016 }), {
+		recentre: true,
+		pan: { deltaX: 40, deltaY: 0 },
+	});
 	// The scroll back lands on the rest position (sub-pixel included): no pan, no feedback loop.
 	assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5000, scrollY: 4999.5, now: 1032 }), {
 		recentre: false,
 		pan: undefined,
 	});
 	// End/Home or a reset scroll position inside the gesture window: re-centre, no 5000px pan.
-	for (const scrollY of [9999.5, 0]) {
-		assert.deepEqual(scrollSinkStep({ ...rest, scrollX: 5000, scrollY, now: 1016 }), {
+	for (const [scrollX, scrollY] of [
+		[5000, 9999.5],
+		[5000, 0],
+		[9999, 4999.5],
+	]) {
+		assert.deepEqual(scrollSinkStep({ ...rest, scrollX, scrollY, now: 1016 }), {
 			recentre: true,
 			pan: undefined,
 		});

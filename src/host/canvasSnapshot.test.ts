@@ -11,11 +11,8 @@ import { sourceTaggedHtml } from '../disk/sourceTags';
 import {
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
-	emptyArtboardSnapshot,
-	panelFrameHtml,
 	panelFrames,
 	postedFrameFromSnapshot,
-	type CanvasSnapshot,
 } from './canvasSnapshot';
 
 // Pinned values: the module keeps these private.
@@ -59,14 +56,6 @@ const viewFrame = (
 	return frame;
 };
 
-const snapshotWithFrames = (frames: CanvasViewFrame[]): CanvasSnapshot => ({
-	pageId: 'page-1',
-	activeArtboardId: frames[0]?.id ?? '',
-	generation: frames[0]?.generation ?? 0,
-	frames,
-	handoffStale: false,
-});
-
 test('postedFrameFromSnapshot maps fields only: no cap, errorMessage and group passed through', () => {
 	const huge = 'x'.repeat(MAX_POSTED_ARTBOARD_HTML_CHARS + 1);
 	const posted = postedFrameFromSnapshot(
@@ -78,8 +67,6 @@ test('postedFrameFromSnapshot maps fields only: no cap, errorMessage and group p
 	const sibling = postedFrameFromSnapshot(viewFrame({ id: 'hero' }));
 	assert.equal('errorMessage' in sibling, false);
 	assert.equal('group' in sibling, false);
-	assert.equal(snapshotWithFrames([]).errorMessage, undefined);
-	assert.equal(emptyArtboardSnapshot().errorMessage, undefined);
 });
 
 const ROOT = '/workspace';
@@ -129,15 +116,6 @@ test('the posted hash is the disk html hash, not the tagged copy hash', () => {
 	assert.notEqual(posted.html, html);
 	assert.equal(posted.hash, hashHtml(html));
 	assert.notEqual(posted.hash, hashHtml(posted.html));
-});
-
-test('panelFrameHtml returns the identical string for the same disk html', () => {
-	const args = { workspaceRoot: ROOT, frameId: 'hero', html: '<p>ok</p>', onTagError };
-	const first = panelFrameHtml(args);
-	const before = tagCalls();
-	assert.equal(panelFrameHtml(args).html, first.html);
-	assert.equal(tagCalls(), before);
-	assert.equal(first.errorMessage, undefined);
 });
 
 test('a frame with errorMessage or empty html is copied unchanged and never parsed', () => {

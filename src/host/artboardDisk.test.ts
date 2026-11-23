@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
 import { CorruptProjectError, DiskError, PageNotFoundError } from '../disk/errors';
+import {
+	DEFAULT_ARTBOARD_ID,
+	artboardHtmlPathSegments,
+	artboardsDirSegments,
+	manifestPathSegments,
+} from '../disk/layout';
+import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
 import {
 	initAndLoadArtboard,
@@ -10,10 +20,14 @@ import {
 	readActiveArtboardFromDisk,
 } from './artboardDisk';
 
-const host = vi.hoisted(() => ({ manifestExists: true }));
+const host = vi.hoisted(() => ({ manifestExists: true, isTrusted: true }));
 
 vi.mock('vscode', () => ({
-	workspace: { isTrusted: true },
+	workspace: {
+		get isTrusted() {
+			return host.isTrusted;
+		},
+	},
 	Uri: { joinPath: (_base: unknown, ...segments: string[]) => segments.join('/') },
 }));
 vi.mock('./hostFs', () => ({
@@ -43,7 +57,7 @@ vi.mock('../disk/canvasView', () => ({
 }));
 
 const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
-const { createArtboard, placeFrame } = await import('../disk/artboardFs');
+const { createArtboard, placeFrame, setActiveArtboard } = await import('../disk/artboardFs');
 const { readCanvasView } = await import('../disk/canvasView');
 const { fileExists, logDiskError } = await import('./hostFs');
 
@@ -63,6 +77,7 @@ const framePlace = {
 
 beforeEach(() => {
 	host.manifestExists = true;
+	host.isTrusted = true;
 	vi.clearAllMocks();
 });
 
@@ -85,7 +100,14 @@ test("a frame:place for page-1 while page-2 is open places on page-1's location"
 	assert.deepEqual(vi.mocked(resolveRequestedPage).mock.calls, [
 		[{ workspaceRoot: '/ws', pageId: 'page-1' }],
 	]);
-	assert.equal(vi.mocked(placeFrame).mock.calls[0]?.[0].page, pageOne);
+	assert.deepEqual(vi.mocked(placeFrame).mock.calls[0]?.[0], {
+		page: pageOne,
+		id: 'hero',
+		x: 10,
+		y: 20,
+		width: 400,
+		base: { x: 0, y: 0, width: 400 },
+	});
 	// The answer is the open page's snapshot.
 	assert.equal(snapshot.pageId, 'page-2');
 	assert.equal(snapshot.errorMessage, undefined);
@@ -144,7 +166,50 @@ test('a read failure after the resolve keeps the resolved page id', async () => 
 	assert.equal(vi.mocked(logDiskError).mock.calls.length, 1);
 });
 
-test('a good read carries the resolved page id', async () => {
-	const snapshot = await readActiveArtboardFromDisk(args);
-	assert.equal(snapshot.pageId, 'page-2');
+// The resolver can migrate or create files, so an untrusted folder never reaches it.
+test('an untrusted Open, refresh or frame:place touches no page', async () => {
+	host.isTrusted = false;
+	const snapshots = [
+		await initAndLoadArtboard(args),
+		await readActiveArtboardFromDisk(args),
+		await placeFrameFromChrome({ value: framePlace, outputChannel }),
+	];
+	for (const snapshot of snapshots) {
+		assert.equal(snapshot.errorMessage, UNTRUSTED_WORKSPACE_MESSAGE);
+	}
+	assert.equal(vi.mocked(resolveOpenPage).mock.calls.length, 0);
+	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);
+	assert.equal(vi.mocked(placeFrame).mock.calls.length, 0);
+});
+
+test('a malformed frame:place places nothing and answers the move copy', async () => {
+	const snapshot = await placeFrameFromChrome({
+		value: { ...framePlace, x: 'far' },
+		outputChannel,
+	});
+	assert.equal(vi.mocked(placeFrame).mock.calls.length, 0);
+	assert.equal(snapshot.errorMessage, 'Could not move the frame. Try again.');
+});
+
+test('Open on a page with artboard.html but no manifest keeps its bytes and makes it active', async () => {
+	const actual = await vi.importActual<typeof import('../disk/artboardFs')>('../disk/artboardFs');
+	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
+	vi.mocked(setActiveArtboard).mockImplementationOnce(actual.setActiveArtboard);
+	host.manifestExists = false;
+	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	try {
+		await mkdir(join(root, ...artboardsDirSegments('page-2')), { recursive: true });
+		const htmlPath = join(root, ...artboardHtmlPathSegments('page-2', DEFAULT_ARTBOARD_ID));
+		await writeFile(htmlPath, '<p>mine</p>');
+		const snapshot = await initAndLoadArtboard({
+			workspaceFolder: { uri: { fsPath: root } } as vscode.WorkspaceFolder,
+			outputChannel,
+		});
+		assert.equal(snapshot.errorMessage, undefined);
+		assert.equal(await readFile(htmlPath, 'utf8'), '<p>mine</p>');
+		const manifest = await readFile(join(root, ...manifestPathSegments('page-2')), 'utf8');
+		assert.equal(JSON.parse(manifest).activeArtboardId, DEFAULT_ARTBOARD_ID);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });

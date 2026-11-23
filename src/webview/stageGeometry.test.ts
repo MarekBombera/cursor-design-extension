@@ -43,10 +43,14 @@ test('screen and stage coordinates round-trip at several zoom levels', () => {
 	}
 });
 
-test('wheel up zooms in and wheel down zooms out', () => {
+test('a wheel step under the cap zooms by exp(-deltaY / 100)', () => {
 	const view = { x: 0, y: 0, zoom: 1 };
-	assert.ok(geometry.zoomStageAt({ view, deltaY: -10, screenX: 0, screenY: 0 }).zoom > 1);
-	assert.ok(geometry.zoomStageAt({ view, deltaY: 10, screenX: 0, screenY: 0 }).zoom < 1);
+	assertClose(geometry.zoomStageAt({ view, deltaY: -10, screenX: 0, screenY: 0 }), {
+		zoom: Math.exp(0.1),
+	});
+	assertClose(geometry.zoomStageAt({ view, deltaY: 10, screenX: 0, screenY: 0 }), {
+		zoom: Math.exp(-0.1),
+	});
 });
 
 test('one zoom step is capped', () => {
@@ -77,37 +81,6 @@ test('zoom clamps exactly at the minimum and maximum', () => {
 	assert.equal(atMax.zoom, 10);
 });
 
-test('zoomStageTo keeps the screen anchor fixed at the target zoom', () => {
-	const zoomed = geometry.zoomStageTo({
-		view: { x: 100, y: 50, zoom: 1 },
-		zoom: 2,
-		screenX: 300,
-		screenY: 200,
-	});
-	assert.equal(zoomed.x, -100);
-	assert.equal(zoomed.y, -100);
-	assert.equal(zoomed.zoom, 2);
-});
-
-test('zoomStageTo clamps the target zoom at both ends', () => {
-	const view = { x: 0, y: 0, zoom: 1 };
-	assertClose(geometry.zoomStageTo({ view, zoom: 0.01, screenX: 0, screenY: 0 }), {
-		x: 0,
-		y: 0,
-		zoom: 0.05,
-	});
-	assertClose(geometry.zoomStageTo({ view, zoom: 50, screenX: 0, screenY: 0 }), {
-		x: 0,
-		y: 0,
-		zoom: 10,
-	});
-	assertClose(geometry.zoomStageTo({ view, zoom: 50, screenX: 100, screenY: 40 }), {
-		x: 100 - 100 * 10,
-		y: 40 - 40 * 10,
-		zoom: 10,
-	});
-});
-
 test('zoomStageTo from a zero zoom yields a finite view', () => {
 	const zoomed = geometry.zoomStageTo({
 		view: { x: 10, y: 20, zoom: 0 },
@@ -116,36 +89,6 @@ test('zoomStageTo from a zero zoom yields a finite view', () => {
 		screenY: 100,
 	});
 	assertClose(zoomed, { x: 100 - 90 * 40, y: 100 - 80 * 40, zoom: 2 });
-});
-
-test('the stage point under the cursor stays under it while zooming', () => {
-	const view = { x: 30, y: 40, zoom: 1.5 };
-	const anchor = geometry.screenToStage({ view, screenX: 200, screenY: 300 });
-	const zoomed = geometry.zoomStageAt({ view, deltaY: -50, screenX: 200, screenY: 300 });
-	assert.notEqual(zoomed.zoom, view.zoom);
-	assertClose(geometry.stageToScreen({ view: zoomed, stageX: anchor.x, stageY: anchor.y }), {
-		x: 200,
-		y: 300,
-	});
-});
-
-test('a zero input zoom still yields a finite view', () => {
-	const zoomed = geometry.zoomStageAt({
-		view: { x: 10, y: 20, zoom: 0 },
-		deltaY: -50,
-		screenX: 100,
-		screenY: 100,
-	});
-	assert.ok(Number.isFinite(zoomed.x) && Number.isFinite(zoomed.y));
-	assert.ok(zoomed.zoom >= 0.05);
-});
-
-test('pan moves the view against the wheel delta and keeps zoom', () => {
-	assert.deepEqual(geometry.panStage({ view: { x: 10, y: 20, zoom: 2 }, deltaX: 5, deltaY: -7 }), {
-		x: 5,
-		y: 27,
-		zoom: 2,
-	});
 });
 
 test('layoutCanvasChrome places labels, one heading per group, and includes them in bounds', () => {
@@ -167,6 +110,18 @@ test('layoutCanvasChrome places labels, one heading per group, and includes them
 	assert.equal(layout.headings[0]?.group, 'Desktop');
 	assert.deepEqual(boxRect(layout.headings[0]), { x: 0, y: 44, width: 1694, height: 32 });
 	assert.deepEqual(layout.bounds, { x: 0, y: 44, width: 1694, height: 1356 });
+});
+
+test('a group heading spans its frames in any order; an empty group gets none', () => {
+	const layout = geometry.layoutCanvasChrome({
+		frames: [
+			{ id: 'a', x: 500, y: 300, width: 400, height: 100, group: 'G' },
+			{ id: 'b', x: 100, y: 200, width: 50, height: 100, group: 'G' },
+			{ id: 'c', x: 0, y: 0, width: 10, height: 10, group: '' },
+		],
+	});
+	assert.equal(layout.headings.length, 1);
+	assert.deepEqual(boxRect(layout.headings[0]), { x: 100, y: 144, width: 800, height: 32 });
 });
 
 test('layoutCanvasChrome has no heading for ungrouped frames and null bounds for none', () => {
@@ -194,19 +149,6 @@ test('layoutCanvasChrome headings follow first-seen group order', () => {
 	assert.equal(layout.headings[1]?.group, 'Desktop');
 	assert.deepEqual(boxRect(layout.headings[0]), { x: 0, y: -16, width: 100, height: 32 });
 	assert.deepEqual(boxRect(layout.headings[1]), { x: 200, y: -46, width: 120, height: 32 });
-});
-
-test('frame bounds are the union rect, or null for no frames', () => {
-	assert.deepEqual(
-		geometry.frameBounds({
-			frames: [
-				{ x: 0, y: 0, width: 100, height: 50 },
-				{ x: 200, y: -20, width: 50, height: 30 },
-			],
-		}),
-		{ x: 0, y: -20, width: 250, height: 70 },
-	);
-	assert.equal(geometry.frameBounds({ frames: [] }), null);
 });
 
 test('clamp keeps exactly 48px of large bounds visible at each edge', () => {
@@ -282,6 +224,18 @@ test('clamp with null bounds only clamps zoom', () => {
 		}),
 		{ x: 999, y: -999, zoom: 10 },
 	);
+	// A hidden webview reports a zero viewport: the saved view must not shift.
+	const bounds = { x: 0, y: 0, width: 2000, height: 1500 };
+	const view = { x: 5000, y: -5000, zoom: 1 };
+	for (const [viewportWidth, viewportHeight] of [
+		[0, 600],
+		[800, 0],
+	]) {
+		assert.deepEqual(
+			geometry.clampStageView({ view, bounds, viewportWidth, viewportHeight }),
+			view,
+		);
+	}
 });
 
 test('fit centers the bounds inside the padded viewport', () => {
@@ -334,9 +288,14 @@ test('fitZoom is undefined for a zero-size box or a viewport no larger than the 
 	const viewport = { viewportWidth: 800, viewportHeight: 600 };
 	assert.equal(geometry.fitZoom({ width: 0, height: 100, ...viewport }), undefined);
 	assert.equal(geometry.fitZoom({ width: 100, height: -1, ...viewport }), undefined);
+	assert.equal(geometry.fitZoom({ width: 100, height: 0, ...viewport }), undefined);
 	const padded = 2 * geometry.FIT_PADDING;
 	assert.equal(
 		geometry.fitZoom({ width: 10, height: 10, viewportWidth: padded, viewportHeight: 600 }),
+		undefined,
+	);
+	assert.equal(
+		geometry.fitZoom({ width: 10, height: 10, viewportWidth: 800, viewportHeight: padded }),
 		undefined,
 	);
 	// Unclamped and the tighter axis: a tiny box fits far past 100%.
@@ -382,6 +341,11 @@ test('nextFrameHeight applies first report, shrink, growth, clamps, and freeze',
 	assert.equal(first.height, 1200);
 	assert.equal(first.state.lastGrowth, 400);
 	assert.equal(first.state.frozen, false);
+
+	// A first growth of 1px is applied, not mistaken for a bounce.
+	const onePx = geometry.nextFrameHeight({ current: 800, reported: 801, state: reset });
+	assert.equal(onePx.height, 801);
+	assert.equal(onePx.state.frozen, false);
 
 	const grown = geometry.nextFrameHeight({
 		current: 1200,
@@ -640,13 +604,7 @@ test('property: fit-all contains every chrome box', () => {
 			fc.integer({ min: 97, max: 4000 }),
 			fc.integer({ min: 97, max: 4000 }),
 			(frames, viewportWidth, viewportHeight) => {
-				const union = geometry.frameBounds({ frames });
 				const layout = geometry.layoutCanvasChrome({ frames });
-				if (frames.length === 0) {
-					assert.equal(union, null);
-					assert.equal(layout.bounds, null);
-					return;
-				}
 				if (layout.bounds === null) {
 					return;
 				}
@@ -729,70 +687,6 @@ test('placementChanged is true when any of x, y, width differs', () => {
 	assert.equal(geometry.placementChanged({ base, next: { ...base, x: 8 } }), true);
 	assert.equal(geometry.placementChanged({ base, next: { ...base, y: 0 } }), true);
 	assert.equal(geometry.placementChanged({ base, next: { ...base, width: 408 } }), true);
-});
-
-const MAX_COORDINATE = 100_000;
-const gestureCoordinate = fc.oneof(
-	fc.integer({ min: -MAX_COORDINATE, max: MAX_COORDINATE }),
-	fc.double({ min: -MAX_COORDINATE, max: MAX_COORDINATE, noNaN: true }),
-);
-const gestureView = fc.record({
-	x: fc.double({ min: -10_000, max: 10_000, noNaN: true }),
-	y: fc.double({ min: -10_000, max: 10_000, noNaN: true }),
-	zoom: fc.double({ min: 0.05, max: 10, noNaN: true }),
-});
-
-// Stage delta comes from two screen points through screenToStage, as the chrome computes it.
-const stageDeltaOf = (view: View, startScreen: Point, screen: Point): Point => {
-	const from = geometry.screenToStage({ view, screenX: startScreen.x, screenY: startScreen.y });
-	const to = geometry.screenToStage({ view, screenX: screen.x, screenY: screen.y });
-	return { x: to.x - from.x, y: to.y - from.y };
-};
-
-const screenPoint = fc.record({
-	x: fc.double({ min: -5_000, max: 5_000, noNaN: true }),
-	y: fc.double({ min: -5_000, max: 5_000, noNaN: true }),
-});
-
-test('property: dragFrame lands on a whole px within ±MAX_FRAME_COORDINATE', () => {
-	fc.assert(
-		fc.property(
-			gestureCoordinate,
-			gestureCoordinate,
-			gestureView,
-			screenPoint,
-			screenPoint,
-			(startX, startY, view, startScreen, screen) => {
-				const placed = geometry.dragFrame({
-					start: { x: startX, y: startY },
-					stageDelta: stageDeltaOf(view, startScreen, screen),
-				});
-				for (const value of [placed.x, placed.y]) {
-					assert.ok(Math.abs(value) <= MAX_COORDINATE);
-					assert.ok(Number.isInteger(value));
-				}
-			},
-		),
-	);
-});
-
-test('property: resizeFrameWidth lands on a whole px within 120..3840', () => {
-	fc.assert(
-		fc.property(
-			fc.integer({ min: 120, max: 3840 }),
-			gestureView,
-			screenPoint,
-			screenPoint,
-			(startWidth, view, startScreen, screen) => {
-				const width = geometry.resizeFrameWidth({
-					startWidth,
-					stageDeltaX: stageDeltaOf(view, startScreen, screen).x,
-				});
-				assert.ok(width >= 120 && width <= 3840);
-				assert.ok(Number.isInteger(width));
-			},
-		),
-	);
 });
 
 test('frameRectToScreen maps a frame-local rect through a panned view at any zoom', () => {

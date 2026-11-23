@@ -16,9 +16,13 @@ const anchor = (overrides: Partial<AnchorRect> = {}): AnchorRect => ({
 
 test('anchorsMoved: exactly 0.5px is not a move, 0.51px is', () => {
 	const last = [anchor()];
-	assert.equal(anchorsMoved({ last, next: [anchor({ box: { ...rect, x: 10.5 } })] }), false);
+	for (const key of ['x', 'y', 'width', 'height'] as const) {
+		const moved = (by: number): boolean =>
+			anchorsMoved({ last, next: [anchor({ box: { ...rect, [key]: rect[key] + by } })] });
+		assert.equal(moved(0.5), false, key);
+		assert.equal(moved(0.51), true, key);
+	}
 	assert.equal(anchorsMoved({ last, next: [anchor({ box: { ...rect, height: 39.49 } })] }), true);
-	assert.equal(anchorsMoved({ last, next: [anchor({ box: { ...rect, y: 20.51 } })] }), true);
 });
 
 test('anchorsMoved: a null flip, a visible-only change and a changed id list are moves', () => {
@@ -28,7 +32,10 @@ test('anchorsMoved: a null flip, a visible-only change and a changed id list are
 	assert.equal(anchorsMoved({ last, next: [anchor({ visible: { ...rect, width: 50 } })] }), true);
 	assert.equal(anchorsMoved({ last, next: [anchor({ id: 'c2' })] }), true);
 	assert.equal(anchorsMoved({ last, next: [anchor(), anchor({ id: 'c2' })] }), true);
+	assert.equal(anchorsMoved({ last: [anchor(), anchor({ id: 'c2' })], next: last }), true);
 	assert.equal(anchorsMoved({ last, next: [anchor()] }), false);
+	const unresolved = [anchor({ box: null, visible: null })];
+	assert.equal(anchorsMoved({ last: unresolved, next: [...unresolved] }), false);
 });
 
 test('anchorsMoved: empty to empty is quiet; nothing posted yet always moves', () => {

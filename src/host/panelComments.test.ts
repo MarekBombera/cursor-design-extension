@@ -183,29 +183,6 @@ test('a resolver error posts one ui:error with its message and writes nothing', 
 	assert.equal(vi.mocked(setCommentStatus).mock.calls.length, 0);
 });
 
-test('each copy resolves the requested page once and reads and marks on that page', async () => {
-	for (const value of [copy, copyOpen]) {
-		vi.clearAllMocks();
-		await answerCommentRequest({ value, outputChannel });
-		await flushRefresh();
-		// The request's one resolve, then the comments:updated refresh's own open-page read after
-		// the answer.
-		assert.deepEqual(vi.mocked(resolveRequestedPage).mock.calls, [
-			[{ workspaceRoot: '/ws', pageId: 'page-2' }],
-		]);
-		const refresh = vi.mocked(resolveOpenPage).mock;
-		assert.deepEqual(refresh.calls, [[{ workspaceRoot: '/ws', createIfFresh: false }]]);
-		const [answerOrder] = vi.mocked(postAnswerToPanel).mock.invocationCallOrder;
-		assert.ok(answerOrder !== undefined && (refresh.invocationCallOrder[0] ?? 0) > answerOrder);
-		const readPage =
-			value === copy
-				? vi.mocked(getComment).mock.calls[0]?.[0].page
-				: vi.mocked(listComments).mock.calls[0]?.[0].page;
-		assert.ok(readPage !== undefined);
-		assert.equal(vi.mocked(markCommentsSent).mock.calls[0]?.[0].page, readPage);
-	}
-});
-
 test('a malformed comment:reply posts one ui:error with the change copy', async () => {
 	await answerCommentRequest({ value: { ...reply, body: 7 }, outputChannel });
 	await flushRefresh();
@@ -371,4 +348,22 @@ test('the posted list names the resolved page, kept on a read failure, empty whe
 	host.isTrusted = false;
 	await postPanelComments({ outputChannel });
 	assert.deepEqual(postedLists(), [{ pageId: '', comments: [] }]);
+});
+
+test('a slow comment read never posts over a newer one', async () => {
+	let finishOlder: (comments: []) => void = () => {};
+	vi.mocked(resolveOpenPage)
+		.mockResolvedValueOnce({ workspaceRoot: '/ws', pageId: 'page-old' })
+		.mockResolvedValueOnce({ workspaceRoot: '/ws', pageId: 'page-new' });
+	vi.mocked(readComments).mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				finishOlder = resolve;
+			}),
+	);
+	const older = postPanelComments({ outputChannel });
+	await postPanelComments({ outputChannel });
+	finishOlder([]);
+	await older;
+	assert.deepEqual(postedLists(), [{ pageId: 'page-new', comments: [] }]);
 });

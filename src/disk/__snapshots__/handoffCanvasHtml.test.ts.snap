@@ -379,7 +379,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
-	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -1487,7 +1486,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
-	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -2595,7 +2593,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
-	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -3703,7 +3700,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
 	];
-	/** @internal */
 	var isGeneratedName = (name) =&gt; {
 		const lower = name.toLowerCase();
 		return GENERATED_PREFIXES.some((prefix) =&gt; lower.startsWith(prefix));
@@ -4520,7 +4516,6 @@ var stageGeometry = (function(exports) {
 		y: view.y - deltaY,
 		zoom: view.zoom
 	});
-	/** @internal */
 	var frameBounds = ({ frames }) => {
 		const [first] = frames;
 		if (first === void 0) return null;
@@ -4723,7 +4718,6 @@ var stageGeometry = (function(exports) {
 	exports.dragFrame = dragFrame;
 	exports.fitStageView = fitStageView;
 	exports.fitZoom = fitZoom;
-	exports.frameBounds = frameBounds;
 	exports.frameRectToScreen = frameRectToScreen;
 	exports.jumpStageView = jumpStageView;
 	exports.layoutCanvasChrome = layoutCanvasChrome;

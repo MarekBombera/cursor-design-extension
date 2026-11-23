@@ -4,12 +4,7 @@ import { test } from 'vite-plus/test';
 
 import * as z from 'zod/mini';
 
-import {
-	CorruptManifestError,
-	CorruptMetaError,
-	CorruptProjectError,
-	UnsupportedProjectVersionError,
-} from './errors';
+import { CorruptManifestError, CorruptMetaError, CorruptProjectError } from './errors';
 import { hashHtml } from './hash';
 import { DEFAULT_VIEWPORT, FIRST_PAGE_ID, isPageId } from './layout';
 import {
@@ -267,6 +262,26 @@ test('project round-trips byte-equal and drops unknown keys', () => {
 	assert.deepEqual(parseProject({ ...PROJECT, extra: true }), PROJECT);
 });
 
+// Version dispatch runs before the schema: a top-level non-object or a non-integer version must
+// be the file's CORRUPT_* code, never a TypeError or UNSUPPORTED_SCHEMA_VERSION.
+test("null, an array, or a non-integer version is the file's corrupt error", () => {
+	for (const value of [
+		null,
+		[],
+		{ ...BASE_MANIFEST, version: '1' },
+		{ ...BASE_MANIFEST, version: 1.5 },
+	]) {
+		assert.throws(
+			() => parseManifest(value, FIRST_PAGE_ID),
+			CorruptManifestError,
+			JSON.stringify(value),
+		);
+	}
+	for (const value of [null, []]) {
+		assert.throws(() => parseMeta(value, FIRST_PAGE_ID), CorruptMetaError, JSON.stringify(value));
+	}
+});
+
 test('a malformed project is CORRUPT_PROJECT', () => {
 	const withPages = (pages: unknown): unknown => ({ ...PROJECT, pages });
 	const withTitle = (title: string): unknown => withPages([{ id: 'page-1', title }]);
@@ -277,6 +292,7 @@ test('a malformed project is CORRUPT_PROJECT', () => {
 		}));
 	const cases: unknown[] = [
 		'{',
+		null,
 		[PROJECT],
 		{ openPageId: 'page-1', pages: PROJECT.pages },
 		{ ...PROJECT, version: 1.5 },
@@ -305,16 +321,6 @@ test('a malformed project is CORRUPT_PROJECT', () => {
 	}
 	assert.equal(parseProject(withPages(pageList(100))).pages.length, 100);
 	assert.equal(parseProject(withTitle('a'.repeat(80))).pages[0]?.title.length, 80);
-});
-
-test('project version 2 is UNSUPPORTED_PROJECT_VERSION', () => {
-	assert.throws(
-		() => parseProject({ ...PROJECT, version: 2 }),
-		(error: unknown) =>
-			error instanceof UnsupportedProjectVersionError &&
-			error.code === 'UNSUPPORTED_PROJECT_VERSION' &&
-			error.version === 2,
-	);
 });
 
 test('isPageId accepts page-1 to page-999999 only', () => {

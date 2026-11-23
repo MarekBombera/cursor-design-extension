@@ -122,19 +122,6 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 	});
 });
 
-test('a text edit passes its live text to the edit core', async () => {
-	await answerEditRequest({
-		value: { ...edit, styles: undefined, field: 'text', value: 'New', liveText: 'Old' },
-		outputChannel,
-	});
-	assert.deepEqual(vi.mocked(editArtboard).mock.calls[0]?.[0].edit, {
-		sourceNumber: 0,
-		field: 'text',
-		value: 'New',
-		liveText: 'Old',
-	});
-});
-
 test('a conflict or a refusal is logged and answered once with panel copy', async () => {
 	vi.mocked(editArtboard).mockRejectedValueOnce(new ConflictError('hero', {}));
 	await answerEditRequest({ value: edit, outputChannel });

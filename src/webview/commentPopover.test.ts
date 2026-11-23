@@ -75,6 +75,9 @@ test('↑/↓ step only while the box is empty, from the textarea or a button', 
 
 test('canSubmit needs a trimmed body in range, a usable target and no pending request', () => {
 	assert.equal(canSubmit(draftOf(), ' Bolder '), true);
+	assert.equal(canSubmit(draftOf(), 'a'), true);
+	// A fresh artboard (generation 1) takes comments.
+	assert.equal(canSubmit(draftOf({ generation: 1 }), 'Bolder'), true);
 	assert.equal(canSubmit(draftOf(), '  \n '), false);
 	assert.equal(canSubmit(draftOf(), ` ${'a'.repeat(2000)} `), true);
 	assert.equal(canSubmit(draftOf(), 'a'.repeat(2001)), false);
@@ -143,6 +146,9 @@ test('submit carries the pick fields; answers match only the pending request', (
 	const pending = submitted.draft;
 	assert.equal(answerDraft(pending, { type: 'comment:added', requestId: 'r0' }), pending);
 	assert.equal(answerDraft(pending, { type: 'ui:error', message: 'x' }), pending);
+	// A standing ui:error never attaches to a draft with nothing in flight.
+	const idle = draftOf();
+	assert.equal(answerDraft(idle, { type: 'ui:error', message: 'x' }), idle);
 	assert.equal(answerDraft(pending, { type: 'comment:added', requestId: 'r1' }), undefined);
 	const failed = answerDraft(pending, {
 		type: 'ui:error',
@@ -198,6 +204,7 @@ test('a held draft comes back only in Comment mode on a live iframe frame', () =
 		resolveHeldDraft({ held, commentMode: true, frames: [iframeRecord('a', 'tile')] }),
 		{},
 	);
+	assert.deepEqual(resolveHeldDraft({ held: undefined, commentMode: true, frames: live }), {});
 });
 
 test('the chip reads Whole frame, the element text, or its tag', () => {
@@ -253,6 +260,11 @@ test('the draft slot: a page writes its own draft and clears only its own slot',
 	);
 	assert.equal(
 		keptCommentDraft({ slot: slotA, page: { pageId: 'page-1', draft: undefined } }),
+		undefined,
+	);
+	// The common save: no slot yet and no draft on the page.
+	assert.equal(
+		keptCommentDraft({ slot: undefined, page: { pageId: 'page-1', draft: undefined } }),
 		undefined,
 	);
 	// No page mounted, or the '' page (even with a draft), never writes the slot.

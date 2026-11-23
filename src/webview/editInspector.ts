@@ -486,9 +486,7 @@ const contentOf = (edit: PickEditFields): ContentView =>
 
 // drafted: the fields with an open draft for this element. Previewing an emptied box drops its
 // declaration from the frame, so the re-posted pick alone would unmount the field mid-typing.
-// Exported for tests: one pins inspectorView as exactly this model plus kind and target.
-/** @internal */
-export const editableSections = ({
+const editableSections = ({
 	pick,
 	edit,
 	drafted,

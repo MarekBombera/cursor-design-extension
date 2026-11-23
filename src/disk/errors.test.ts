@@ -2,31 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import {
+	ArtboardNotFoundError,
 	CorruptManifestError,
 	CorruptMetaError,
 	CorruptProjectError,
-	MigrationConflictError,
+	DiskError,
+	throwDiskError,
 	UnsupportedProjectVersionError,
 } from './errors';
-
-test('MigrationConflictError names both JSON copies and the JSON step', () => {
-	const error = new MigrationConflictError({
-		pageId: 'page-1',
-		names: ['manifest.json', 'comments.json'],
-	});
-	assert.equal(error.code, 'MIGRATION_CONFLICT');
-	assert.equal(
-		error.message,
-		'Cannot move the existing design into .cursor-design/pages/page-1/: .cursor-design/manifest.json and .cursor-design/pages/page-1/manifest.json both exist; .cursor-design/comments.json and .cursor-design/pages/page-1/comments.json both exist. Keep one copy of each JSON file: move or delete the other by hand. Then retry.',
-	);
-});
-
-test('MigrationConflictError names a root artboards folder and the move step', () => {
-	assert.equal(
-		new MigrationConflictError({ pageId: 'page-1', names: ['artboards'] }).message,
-		'Cannot move the existing design into .cursor-design/pages/page-1/: .cursor-design/artboards/ is a folder, but artboards now live in .cursor-design/pages/page-1/artboards/. Move the files you want from .cursor-design/artboards/ into .cursor-design/pages/page-1/artboards/, then delete .cursor-design/artboards/ (quit and reopen Cursor first if an older cursor-design MCP server may still be running). Then retry.',
-	);
-});
 
 test('per-page errors name the page path and keep pageId and artboardId', () => {
 	const manifest = new CorruptManifestError({ pageId: 'page-3' });
@@ -52,5 +35,23 @@ test('the project index errors name project.json and the next step', () => {
 	assert.equal(
 		unsupported.message,
 		'Project index version 2 is unsupported (expected 1). Update the cursor-design extension, or fix .cursor-design/project.json.',
+	);
+});
+
+test('throwDiskError wraps an fs failure as DISK_ERROR with authored copy and the cause, and rethrows a domain error', () => {
+	const fsError = Object.assign(new Error('EACCES: /home/x'), { code: 'EACCES' });
+	assert.throws(
+		() => throwDiskError(fsError),
+		(error: unknown) =>
+			error instanceof DiskError &&
+			error.code === 'DISK_ERROR' &&
+			error.message ===
+				'Could not read or write artboard files. Check Output/stderr; fix folder permissions.' &&
+			error.cause === fsError,
+	);
+	const domain = new ArtboardNotFoundError('a');
+	assert.throws(
+		() => throwDiskError(domain),
+		(error: unknown) => error === domain,
 	);
 });

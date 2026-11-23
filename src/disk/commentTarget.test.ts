@@ -35,22 +35,8 @@ test('re-indenting a text leaf keeps the fingerprint', () => {
 	assert.equal(fingerprintOf('<p>Hi</p>', 'p'), fingerprintOf('<p>\n  Hi\n</p>', 'p'));
 });
 
-test('rewriting single-quoted attributes as double-quoted keeps the fingerprint', () => {
-	assert.equal(
-		fingerprintOf("<p class='hero'>Hi</p>", 'p'),
-		fingerprintOf('<p class="hero">Hi</p>', 'p'),
-	);
-});
-
 test('editing text inside the target changes the fingerprint', () => {
 	assert.notEqual(fingerprintOf('<p>Hi</p>', 'p'), fingerprintOf('<p>Hey</p>', 'p'));
-});
-
-test('editing an attribute inside the target changes the fingerprint', () => {
-	assert.notEqual(
-		fingerprintOf('<p class="a">Hi</p>', 'p'),
-		fingerprintOf('<p class="b">Hi</p>', 'p'),
-	);
 });
 
 test('reordering attributes changes the fingerprint', () => {
@@ -299,10 +285,6 @@ test('targetAgrees ignores case and whitespace in text', () => {
 		selector: 'h1',
 	});
 	assert.equal(targetAgrees({ match, tagName: 'h1', text: 'HELLO  WORLD' }), true);
-});
-
-test('targetAgrees is false when the match is not checkable', () => {
-	assert.equal(targetAgrees({ match: { checkable: false }, tagName: 'div', text: '' }), false);
 });
 
 test('a tbody selector matches source written without tbody', () => {

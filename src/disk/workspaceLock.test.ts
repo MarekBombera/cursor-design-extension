@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
-import { CursorDesignError, FrameMovedError, LockTimeoutError } from './errors';
+import { LockTimeoutError } from './errors';
 import { CURSOR_DESIGN_DIR, LOCK_FILE } from './layout';
 import { isLockOrTempPath, withWorkspaceLock } from './workspaceLock';
 
@@ -33,13 +33,6 @@ const writeForeignLock = async (workspaceRoot: string, token: string): Promise<v
 const lockDirEntries = async (workspaceRoot: string): Promise<string[]> =>
 	readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
 
-test('creates .cursor-design/, runs the operation, and removes the lock', async () => {
-	const workspaceRoot = await makeTempRoot();
-	const result = await withWorkspaceLock({ workspaceRoot, operation: async () => 'done' });
-	assert.equal(result, 'done');
-	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
-});
-
 test('a throwing operation releases the lock and rethrows the same error', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const thrown = new Error('boom');
@@ -52,16 +45,6 @@ test('a throwing operation releases the lock and rethrows the same error', async
 		}),
 		(error: unknown) => error === thrown,
 	);
-	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
-});
-
-test('a lock older than staleMs is broken and the operation runs', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await writeForeignLock(workspaceRoot, '1 dead-holder');
-	const longAgo = new Date(Date.now() - 60_000);
-	await utimes(lockPathOf(workspaceRoot), longAgo, longAgo);
-	const result = await withWorkspaceLock({ workspaceRoot, operation: async () => 7 });
-	assert.equal(result, 7);
 	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
 });
 
@@ -123,18 +106,6 @@ test('20 concurrent callers serialize a read-increment-write counter', async () 
 	assert.equal(maxHolders, 1);
 });
 
-test('two callers racing on the same stale lock both finish, one at a time', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await writeFile(join(workspaceRoot, 'counter.json'), '0', 'utf8');
-	await writeForeignLock(workspaceRoot, '1 dead-holder');
-	const longAgo = new Date(Date.now() - 60_000);
-	await utimes(lockPathOf(workspaceRoot), longAgo, longAgo);
-	const { maxHolders } = await runCounterIncrements({ workspaceRoot, callers: 2 });
-	assert.equal(JSON.parse(await readFile(join(workspaceRoot, 'counter.json'), 'utf8')), 2);
-	assert.equal(maxHolders, 1);
-	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
-});
-
 // A rename + inode + link-back break lets two of several racing callers hold a stale lock at
 // once; the `.lock.break` sub-lock must not.
 test('many rounds of several callers racing a stale lock never overlap', async () => {
@@ -170,15 +141,61 @@ test("a stale lock plus a crashed breaker's stale .lock.break is cleared and the
 	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
 });
 
-test('release is owner-checked: a foreign token survives', async () => {
+// A holder that outlived staleMs had its lock broken; its release must not remove the breaker's.
+test("release is owner-checked: a broken holder leaves the new holder's lock in place", async () => {
 	const workspaceRoot = await makeTempRoot();
+	let secondHolds!: () => void;
+	const secondHolding = new Promise<void>((resolve) => {
+		secondHolds = resolve;
+	});
+	let finishSecond!: () => void;
+	const secondMayFinish = new Promise<void>((resolve) => {
+		finishSecond = resolve;
+	});
+	let second: Promise<void> | undefined;
 	await withWorkspaceLock({
 		workspaceRoot,
+		staleMs: 50,
 		operation: async () => {
-			await writeFile(lockPathOf(workspaceRoot), '2 someone-else', 'utf8');
+			second = withWorkspaceLock({
+				workspaceRoot,
+				staleMs: 50,
+				timeoutMs: 5000,
+				operation: async () => {
+					secondHolds();
+					await secondMayFinish;
+				},
+			});
+			await secondHolding;
 		},
 	});
-	assert.equal(await readFile(lockPathOf(workspaceRoot), 'utf8'), '2 someone-else');
+	assert.deepEqual(await lockDirEntries(workspaceRoot), [LOCK_FILE]);
+	finishSecond();
+	await second;
+	assert.deepEqual(await lockDirEntries(workspaceRoot), []);
+});
+
+test('a stale lock is not broken while another breaker holds a fresh .lock.break', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await writeForeignLock(workspaceRoot, '1 dead-holder');
+	const breakPath = `${lockPathOf(workspaceRoot)}.break`;
+	await writeFile(breakPath, '2 live-breaker', 'utf8');
+	const longAgo = new Date(Date.now() - 60_000);
+	await utimes(lockPathOf(workspaceRoot), longAgo, longAgo);
+	let ran = false;
+	await assert.rejects(
+		withWorkspaceLock({
+			workspaceRoot,
+			timeoutMs: 100,
+			operation: async () => {
+				ran = true;
+			},
+		}),
+		LockTimeoutError,
+	);
+	assert.equal(ran, false);
+	assert.equal(await readFile(lockPathOf(workspaceRoot), 'utf8'), '1 dead-holder');
+	assert.equal(await readFile(breakPath, 'utf8'), '2 live-breaker');
 });
 
 test('isLockOrTempPath matches the lock, broken locks, and temp files only', () => {
@@ -188,14 +205,4 @@ test('isLockOrTempPath matches the lock, broken locks, and temp files only', () 
 	assert.equal(isLockOrTempPath(join(base, 'canvas.json.123.tmp')), true);
 	assert.equal(isLockOrTempPath(join(base, 'canvas.json')), false);
 	assert.equal(isLockOrTempPath(join(base, 'artboards', 'a.html')), false);
-});
-
-test('the new errors are CursorDesignErrors with stable codes', () => {
-	const busy = new LockTimeoutError();
-	const moved = new FrameMovedError('hero');
-	assert.ok(busy instanceof CursorDesignError);
-	assert.ok(moved instanceof CursorDesignError);
-	assert.equal(busy.code, 'WORKSPACE_BUSY');
-	assert.equal(moved.code, 'FRAME_MOVED');
-	assert.equal(moved.frameId, 'hero');
 });

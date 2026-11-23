@@ -75,10 +75,9 @@ test('a draft starts only on an editable pick, with its key and raw baselines', 
 			undefined,
 		);
 	}
-	assert.equal(
-		startDraft({ pick: undefined, documentVersion: 2, field: 'text', value: 'x' }),
-		undefined,
-	);
+	for (const pick of [undefined, pickWith(undefined)]) {
+		assert.equal(startDraft({ pick, documentVersion: 2, field: 'text', value: 'x' }), undefined);
+	}
 	// An over-cap style: no style draft; text still drafts.
 	assert.equal(
 		startDraft({
@@ -99,6 +98,9 @@ test('a field shows its draft only for the element it started on', () => {
 	assert.equal(fieldValue({ draft, pick: pickWith({}), pickValue: '' }), '8');
 	assert.equal(fieldValue({ draft, pick: pickWith({ sourceNumber: 5 }), pickValue: '2px' }), '2px');
 	assert.equal(fieldValue({ draft: undefined, pick: pickWith({}), pickValue: '2px' }), '2px');
+	for (const pick of [undefined, pickWith(undefined)]) {
+		assert.equal(fieldValue({ draft, pick, pickValue: '2px' }), '2px');
+	}
 });
 
 const previewStyle = (draft: EditDraft): string | undefined => {
@@ -142,6 +144,8 @@ test('unchanged commits send nothing and revert only a sent preview', () => {
 		style: 'font-size: 32px',
 	});
 	assert.equal(commitDraft(draftOf('color', '#FF0000')).kind, 'unchanged');
+	assert.equal(commitDraft(draftOf('color', '#00ff00')).kind, 'save');
+	assert.equal(commitDraft(draftOf('color', '#00ff00', { style: 'color: var(--x)' })).kind, 'save');
 	// A newline-only change normalizes to the same text.
 	assert.equal(commitDraft(draftOf('text', 'Title', { text: 'Ti\ntle' })).kind, 'save');
 	assert.equal(commitDraft(draftOf('text', 'a b', { text: 'a\nb' })).kind, 'unchanged');
@@ -165,6 +169,16 @@ test('invalid commits keep the draft with its error and restore the baseline', (
 	assert.equal(open.kind === 'invalid' ? open.error : '', 'complex-style');
 	const control = commitDraft(draftOf('text', 'a\u0001b'));
 	assert.equal(control.kind === 'invalid' ? control.error : '', 'control-text');
+	// A text draft reverts to its own raw text, not the style.
+	assert.deepEqual(control.kind === 'invalid' ? control.revert : undefined, {
+		type: 'cd:edit-apply',
+		sourceNumber: 4,
+		text: '\n    Title\n  ',
+	});
+	const overCap = commitDraft(
+		draftOf('margin', '1', { style: `--x: ${'a'.repeat(MAX_PICK_STYLE_CHARS - 6)}` }),
+	);
+	assert.equal(overCap.kind === 'invalid' ? overCap.error : overCap.kind, 'complex-style');
 });
 
 test('a save carries the draft key, the raw value and, for text, the baseline', () => {
@@ -314,4 +328,9 @@ test('swatchValue: a #rrggbb draft of the picked element, else the computed swat
 		'#ff0000',
 	);
 	assert.equal(swatchValue({ draft: undefined, pick, swatch: '#ff0000' }), '#ff0000');
+	// The native swatch takes no alpha.
+	assert.equal(
+		swatchValue({ draft: draftOf('color', '#aabbcc80'), pick, swatch: '#ff0000' }),
+		'#ff0000',
+	);
 });

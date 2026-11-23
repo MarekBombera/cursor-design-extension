@@ -207,6 +207,40 @@ test('Comment mode: clicks pick instead of acting', async ({ page }) => {
 	expect(await detailsOpen(page)).toBe(false);
 });
 
+test('Comment mode: Enter and Space on a focused design button do not act', async ({ page }) => {
+	await openPickingStage(page);
+	const frame = await frameOf(page, 'a');
+	// A design's own key handler: Enter would also click the button, so both are checked.
+	await frame.evaluate(() => {
+		const button = document.querySelector('#change-button');
+		button?.addEventListener('keydown', (event) => {
+			document.body.dataset.keys = `${document.body.dataset.keys ?? ''}${(event as KeyboardEvent).key}|`;
+		});
+	});
+	const designKeys = (): Promise<string | undefined> =>
+		frame.evaluate(() => document.body.dataset.keys);
+	// Control: in Interact both reach the design, so silence below means blocked.
+	await frame.focus('#change-button');
+	await page.keyboard.press('Enter');
+	await expect.poll(() => statusText(page)).toBe('Button handler fired.');
+	expect(await designKeys()).toBe('Enter|');
+	await frame.evaluate(() => {
+		delete document.body.dataset.keys;
+		const status = document.querySelector('#status');
+		if (status !== null) {
+			status.textContent = 'Nothing fired yet.';
+		}
+	});
+
+	await toggleComment(page, true);
+	await frame.focus('#change-button');
+	await page.keyboard.press('Enter');
+	await page.keyboard.press(' ');
+	await nextAnimationFrame(page);
+	expect(await statusText(page)).toBe('Nothing fired yet.');
+	expect(await designKeys()).toBeUndefined();
+});
+
 test('Comment mode: Parent, and ↑/↓ with focus in the popover, step the pick', async ({ page }) => {
 	const stage = await openPickingStage(page);
 	await toggleComment(page, true);

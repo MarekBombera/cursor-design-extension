@@ -157,9 +157,7 @@ export const panStage = ({
 	zoom: view.zoom,
 });
 
-// Exported for tests: the fit property's union oracle; layoutCanvasChrome adds chrome boxes.
-/** @internal */
-export const frameBounds = ({ frames }: { frames: readonly StageRect[] }): StageRect | null => {
+const frameBounds = ({ frames }: { frames: readonly StageRect[] }): StageRect | null => {
 	const [first] = frames;
 	if (first === undefined) {
 		return null;

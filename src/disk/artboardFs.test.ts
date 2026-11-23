@@ -21,18 +21,21 @@ import {
 	setActiveArtboard,
 	updateArtboard,
 } from './artboardFs';
+import { serializeCanvasLayout } from './canvasLayout';
 import { listArtboards } from './canvasView';
 import { exportArtboard, readHandoffStatus } from './exportFs';
 import {
 	ArtboardExistsError,
 	ArtboardNotFoundError,
 	ConflictError,
+	CorruptCanvasError,
 	CorruptManifestError,
 	CorruptMetaError,
 	DiskError,
 	FrameMovedError,
 	InvalidArgsError,
 	InvalidArtboardIdError,
+	UnsupportedCanvasVersionError,
 	UnsupportedSchemaVersionError,
 } from './errors';
 import { hashHtml } from './hash';
@@ -43,6 +46,7 @@ import {
 	CURSOR_DESIGN_DIR,
 	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_FRAME_WIDTH,
+	FRAME_GAP,
 	LOCK_FILE,
 	SCHEMA_VERSION,
 	artboardHtmlPathSegments,
@@ -99,6 +103,35 @@ test('wrong generation does not change HTML', async () => {
 		'utf8',
 	);
 	assert.equal(htmlOnDisk, html);
+});
+
+// The disk check is the only guard: the MCP handler passes base args through unchecked.
+test('updateArtboard with no base or a malformed base is INVALID_ARGS and writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createArtboard({
+		page,
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
+	const before = [await readFile(htmlPath, 'utf8'), await readFile(metaPath, 'utf8')];
+	for (const base of [
+		{},
+		{ baseGeneration: 0 },
+		{ baseGeneration: 1.5 },
+		{ baseGeneration: '1' },
+		{ baseHash: 'sha256:zz' },
+	]) {
+		await assert.rejects(
+			updateArtboard({ page, artboardId: 'hero', html: '<p>clobber</p>', ...base }),
+			InvalidArgsError,
+			JSON.stringify(base),
+		);
+		assert.deepEqual([await readFile(htmlPath, 'utf8'), await readFile(metaPath, 'utf8')], before);
+	}
 });
 
 test('uppercase on-disk hash does not conflict or extra-bump', async () => {
@@ -232,9 +265,16 @@ test('corrupt manifest still fails list and default read', async () => {
 		readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
 		(error: unknown) => {
 			assert.ok(error instanceof CorruptManifestError);
+			assert.equal(error.pageId, FIRST_PAGE_ID);
+			assert.ok(error.cause instanceof SyntaxError);
 			return true;
 		},
 	);
+	// set_active_artboard is the documented recovery: it overwrites the corrupt manifest.
+	await setActiveArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, artboardId: 'hero' });
+	const read = await readArtboard({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
+	assert.equal(read.artboardId, 'hero');
+	assert.equal(read.active, true);
 });
 
 test('symlinked html is rejected without touching the target', async () => {
@@ -349,22 +389,6 @@ test('writeUtf8 does not follow a tmp symlink and still replaces dest', async ()
 	assert.equal(destStats.isSymbolicLink(), false);
 	assert.equal(destStats.isFile(), true);
 	await assert.rejects(access(tmpPath));
-});
-
-test('directory named like html is skipped by list', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await createArtboard({
-		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-		artboardId: 'hero',
-		html: '<p>hero</p>',
-		writeEnsurePanelMarker: false,
-	});
-	await mkdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID), 'weird.html'));
-	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
-	assert.deepEqual(
-		listed.artboards.map((entry) => entry.artboardId),
-		['hero'],
-	);
 });
 
 test('the root tombstone passes the dir check; a symlink or a file at the page artboards dir is refused', async () => {
@@ -512,6 +536,38 @@ test('missing meta still reads and updates at generation 1', async () => {
 	});
 	assert.equal(updated.generation, 2);
 	assert.equal(updated.hash, hashHtml('<p>next</p>'));
+});
+
+// Only export reads meta strictly; one hand-broken meta must not block read or update.
+test('an unparsable or foreign-id meta reads as defaults and the next update rewrites it', async () => {
+	for (const brokenMeta of ['{', JSON.stringify({ id: 'has space!' })]) {
+		const workspaceRoot = await makeTempRoot();
+		const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+		await createArtboard({
+			page,
+			artboardId: 'hero',
+			html: '<p>hero</p>',
+			writeEnsurePanelMarker: false,
+		});
+		const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
+		await writeFile(metaPath, brokenMeta, 'utf8');
+		const read = await readArtboard({ page, artboardId: 'hero' });
+		assert.equal(read.generation, 1);
+		assert.equal(read.title, DEFAULT_ARTBOARD_TITLE);
+		const updated = await updateArtboard({
+			page,
+			artboardId: 'hero',
+			html: '<p>next</p>',
+			baseGeneration: 1,
+		});
+		assert.equal(updated.generation, 2);
+		const stored = JSON.parse(await readFile(metaPath, 'utf8')) as {
+			id: string;
+			generation: number;
+		};
+		assert.equal(stored.id, 'hero');
+		assert.equal(stored.generation, 2);
+	}
 });
 
 test('v2 manifest is not rewritten by createArtboard', async () => {
@@ -862,4 +918,128 @@ test('placeFrame clamps width through the disk path and stores negative x/y as g
 	assert.deepEqual(wide.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 3840 });
 	const entries = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
 	assert.ok(!entries.includes(LOCK_FILE), 'lock released');
+});
+
+// createArtboard writes a new artboard's meta without reading it first (the manifest is read and
+// refused earlier), so writeUtf8's own check is the only guard there.
+test('createArtboard refuses a symlink at the new meta path and leaves the link and its target alone', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const targetPath = join(workspaceRoot, 'elsewhere.json');
+	await writeFile(targetPath, 'outside', 'utf8');
+	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
+	await mkdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID)), { recursive: true });
+	await symlink(targetPath, metaPath);
+	await assert.rejects(
+		createArtboard({
+			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+			artboardId: 'hero',
+			html: '<p>hero</p>',
+			writeEnsurePanelMarker: false,
+		}),
+		DiskError,
+	);
+	assert.equal((await lstat(metaPath)).isSymbolicLink(), true);
+	assert.equal(await readFile(targetPath, 'utf8'), 'outside');
+});
+
+test('placeFrame rejects wrong-typed args by field name, a non-string id, and writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createPlainArtboard(workspaceRoot, 'a');
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	for (const [field, badArgs] of [
+		['x', { x: '10' }],
+		['x', { x: null }],
+		['y', { y: null }],
+		['width', { width: '300' }],
+		['label', { label: 3 }],
+		['group', { group: 3 }],
+	] as const) {
+		await assert.rejects(
+			placeFrame({ page, id: 'a', ...badArgs }),
+			(error: unknown) =>
+				error instanceof InvalidArgsError && error.message.startsWith(`${field} `),
+			field,
+		);
+	}
+	await assert.rejects(placeFrame({ page, id: 42 }), InvalidArtboardIdError);
+	await assert.rejects(readFile(canvasFileOf(workspaceRoot), 'utf8'), { code: 'ENOENT' });
+});
+
+const frameAt = (id: string, x: number, width = DEFAULT_FRAME_WIDTH) => ({
+	id,
+	label: 'Artboard',
+	x,
+	y: 0,
+	width,
+});
+
+test('placeFrame keeps orphan entries and never stores unplaced siblings', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createPlainArtboard(workspaceRoot, 'hero');
+	await createPlainArtboard(workspaceRoot, 'hero-alt');
+	const orphan = { id: 'gone', label: 'Gone', x: 5000, y: 0, width: 400 };
+	await writeFile(
+		canvasFileOf(workspaceRoot),
+		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [orphan] }),
+	);
+
+	const { frames } = await placeFrame({ page, id: 'hero-alt', width: 390 });
+
+	const heroAlt = frameAt('hero-alt', DEFAULT_FRAME_WIDTH + FRAME_GAP, 390);
+	assert.equal(
+		await readFile(canvasFileOf(workspaceRoot), 'utf8'),
+		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [orphan, heroAlt] }),
+	);
+	assert.deepEqual(frames, [heroAlt, frameAt('hero', heroAlt.x + heroAlt.width + FRAME_GAP)]);
+});
+
+test('placeFrame pins a later id among several unplaced frames', async () => {
+	const workspaceRoot = await makeTempRoot();
+	for (const artboardId of ['artboard', 'hero', 'hero-alt']) {
+		await createPlainArtboard(workspaceRoot, artboardId);
+	}
+	const { frames } = await placeFrame({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: 'hero',
+	});
+
+	const slot = DEFAULT_FRAME_WIDTH + FRAME_GAP;
+	assert.equal(
+		await readFile(canvasFileOf(workspaceRoot), 'utf8'),
+		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [frameAt('hero', slot)] }),
+	);
+	assert.deepEqual(frames, [
+		frameAt('hero', slot),
+		frameAt('artboard', 2 * slot),
+		frameAt('hero-alt', 3 * slot),
+	]);
+});
+
+test('placeFrame with group "" clears a stored group', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createPlainArtboard(workspaceRoot, 'hero');
+	await placeFrame({ page, id: 'hero', group: 'Desktop' });
+	await placeFrame({ page, id: 'hero', group: '' });
+	assert.equal(
+		await readFile(canvasFileOf(workspaceRoot), 'utf8'),
+		serializeCanvasLayout({ version: CANVAS_SCHEMA_VERSION, frames: [frameAt('hero', 0)] }),
+	);
+});
+
+test('placeFrame and listArtboards never rewrite a corrupt or unsupported canvas.json', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createPlainArtboard(workspaceRoot, 'hero');
+	for (const [text, errorClass] of [
+		['{ not json', CorruptCanvasError],
+		['{"version":1,"frames":[{"id":"hero"}]}', CorruptCanvasError],
+		['{"version":2,"frames":[]}\n', UnsupportedCanvasVersionError],
+	] as const) {
+		await writeFile(canvasFileOf(workspaceRoot), text);
+		await assert.rejects(placeFrame({ page, id: 'hero', x: 10 }), errorClass);
+		await assert.rejects(listArtboards({ page }), errorClass);
+		assert.equal(await readFile(canvasFileOf(workspaceRoot), 'utf8'), text);
+	}
 });

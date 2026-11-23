@@ -109,9 +109,16 @@ test('a text commit carries its baseline liveText', () => {
 		frames: [frame('a')],
 		newRequestId,
 	});
-	const sent = editSent(send);
-	assert.equal(sent !== undefined && 'liveText' in sent ? sent.liveText : undefined, ' Old ');
-	assert.equal('styles' in (send ?? {}), false);
+	assert.deepEqual(send, {
+		type: 'artboard:edit',
+		requestId: send?.requestId,
+		frameId: 'a',
+		sourceNumber: 3,
+		hash: 'sha256:a0',
+		field: 'text',
+		value: 'New',
+		liveText: ' Old ',
+	});
 });
 
 test('a refusal keeps its copy, drops the queue and names every frame to reload', () => {
@@ -127,7 +134,10 @@ test('a refusal keeps its copy, drops the queue and names every frame to reload'
 	});
 	assert.deepEqual(refused.state.waiting, []);
 	assert.equal(refused.state.inFlight, undefined);
-	assert.equal(refused.state.error?.message, 'This artboard changed on disk. Make the edit again.');
+	assert.deepEqual(refused.state.error, {
+		message: 'This artboard changed on disk. Make the edit again.',
+		key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
+	});
 	assert.deepEqual([...refused.reloadFrameIds].sort(), ['a', 'b']);
 	// The reload ends drafts in the same event: the refusal copy wins.
 	assert.equal(
@@ -154,6 +164,7 @@ test('answers for another request or frame are ignored', () => {
 		const step = answerEdit(first.state, message);
 		assert.equal(step.state, first.state);
 		assert.equal(step.adopt, undefined);
+		assert.deepEqual(step.reloadFrameIds, []);
 	}
 	assert.equal(
 		answerEdit(INITIAL_EDIT_REQUESTS, { type: 'ui:error', message: 'x' }).adopt,
@@ -174,7 +185,11 @@ test('a commit whose frame reloaded, left or became a tile is dropped and the ne
 		newRequestId,
 	});
 	assert.equal(sentStyle(step.send)?.value, 'sent');
-	assert.equal(step.state.error?.message, NOT_SAVED_COPY);
+	// The first dropped edit's copy, keyed to it.
+	assert.deepEqual(step.state.error, {
+		message: NOT_SAVED_COPY,
+		key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
+	});
 	assert.deepEqual(step.state.waiting, []);
 	// All dropped: nothing sent, the queue is empty, the copy shows.
 	const none = nextSend({ state: queued(commit()), frames: [], newRequestId });
@@ -187,12 +202,13 @@ test('the copy clears on a new pick of another element only; a commit clears it 
 	const failed = notSaved(INITIAL_EDIT_REQUESTS, {
 		key: { frameId: 'a', sourceNumber: 3, documentVersion: 1 },
 	});
+	const pick = { frameId: 'a', sourceNumber: 4, repost: false };
+	assert.equal(clearErrorOnPick(INITIAL_EDIT_REQUESTS, pick), INITIAL_EDIT_REQUESTS);
 	assert.equal(clearErrorOnPick(failed, { frameId: 'a', sourceNumber: 3, repost: false }), failed);
-	assert.equal(clearErrorOnPick(failed, { frameId: 'a', sourceNumber: 4, repost: true }), failed);
-	assert.equal(
-		clearErrorOnPick(failed, { frameId: 'a', sourceNumber: 4, repost: false }).error,
-		undefined,
-	);
+	assert.equal(clearErrorOnPick(failed, { ...pick, repost: true }), failed);
+	// Clearing keeps the queue: a waiting step still goes out.
+	const busy = { ...enqueueStep(failed, { frameId: 'a', step: 'undo' }), error: failed.error };
+	assert.deepEqual(clearErrorOnPick(busy, pick), { ...busy, error: undefined });
 	assert.equal(
 		clearErrorOnPick(failed, { frameId: 'b', sourceNumber: 3, repost: false }).error,
 		undefined,
@@ -220,10 +236,9 @@ test('a step waits behind an in-flight edit and goes out after its answer, with 
 		newRequestId,
 	});
 	assert.equal(first.send?.type, 'artboard:edit');
-	assert.equal(
-		nextSend({ state: first.state, frames: [frame('a')], newRequestId }).send,
-		undefined,
-	);
+	const blocked = nextSend({ state: first.state, frames: [frame('a')], newRequestId });
+	assert.equal(blocked.send, undefined);
+	assert.equal(blocked.state, first.state);
 	const answered = answerEdit(first.state, edited(first.send?.requestId ?? ''));
 	assert.equal(answered.stepDone, undefined);
 	// The edit's answer set canUndo: the step is sent with that flag, after the adopt.
@@ -239,6 +254,8 @@ test('a step waits behind an in-flight edit and goes out after its answer, with 
 		step: 'undo',
 	});
 	assert.equal(second.state.inFlight?.baseHash, 'sha256:a1');
+	// The sent step left the queue: never sent twice.
+	assert.deepEqual(second.state.waiting, []);
 });
 
 test('a step whose flag is false, or whose frame is a tile or gone, is dropped with no copy', () => {

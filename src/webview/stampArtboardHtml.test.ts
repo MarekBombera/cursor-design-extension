@@ -41,6 +41,8 @@ test('head starts with charset (when present), FRAME_CSP, then the runtime', () 
 	assert.ok(first?.nextElementSibling?.nextElementSibling?.matches(runtimeSelector));
 
 	const withoutCharset = stamp('<head><title>t</title></head><p>x</p>');
+	// No stray text node (a prepended null) before the policy.
+	assert.equal(withoutCharset.head.firstChild?.nodeName, 'META');
 	assert.ok(withoutCharset.head.firstElementChild?.matches(policySelector));
 	assert.ok(withoutCharset.head.firstElementChild?.nextElementSibling?.matches(runtimeSelector));
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
-import { createArtboard } from './artboardFs';
+import { createArtboard, setActiveArtboard } from './artboardFs';
 import { listArtboards, readCanvasView } from './canvasView';
 import { exportArtboard } from './exportFs';
 import { serializeCanvasLayout } from './canvasLayout';
@@ -20,6 +20,7 @@ import {
 	artboardsDirSegments,
 	canvasPathSegments,
 	commentsPathSegments,
+	manifestPathSegments,
 } from './layout';
 import { resolveOpenPage } from './openPage';
 import { serializeMeta } from './parse';
@@ -124,6 +125,25 @@ test('readCanvasView matches listArtboards geometry and keeps html plus generati
 	assert.equal(listed.frames[1]?.width, DEFAULT_FRAME_WIDTH);
 });
 
+test('a page whose manifest.json was deleted by hand still reads its frames', async () => {
+	const workspaceRoot = await makeTempRoot();
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createArtboard({
+		page,
+		artboardId: 'hero',
+		html: '<p>hero</p>',
+		writeEnsurePanelMarker: false,
+	});
+	await rm(join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID)));
+	const view = await readCanvasView({ page });
+	assert.deepEqual(
+		view.frames.map((frame) => frame.id),
+		['hero'],
+	);
+	assert.equal(view.activeArtboardId, '');
+	assert.equal(view.handoffStale, false);
+});
+
 test('corrupt canvas.json auto-places frames and leaves the file unchanged', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createArtboard({
@@ -144,13 +164,17 @@ test('corrupt canvas.json auto-places frames and leaves the file unchanged', asy
 		listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }),
 		(error: unknown) => {
 			assert.ok(error instanceof CorruptCanvasError);
+			assert.ok(error.cause instanceof SyntaxError);
 			return true;
 		},
 	);
 
 	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.equal(view.activeArtboardId, 'mobile');
-	assert.equal(view.layoutErrorMessage, new CorruptCanvasError({ pageId: FIRST_PAGE_ID }).message);
+	assert.equal(
+		view.layoutErrorMessage,
+		'Canvas layout is invalid. Fix or restore .cursor-design/pages/page-1/canvas.json (version 1), or delete it to auto-place every frame.',
+	);
 	assert.deepEqual(view.frames.map(frameGeometry), [
 		{ id: 'hero', label: 'Artboard', x: 0, y: 0, width: DEFAULT_FRAME_WIDTH },
 		{
@@ -228,6 +252,11 @@ test('directory and symlink html files are skipped the same as listArtboards', a
 		join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'linked')),
 	);
 	await mkdir(join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID), 'weird.html'));
+	// Not a valid artboard id: every tool would refuse it, so it is never listed.
+	await writeFile(
+		join(workspaceRoot, ...artboardsDirSegments(FIRST_PAGE_ID), 'my page.html'),
+		'<p>x</p>',
+	);
 
 	const listed = await listArtboards({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	const view = await readCanvasView({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
@@ -245,7 +274,7 @@ test('directory and symlink html files are skipped the same as listArtboards', a
 	);
 });
 
-test('unreadable meta maps generation to 0', async () => {
+test('unreadable meta maps generation to 0 and keeps the active flag', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const html = '<p>hero</p>';
 	await createArtboard({
@@ -270,6 +299,15 @@ test('unreadable meta maps generation to 0', async () => {
 	assert.equal(view.frames.length, 1);
 	assert.equal(view.frames[0]?.generation, 0);
 	assert.equal(view.frames[0]?.html, html);
+
+	// list_artboards' active flag holds on both the readable and the unreadable-meta entry.
+	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
+	await createArtboard({ page, artboardId: 'mobile', html, writeEnsurePanelMarker: false });
+	const activeFlags = async (): Promise<boolean[]> =>
+		(await listArtboards({ page })).artboards.map((entry) => entry.active);
+	assert.deepEqual(await activeFlags(), [false, true]);
+	await setActiveArtboard({ page, artboardId: 'hero' });
+	assert.deepEqual(await activeFlags(), [true, false]);
 });
 
 test('the frame hash is hashHtml of the disk html even when the stored meta hash is upper-case', async () => {

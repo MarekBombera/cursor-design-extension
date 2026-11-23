@@ -14,11 +14,7 @@ import {
 	toPostedComment,
 	isArtboardHistoryAttempt,
 } from './chromeMessages';
-import { malformedRequestMessage } from './panelRequestCopy';
 import type { CommentCreateMessage } from '../webview/hostMessages';
-
-// Pinned values: the module keeps these private.
-const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
 
 const validPlace = {
 	type: 'frame:place',
@@ -189,7 +185,6 @@ test('comment:copy and comment:copy-open parse; bad ids and requestIds are rejec
 	assert.equal(commentRequestId({ ...copy, id: 'a b' }), 'r-4');
 	assert.equal(commentRequestType(copyOpen), 'comment:copy-open');
 	assert.equal(commentRequestId(copyOpen), 'r-5');
-	assert.equal(malformedRequestMessage('comment:copy-open'), COPY_FAILED_MESSAGE);
 });
 
 test('a malformed comment request is still an attempt with an answerable requestId', () => {

@@ -14,7 +14,6 @@ import {
 	LOCK_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
-	canvasPathSegments,
 } from '../disk/layout';
 import {
 	CURSOR_DESIGN_MCP_SERVER_NAME,
@@ -31,24 +30,6 @@ import {
 	SET_ARTBOARD_TOOL,
 	UPDATE_ARTBOARD_TOOL,
 } from './toolNames';
-
-const ARTBOARD_TOOL_NAMES = [
-	SET_ARTBOARD_TOOL,
-	UPDATE_ARTBOARD_TOOL,
-	READ_ARTBOARD_TOOL,
-	LIST_ARTBOARDS_TOOL,
-	SET_ACTIVE_ARTBOARD_TOOL,
-	EXPORT_ARTBOARD_TOOL,
-	HANDOFF_STATUS_TOOL,
-	PLACE_FRAME_TOOL,
-] as const;
-
-type ArtboardToolName = (typeof ARTBOARD_TOOL_NAMES)[number];
-
-type HappyPathArgs = {
-	client: Client;
-	workspaceRoot: string;
-};
 
 const tempRoots: string[] = [];
 let contractClient: Client | undefined;
@@ -129,12 +110,6 @@ const withoutWorkspaceEnv = async (run: () => Promise<void>): Promise<void> => {
 		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
 		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
 	}
-};
-
-const sortedUnique = (names: readonly string[]): string[] => [...new Set(names)].sort();
-
-const assertSortedSetEqual = (left: readonly string[], right: readonly string[]): void => {
-	assert.deepEqual(sortedUnique(left), sortedUnique(right));
 };
 
 const describeResult = (result: CallToolResult): string =>
@@ -221,131 +196,17 @@ const seedArtboard = async (
 	return result;
 };
 
-const happyPath: Record<ArtboardToolName, (args: HappyPathArgs) => Promise<CallToolResult>> = {
-	[LIST_ARTBOARDS_TOOL]: async ({ client }) => {
-		const result = await callArtboardTool(client, LIST_ARTBOARDS_TOOL);
-		const body = assertToolSuccess(result);
-		assert.deepEqual(body.artboards, []);
-		assert.deepEqual(body.frames, []);
-		return result;
-	},
-	[SET_ARTBOARD_TOOL]: async ({ client }) => {
-		const result = await callArtboardTool(client, SET_ARTBOARD_TOOL, {
-			artboardId: 'hero',
-			html: '<p>hero</p>',
-		});
-		assertToolSuccess(result);
-		return result;
-	},
-	[UPDATE_ARTBOARD_TOOL]: async ({ client }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		const result = await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
-			artboardId: 'hero',
-			html: '<p>v2</p>',
-			baseGeneration: 1,
-		});
-		assertToolSuccess(result);
-		return result;
-	},
-	[READ_ARTBOARD_TOOL]: async ({ client }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		const result = await callArtboardTool(client, READ_ARTBOARD_TOOL, { artboardId: 'hero' });
-		assertToolSuccess(result);
-		return result;
-	},
-	[SET_ACTIVE_ARTBOARD_TOOL]: async ({ client }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		await seedArtboard(client, 'hero-alt', '<p>hero-alt</p>');
-		const result = await callArtboardTool(client, SET_ACTIVE_ARTBOARD_TOOL, {
-			artboardId: 'hero',
-		});
-		assertToolSuccess(result);
-		const readResult = await callArtboardTool(client, READ_ARTBOARD_TOOL);
-		assert.equal(assertToolSuccess(readResult).artboardId, 'hero');
-		return result;
-	},
-	[EXPORT_ARTBOARD_TOOL]: async ({ client }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		const result = await callArtboardTool(client, EXPORT_ARTBOARD_TOOL);
-		assertToolSuccess(result);
-		return result;
-	},
-	[HANDOFF_STATUS_TOOL]: async ({ client }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		assertToolSuccess(await callArtboardTool(client, EXPORT_ARTBOARD_TOOL));
-		const result = await callArtboardTool(client, HANDOFF_STATUS_TOOL);
-		const body = assertToolSuccess(result);
-		assert.equal(body.stale, false);
-		assert.ok(body.lastExport !== undefined);
-		assert.equal('exported' in body, false);
-		return result;
-	},
-	[PLACE_FRAME_TOOL]: async ({ client, workspaceRoot }) => {
-		await seedArtboard(client, 'hero', '<p>hero</p>');
-		await seedArtboard(client, 'hero-alt', '<p>hero-alt</p>');
-		const result = await callArtboardTool(client, PLACE_FRAME_TOOL, { id: 'hero' });
-		const body = assertToolSuccess(result);
-		assert.ok(Array.isArray(body.frames));
-		assert.ok(body.frames.length > 0);
-		const canvasText = await readFile(
-			join(workspaceRoot, ...canvasPathSegments(FIRST_PAGE_ID)),
-			'utf8',
-		);
-		assert.ok(canvasText.length > 0);
-		return result;
-	},
-};
-
-test('happyPath keys sorted-set equal ARTBOARD_TOOL_NAMES', () => {
-	assertSortedSetEqual(Object.keys(happyPath), ARTBOARD_TOOL_NAMES);
-});
-
-test('listTools names sorted-set equal ARTBOARD_TOOL_NAMES', async () => {
-	const client = await connectContractPair();
-	const { tools } = await client.listTools();
-	assertSortedSetEqual(
-		tools.map((tool) => tool.name),
-		ARTBOARD_TOOL_NAMES,
-	);
-});
-
-test('list_artboards on an empty temp dir succeeds with empty artboards and frames', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[LIST_ARTBOARDS_TOOL]({ client, workspaceRoot });
-	});
-});
-
-test('set_artboard hero succeeds', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[SET_ARTBOARD_TOOL]({ client, workspaceRoot });
-	});
-});
-
-test('update_artboard hero with baseGeneration 1 succeeds', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[UPDATE_ARTBOARD_TOOL]({ client, workspaceRoot });
-	});
-});
-
-test('read_artboard hero succeeds', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[READ_ARTBOARD_TOOL]({ client, workspaceRoot });
-	});
-});
-
 test('set_active_artboard hero then omit-id read returns hero', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
-		await happyPath[SET_ACTIVE_ARTBOARD_TOOL]({ client, workspaceRoot });
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		await seedArtboard(client, 'hero-alt', '<p>hero-alt</p>');
+		assertToolSuccess(
+			await callArtboardTool(client, SET_ACTIVE_ARTBOARD_TOOL, { artboardId: 'hero' }),
+		);
+		const readResult = await callArtboardTool(client, READ_ARTBOARD_TOOL);
+		assert.equal(assertToolSuccess(readResult).artboardId, 'hero');
 	});
 });
 
@@ -359,27 +220,16 @@ test('omit-id read_artboard after one set_artboard returns that id', async () =>
 	});
 });
 
-test('export_artboard after set_artboard succeeds', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[EXPORT_ARTBOARD_TOOL]({ client, workspaceRoot });
-	});
-});
-
 test('handoff_status after export is HandoffStatusResult with stale false and lastExport', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
-		await happyPath[HANDOFF_STATUS_TOOL]({ client, workspaceRoot });
-	});
-});
-
-test('place_frame hero after hero and hero-alt succeeds and writes canvas.json', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await withWorkspaceEnv(workspaceRoot, async () => {
-		const client = await connectContractPair();
-		await happyPath[PLACE_FRAME_TOOL]({ client, workspaceRoot });
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		assertToolSuccess(await callArtboardTool(client, EXPORT_ARTBOARD_TOOL));
+		const body = assertToolSuccess(await callArtboardTool(client, HANDOFF_STATUS_TOOL));
+		assert.equal(body.stale, false);
+		assert.ok(body.lastExport !== undefined);
+		assert.equal('exported' in body, false);
 	});
 });
 

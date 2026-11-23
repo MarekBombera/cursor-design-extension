@@ -27,7 +27,7 @@ import {
 	setCommentStatus,
 } from './comments';
 import { cachedArtboardDocument } from './commentViews';
-import type { NewComment } from './commentsFile';
+import { COMMENT_BODY_MESSAGE, type NewComment } from './commentsFile';
 import { HINT_CHECK_BUDGET, parseArtboardDocument } from './commentTarget';
 import {
 	ArtboardNotFoundError,
@@ -41,6 +41,7 @@ import {
 	FIRST_PAGE_ID,
 	COMMENTS_SCHEMA_VERSION,
 	CURSOR_DESIGN_DIR,
+	MAX_COMMENT_BODY_CHARS,
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
 	artboardHtmlPathSegments,
@@ -213,12 +214,28 @@ test('a missing frame throws ArtboardNotFoundError', async () => {
 	);
 });
 
-test('an empty body on a missing frame throws InvalidArgsError', async () => {
+// validateNewComment is the only guard before the write: an invalid comment would brick comments.json.
+test('invalid new-comment fields are INVALID_ARGS and write no comments.json', async () => {
 	const workspaceRoot = await makeTempRoot();
-	await assert.rejects(
-		addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick({ body: '   ' }) }),
-		InvalidArgsError,
-	);
+	await seedHero(workspaceRoot);
+	const fieldsMessage = 'Comment fields are invalid. Pick the element again.';
+	const cases: [Partial<NewComment>, string][] = [
+		[{ body: '   ' }, COMMENT_BODY_MESSAGE],
+		[{ rect: null }, fieldsMessage],
+		[{ isPage: true, selector: 'p', tagName: 'body', rect: null }, fieldsMessage],
+		[{ tagName: 'P!' }, fieldsMessage],
+		[{ generation: 0 }, fieldsMessage],
+	];
+	for (const [overrides, message] of cases) {
+		await assert.rejects(
+			addComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, comment: pick(overrides) }),
+			(error: unknown) => error instanceof InvalidArgsError && error.message === message,
+			JSON.stringify(overrides),
+		);
+	}
+	await assert.rejects(readFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID))), {
+		code: 'ENOENT',
+	});
 });
 
 test('at MAX_COMMENTS addComment throws and the file is unchanged', async () => {
@@ -335,7 +352,7 @@ test('corrupt and version-2 files are never overwritten', async () => {
 	}
 });
 
-test('resolve and reply on a workspace with no .cursor-design create nothing', async () => {
+test('resolve, reply, status and mark-sent on a workspace with no .cursor-design create nothing', async () => {
 	const workspaceRoot = await makeTempRoot({ seeded: false });
 	await assert.rejects(
 		resolveComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', note: 'done' }),
@@ -344,6 +361,14 @@ test('resolve and reply on a workspace with no .cursor-design create nothing', a
 	await assert.rejects(
 		replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', body: 'hi' }),
 		CommentNotFoundError,
+	);
+	await assert.rejects(
+		setCommentStatus({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', status: 'open' }),
+		CommentNotFoundError,
+	);
+	assert.deepEqual(
+		await markCommentsSent({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, ids: ['c1'] }),
+		[],
 	);
 	assert.deepEqual(await readdir(workspaceRoot), []);
 });
@@ -531,6 +556,26 @@ test('replyToComment keeps the status', async () => {
 	});
 	assert.equal(replied.status, 'sent');
 	assert.equal(replied.replies.at(-1)?.author, 'user');
+
+	// The disk is the only body guard: an empty or oversize reply would make the next read corrupt.
+	const commentsPath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
+	const before = await readFile(commentsPath, 'utf8');
+	for (const body of ['   ', 42, 'x'.repeat(MAX_COMMENT_BODY_CHARS + 1)]) {
+		await assert.rejects(
+			replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: comment.id, body }),
+			(error: unknown) =>
+				error instanceof InvalidArgsError && error.message === COMMENT_BODY_MESSAGE,
+			String(body).slice(0, 8),
+		);
+		assert.equal(await readFile(commentsPath, 'utf8'), before);
+	}
+	const longest = 'x'.repeat(MAX_COMMENT_BODY_CHARS);
+	const atLimit = await replyToComment({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		id: comment.id,
+		body: `  ${longest}  `,
+	});
+	assert.equal(atLimit.replies.at(-1)?.body, longest);
 });
 
 test('reply cap leaves the last slot for resolve, then thread-full', async () => {

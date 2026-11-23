@@ -258,19 +258,6 @@ test('a malformed baseHash is InvalidArgsError before any read', async () => {
 	);
 });
 
-test('an unknown artboard is ARTBOARD_NOT_FOUND', async () => {
-	const { workspaceRoot } = await seed('<p>a</p>');
-	await assert.rejects(
-		editArtboard({
-			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-			artboardId: 'missing',
-			baseHash: hashHtml('<p>a</p>'),
-			edit: fontSize(0, '12'),
-		}),
-		ArtboardNotFoundError,
-	);
-});
-
 test('a write between the pre-read and the lock is a conflict and keeps the outside bytes', async () => {
 	const { workspaceRoot, htmlPath } = await seed('<p>a</p>');
 	seam.rewrite = () => {

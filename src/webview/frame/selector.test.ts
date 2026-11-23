@@ -6,13 +6,7 @@ import { test, vi } from 'vite-plus/test';
 
 import { COMMENT_STYLE_KEYS } from '../../disk/layout';
 import { FRAME_PICK_MESSAGE, parseFrameMessage } from './frameMessages';
-import {
-	buildSelector,
-	describeElement,
-	isGeneratedName,
-	readStyles,
-	textExcerpt,
-} from './selector';
+import { buildSelector, describeElement, readStyles, textExcerpt } from './selector';
 
 // While set, every finder call throws it (a real overflow, or any other finder failure).
 let finderThrows: Error | undefined;
@@ -94,6 +88,24 @@ test('generated class and id names stay out of the selector; word-like ones are 
 		}
 	}
 	assert.ok(roundTrip(at(doc, '.card-title')).includes('card-title'));
+	// Ids: a word id is the selector; a word-like id with a scoping prefix is skipped.
+	const hero = doc.body.appendChild(doc.createElement('div'));
+	hero.id = 'hero';
+	assert.equal(roundTrip(hero), '#hero');
+	// Every scoping prefix finder's own word check lets through (every 2-letter word fails it,
+	// so `sc-` never reaches us), plus a mid-word capital finder accepts: the case folding.
+	for (const id of [
+		'css-header',
+		'svelte-header',
+		'jsx-header',
+		'emotion-header',
+		'astro-header',
+		'emoTion-header',
+	]) {
+		const scoped = doc.body.appendChild(doc.createElement('div'));
+		scoped.id = id;
+		assert.ok(!roundTrip(scoped).includes(id), id);
+	}
 });
 
 test('a shadow host round-trips', () => {
@@ -154,27 +166,13 @@ test('a selector from the script-mutated live DOM can miss in the static HTML', 
 	assert.ok(matches.length !== 1 || matches[0]?.textContent !== 'Item B', selector);
 });
 
-test('isGeneratedName matches framework scoping prefixes only', () => {
-	for (const name of [
-		'css-1x2y3z',
-		'SVELTE-abc123',
-		'sc-bdVaJa',
-		'jsx-123',
-		'emotion-x',
-		'astro-ABCDEF',
-	]) {
-		assert.equal(isGeneratedName(name), true, name);
-	}
-	for (const name of ['card-title', 'cssx', 'hero']) {
-		assert.equal(isGeneratedName(name), false, name);
-	}
-});
-
 test('textExcerpt collapses, trims, drops control characters and cuts at 200', () => {
 	assert.equal(textExcerpt('  a\n\tb    c\u0001d\u0085e\u2028f  '), 'a b c d e f');
 	assert.equal(textExcerpt('x'.repeat(250)), 'x'.repeat(200));
 	// U+1F600 is a surrogate pair at indexes 199 and 200; the cut keeps no half of it.
 	assert.equal(textExcerpt(`${'x'.repeat(199)}\u{1F600}`), 'x'.repeat(199));
+	// A whole emoji at the end stays whole.
+	assert.equal(textExcerpt('Hi \u{1F44B}'), 'Hi \u{1F44B}');
 });
 
 test('readStyles keeps safe allowlisted values in allowlist order', () => {

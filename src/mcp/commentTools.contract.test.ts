@@ -1,14 +1,21 @@
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import { registerArtboardTools } from './artboardTools';
 import { addComment } from '../disk/comments';
-import { FIRST_PAGE_ID, commentsPathSegments } from '../disk/layout';
+import {
+	FIRST_PAGE_ID,
+	artboardHtmlPathSegments,
+	commentsPathSegments,
+	manifestPathSegments,
+	pageDirSegments,
+	projectPathSegments,
+} from '../disk/layout';
 import { registerCommentTools } from './commentTools';
 import {
 	CURSOR_DESIGN_MCP_SERVER_NAME,
@@ -173,13 +180,15 @@ const callTool = (
 	args: Record<string, unknown> = {},
 ): Promise<CallToolResult> => client.callTool({ name, arguments: args });
 
+// set_artboard writes the open page; the comment goes to pageId.
 const seedHeroComment = async (
 	client: Client,
 	workspaceRoot: string,
+	pageId: string = FIRST_PAGE_ID,
 ): Promise<{ commentId: string }> => {
 	assertSuccess(await callTool(client, SET_ARTBOARD_TOOL, { artboardId: 'hero', html: HERO_HTML }));
 	const comment = await addComment({
-		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		page: { workspaceRoot, pageId },
 		comment: {
 			frameId: 'hero',
 			generation: 1,
@@ -361,5 +370,64 @@ test('every tool but set_artboard answers a fresh root as an empty folder and cr
 			requireErrorCode(await callTool(client, name, args), code);
 		}
 		assert.deepEqual(await readdir(workspaceRoot), []);
+	});
+});
+
+const fileBytes = async (dir: string): Promise<Record<string, string>> => {
+	const files: Record<string, string> = {};
+	for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+		if (entry.isFile()) {
+			const path = join(entry.parentPath, entry.name);
+			files[path] = await readFile(path, 'utf8');
+		}
+	}
+	return files;
+};
+
+test('with page-2 open, every tool reads and writes page-2 and leaves page-1 byte-identical', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedHeroComment(client, workspaceRoot);
+		await mkdir(join(workspaceRoot, ...pageDirSegments('page-2')));
+		await writeFile(
+			join(workspaceRoot, ...projectPathSegments),
+			JSON.stringify({
+				version: 1,
+				openPageId: 'page-2',
+				pages: [
+					{ id: 'page-1', title: 'Page 1' },
+					{ id: 'page-2', title: 'Page 2' },
+				],
+			}),
+		);
+		const pageOneDir = join(workspaceRoot, ...pageDirSegments(FIRST_PAGE_ID));
+		const pageOneBefore = await fileBytes(pageOneDir);
+
+		const { commentId } = await seedHeroComment(client, workspaceRoot, 'page-2');
+		const edited = HERO_HTML.replace('Hello', 'Page two');
+		assertSuccess(
+			await callTool(client, UPDATE_ARTBOARD_TOOL, {
+				artboardId: 'hero',
+				html: edited,
+				baseGeneration: 1,
+			}),
+		);
+		assert.equal(assertSuccess(await callTool(client, READ_ARTBOARD_TOOL)).html, edited);
+		const listed = assertSuccess(await callTool(client, LIST_COMMENTS_TOOL));
+		assert.deepEqual(
+			(listed.comments as { id: string }[]).map((comment) => comment.id),
+			[commentId],
+		);
+		assertSuccess(await callTool(client, RESOLVE_COMMENT_TOOL, { id: commentId, note: 'done' }));
+		assertSuccess(await callTool(client, EXPORT_ARTBOARD_TOOL));
+
+		assert.deepEqual(await fileBytes(pageOneDir), pageOneBefore);
+		const pageTwoFile = async (segments: readonly string[]): Promise<string> =>
+			readFile(join(workspaceRoot, ...segments), 'utf8');
+		assert.equal(await pageTwoFile(artboardHtmlPathSegments('page-2', 'hero')), edited);
+		const comments = JSON.parse(await pageTwoFile(commentsPathSegments('page-2')));
+		assert.equal(comments.comments[0].status, 'resolved');
+		assert.ok(JSON.parse(await pageTwoFile(manifestPathSegments('page-2'))).lastExport);
 	});
 });

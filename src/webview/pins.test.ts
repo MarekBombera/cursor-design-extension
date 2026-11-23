@@ -236,6 +236,14 @@ test('layoutPins hides a pin outside visible, fully clipped, or outside the fram
 	// The point, the box corner (50, 60), is 0.5px inside the tolerance, then just past it.
 	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 50.5, width: 10 } })), 1);
 	assert.equal(place(answered('a', 'c1', { box, visible: { ...box, x: 50.6, width: 10 } })), 0);
+	// Tip (50, 60) 5px past the top, right or bottom edge of the visible part.
+	for (const visible of [
+		{ x: 0, y: 65, width: 200, height: 100 },
+		{ x: 0, y: 0, width: 45, height: 200 },
+		{ x: 0, y: 0, width: 200, height: 55 },
+	]) {
+		assert.equal(place(answered('a', 'c1', { box, visible })), 0, JSON.stringify(visible));
+	}
 	// A zero-area target is hidden by design.
 	const zero = { x: 5, y: 7, width: 0, height: 0 };
 	assert.equal(place(answered('a', 'c1', { box: zero, visible: null })), 0);
@@ -289,13 +297,13 @@ test('pinLabel collapses whitespace and cuts at 60 characters with an ellipsis',
 
 test('keepOpenThread keeps the id only while its pin is placed', () => {
 	const pins = layoutPins({
-		comments: [comment()],
+		comments: [comment(), comment({ id: 'c2' })],
 		anchors: new Map(),
 		frames: [frame()],
 		view,
 	});
 	assert.equal(keepOpenThread({ openThreadId: 'c1', pins }), 'c1');
-	assert.equal(keepOpenThread({ openThreadId: 'c2', pins }), undefined);
+	assert.equal(keepOpenThread({ openThreadId: 'c3', pins }), undefined);
 	assert.equal(keepOpenThread({ openThreadId: undefined, pins }), undefined);
 });
 
@@ -348,6 +356,14 @@ test('jumpTarget: a missing target (box: null) or no live answer uses the stored
 			outline: stored,
 		});
 	}
+	// A stored rect of null with no live answer: nothing to fit or outline.
+	const noRect = jumpTarget({
+		comment: comment({ rect: null }),
+		live: undefined,
+		frame: jumpFrame,
+	});
+	assert.equal(noRect.fit, undefined);
+	assert.equal(noRect.outline, undefined);
 });
 
 test('jumpTarget: a box outside the frame or with no area has no fit and centers the clamped pin', () => {
@@ -389,6 +405,16 @@ test('resolveHeldThread: open on its pin, drop once it cannot come back, hold ot
 			liveFrameIds: undefined,
 			anchorAnswered: false,
 		}),
+		'hold',
+	);
+	// Only one side known yet: frames still loading, or comments still loading.
+	const loading = { held: 'c1', pins: [], anchorAnswered: false };
+	assert.equal(
+		resolveHeldThread({ ...loading, comments: [comment()], liveFrameIds: undefined }),
+		'hold',
+	);
+	assert.equal(
+		resolveHeldThread({ ...loading, comments: undefined, liveFrameIds: new Set(['a']) }),
 		'hold',
 	);
 	// Known, placed later (the frame has not answered yet).

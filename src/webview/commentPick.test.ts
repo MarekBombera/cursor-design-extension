@@ -58,6 +58,9 @@ test('a reload clears only that frame and re-sends the current mode', () => {
 	assert.equal(step.state.pick, undefined);
 	assert.deepEqual(step.state.hover, { frameId: 'b', rect });
 	assert.deepEqual(step.sends, [{ frameId: 'a', message: { type: 'cd:mode', mode: 'comment' } }]);
+	// Another frame's reload keeps a's pick.
+	const other = applyPickMessage({ state, frameId: 'b', message: { type: 'cd:ready' } });
+	assert.equal(other.state.pick, state.pick);
 	// Interact mode still answers cd:ready, with interact.
 	const interact = applyPickMessage({
 		state: INITIAL_COMMENT_PICK,
@@ -67,18 +70,6 @@ test('a reload clears only that frame and re-sends the current mode', () => {
 	assert.deepEqual(interact.sends, [
 		{ frameId: 'a', message: { type: 'cd:mode', mode: 'interact' } },
 	]);
-});
-
-test('hover and pick posted in Interact mode are ignored (a design script can post them)', () => {
-	for (const message of [
-		{ type: 'cd:hover', rect },
-		{ type: 'cd:pick', ...pickFields },
-		{ type: 'cd:pick', ...pickFields, edit },
-	] as const) {
-		const step = applyPickMessage({ state: INITIAL_COMMENT_PICK, frameId: 'a', message });
-		assert.equal(step.state, INITIAL_COMMENT_PICK);
-		assert.deepEqual(step.sends, []);
-	}
 });
 
 test('pickCounts: a pick counts only when its edit fields match the mode', () => {

@@ -11,7 +11,6 @@ import { hashHtml } from '../disk/hash';
 import { clearEditHistories, historyFlags } from './editHistory';
 import {
 	FIRST_PAGE_ID,
-	MAX_HISTORY_STEPS,
 	artboardHtmlPathSegments,
 	pageDirSegments,
 	projectPathSegments,
@@ -19,11 +18,7 @@ import {
 import { resolveOpenPage } from '../disk/openPage';
 import { withWorkspaceLock } from '../disk/workspaceLock';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import {
-	MALFORMED_HISTORY_MESSAGE,
-	NOTHING_TO_REDO_MESSAGE,
-	NOTHING_TO_UNDO_MESSAGE,
-} from './panelRequestCopy';
+import { MALFORMED_HISTORY_MESSAGE, NOTHING_TO_UNDO_MESSAGE } from './panelRequestCopy';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
 
 // Pinned values: the module keeps these private.
@@ -182,23 +177,24 @@ test('a two-change save writes once and one undo restores both declarations', as
 	assert.deepEqual([undone?.canUndo, undone?.canRedo], [false, true]);
 });
 
-test(`${MAX_HISTORY_STEPS + 1} edits keep ${MAX_HISTORY_STEPS} undo steps`, async () => {
-	for (let index = 2; index <= MAX_HISTORY_STEPS + 2; index += 1) {
-		await editPadding(String(index));
-	}
-	for (let index = 0; index < MAX_HISTORY_STEPS; index += 1) {
-		assert.equal((await historyStep('undo'))?.type, 'artboard:edited');
-	}
-	// The very first base (the original file) fell off the end.
-	assert.match(await diskHtml(), /padding: 2px/);
-	assert.equal((await historyStep('undo'))?.message, NOTHING_TO_UNDO_MESSAGE);
-});
-
-test('an edit after an undo empties redo', async () => {
-	await editPadding('8');
-	await historyStep('undo');
-	await editPadding('9');
-	assert.equal((await historyStep('redo'))?.message, NOTHING_TO_REDO_MESSAGE);
+test('a text edit writes the new text and one undo restores the original bytes', async () => {
+	requestCount += 1;
+	await answerEditRequest({
+		value: {
+			type: 'artboard:edit',
+			requestId: `edit-${requestCount}`,
+			pageId: FIRST_PAGE_ID,
+			frameId: 'hero',
+			sourceNumber: 1,
+			hash: hashHtml(ORIGINAL),
+			field: 'text',
+			value: 'New',
+			liveText: 'x',
+		},
+		outputChannel,
+	});
+	assert.equal(lastAnswer().type, 'artboard:edited');
+	assert.equal(await diskHtml(), ORIGINAL.replace('>x<', '>New<'));
 	assert.equal((await historyStep('undo'))?.type, 'artboard:edited');
 	assert.equal(await diskHtml(), ORIGINAL);
 });

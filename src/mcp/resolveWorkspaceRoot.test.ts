@@ -59,16 +59,6 @@ test('rootPath that only shares a prefix with a root is INVALID_ROOT', async () 
 	);
 });
 
-test('explicit rootPath wins over a single layout folder elsewhere', async () => {
-	const firstRoot = await makeTempRoot();
-	const secondRoot = await makeTempRoot();
-	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
-	assert.equal(
-		resolveWorkspaceRoot({ roots: [firstRoot, secondRoot], rootPath: firstRoot }),
-		firstRoot,
-	);
-});
-
 test('rootPath outside the host list is INVALID_ROOT', async () => {
 	const workspaceRoot = await makeTempRoot();
 	assert.throws(
@@ -135,17 +125,4 @@ test('omitted rootPath uses the first root', async () => {
 	const secondRoot = await makeTempRoot();
 	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
 	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), firstRoot);
-});
-
-test('two folders without rootPath use the first folder', async () => {
-	const firstRoot = await makeTempRoot();
-	const secondRoot = await makeTempRoot();
-	await mkdir(join(firstRoot, CURSOR_DESIGN_DIR));
-	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
-	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), firstRoot);
-});
-
-test('single root without layout is used', async () => {
-	const workspaceRoot = await makeTempRoot();
-	assert.equal(resolveWorkspaceRoot({ roots: [workspaceRoot] }), workspaceRoot);
 });

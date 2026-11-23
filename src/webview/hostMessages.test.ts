@@ -173,6 +173,12 @@ test('comments:updated drops a malformed comment and keeps the valid one', () =>
 		}),
 		{ type: 'comments:updated', pageId: 'page-1', comments: [validComment] },
 	);
+	// Every status is kept, not only open.
+	const statuses = (['sent', 'resolved'] as const).map((status) => ({ ...validComment, status }));
+	assert.deepEqual(
+		parseHostMessage({ type: 'comments:updated', pageId: 'page-1', comments: statuses }),
+		{ type: 'comments:updated', pageId: 'page-1', comments: statuses },
+	);
 });
 
 test('comments:updated keeps true, false and null flags and drops anything else', () => {
@@ -246,6 +252,15 @@ test('comment:added needs a string requestId; ui:error a string message and opti
 	assert.deepEqual(parseHostMessage({ type: 'ui:error', message: 'Copy failed.' }), {
 		type: 'ui:error',
 		message: 'Copy failed.',
+	});
+	assert.deepEqual(parseHostMessage({ type: 'comment:added', requestId: 'r1', extra: 1 }), {
+		type: 'comment:added',
+		requestId: 'r1',
+	});
+	assert.deepEqual(parseHostMessage({ type: 'ui:error', message: 'x', requestId: 'r1' }), {
+		type: 'ui:error',
+		message: 'x',
+		requestId: 'r1',
 	});
 });
 

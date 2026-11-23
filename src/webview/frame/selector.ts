@@ -13,9 +13,7 @@ const GENERATED_PREFIXES = ['css-', 'svelte-', 'sc-', 'jsx-', 'emotion-', 'astro
 
 // ponytail: framework prefix list plus finder's own word check (idName / className); a
 // letters-only hash without a known prefix can still pass. Upgrade: entropy scoring.
-// Exported for tests: they pin the scoping-prefix list; a selector shows it only indirectly.
-/** @internal */
-export const isGeneratedName = (name: string): boolean => {
+const isGeneratedName = (name: string): boolean => {
 	const lower = name.toLowerCase();
 	return GENERATED_PREFIXES.some((prefix) => lower.startsWith(prefix));
 };

@@ -77,6 +77,9 @@ test('clipRect intersects with every clip and nulls an empty result', () => {
 	assert.deepEqual(clipRect(rect(-10, 90, 30, 30), [viewport]), rect(0, 90, 20, 10));
 	assert.equal(clipRect(rect(200, 200, 10, 10), [viewport]), null);
 	assert.equal(clipRect(rect(10, 10, 0, 20), [viewport]), null);
+	// No vertical overlap: a clip wholly above, or one starting at the bottom edge.
+	assert.equal(clipRect(rect(10, 50, 20, 20), [rect(0, 0, 100, 40)]), null);
+	assert.equal(clipRect(rect(10, 50, 20, 20), [rect(0, 70, 100, 30)]), null);
 	assert.deepEqual(
 		clipRect(rect(0, 0, 100, 100), [rect(10, 0, 100, 100), rect(0, 20, 50, 100)]),
 		rect(10, 20, 40, 80),
@@ -126,10 +129,11 @@ test('paintsFromStyle is true for any visible paint', () => {
 	assert.equal(paints({ style: { backgroundColor: 'rgb(255, 0, 0)' } }), true);
 	assert.equal(paints({ style: { backgroundColor: 'rgba(0, 0, 0, 0.5)' } }), true);
 	assert.equal(paints({ style: { backgroundImage: 'url("a.png")' } }), true);
-	assert.equal(
-		paints({ style: { borderLeftWidth: '1px', borderLeftColor: 'rgb(0, 0, 0)' } }),
-		true,
-	);
+	// Any one side alone paints (a divider is a single border).
+	for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
+		const style = { [`border${side}Width`]: '1px', [`border${side}Color`]: 'rgb(0, 0, 0)' };
+		assert.equal(paints({ style }), true, side);
+	}
 	assert.equal(paints({ style: { boxShadow: 'rgb(0, 0, 0) 0px 1px 2px 0px' } }), true);
 	assert.equal(paints({ hasOwnText: true }), true);
 	assert.equal(paints({ localName: 'svg' }), true);
@@ -211,4 +215,6 @@ test('isUnchangedPick is true only for the same element, description, rect and p
 		true,
 	);
 	assert.equal(isUnchangedPick({ last: { ...last, rect: null }, next: last }), false);
+	// The target vanished (rect null): a change, so the pick is reposted.
+	assert.equal(isUnchangedPick({ last, next: { ...last, rect: null } }), false);
 });

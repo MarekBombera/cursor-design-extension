@@ -12,6 +12,7 @@ import {
 	editReply,
 	keepLiveActions,
 	openReply,
+	replyPending,
 	submitCopy,
 	submitCopyOpen,
 	submitReply,
@@ -47,6 +48,7 @@ test('a blank, whitespace-only or over-cap reply sends nothing; exactly the cap 
 		assert.equal(result.message, undefined);
 		assert.equal(result.actions, actions);
 	}
+	assert.equal(canSubmitReply({ reply: 'a' }), true);
 	assert.equal(canSubmitReply({ reply: 'x'.repeat(MAX_COMMENT_BODY_CHARS) }), true);
 	assert.equal(canSubmitReply({ reply: 'x'.repeat(MAX_COMMENT_BODY_CHARS + 1) }), false);
 	assert.equal(canSubmitReply(undefined), false);
@@ -93,6 +95,21 @@ test('submitStatus resolves open and sent, and reopens resolved', () => {
 	assert.equal(target('open'), 'resolved');
 	assert.equal(target('sent'), 'resolved');
 	assert.equal(target('resolved'), 'open');
+	const resolve = submitStatus({
+		actions: actionsOf({ c1: { reply: 'Draft', error: 'old' } }),
+		comment: comment(),
+		requestId: 'r1',
+	});
+	assert.deepEqual(resolve.message, {
+		type: 'comment:set-status',
+		requestId: 'r1',
+		id: 'c1',
+		status: 'resolved',
+	});
+	assert.deepEqual(resolve.actions.get('c1'), {
+		reply: 'Draft',
+		pending: { requestId: 'r1', kind: 'status', status: 'resolved' },
+	});
 });
 
 test('a matching comment:saved empties the composer and keeps it open', () => {
@@ -104,15 +121,29 @@ test('a matching comment:saved empties the composer and keeps it open', () => {
 	assert.equal(result.announcement, 'Reply added.');
 });
 
-test('a matching comment:saved for status announces resolved or reopened and drops the entry', () => {
-	const answer = (status: 'open' | 'resolved'): ReturnType<typeof answerAction> =>
+test('a status answer announces, keeps a typed reply, and drops an otherwise empty entry', () => {
+	const answer = (
+		status: 'open' | 'resolved',
+		{ reply, message }: { reply?: string; message?: string } = {},
+	): ReturnType<typeof answerAction> =>
 		answerAction({
-			actions: actionsOf({ c1: { pending: { requestId: 'r1', kind: 'status', status } } }),
-			answer: { type: 'comment:saved', requestId: 'r1' },
+			actions: actionsOf({
+				c1: {
+					...(reply === undefined ? {} : { reply }),
+					pending: { requestId: 'r1', kind: 'status', status },
+				},
+			}),
+			answer:
+				message === undefined
+					? { type: 'comment:saved', requestId: 'r1' }
+					: { type: 'ui:error', requestId: 'r1', message },
 		});
 	assert.equal(answer('resolved').announcement, 'Comment resolved.');
 	assert.equal(answer('open').announcement, 'Comment reopened.');
 	assert.equal(answer('open').actions.has('c1'), false);
+	assert.deepEqual(answer('resolved', { reply: 'Draft' }).actions.get('c1'), { reply: 'Draft' });
+	// A failed Resolve with no reply draft still shows its error.
+	assert.deepEqual(answer('resolved', { message: 'Gone' }).actions.get('c1'), { error: 'Gone' });
 });
 
 test('a matching ui:error keeps the reply text, sets the error and announces it', () => {
@@ -128,8 +159,10 @@ test('a matching ui:error keeps the reply text, sets the error and announces it'
 });
 
 test('a non-matching answer, or a ui:error without requestId, returns the same object', () => {
+	// c2 has a draft and nothing pending: a standing error never attaches to it.
 	const actions = actionsOf({
 		c1: { reply: 'Bigger', pending: { requestId: 'r1', kind: 'reply' } },
+		c2: { reply: 'x' },
 	});
 	for (const answer of [
 		{ type: 'comment:saved', requestId: 'other' } as const,
@@ -139,6 +172,7 @@ test('a non-matching answer, or a ui:error without requestId, returns the same o
 		assert.equal(result.actions, actions);
 		assert.equal(result.announcement, undefined);
 	}
+	assert.equal(replyPending(undefined), false);
 });
 
 test('closeReply: no change while a reply is pending; closes while only a status is pending', () => {
@@ -288,6 +322,13 @@ test('an answer of the wrong kind returns the same object', () => {
 	});
 	assert.equal(misfit.actions, replying);
 	assert.equal(misfit.copiedId, undefined);
+	// A failed copy is not the wrong kind: it ends pending and shows the error.
+	const failed = answerAction({
+		actions: copying,
+		answer: { type: 'ui:error', requestId: 'r1', message: 'Busy' },
+	});
+	assert.deepEqual(failed.actions.get('c1'), { error: 'Busy' });
+	assert.equal(failed.announcement, 'Busy');
 });
 
 test('answerCopyOpen: success copies with its count, an error is kept and announced, a stranger changes nothing', () => {
@@ -312,6 +353,12 @@ test('answerCopyOpen: success copies with its count, an error is kept and announ
 	});
 	assert.equal(stranger.state, state);
 	assert.equal(stranger.copiedCount, undefined);
+	// No batch in flight: a standing ui:error without requestId changes nothing.
+	const idle = {};
+	assert.equal(
+		answerCopyOpen({ state: idle, answer: { type: 'ui:error', message: 'Nope' } }).state,
+		idle,
+	);
 	// Nothing marked sent: announced, but no Copied feedback.
 	assert.deepEqual(
 		answerCopyOpen({ state, answer: { type: 'ui:copied', requestId: 'r1', count: 0 } }),

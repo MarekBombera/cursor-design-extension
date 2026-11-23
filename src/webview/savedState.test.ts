@@ -11,6 +11,8 @@ test('saved stage view needs finite x, y, a positive finite zoom and a page id',
 		zoom: 0.5,
 		pageId: 'page-2',
 	});
+	// A valid page id, so only the number is wrong.
+	const pageId = 'page-1';
 	for (const value of [
 		{ x: 0, y: 0, zoom: 1 },
 		{ x: 0, y: 0, zoom: 1, pageId: '' },
@@ -18,11 +20,11 @@ test('saved stage view needs finite x, y, a positive finite zoom and a page id',
 		null,
 		undefined,
 		'view',
-		{ x: 0, y: 0, zoom: 0 },
-		{ x: 0, y: 0, zoom: -1 },
-		{ x: Number.NaN, y: 0, zoom: 1 },
-		{ x: 0, y: 0, zoom: Number.POSITIVE_INFINITY },
-		{ x: 0, zoom: 1 },
+		{ x: 0, y: 0, zoom: 0, pageId },
+		{ x: 0, y: 0, zoom: -1, pageId },
+		{ x: Number.NaN, y: 0, zoom: 1, pageId },
+		{ x: 0, y: 0, zoom: Number.POSITIVE_INFINITY, pageId },
+		{ x: 0, zoom: 1, pageId },
 	]) {
 		assert.equal(parseSavedStageView(value), undefined, JSON.stringify(value));
 	}

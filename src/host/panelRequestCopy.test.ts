@@ -74,10 +74,12 @@ test('commentRequestErrorMessage remaps a missing comment and keeps domain copy'
 	);
 });
 
-test('malformedRequestMessage gives create its own copy and replies and status changes the change copy', () => {
+test('malformedRequestMessage: create its own copy, reply and status the change copy, copies the copy fallback', () => {
 	assert.equal(malformedRequestMessage('comment:create'), MALFORMED_CREATE_MESSAGE);
 	assert.equal(malformedRequestMessage('comment:reply'), MALFORMED_CHANGE_MESSAGE);
 	assert.equal(malformedRequestMessage('comment:set-status'), MALFORMED_CHANGE_MESSAGE);
+	assert.equal(malformedRequestMessage('comment:copy'), COPY_FAILED_MESSAGE);
+	assert.equal(malformedRequestMessage('comment:copy-open'), COPY_FAILED_MESSAGE);
 });
 
 test('editRequestErrorMessage is an allowlist: Agent copy never reaches the panel', () => {

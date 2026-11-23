@@ -28,7 +28,6 @@ import {
 	parseChromeFrameMessage,
 	PICK_REFRESH_MESSAGE,
 	parseFrameMessage,
-	parsePickFields,
 	toOneLine,
 } from './frameMessages';
 import * as frameMessages from './frameMessages';
@@ -89,6 +88,8 @@ test('isSafeStyleValue allows computed-style text, not markup, breaks or oversiz
 		'color(srgb 1 0 0 / 0.5)',
 		'"ヒラギノ角ゴ ProN W3", "Noto Sans CJK JP", sans-serif',
 		'calc(100% + 10px)',
+		// One character (opacity 1) is a whole value.
+		'1',
 	]) {
 		assert.equal(isSafeStyleValue(value), true, value);
 	}
@@ -204,13 +205,6 @@ test('cd:pick needs repost and a finite, non-negative box', () => {
 	}
 });
 
-test('parsePickFields keeps the pick fields without type and repost, with the same guards', () => {
-	const { type: _type, repost: _repost, ...fields } = pick;
-	assert.deepEqual(parsePickFields({ ...fields, extra: 1 }), fields);
-	assert.equal(parsePickFields({ ...fields, selector: '.a\n' }), undefined);
-	assert.equal(parsePickFields({ ...fields, isPage: true }), undefined);
-});
-
 const edit = {
 	sourceNumber: 7,
 	sharedNumber: false,
@@ -313,6 +307,7 @@ test('rects must be finite, non-negative in size and within the coordinate cap',
 		{ x: Number.NaN },
 		{ y: Number.POSITIVE_INFINITY },
 		{ width: -1 },
+		{ height: -1 },
 		{ height: 100_001 },
 		{ x: -100_001 },
 		{ width: '1' },
@@ -323,6 +318,12 @@ test('rects must be finite, non-negative in size and within the coordinate cap',
 	}
 	assert.equal(parseFrameMessage({ type: FRAME_HOVER_MESSAGE }), undefined);
 	assert.equal(parseFrameMessage({ type: FRAME_HOVER_MESSAGE, rect: 'none' }), undefined);
+	// A zero-size rect (an empty element) is valid.
+	const flat = { ...rect, width: 0, height: 0 };
+	assert.deepEqual(parseFrameMessage({ type: FRAME_HOVER_MESSAGE, rect: flat }), {
+		type: FRAME_HOVER_MESSAGE,
+		rect: flat,
+	});
 });
 
 test('parseChromeFrameMessage accepts only the mode and step commands', () => {
@@ -433,6 +434,7 @@ test('cd:anchor-rects needs valid rects, and box null with visible null', () => 
 			anchors: [
 				{ id: 'c1', box: rect, visible: null, extra: 1 },
 				{ id: 'c2', box: null, visible: null },
+				{ id: 'c3', box: rect, visible: rect },
 			],
 		}),
 		{
@@ -440,6 +442,7 @@ test('cd:anchor-rects needs valid rects, and box null with visible null', () => 
 			anchors: [
 				{ id: 'c1', box: rect, visible: null },
 				{ id: 'c2', box: null, visible: null },
+				{ id: 'c3', box: rect, visible: rect },
 			],
 		},
 	);

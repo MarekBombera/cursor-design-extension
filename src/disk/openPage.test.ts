@@ -230,7 +230,7 @@ const assertConflict = async ({
 }: {
 	root: string;
 	names: readonly PageEntry[];
-	message: string;
+	message?: string;
 }): Promise<void> => {
 	// No mtimes: the conflict is found under the lock, whose file touches the folder's mtime.
 	const before = await readTree(root);
@@ -238,7 +238,9 @@ const assertConflict = async ({
 		assert.ok(error instanceof MigrationConflictError);
 		assert.equal(error.code, 'MIGRATION_CONFLICT');
 		assert.deepEqual(error.names, names);
-		assert.equal(error.message, message);
+		if (message !== undefined) {
+			assert.equal(error.message, message);
+		}
 		return true;
 	});
 	assert.deepEqual(await readTree(root), before);
@@ -259,11 +261,7 @@ test('a page entry that exists in both places refuses the migration and moves no
 		const root = await makeTempRoot();
 		await seedLegacy(root, PAGE_ENTRIES);
 		await seedPageEntry(root, name);
-		await assertConflict({
-			root,
-			names: [name],
-			message: new MigrationConflictError({ pageId: 'page-1', names: [name] }).message,
-		});
+		await assertConflict({ root, names: [name] });
 	}
 });
 
@@ -423,12 +421,6 @@ test('a broken project.json throws its code and writes nothing', async () => {
 		await assert.rejects(resolveOpenPage({ workspaceRoot: root, createIfFresh: true }), check);
 		assert.deepEqual(await readTree(root, { withMtime: true }), before);
 	}
-});
-
-test('a fresh read returns page-1 and creates nothing', async () => {
-	const root = await makeTempRoot();
-	await resolveFirstPage(root);
-	assert.deepEqual(await readdir(root), []);
 });
 
 test('a fresh write creates the index, the tombstone and an empty page-1', async () => {

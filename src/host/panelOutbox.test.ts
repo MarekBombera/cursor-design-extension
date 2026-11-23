@@ -146,26 +146,6 @@ test('an answer before ready is dropped and never replayed; after ready it posts
 	assert.deepEqual(posted, [{ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' }]);
 });
 
-test('an artboard:edited answer before ready is dropped and never replayed', () => {
-	const { outbox, types } = setup();
-	const edited = {
-		type: 'artboard:edited',
-		requestId: 'r1',
-		frameId: 'hero',
-		hash: `sha256:${'0'.repeat(64)}`,
-		generation: 2,
-		html: '<p>x</p>',
-		canUndo: true,
-		canRedo: false,
-	} as const;
-	outbox.postAnswer(edited);
-	outbox.markReady();
-	assert.deepEqual(types(), []);
-	outbox.postAnswer(edited);
-	outbox.markReady();
-	assert.deepEqual(types(), ['artboard:edited']);
-});
-
 test('reset drops the cached comments', () => {
 	const { outbox, types } = setup();
 	outbox.postComments({ pageId: 'page-1', comments: [] });

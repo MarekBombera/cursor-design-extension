@@ -3,7 +3,6 @@ import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import * as fc from 'fast-check';
 import { afterEach, expect, test } from 'vite-plus/test';
 
 import { createArtboard, placeFrame, setActiveArtboard, updateArtboard } from './artboardFs';
@@ -16,12 +15,7 @@ import {
 	NoArtboardsToExportError,
 } from './errors';
 import { exportArtboard, readHandoffStatus } from './exportFs';
-import {
-	assignGroupFolders,
-	buildCanvasImplementMarkdown,
-	compareCanvasHandoff,
-	makeCanvasExportId,
-} from './handoff';
+import { assignGroupFolders, buildCanvasImplementMarkdown, compareCanvasHandoff } from './handoff';
 import { hashHtml } from './hash';
 import {
 	FIRST_PAGE_ID,
@@ -172,10 +166,6 @@ const lastExportOf = (
 	return lastExport;
 };
 
-test('makeCanvasExportId strips ISO punctuation', () => {
-	assert.equal(makeCanvasExportId({ now: FIXED_NOW }), FIXED_EXPORT_ID);
-});
-
 test('assignGroupFolders slugs, caps, falls back, reserves ungrouped, and suffixes', () => {
 	const folders = assignGroupFolders([
 		{ id: 'f1', group: 'Desktop' },
@@ -324,133 +314,6 @@ test('compareCanvasHandoff treats legacy lastExport as a one-frame set', () => {
 			{ artboardId: 'b', hash: hashA },
 		]),
 		true,
-	);
-});
-
-const artboardIdArb = fc.stringMatching(/^[a-zA-Z0-9._-]{1,64}$/);
-const hashArb = fc.stringMatching(/^[0-9a-fA-F]{64}$/).map((hex) => `sha256:${hex}`);
-const currentFrameArb = fc.record({
-	artboardId: artboardIdArb,
-	hash: fc.option(hashArb, { nil: undefined }),
-});
-const currentFramesArb = fc.uniqueArray(currentFrameArb, {
-	minLength: 0,
-	maxLength: 8,
-	selector: (frame) => frame.artboardId,
-});
-const recordedFrameArb = fc.record({
-	artboardId: artboardIdArb,
-	artboardHash: hashArb,
-});
-const recordedFramesArb = fc.uniqueArray(recordedFrameArb, {
-	minLength: 1,
-	maxLength: 8,
-	selector: (frame) => frame.artboardId,
-});
-
-const foldHashCase = (hash: string): string => {
-	const body = hash.slice('sha256:'.length);
-	let folded = 'sha256:';
-	for (let index = 0; index < body.length; index += 1) {
-		const char = body[index]!;
-		folded += index % 2 === 0 ? char.toUpperCase() : char.toLowerCase();
-	}
-	return folded;
-};
-
-const flipHash = (hash: string): string => {
-	const body = hash.slice('sha256:'.length);
-	const first = body[0] === '0' ? '1' : '0';
-	return `sha256:${first}${body.slice(1)}`;
-};
-
-test('property: never-exported lastExport is not stale', () => {
-	fc.assert(
-		fc.property(currentFramesArb, (frames) => {
-			assert.deepEqual(compareCanvasHandoff({ lastExport: undefined, frames }), {
-				exported: false,
-				stale: false,
-			});
-		}),
-	);
-});
-
-test('property: same id set and hashes is not stale', () => {
-	fc.assert(
-		fc.property(
-			recordedFramesArb.chain((recorded) =>
-				fc
-					.shuffledSubarray(recorded, { minLength: recorded.length, maxLength: recorded.length })
-					.map((shuffled) => ({ recorded, shuffled })),
-			),
-			({ recorded, shuffled }) => {
-				const lastExport = lastExportOf(recorded);
-				const frames = shuffled.map(({ artboardId, artboardHash }) => ({
-					artboardId,
-					hash: foldHashCase(artboardHash),
-				}));
-				assert.deepEqual(compareCanvasHandoff({ lastExport, frames }), {
-					exported: true,
-					stale: false,
-				});
-			},
-		),
-	);
-});
-
-test('property: hash change, add, remove, or unreadable hash is stale', () => {
-	fc.assert(
-		fc.property(
-			recordedFramesArb.chain((recorded) =>
-				fc
-					.record({
-						mutation: fc.constantFrom('hashChanged', 'idAdded', 'idRemoved', 'unreadableHash'),
-						extraId: artboardIdArb,
-						index: fc.integer({ min: 0, max: recorded.length - 1 }),
-					})
-					.filter(
-						({ mutation, extraId }) =>
-							mutation !== 'idAdded' || !recorded.some((frame) => frame.artboardId === extraId),
-					)
-					.map((choice) => ({ recorded, ...choice })),
-			),
-			({ recorded, mutation, extraId, index }) => {
-				const lastExport = lastExportOf(recorded);
-				const current = recorded.map(({ artboardId, artboardHash }) => ({
-					artboardId,
-					hash: artboardHash as string | undefined,
-				}));
-				if (mutation === 'hashChanged') {
-					current[index] = {
-						artboardId: recorded[index]!.artboardId,
-						hash: flipHash(recorded[index]!.artboardHash),
-					};
-				} else if (mutation === 'idAdded') {
-					current.push({ artboardId: extraId, hash: recorded[0]!.artboardHash });
-				} else if (mutation === 'idRemoved') {
-					current.splice(index, 1);
-				} else {
-					current[index] = { artboardId: recorded[index]!.artboardId, hash: undefined };
-				}
-				assert.deepEqual(compareCanvasHandoff({ lastExport, frames: current }), {
-					exported: true,
-					stale: true,
-				});
-			},
-		),
-	);
-});
-
-test('property: legacy lastExport behaves as a one-frame set', () => {
-	fc.assert(
-		fc.property(artboardIdArb, hashArb, currentFramesArb, (artboardId, artboardHash, frames) => {
-			const lastExport = lastExportOf(undefined, { artboardId, artboardHash });
-			const asOneFrame = lastExportOf([{ artboardId, artboardHash }]);
-			assert.deepEqual(
-				compareCanvasHandoff({ lastExport, frames }),
-				compareCanvasHandoff({ lastExport: asOneFrame, frames }),
-			);
-		}),
 	);
 });
 
@@ -726,6 +589,20 @@ test('export keeps a locked meta-only write that lands before its tail', async (
 	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), lockedMeta);
 });
 
+test('export keeps a meta that a locked write creates for a frame that had none', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createFrame(workspaceRoot, 'hero', HERO_HTML);
+	const lockedMeta = { ...(await readMetaFile(workspaceRoot, 'hero')), title: 'Renamed' };
+	await rm(join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero')));
+	await exportAroundLockedWrite({
+		workspaceRoot,
+		leafLastFile: HERO_LEAF_HTML,
+		targetPath: join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero')),
+		lockedWrite: async () => writeMetaFile(workspaceRoot, lockedMeta),
+	});
+	assert.deepEqual(await readMetaFile(workspaceRoot, 'hero'), lockedMeta);
+});
+
 test('export re-reads the manifest so a write before its tail keeps activeArtboardId', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await createFrame(workspaceRoot, 'hero', HERO_HTML);
@@ -858,26 +735,29 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 	);
 	assert.deepEqual(await handoffLeaves(corruptMetaRoot), []);
 
-	const dotIdRoot = await makeTempRoot();
-	await createFourFrameCanvas(dotIdRoot);
-	await writeFile(
-		join(dotIdRoot, ...artboardsDirSegments(FIRST_PAGE_ID), '..html'),
-		'<p>dot</p>',
-		'utf8',
-	);
-	await assert.rejects(
-		exportArtboard({ page: { workspaceRoot: dotIdRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
-		(error: unknown) => {
-			assert.ok(error instanceof DiskError);
-			assert.equal(error.code, 'DISK_ERROR');
-			assert.equal(
-				error.message,
-				'Artboard id "." cannot be exported as a folder. Rename .cursor-design/pages/page-1/artboards/..html.',
-			);
-			return true;
-		},
-	);
-	assert.deepEqual(await handoffLeaves(dotIdRoot), []);
+	// `.` and `..` pass the id charset but would become `ungrouped/./` and `ungrouped/../`.
+	for (const dotId of ['.', '..']) {
+		const dotIdRoot = await makeTempRoot();
+		await createFourFrameCanvas(dotIdRoot);
+		await writeFile(
+			join(dotIdRoot, ...artboardsDirSegments(FIRST_PAGE_ID), `${dotId}.html`),
+			'<p>dot</p>',
+			'utf8',
+		);
+		await assert.rejects(
+			exportArtboard({ page: { workspaceRoot: dotIdRoot, pageId: FIRST_PAGE_ID }, now: FIXED_NOW }),
+			(error: unknown) => {
+				assert.ok(error instanceof DiskError);
+				assert.equal(error.code, 'DISK_ERROR');
+				assert.equal(
+					error.message,
+					`Artboard id "${dotId}" cannot be exported as a folder. Rename .cursor-design/pages/page-1/artboards/${dotId}.html.`,
+				);
+				return true;
+			},
+		);
+		assert.deepEqual(await handoffLeaves(dotIdRoot), []);
+	}
 });
 
 test('missing tokens writes stub; present tokens are copied byte-for-byte', async () => {

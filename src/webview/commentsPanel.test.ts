@@ -3,7 +3,6 @@ import { test } from 'vite-plus/test';
 
 import type { FrameRecord } from './canvasFrames';
 import {
-	frameLabel,
 	handoffCopy,
 	liveRegionText,
 	panelItems,
@@ -129,13 +128,6 @@ test('relativeTime boundaries, a future time and an unparsable string', () => {
 test('liveRegionText alternates a trailing no-break space so repeats speak', () => {
 	assert.equal(liveRegionText({ text: 'Reply added.', sequence: 1 }), 'Reply added.');
 	assert.equal(liveRegionText({ text: 'Reply added.', sequence: 2 }), 'Reply added. ');
-});
-
-test('frameLabel: the label, or the id for an unknown frame or an empty label', () => {
-	const frames = [frame(), frame({ id: 'blank', label: '' })];
-	assert.equal(frameLabel(frames, 'a'), 'Home');
-	assert.equal(frameLabel(frames, 'gone'), 'gone');
-	assert.equal(frameLabel(frames, 'blank'), 'blank');
 });
 
 test('panelSummary counts open, sent and resolved', () => {

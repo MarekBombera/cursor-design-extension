@@ -195,17 +195,21 @@ test('the gesture preview applies to its own frame only, and never mutates the r
 		withGestureOverride({ frames, gesture: { ...gesture, override: undefined } }),
 		frames,
 	);
+	assert.deepEqual(withGestureOverride({ frames, gesture: undefined }), frames);
 });
 
-test('chrome frames drop an empty group key instead of passing group: undefined', () => {
-	const [none, empty, grouped] = toChromeFrames([
+test('chrome frames carry the geometry and drop an empty group key instead of group: undefined', () => {
+	// deepEqual is strict: a `group: undefined` key fails it.
+	const chrome = toChromeFrames([
 		{ ...measured('a'), group: undefined },
-		{ ...measured('b'), group: '' },
+		{ ...measured('b'), x: 5, y: 6, width: 300, group: '' },
 		{ ...measured('c'), group: 'g' },
 	]);
-	assert.ok(none !== undefined && empty !== undefined && grouped !== undefined);
-	assert.ok(!('group' in none) && !('group' in empty));
-	assert.equal(grouped.group, 'g');
+	assert.deepEqual(chrome, [
+		{ id: 'a', x: 0, y: 0, width: 400, height: 1200 },
+		{ id: 'b', x: 5, y: 6, width: 300, height: 1200 },
+		{ id: 'c', x: 0, y: 0, width: 400, height: 1200, group: 'g' },
+	]);
 });
 
 test('an outline needs a target with a rect, a committed view and a frame still on stage', () => {
@@ -225,15 +229,6 @@ test('an outline needs a target with a rect, a committed view and a frame still 
 		frameOutline({ view: undefined, frames, target: { frameId: 'a', rect } }),
 		undefined,
 	);
-});
-
-test('each post carries the frame generation onto its record', () => {
-	const [first] = mergeCanvasFrames({ records: [], frames: [posted('a', { generation: 1 })] });
-	assert.equal(first?.generation, 1);
-	const next = only(
-		mergeCanvasFrames({ records: [measured('a')], frames: [posted('a', { generation: 4 })] }),
-	);
-	assert.equal(next.generation, 4);
 });
 
 test('a frame label shows the width alone until the first height report, and a tile no size', () => {

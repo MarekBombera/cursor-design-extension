@@ -5,7 +5,6 @@ import type { StyleField } from '../disk/editValues';
 import type { ChromePick } from './commentPick';
 import {
 	editability,
-	editableSections,
 	type FieldView,
 	inlineValue,
 	inspectorView,
@@ -83,13 +82,10 @@ test('no number and a shared number are not editable, page picks name the page',
 });
 
 test('an editable pick is the section model, targeting the tag or the page', () => {
-	const pick = pickWith({});
-	assert.ok(pick.edit !== undefined);
-	assert.deepEqual(inspectorView(pick, NO_DRAFTS), {
-		kind: 'editable',
-		target: 'h1',
-		...editableSections({ pick, edit: pick.edit, drafted: NO_DRAFTS }),
-	});
+	const view = inspectorView(pickWith({}), NO_DRAFTS);
+	assert.ok(view.kind === 'editable');
+	assert.equal(view.target, 'h1');
+	assert.equal(view.styleTooLong, false);
 	const page = inspectorView(
 		pickWith({ textState: 'elements', text: '' }, { isPage: true }),
 		NO_DRAFTS,
@@ -135,29 +131,30 @@ test('the toolbar announcement says not editable only in Edit mode', () => {
 	assert.equal(pickAnnouncementText({ mode: 'edit', pick: undefined }), '');
 });
 
+type EditableView = Extract<ReturnType<typeof inspectorView>, { kind: 'editable' }>;
+
 const sectionsOf = (
 	fields: Partial<PickEditFields>,
 	overrides: Partial<ChromePick> = {},
 	drafted: ReadonlySet<StyleField> = NO_DRAFTS,
-): ReturnType<typeof editableSections> => {
-	const pick = pickWith(fields, overrides);
-	assert.ok(pick.edit !== undefined);
-	return editableSections({ pick, edit: pick.edit, drafted });
+): EditableView => {
+	const view = inspectorView(pickWith(fields, overrides), drafted);
+	assert.ok(view.kind === 'editable');
+	return view;
 };
 
-const fieldOf = (view: ReturnType<typeof editableSections>, key: string): FieldView | undefined =>
+const fieldOf = (view: EditableView, key: string): FieldView | undefined =>
 	view.sections
 		.flatMap((section) => section.fields)
 		.find((candidate) =>
 			candidate.control === 'segments' ? candidate.id === key : candidate.field === key,
 		);
 
-const sectionOf = (view: ReturnType<typeof editableSections>, id: string) =>
+const sectionOf = (view: EditableView, id: string) =>
 	view.sections.find((section) => section.id === id);
 
 test('the selection kind picks the sections; the tag rule wins over every text state', () => {
-	const titles = (view: ReturnType<typeof editableSections>) =>
-		view.sections.map((section) => section.title);
+	const titles = (view: EditableView) => view.sections.map((section) => section.title);
 	const text = sectionsOf({});
 	assert.equal(text.selection, 'text');
 	assert.deepEqual(titles(text), ['Text', 'Appearance', 'Spacing', 'Border']);
@@ -189,6 +186,8 @@ test('the selection kind picks the sections; the tag rule wins over every text s
 
 test('an over-cap style renders no section, only Content', () => {
 	assert.deepEqual(sectionsOf({ style: null }), {
+		kind: 'editable',
+		target: 'h1',
 		selection: 'text',
 		content: { state: 'plain', value: 'Title', liveText: '\n    Title\n  ' },
 		styleTooLong: true,
@@ -338,9 +337,12 @@ test('text style: I flips italic; U and S combine and drop other tokens', () => 
 		const group = fieldOf(sectionsOf({ computed, style }), 'text-style');
 		return group?.control === 'segments' ? group.buttons : [];
 	};
-	const [italic, underline, strike] = buttons({ 'font-style': 'oblique 10deg' });
-	assert.equal(italic?.pressed, true);
-	assert.deepEqual(italic?.change, { field: 'font-style', value: 'normal' });
+	for (const fontStyle of ['italic', 'oblique 10deg']) {
+		const [italic] = buttons({ 'font-style': fontStyle });
+		assert.equal(italic?.pressed, true, fontStyle);
+		assert.deepEqual(italic?.change, { field: 'font-style', value: 'normal' }, fontStyle);
+	}
+	const [, underline, strike] = buttons({ 'font-style': 'oblique 10deg' });
 	assert.deepEqual(buttons({ 'font-style': 'normal' })[0]?.change, {
 		field: 'font-style',
 		value: 'italic',

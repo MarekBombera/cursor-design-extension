@@ -41,6 +41,8 @@ test('an empty element gets its text before the end tag, or after a start tag wi
 	assert.deepEqual(text('<pre>\n</pre>', 0, 'Hi', ''), ok('<pre>\nHi</pre>'));
 	assert.deepEqual(text('<ul><li><li>b</ul>', 1, 'Hi', ''), ok('<ul><li>Hi<li>b</ul>'));
 	assert.deepEqual(text('<p></p>', 0, '  ', ''), ok('<p></p>'));
+	// Clearing an element's text is a plain edit, not a refusal.
+	assert.deepEqual(text('<p>Hi</p>', 0, '', 'Hi'), ok('<p></p>'));
 });
 
 test('CRLF files and a pre leading newline are edited byte-exactly', () => {
@@ -156,6 +158,10 @@ test('a style edit adds, sets or removes one declaration in any attribute form',
 		ok('<p style="color: red; padding: 8px 16px">a</p>'),
 	);
 	assert.deepEqual(
+		style('<p style = "color: red">a</p>', 0, 'margin', '0'),
+		ok('<p style = "color: red; margin: 0px">a</p>'),
+	);
+	assert.deepEqual(
 		style("<p style='color: red'>a</p>", 0, 'color', '#ABCDEF'),
 		ok("<p style='color: #ABCDEF'>a</p>"),
 	);
@@ -252,6 +258,11 @@ test('unsafe style values are refused', () => {
 test('a style attribute the core cannot edit safely is refused', () => {
 	assert.deepEqual(
 		style('<p style=a"b>x</p>', 0, 'color', '#000000'),
+		refused('unsupported-style'),
+	);
+	// Valid declarations, but rewriting them inside new double quotes would break the markup.
+	assert.deepEqual(
+		style('<p style=font-family:"x">a</p>', 0, 'color', '#000000'),
 		refused('unsupported-style'),
 	);
 	assert.deepEqual(
