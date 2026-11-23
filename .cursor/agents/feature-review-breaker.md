@@ -23,7 +23,7 @@ Assume the spec is implemented literally and shipped this week.
 
 Primary attack: bugs, missing failure paths, races, partial writes, security, untestable done-when, MCP/disk abuse.
 
-Still report all four lenses, but bias toward “what breaks at F5 / MCP / disk.” Do not write a generic completeness review; hunt breakage.
+Do not write a generic completeness review; hunt breakage.
 
 Return exactly this shape:
 

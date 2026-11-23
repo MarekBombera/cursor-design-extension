@@ -11,14 +11,11 @@ alwaysApply: false
 
 # Code conventions
 
-Lint (`vite.config.ts`) fails the mechanical parts (arrow functions, `catch (error)`, short or denylisted names, export return types, `any`, `@ts-*`, `console`). Fix the code, never the rule.
+Lint (`vite.config.ts`) fails the mechanical parts (arrow functions, `catch (error)`, short or denylisted names, export return types, `any`, `@ts-*`, `console`); fix the code, never the rule.
 
-## Names: one look must tell you what it is
+## Names
 
-- Full words, strings too: `artboard = readArtboard(artboardId)`, not `ab = read(id)`; `{ type: 'artboardUpdated', payload }`, not `{ t: 'u', d }`. Abbreviate only when the full name is already in the identifier.
-- I/O: `response` / `payload` / `requestText`. `raw` only for unvalidated input before a parser checks it.
-- Wire names (MCP tool args, disk JSON keys, message `type`) stay as the contract defines them.
-- A rename updates every call site in the same change.
+Full words, strings too (`artboard = readArtboard(artboardId)`, `{ type: 'artboardUpdated' }`, not `ab` / `t: 'u'`); `raw` only for unvalidated input; wire names (tool args, disk keys, message `type`) stay as the contract defines them; a rename updates every call site in the same change.
 
 ## Single source of truth
 

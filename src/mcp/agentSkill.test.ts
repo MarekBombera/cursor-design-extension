@@ -15,8 +15,8 @@ import { artboardToolInputSchemas } from './artboardTools';
 import { commentToolInputSchemas } from './commentTools';
 
 // Drift guard for the shipped Agent skill (skills/cursor-design/SKILL.md): a tool, Agent-visible
-// error code, frame limit or sandbox change that lands without the skill fails here. Rule 02 and
-// AGENTS.md cover the prose a test cannot see.
+// error code, frame limit or sandbox change that lands without the skill fails here. AGENTS.md
+// covers the prose a test cannot see.
 
 const readRepoFile = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8');
 

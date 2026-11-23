@@ -14,15 +14,11 @@ Chrome (Svelte 5 + Vite, no Kit) renders what the host posts; no MCP, workspace 
 
 ## Svelte MCP: required for every Svelte change
 
-Cursor's `svelte` and Claude Code's `svelte@svelte` plugin (`.claude/settings.json`) provide the `svelte` MCP server, `svelte-core-bestpractices` skill and `svelte-file-editor` agent.
-
 1. **Before writing:** `list-sections`, then `get-documentation` for every matching section; write from the docs, not Svelte 4 memory.
 2. **After every edit** to a `.svelte` / `.svelte.ts` file: `svelte-autofixer` on the full file until clean.
 3. Claude Code: delegate Svelte edits to `svelte-file-editor`.
 4. Never `playground-link` repo files.
-5. No MCP (Codex, CI): `npx -y @sveltejs/mcp --help`; never skip the autofixer.
-
-If `svelte-check` fails, never weaken lint, remove `typeAware` / `typeCheck` or downgrade a package; fallbacks: `cursor-design-build` skill.
+5. No MCP (Codex, CI): `npx -y @sveltejs/mcp --help`; never skip the autofixer. If `svelte-check` fails, follow the `cursor-design-build` skill (never weaken lint).
 
 ## Container vs view
 
@@ -50,36 +46,30 @@ If `svelte-check` fails, never weaken lint, remove `typeAware` / `typeCheck` or 
 
 ## Owner catalog (chrome)
 
-Rule 05's contract: grep before writing a helper, extend the owner, update this list in the same change.
+Rule 05's contract: grep before writing a helper, extend the owner, never add a twin, update this list in the same change. "The one X" means no second implementation. Disk constants and the page-id guard `isPageId` come from `src/disk/layout.ts`; style apply and text rules from `src/disk/editValues.ts`.
 
-**State and I/O.** `src/webview/App.svelte` holds what spans pages: the host bridge, the staged page id (a `canvas:updated` with a non-empty `pageId` for another page remounts the page, `flushSync`; `''` never does), `ui:status`, the latest `comments:updated`, the comment draft slot, the mode handed to the next page, and the one comment-UI save `$effect` (writes nothing for no page or the `''` page). `src/webview/DesignPage.svelte` is one page under `{#key}`: it creates the per-page `*.svelte.ts` classes in dependency order with its `pageId`, holds the toolbar, banners, workspace and live region, applies a comment list only for its own page (or `''`), and exposes `handleHostMessage`, `handleFrameMessage`, `iframes`, `savable` (with the mode) and `leave` to App via `bind:this`. Host I/O only in `src/webview/hostBridge.svelte.ts` (`postToFrame`, the page-bound senders `postFramePlace` / `postCommentRequest` / `postEditRequest` (page id first, page-free message second: the only place a request gets its `pageId`), `saveStageView` (with its page), `saveCommentsPanelOpen`, `saveCommentUi`, `readSavedCommentUi`; `connectHostBridge` reads the mounted page's iframes through a getter).
+**State and I/O.**
 
-- `CanvasState` (`src/webview/canvasState.svelte.ts`): frames, the view's one write path `commitStageView`, gesture, scroll sink, `sendToFrame` (every chrome to frame send), `adoptEditAnswer`.
-- `CommentsState` (`src/webview/commentsState.svelte.ts`): comments, panel, reply / status / copy requests.
-- `PinThread` (`src/webview/pinThread.svelte.ts`): anchors (`sendAnchors`), pins, open thread, the one focus gate `canTakeFocus`.
-- `CommentPicker` (`src/webview/commentPicker.svelte.ts`): the mode through one setter, hover and pick, add-comment draft, `isTextEntry`.
-- `EditState` (`src/webview/editState.svelte.ts`): inspector drafts and the picked element's `drafted` fields (`discardDrafts` when its page leaves), the one save path for choices, Reset and Add border `handleStyleChanges`, the one-in-flight edit queue, undo / redo, the one live region `announcement`.
+- `App.svelte` → what spans pages (host bridge, staged page id, status, latest comments, comment draft slot, mode handed on, the one comment-UI save `$effect`); `DesignPage.svelte` → one page under `{#key}`: per-page state classes, toolbar, banners, workspace, live region. Page-switch behavior: system-map "Page-scoped panel (10b)".
+- `hostBridge.svelte.ts` → all host I/O; its page-bound post functions are the only place a request gets its `pageId`.
+- `canvasState.svelte.ts` → frames, the one view write path `commitStageView`, gesture, the one chrome-to-frame send `sendToFrame`.
+- `commentsState.svelte.ts` → comments, panel, reply / status / copy requests. `pinThread.svelte.ts` → anchors, pins, open thread, the one focus gate `canTakeFocus`. `commentPicker.svelte.ts` → mode (one setter), hover, pick, add-comment draft.
+- `editState.svelte.ts` → inspector drafts, the one save path for choices / Reset / Add border `handleStyleChanges`, the one-in-flight edit queue, undo / redo, the one live region `announcement`.
 
-**Pure rules:**
+**Pure rules** (`src/webview/`):
 
-- `src/webview/hostMessages.ts`: `parseHostMessage`, `routeMessage`, guards `isRecord`, `isFiniteNumber`. `src/webview/savedState.ts`: `parseSavedStageView` (`SavedStageView`, with its `pageId`), `parseSavedCommentUi` (the draft slot with its `pageId`).
-- `src/webview/frame/frameMessages.ts`: `parseFrameMessage`, `parseChromeFrameMessage`, `parsePickFields`, `PickEditFields`, `FRAME_MODES`, `isFrameMode`, `FrameKey`, `hasControlChars`, the one prompt line `toOneLine`, `isSafeStyleValue`, `isTagName`, `parseFrameRect`.
-- `src/webview/stampArtboardHtml.ts`: `stampArtboardHtml`, frame policy `FRAME_CSP`.
-- `src/webview/stageGeometry.ts` (embedded whole in `canvas.html`): `frameRectToScreen`, the one fit-zoom rule `fitZoom` (`fitStageView`, `jumpStageView`). Chrome-only zoom menu: `src/webview/zoomChoices.ts` (`ZOOM_PRESETS`, `zoomChoices`).
-- `src/webview/frameGesture.ts`: `stepFrameGesture`, `settleFrameGesture`, `failFrameGesture`, `arrowNudge`, `revealOffset`, `wheelToView` (both wheel paths), `scrollSinkStep`.
-- `src/webview/canvasFrames.ts`: `mergeCanvasFrames`, `liveIframeIds`, `adoptEditAnswer`, `reloadFrame`, `applyFrameHeight`, `frameSizeText`, `demoteToTile`, `withGestureOverride`, `toChromeFrames`, `frameOutline`.
-- `src/webview/commentPick.ts`: the one pick type `ChromePick`, `applyPickMessage`, `chooseMode`, `pressedMode`, the one counts-in-mode verdict `pickCounts`, `keepLiveFrames`, `clearPick`, `modeKeyAction`.
-- Edit mode: `src/webview/editInspector.ts` (`inspectorView`, the one section model `editableSections` with the set rule (takes `drafted`: a drafted Gap or border field stays rendered), `editability`, `inlineValue`, `toHexColor`, the one colour display `colorDisplay`, `pickAnnouncementText`); `src/webview/editDrafts.ts` (`startDraft`, `sameElement`, `fieldValue`, `swatchValue`, `draftPreview`, `baselinePreview`, `commitDraft`, the one multi-change save rule `stylesCommit`, `FieldErrorKind` with `FIELD_ERROR_COPY` (per-field refusal kinds), `draftFate`, `invalidDraftCopy`, `textMaxLength`); `src/webview/editRequests.ts` (`enqueueEdit`, `enqueueStep`, `nextSend`, `answerEdit`, `notSaved`, `NOT_SAVED_COPY`, `clearErrorOnPick`); `src/webview/undoRedo.ts` (`historyTarget`, the one flag read `canStep`, `historyKeyStep`, `forwardedHistoryStep`).
-- `src/webview/pins.ts`: `AnchorState`, `applyAnchorRects`, `dropFrameAnchors`, `anchorSends`, `pinBadge`, `pinPoint`, the one live-answer lookup `liveAnchor`, `layoutPins`, `pinLabel`, `keepOpenThread`, `resolveHeldThread`, `jumpTarget`, `JUMP_FLASH_MS`, the one comment number `commentNumber`, `statusBadge`, `flagBadge`.
-- `src/webview/commentsPanel.ts`: `panelItems`, the one frame name `frameLabel`, `panelSummary`, `summaryParts`, `handoffCopy`, `relativeTime`, the one count wording `commentsText`, `liveRegionText`.
-- `src/webview/commentActions.ts`: `openReply`, `editReply`, `closeReply`, `replyPending`, `anythingPending`, `canSubmitReply`, `submitReply`, `submitStatus`, `answerAction`, `keepLiveActions`, `copyPending`, `submitCopy`, `submitCopyOpen`, `answerCopyOpen`, `copyAnnouncement`, `COPY_FEEDBACK_MS`.
-- `src/webview/commentPopover.ts`: `popoverKeyAction`, `draftFromPick`, `editDraftBody`, `resolveHeldDraft`, the draft slot `CommentDraftSlot` and its one rule `keptCommentDraft`, `canSubmit`, `blockedTargetCopy`, `submitDraft`, `answerDraft`, `keepLiveDraft`, `targetChipText`, `popoverAnchor`, `placePopover`.
-- `src/webview/pageStart.ts`: what App hands a page, `PageStart`; the page-change test `isPageChange`, the next page's start `nextPageStart` (held draft only on its own page; saved thread only on the first real page and only without a held draft; reply drafts only on the first page; mode carried), the comment-list guard `isPageComments`.
+- `hostMessages.ts` → host message parse and routing; `savedState.ts` → saved stage view and comment UI parse.
+- `frame/frameMessages.ts` → frame message parse, pick fields, the one prompt line `toOneLine`; `stampArtboardHtml.ts` → nonce stamping, `FRAME_CSP`.
+- `stageGeometry.ts` → stage math, the one fit-zoom rule `fitZoom` (embedded in `canvas.html`); `zoomChoices.ts` → zoom menu; `frameGesture.ts` → drag / resize / wheel steps; `canvasFrames.ts` → frame merge and per-frame updates.
+- `commentPick.ts` → `ChromePick`, mode choice, the one counts-in-mode verdict `pickCounts`.
+- `editInspector.ts` → inspector sections, the one colour display `colorDisplay`; `editDrafts.ts` → draft lifecycle, the one multi-change save rule `stylesCommit`, field error copy; `editRequests.ts` → edit queue; `undoRedo.ts` → the one flag read `canStep`.
+- `pins.ts` → pin layout, the one live-answer lookup `liveAnchor`, the one comment number `commentNumber`; `commentsPanel.ts` → panel items, the one frame name `frameLabel`, the one count wording `commentsText`; `commentActions.ts` → reply / status / copy actions; `commentPopover.ts` → add-comment draft, the one draft-slot rule `keptCommentDraft`.
+- `pageStart.ts` → what App hands a page: the one page-change test `isPageChange`, the one start rule `nextPageStart`, the comment-list guard `isPageComments`.
 
-**Views:** `Stage.svelte` (focused-frame ring, `focusViewport`), `Overlay.svelte` (hover and pick outlines), `Pins.svelte`, `CommentThread.svelte`, `CommentsPanel.svelte`, `CommentCard.svelte` (panel and thread, via `shell`), the one composer `Composer.svelte`, `CommentPopover.svelte`, `Inspector.svelte`, `PinChip.svelte`, `TargetRef.svelte`.
+**Views** (props in, callbacks out; callbacks named `on*`): `Stage`, `Overlay`, `Pins`, `CommentThread`, `CommentsPanel`, `CommentCard` (panel and thread, via `shell`), the one composer `Composer`, `CommentPopover`, `Inspector`, `PinChip`, `TargetRef`.
 
-**Frame runtime** (`src/webview/frame/`, inside the iframe; writes the design DOM only via `cd:edit-apply`): `src/webview/frame/commentPicking.ts` (`installCommentPicking`, `visibleRect`), `src/webview/frame/editTarget.ts` (`describeEditTarget`, `hasOtherContent`, DOM reads only), `src/webview/frame/pinAnchors.ts` (`installPinAnchors`), `src/webview/frame/anchorRects.ts` (`anchorsMoved`, `capAnchorRect`), `src/webview/frame/pickTarget.ts` (`pickTarget`, `clipRect`, `paintsFromStyle`, `pointInTarget`, `sameRect`, `isUnchangedPick`), `src/webview/frame/pickPath.ts` (`stepToParent`, `stepToChild`), `src/webview/frame/selector.ts` (`buildSelector`, `describeElement`, `describeContent`, `isGeneratedName`, `textExcerpt`, `readStyles` over a given key list).
+**Frame runtime** (`src/webview/frame/`, inside the iframe; writes the design DOM only via `cd:edit-apply`): `runtime.ts` entry, `commentPicking.ts`, `editTarget.ts` (DOM reads only), `pinAnchors.ts`, `anchorRects.ts`, `pickTarget.ts`, `pickPath.ts`, `selector.ts`.
 
-**Design system** (`src/webview/ui/`, one primitive per job): `theme.css` (tokens, reduced motion, host-competing element rules, the one `:focus-visible` ring, `.visually-hidden`, `cd-spin`); `icons.ts` (`ICONS`, `IconName`, `IconShape`) with `Icon.svelte` for every icon; `Button.svelte` (`primary`, `secondary`, `ghost`, `segment`; `tone="agent"` on `ghost` only) every text button; `IconButton.svelte` every icon-only button; `Badge.svelte` (props in `src/webview/ui/badge.ts`) every status pill; `Message.svelte` every notice and inline error; `Field.svelte` every inspector field (`text`, `textarea`, `color`, `select`, `segments`; label inside, set dot, `data-cd-field` hook), a recorded exception to "2+ surfaces": one consumer, the Inspector, but its focus ring, invalid edge, set dot, inner `outline: none` and `::placeholder` colour are control-state and meaning-colour rules only `ui/` may hold (its segment buttons stay raw `<button>`s inside the field: `Button` / `IconButton` would need two new props each); `keyRepeat.ts` (`ignoreKeyRepeat`, the one held-key guard for buttons a repeat must not re-activate); `EmptyState.svelte` every empty view; `Avatar.svelte` every thread entry; `Widget.svelte` every floating widget.
+**Design system** (`src/webview/ui/`, one primitive per job): `theme.css` (tokens, the one `:focus-visible` ring, `.visually-hidden`); `Icon.svelte` + `icons.ts` every icon; `Button.svelte` every text button (`tone="agent"` on `ghost` only); `IconButton.svelte` every icon-only button; `Badge.svelte` every status pill; `Message.svelte` every notice and inline error; `Field.svelte` every inspector field (recorded exception to "2+ surfaces": its control-state and meaning-colour styles may live only in `ui/`); `keyRepeat.ts` the one held-key guard `ignoreKeyRepeat`; `EmptyState.svelte`, `Avatar.svelte`, `Widget.svelte`.
 
-**Inline scripts:** `scripts/iifeStringPlugin.ts` (`import source from './x.ts?iife'` is the module as an IIFE string). `src/disk/handoffCanvasHtml.ts` embeds `frame/runtime.ts?iife` and `stageGeometry.ts?iife` (with `layoutCanvasChrome`); never hand-copy either.
+Inline scripts (`?iife`, `scripts/iifeStringPlugin.ts`): rule 05 (`handoffCanvasHtml.ts`).

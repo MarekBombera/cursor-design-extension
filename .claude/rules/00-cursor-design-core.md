@@ -13,19 +13,12 @@ You are building **cursor-design**: a Cursor/VS Code extension (WebviewPanel + l
 2. **No in-extension chat.** Chat stays in Cursor Agent. Panel = artboard chrome + live HTML preview only.
 3. **Disk is SoT:** workspace `.cursor-design/`. MCP process memory is not extension memory.
 4. **Register MCP on activate** with `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
-5. **No Next.js / TanStack Start / TanStack AI / SvelteKit / React** (lint bans the imports).
+5. **No Next.js / TanStack / SvelteKit / React imports** (lint bans them).
 6. **Panel-only MVP:** no CustomTextEditor, no OS auxiliary window.
-7. **Brand:** `cursor-design` (no Grok Build in v1 messaging).
+7. **Brand:** `cursor-design`.
 
 ## Build protocol
 
-- Spec, then types, then gates, then code. Prove chrome and iframe behavior with `pnpm test:browser`; **F5** (Extension Development Host, `fixtures/dev-workspace`) for Cursor-only checks (CSP, MCP registration, Extension Host, webview hide/show, Cursor focus).
-- The Notion spec (links in `AGENTS.md`) wins over conflicting chat. Do not invent features outside it; ask Bombic.
-- After work: `pnpm verify`. Do not skip it.
-
-## Agent tooling
-
-- Notion MCP: fetch the spec before a feature.
-- Context7: current VS Code / webview / MCP docs.
-- Before webview or CSP work: `npx -y modern-web-guidance@latest search "<use case>"`, then retrieve.
-- Svelte (chrome only): follow `08-svelte-chrome`. Svelte MCP `list-sections` / `get-documentation` before writing, `svelte-autofixer` after every edit until clean.
+- Spec, then types, then gates, then code. Prove chrome and iframe behavior with `pnpm test:browser`; F5 for Cursor-only checks (`AGENTS.md` Commands).
+- Shipped code is the source of truth. The Notion page and the active plan (`blueprint/build-plan.md` names it) are plans; implementation may decide differently. When it does, record the decision in the spec and update the Notion version page in the same work item (at `/complete` at the latest). Code > plan > chat. Do not invent features outside the plan; ask Bombic.
+- Tooling recipes: `cursor-design-build` skill; Svelte: rule 08.

@@ -2,11 +2,11 @@
 
 **cursor-design** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.cursor-design/`.
 
-**Notion:** hub (locks, MCP/disk, Interact vs Edit) https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4 ; active 0.4 Edit-lite (its Decisions section is the plan) https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d
+**Notion:** hub (locks, MCP/disk, Interact vs Edit) https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4 . The active plan is named in `blueprint/build-plan.md` (0.5: `blueprint/reference/0.5-pages-plan.md`).
 
 **After work:** run `pnpm verify`; never skip it.
 
-**Agent skill:** changing MCP tools or their args, error codes, artboard runtime limits, or the frame CSP updates `skills/cursor-design/SKILL.md` (shipped to users' `~/.cursor/skills/`) in the same change. `src/mcp/agentSkill.test.ts` guards names, codes and limits; the prose is on you.
+**Agent skill:** a change to an MCP tool or its args, an Agent-visible error code, an artboard runtime limit, the frame sandbox or either CSP updates `skills/cursor-design/SKILL.md` (shipped; `syncAgentSkill` copies it to `~/.cursor/skills/` on activate) in the same change. `src/mcp/agentSkill.test.ts` guards: frontmatter, every registered tool named and no unknown snake_case name, every Agent-visible error code in `src/disk/errors.ts` named and no unknown code, the frame width / gap / height / posted-HTML limits, the `Frame.svelte` `sandbox` value, and no `.cursor-design/artboards/` path. The CSP and all other prose are on you.
 
 Claude Code, Codex, and every other AI tool must not add AI attribution to
 commits or pull requests, including AI `Co-Authored-By` trailers or generated-by
@@ -25,34 +25,12 @@ One copy of everything; never copy files between adapter trees.
 overlay, not the product stack. Never run a framework scaffolder here. Its updater
 refuses the symlinked adapter trees: updates are a manual three-way merge.
 
-## Proportional engineering
-
-Build for established requirements, not hypothetical scale, threats, or flexibility.
-Reuse existing code, the standard library, platform features, and installed
-dependencies before adding machinery.
-
-- Unknown scale or extensibility defaults to the smaller reversible design; do not
-  infer enterprise, multi-tenant, hostile-user, or compliance requirements.
-- Derive trust and data-integrity boundaries from actual reachability: untrusted
-  input, auth/ownership, shared persisted data, destructive operations, payments,
-  secrets, sensitive data.
-- Ask only when an unknown materially changes behavior, architecture, persisted
-  data, interoperability, a real security boundary, or cost; otherwise pick the
-  simplest repo-native option.
-- Add an abstraction, dependency, service, config surface, compatibility layer,
-  or security mechanism only for a current requirement.
-- Simplicity never removes real trust-boundary validation, data-loss prevention,
-  accessibility, explicit security requirements, configured tests, or project rules.
-- Stack-specific template standards apply only to this project's stack.
-
 ## Read these when relevant
 
 - `blueprint/config.json` - workflow policy (gates, `git.landing`); if invalid, run `/blueprint-doctor`. It never grants permission to commit, merge, push, deploy, publish, delete data, waive a failing check, or accept a finding.
-- `blueprint/workflow.md` - managed workflow reference
 - `blueprint/context/project-overview.md` - product context
 - `blueprint/context/system-map.md` - processes, messages, disk; read before changing a cross-process flow
 - `blueprint/context/coding-standards.md` - stack, testing, writing
-- `blueprint/context/ai-interaction.md` - Blueprint workflow
 - `blueprint/context/current-feature.md` - the active spec
 
 ## Workflow
@@ -76,32 +54,20 @@ Approval boundaries:
 - Parallel work: one Git worktree or clone per work item, each on its own branch.
   Never replace another worker's active spec.
 
-## Dashboard activity
+**Dashboard activity:** tracked commands (plus `feature-review`, `feature-review-fix`) write `blueprint/.state/run.json` only via `node .cursor/skills/blueprint-doctor/scripts/run-state.mjs`, never by hand (contract: `blueprint/workflow.md`).
 
-Tracked commands (plus `feature-review`, `feature-review-fix`) write
-`blueprint/.state/run.json` only via `node .cursor/skills/blueprint-doctor/scripts/run-state.mjs`,
-never by hand. Contract: `blueprint/workflow.md` → Dashboard activity.
-
-## Automatic verification
-
-`.github/workflows/verify.yml` runs `pnpm verify` on pull requests and pushes to
-`main` (`contents: read`). `/ci` owns it.
+**Automatic verification:** `.github/workflows/verify.yml` runs `pnpm verify` on pull requests and pushes to `main` (`contents: read`); `/ci` owns it.
 
 ## Commands
 
 - Install: `pnpm install`
 - Check: `pnpm run check` (`vp check`, then the agent rules check)
-- Verify: `pnpm verify` (`vp check && node scripts/check-agent-rules.mjs && svelte-check --tsconfig ./tsconfig.webview.json --fail-on-warnings && tsc -p tsconfig.webview-tests.json && vp test && vp pack && vp build -c vite.webview.config.ts`)
+- Verify: `pnpm verify`
 - Test: `pnpm test` (`vp test`: Vitest over `src/**/*.test.ts`). No Electron suite (plain VS Code lacks the Cursor API).
-- Coverage: `pnpm coverage` (report only, no thresholds)
 - Fix: `pnpm exec vp check --fix`
-- Compile: `pnpm compile` (lint, type check, build `dist/`)
-- Watch: `pnpm watch` (pack + webview)
-- Debug: **F5** opens `fixtures/dev-workspace` in the Extension Development Host for Cursor-only checks (CSP, MCP registration, webview hide/show, Cursor focus). Confirm `dist/mcp.js` exists first.
-- Package: `pnpm package`
-- TypeScript: package `typescript` is `~6.0.3` (svelte-check peer); lint and type-aware check run TS 7 (tsrs, in vite-plus)
+- Debug: **F5** opens `fixtures/dev-workspace` in the Extension Development Host for Cursor-only checks (CSP, MCP registration, Extension Host, webview hide/show, Cursor focus). Confirm `dist/mcp.js` exists first.
 - Package `.vsix`: `pnpm vsix`
-- Knip: `pnpm knip` (unused files/deps; not Verify)
+- Other scripts: `package.json` (coverage, compile, watch, package, knip).
 
 Lint (`vite.config.ts`) enforces the mechanical conventions. Fix the code, not the rule.
 

@@ -12,15 +12,12 @@ Every public surface (command, MCP tool, disk read/write, webview message) names
 
 ## Principles
 
-1. **Expected vs unexpected.** Recoverable, typed and actionable: no folder, unclear multi-root, untrusted workspace; `.cursor-design/` missing, unreadable or half-written; corrupt or wrong-version JSON; missing artboard; wrong or missing `baseGeneration`; disk changed under an open panel; webview message with unknown `type`, oversized or non-object; export or handoff with no artboards. Programmer bugs and broken invariants throw.
-2. **`Error` subclasses** in `src/disk/errors.ts` with a `readonly code`, or a small discriminated return; one style per module, no new error framework.
-3. **`catch (error)`, then narrow** (`error instanceof Error`). Never type the binding.
-4. **Preserve `cause`.** `new ArtboardNotFoundError(artboardId, { cause: error })`, never `new XError(error.message)`: foreign text goes on `cause`.
-5. **A deliberate silent path logs first** and carries a `// ponytail:` comment naming the ceiling.
-6. **Log once, at the boundary.** Logging helpers never throw (a crashing logger hides the original failure).
-7. **Catch new async work.** Watchers, timers, fire-and-forget promises: `.catch` and log; child processes and streams get an `'error'` listener.
-8. **Artboard iframe or CSP failure** renders an error state; never run artboard code as extension code.
-9. **Activate / deactivate / dispose** leave no dangling watchers and never `registerServer` twice.
+1. **Expected vs unexpected.** Recoverable conditions (no or ambiguous folder, missing / half-written / corrupt / wrong-version `.cursor-design/` data, missing artboard, stale `baseGeneration`, malformed or unknown messages, export with nothing to export) return a typed, actionable error; programmer bugs and broken invariants throw.
+2. **Preserve `cause`.** `new ArtboardNotFoundError(artboardId, { cause: error })`, never `new XError(error.message)`: foreign text goes on `cause`.
+3. **A deliberate silent path logs first** and carries a `// ponytail:` comment naming the ceiling.
+4. **Log once, at the boundary.** Logging helpers never throw (a crashing logger hides the original failure).
+5. **Catch new async work.** Watchers, timers, fire-and-forget promises: `.catch` and log; child processes and streams get an `'error'` listener.
+6. **Artboard iframe or CSP failure** renders an error state; never run artboard code as extension code.
 
 ## Channels
 

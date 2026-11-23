@@ -23,7 +23,7 @@ Assume a different model (Opus 5.5, no chat context) will implement from this sp
 
 Primary attack: ambiguity, two-implementer divergence, invented scope, incomplete contracts, step-order traps, missing named constants/error codes.
 
-Still report all four lenses, but bias toward “would two implementers ship the same thing?” Do not write a generic breakage review; hunt underspecification.
+Do not write a generic breakage review; hunt underspecification.
 
 Return exactly this shape:
 

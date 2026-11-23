@@ -5,16 +5,7 @@ description: Judge both dual-reviewer reports, research as needed, and rewrite t
 
 # feature-review-fix - Claude is the judge: research, push back, rewrite the spec
 
-**Context reuse:** Reuse any required file already loaded in project instructions or the current session. Read it again only if absent, changed, or exact current bytes or line references are needed.
-
 **First action:** Before project inspection, preflight, or any other tool call, publish `running` to `blueprint/.state/run.json` using the dashboard activity contract in `blueprint/workflow.md` with `--command feature-review-fix` and boundary `reviewed`.
-
-Where this sits in the workflow:
-
-    /feature or /fix  ->  /feature-review  ->  [feature-review-fix]  ->  /implement
-    (spec exists)         (two Claude reviews,  (this skill:             (build the
-                           write reports,        research, push back,     fixed spec)
-                           STOP)                 rewrite spec)
 
 This agent is the **final judge and implementor of spec fixes**. It is not the product builder — `/implement` still builds. It reads both stored reports in full, researches claims that depend on current code, accepts or pushes back, and rewrites the spec once.
 
@@ -30,14 +21,7 @@ Read `blueprint/context/feature-review.md` in full. Every finding and every nit 
 
 ## Step 2 - read the spec and judging packet (source allowed)
 
-Read the spec in full and the same small judging packet `/feature-review` uses:
-
-- `blueprint/context/current-feature.md` (full)
-- `blueprint/build-plan.md`: the feature's checklist line, its parent, and nearby hierarchy only
-- `blueprint/context/project-overview.md`: the feature passage plus only the passages it directly depends on
-- `blueprint/context/coding-standards.md`: applicable sections only
-- `.claude/rules/`: all rules (this project's hard constraints)
-- `AGENTS.md` Commands section when judging test/verify claims
+Read the spec in full and the same packet as `feature-review` Step 1.
 
 This time the judge **may read source** when a claim depends on current code (for example "does this file exist", "is this already true"). That is the own research this skill exists for. Do not implement product code. Do not expand into a repo survey.
 
@@ -82,10 +66,3 @@ Set activity to `ready` (spec fixed, awaiting `/implement`) and report, scannabl
 
 - This skill writes `blueprint/context/current-feature.md`, and when that spec is rewritten `blueprint/context/current-feature-overview.md`, plus the dashboard activity record. Never edit source, tests, config, findings, review records, or the feature-review packet. Never commit, branch, merge, or implement.
 - Do not self-review. A missing packet is `/feature-review`, not a second review pass from here.
-- No silent ignore of a P0/P1 without a reject reason.
-- Ask Bombic when a product decision is needed; do not guess.
-- Findings first. Respect existing project patterns over generic advice.
-
-## Formatting
-
-Format the output to match the project's conventions in `blueprint/context/ai-interaction.md`: concise, scannable markdown, with lists for enumerations and tables for matrices rather than dense paragraphs.

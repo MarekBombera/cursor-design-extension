@@ -29,6 +29,8 @@ Rules:
 - Deletion over addition. Boring over clever. Fewest files possible, unless one file already mixes unrelated concerns (MCP tools + disk SoT + webview HTML) into hundreds of lines. Then split by concern. Merging those back is not lazy.
 - Shortest working diff wins, but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.
 - Question complex requests: "Do you actually need X, or does Y cover it?"
+- Ask only when an unknown changes behavior, persisted data, interoperability, a real security boundary or cost; otherwise pick the simplest repo-native option.
+- Derive trust and data-integrity boundaries from actual reachability (untrusted input, shared persisted data, destructive operations, secrets); never infer enterprise, multi-tenant or hostile-user requirements.
 - Pick the edge-case-correct option when two stdlib approaches are the same size. Lazy means less code, not the flimsier algorithm.
 - Mark deliberate simplifications that cut a real corner with a known ceiling (global lock, O(n²) scan, naive heuristic) with a `ponytail:` comment naming the ceiling and upgrade path.
 
