@@ -31,7 +31,12 @@ export type PostedCanvasFrame = {
 	canRedo: boolean;
 };
 
+// One project.json page. updatedAt: the newest mtime of the page's files (ISO 8601), null when
+// unreadable.
+export type PostedPage = { id: string; title: string; updatedAt: string | null };
+
 // pageId: the page the snapshot was read from; '' when no page was resolved (no frames then).
+// pages: every page in project.json order; [] when no page resolved or the list read failed.
 export type CanvasUpdatedMessage = {
 	type: 'canvas:updated';
 	pageId: string;
@@ -39,6 +44,7 @@ export type CanvasUpdatedMessage = {
 	generation: number;
 	cspNonce: string;
 	frames: PostedCanvasFrame[];
+	pages: PostedPage[];
 };
 
 type ArtboardErrorMessage = {
@@ -93,6 +99,9 @@ export type CommentAddedMessage = { type: 'comment:added'; requestId: string };
 // Success answer to comment:reply and comment:set-status.
 export type CommentSavedMessage = { type: 'comment:saved'; requestId: string };
 
+// Success answer to any page:* request, a cancelled delete included.
+export type PageSavedMessage = { type: 'page:saved'; requestId: string };
+
 export type UiErrorMessage = { type: 'ui:error'; message: string; requestId?: string };
 
 // Success answer to comment:copy and comment:copy-open. `count` = comments this copy moved from
@@ -122,6 +131,7 @@ export type HostMessage =
 	| CommentSavedMessage
 	| CopiedMessage
 	| ArtboardEditedMessage
+	| PageSavedMessage
 	| UiErrorMessage;
 
 export type FramePlacement = { x: number; y: number; width: number };
@@ -228,12 +238,37 @@ export type ArtboardHistoryMessage = {
 // Distributive, so a union (the edit variants, the comment requests) keeps its members.
 export type PageFree<Message> = Message extends unknown ? Omit<Message, 'pageId'> : never;
 
+type PageOpenMessage = { type: 'page:open'; requestId: string; pageId: string };
+
+// No title: the disk lib names the new page "Page <n>".
+type PageCreateMessage = { type: 'page:create'; requestId: string };
+
+// `title` is the raw draft; the host's parsePageTitle trims and checks it.
+type PageRenameMessage = {
+	type: 'page:rename';
+	requestId: string;
+	pageId: string;
+	title: string;
+};
+
+type PageDeleteMessage = { type: 'page:delete'; requestId: string; pageId: string };
+
+// Not page-bound: `pageId` is the target page, not the staged one, so PageFree does not apply and
+// hostBridge adds none. Each attempt with a valid requestId is answered once: page:saved or
+// ui:error { requestId }.
+export type PageRequestMessage =
+	| PageOpenMessage
+	| PageCreateMessage
+	| PageRenameMessage
+	| PageDeleteMessage;
+
 export type ChromeMessage =
 	| { type: 'artboard:ready' }
 	| FramePlaceMessage
 	| CommentRequestMessage
 	| ArtboardEditMessage
-	| ArtboardHistoryMessage;
+	| ArtboardHistoryMessage
+	| PageRequestMessage;
 
 const ARTBOARD_ERROR_FALLBACK = 'Could not load artboard.';
 
@@ -282,15 +317,24 @@ const parsePostedFrame = (entry: unknown): PostedCanvasFrame | undefined => {
 	return frame;
 };
 
+const parsePostedPage = (entry: unknown): PostedPage | undefined =>
+	isRecord(entry) &&
+	isPageId(entry.id) &&
+	typeof entry.title === 'string' &&
+	(entry.updatedAt === null || typeof entry.updatedAt === 'string')
+		? { id: entry.id, title: entry.title, updatedAt: entry.updatedAt }
+		: undefined;
+
 // A frame entry failing validation is dropped; the chrome then removes that id like any id
-// missing from a valid canvas:updated.
+// missing from a valid canvas:updated. A bad page entry is dropped the same way.
 const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage | undefined => {
 	if (
 		!isPostedPageId(data.pageId) ||
 		typeof data.activeArtboardId !== 'string' ||
 		typeof data.cspNonce !== 'string' ||
 		!isFiniteNumber(data.generation) ||
-		!Array.isArray(data.frames)
+		!Array.isArray(data.frames) ||
+		!Array.isArray(data.pages)
 	) {
 		return undefined;
 	}
@@ -301,6 +345,13 @@ const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage
 			frames.push(frame);
 		}
 	}
+	const pages: PostedPage[] = [];
+	for (const entry of data.pages as unknown[]) {
+		const page = parsePostedPage(entry);
+		if (page !== undefined) {
+			pages.push(page);
+		}
+	}
 	return {
 		type: 'canvas:updated',
 		pageId: data.pageId,
@@ -308,6 +359,7 @@ const parseCanvasUpdated = (data: Record<string, unknown>): CanvasUpdatedMessage
 		generation: data.generation,
 		cspNonce: data.cspNonce,
 		frames,
+		pages,
 	};
 };
 
@@ -437,7 +489,11 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 	if (data.type === 'comments:updated') {
 		return parseCommentsUpdated(data);
 	}
-	if (data.type === 'comment:added' || data.type === 'comment:saved') {
+	if (
+		data.type === 'comment:added' ||
+		data.type === 'comment:saved' ||
+		data.type === 'page:saved'
+	) {
 		return typeof data.requestId === 'string'
 			? { type: data.type, requestId: data.requestId }
 			: undefined;

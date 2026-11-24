@@ -43,8 +43,14 @@ const snapshot = (overrides: Partial<CanvasSnapshot> = {}): CanvasSnapshot => ({
 	generation: 3,
 	frames: [],
 	handoffStale: false,
+	pages: [],
 	...overrides,
 });
+
+const pages = [
+	{ id: 'page-1', title: 'Page 1', updatedAt: '2026-11-21T10:00:00.000Z' },
+	{ id: 'page-2', title: 'Checkout', updatedAt: null },
+];
 
 test('posts nothing before artboard:ready, then flushes view and status', () => {
 	const { outbox, types } = setup();
@@ -60,7 +66,13 @@ test('a second artboard:ready (webview reload) re-sends the last view, error and
 	outbox.postUiStatus({ mcpAvailable: true });
 	outbox.postSnapshot(snapshot({ generation: 1 }));
 	outbox.postSnapshot(
-		snapshot({ pageId: 'page-2', generation: 2, errorMessage: 'broken', handoffStale: true }),
+		snapshot({
+			pageId: 'page-2',
+			generation: 2,
+			errorMessage: 'broken',
+			handoffStale: true,
+			pages,
+		}),
 	);
 	outbox.markReady();
 	const first = posted.splice(0);
@@ -73,6 +85,7 @@ test('a second artboard:ready (webview reload) re-sends the last view, error and
 			activeArtboardId: 'hero',
 			generation: 2,
 			frames: [],
+			pages,
 			cspNonce: 'nonce-1',
 		},
 		{ type: 'artboard:error', message: 'broken' },
@@ -139,11 +152,16 @@ test('comments queued before ready flush after the view and status, and every re
 test('an answer before ready is dropped and never replayed; after ready it posts once', () => {
 	const { outbox, posted, types } = setup();
 	outbox.postAnswer({ type: 'comment:added', requestId: 'r1' });
+	outbox.postAnswer({ type: 'page:saved', requestId: 'p1' });
 	outbox.markReady();
 	assert.deepEqual(types(), []);
 	outbox.postAnswer({ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' });
+	outbox.postAnswer({ type: 'page:saved', requestId: 'p2' });
 	outbox.markReady();
-	assert.deepEqual(posted, [{ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' }]);
+	assert.deepEqual(posted, [
+		{ type: 'ui:error', requestId: 'r2', message: 'Pick it again.' },
+		{ type: 'page:saved', requestId: 'p2' },
+	]);
 });
 
 test('reset drops the cached comments', () => {

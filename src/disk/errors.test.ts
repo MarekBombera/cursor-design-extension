@@ -63,7 +63,9 @@ test('PageNotFoundError names a missing folder by default and an unlisted id wit
 		new PageNotFoundError('page-2').message,
 		'Page "page-2" has no folder. Restore .cursor-design/pages/page-2/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
 	);
+	assert.equal(new PageNotFoundError('page-2').reason, 'noFolder');
 	const unlisted = new PageNotFoundError('page-2', { reason: 'unlisted' });
+	assert.equal(unlisted.reason, 'unlisted');
 	assert.equal(unlisted.code, 'PAGE_NOT_FOUND');
 	assert.equal(unlisted.message, 'Page "page-2" does not exist. Call list_pages for the page ids.');
 });

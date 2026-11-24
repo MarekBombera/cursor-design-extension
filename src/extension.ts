@@ -15,6 +15,7 @@ import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
 import { isArtboardHistoryAttempt } from './host/chromeMessages';
 import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
+import { answerPageRequest } from './host/panelPages';
 import { refreshPanel } from './host/refreshPanel';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
@@ -23,6 +24,7 @@ import {
 	setArtboardPanelOnCommentRequest,
 	setArtboardPanelOnEditRequest,
 	setArtboardPanelOnFramePlace,
+	setArtboardPanelOnPageRequest,
 	setArtboardPanelOnVisible,
 } from './panel/openArtboardPanel';
 
@@ -54,6 +56,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 
 	setArtboardPanelOnCommentRequest((value) => {
 		void answerCommentRequest({ value, outputChannel });
+	});
+
+	setArtboardPanelOnPageRequest((value) => {
+		void answerPageRequest({ value, outputChannel });
 	});
 
 	setArtboardPanelOnEditRequest((value) => {

@@ -3,7 +3,7 @@ import { cachedArtboardDocument, frameCacheKey } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
-import type { PostedCanvasFrame } from '../webview/hostMessages';
+import type { PostedCanvasFrame, PostedPage } from '../webview/hostMessages';
 
 export const UNTRUSTED_WORKSPACE_MESSAGE =
 	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
@@ -18,6 +18,8 @@ export type CanvasSnapshot = {
 	frames: CanvasViewFrame[];
 	handoffStale: boolean;
 	errorMessage?: string;
+	// Every page in project.json order; [] when no page resolved or the list read failed.
+	pages: PostedPage[];
 };
 
 export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => ({
@@ -27,6 +29,7 @@ export const emptyArtboardSnapshot = (errorMessage?: string): CanvasSnapshot => 
 	frames: [],
 	handoffStale: false,
 	errorMessage,
+	pages: [],
 });
 
 // The last posted copy per workspace, page and frame, reused while the disk HTML is identical, so an

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, test, vi } from 'vite-plus/test';
@@ -8,9 +8,11 @@ import type * as vscode from 'vscode';
 import { CorruptProjectError, DiskError, PageNotFoundError } from '../disk/errors';
 import {
 	DEFAULT_ARTBOARD_ID,
+	PROJECT_SCHEMA_VERSION,
 	artboardHtmlPathSegments,
 	artboardsDirSegments,
 	manifestPathSegments,
+	pageDirSegments,
 	projectPathSegments,
 } from '../disk/layout';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
@@ -56,8 +58,14 @@ vi.mock('../disk/canvasView', () => ({
 		Promise.resolve({ activeArtboardId: '', frames: [], handoffStale: false }),
 	),
 }));
+// The real reader by default; a test stubs one call.
+vi.mock('../disk/pageOps', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../disk/pageOps')>();
+	return { listPages: vi.fn(actual.listPages) };
+});
 
 const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
+const { listPages } = await import('../disk/pageOps');
 const { createArtboard, placeFrame, setActiveArtboard } = await import('../disk/artboardFs');
 const { readCanvasView } = await import('../disk/canvasView');
 const { fileExists, logDiskError } = await import('./hostFs');
@@ -81,6 +89,27 @@ beforeEach(() => {
 	host.isTrusted = true;
 	vi.clearAllMocks();
 });
+
+// project.json indexing page-1 and page-2 (open), as the disk lib writes it.
+const writeProject = async (root: string): Promise<void> => {
+	await mkdir(join(root, '.cursor-design'), { recursive: true });
+	await writeFile(
+		join(root, ...projectPathSegments),
+		JSON.stringify({
+			version: PROJECT_SCHEMA_VERSION,
+			openPageId: 'page-2',
+			pages: [
+				{ id: 'page-1', title: 'Page 1' },
+				{ id: 'page-2', title: 'Page 2' },
+			],
+		}),
+	);
+};
+
+const listed = [
+	{ id: 'page-1', title: 'Page 1', updatedAt: '2026-11-21T10:00:00.000Z' },
+	{ id: 'page-2', title: 'Checkout', updatedAt: null },
+];
 
 const createIfFreshFlags = (): unknown[] =>
 	vi.mocked(resolveOpenPage).mock.calls.map(([call]) => call.createIfFresh);
@@ -221,7 +250,7 @@ test('an indexed open page with no folder shows the noFolder error on Open and r
 	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
 	try {
 		await mkdir(join(root, '.cursor-design', 'pages'), { recursive: true });
-		await writeFile(join(root, ...projectPathSegments), '{}');
+		await writeProject(root);
 		const before = await readdir(root, { recursive: true });
 		const rootArgs = {
 			workspaceFolder: { uri: { fsPath: root } } as vscode.WorkspaceFolder,
@@ -234,9 +263,89 @@ test('an indexed open page with no folder shows the noFolder error on Open and r
 			assert.ok(snapshot.errorMessage?.includes('has no folder'));
 			assert.equal(snapshot.pageId, 'page-2');
 			assert.deepEqual(snapshot.frames, []);
+			// The Pages menu still lists every page, so the user can leave or delete this one.
+			assert.deepEqual(
+				snapshot.pages.map(({ id, updatedAt }) => [id, updatedAt]),
+				[
+					['page-1', null],
+					['page-2', null],
+				],
+			);
 			assert.equal(vi.mocked(logDiskError).mock.calls.length, 1);
 		}
 		assert.deepEqual((await readdir(root, { recursive: true })).sort(), before.sort());
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test('the page list rides on the frames, empty and failed snapshots of the resolved page', async () => {
+	const loads: [string, () => void, typeof readActiveArtboardFromDisk][] = [
+		['frames', () => {}, readActiveArtboardFromDisk],
+		['frames on Open', () => {}, initAndLoadArtboard],
+		['empty', () => (host.manifestExists = false), readActiveArtboardFromDisk],
+		[
+			'failed',
+			() => vi.mocked(readCanvasView).mockRejectedValueOnce(new DiskError('Bad canvas.json.')),
+			readActiveArtboardFromDisk,
+		],
+	];
+	for (const [name, arrange, load] of loads) {
+		host.manifestExists = true;
+		vi.mocked(listPages).mockClear();
+		vi.mocked(listPages).mockResolvedValueOnce({ openPageId: 'page-2', pages: listed });
+		arrange();
+		const snapshot = await load(args);
+		assert.equal(snapshot.pageId, 'page-2', name);
+		assert.deepEqual(snapshot.pages, listed, name);
+		assert.deepEqual(vi.mocked(listPages).mock.calls, [[{ workspaceRoot: '/ws' }]], name);
+	}
+});
+
+test('no resolved page lists nothing and never reads the list', async () => {
+	vi.mocked(resolveOpenPage).mockRejectedValueOnce(new CorruptProjectError());
+	assert.deepEqual((await readActiveArtboardFromDisk(args)).pages, []);
+	host.isTrusted = false;
+	assert.deepEqual((await initAndLoadArtboard(args)).pages, []);
+	assert.equal(vi.mocked(listPages).mock.calls.length, 0);
+});
+
+test('a list failure is logged and lists nothing; the snapshot is unaffected', async () => {
+	const error = new CorruptProjectError();
+	vi.mocked(listPages).mockRejectedValueOnce(error);
+	const snapshot = await readActiveArtboardFromDisk(args);
+	assert.deepEqual(snapshot.pages, []);
+	assert.equal(snapshot.pageId, 'page-2');
+	assert.equal(snapshot.errorMessage, undefined);
+	assert.deepEqual(vi.mocked(logDiskError).mock.calls, [
+		[{ scope: 'artboardDisk.listPages', error, outputChannel }],
+	]);
+});
+
+// Listed after the initialize: a list read before it would carry the folder's old mtime.
+test('a page Open just initialized is listed with its new files time', async () => {
+	const actual = await vi.importActual<typeof import('../disk/artboardFs')>('../disk/artboardFs');
+	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
+	host.manifestExists = false;
+	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	try {
+		await writeProject(root);
+		const folder = join(root, ...pageDirSegments('page-2'));
+		await mkdir(folder, { recursive: true });
+		const past = new Date('2001-01-01T00:00:00.000Z');
+		await utimes(folder, past, past);
+		const snapshot = await initAndLoadArtboard({
+			workspaceFolder: { uri: { fsPath: root } } as vscode.WorkspaceFolder,
+			outputChannel,
+		});
+		assert.equal(snapshot.errorMessage, undefined);
+		const [pageOne, pageTwo] = snapshot.pages;
+		assert.deepEqual(pageOne, { id: 'page-1', title: 'Page 1', updatedAt: null });
+		assert.equal(pageTwo?.id, 'page-2');
+		assert.ok(
+			pageTwo.updatedAt !== null && Date.parse(pageTwo.updatedAt) > past.getTime(),
+			String(pageTwo.updatedAt),
+		);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

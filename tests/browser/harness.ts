@@ -122,6 +122,18 @@ export const posted = (page: Page): Promise<unknown[]> =>
 export const isMessageOfType = (data: unknown, type: string): data is Record<string, unknown> =>
 	typeof data === 'object' && data !== null && 'type' in data && data.type === type;
 
+// Chrome → host posts of one type, in order.
+export const requestsOf = async (page: Page, type: string): Promise<Record<string, unknown>[]> =>
+	(await posted(page)).filter((message): message is Record<string, unknown> =>
+		isMessageOfType(message, type),
+	);
+
+// The latest post of one type, once there is one.
+export const lastRequest = async (page: Page, type: string): Promise<Record<string, unknown>> => {
+	await expect.poll(async () => (await requestsOf(page, type)).length).toBeGreaterThan(0);
+	return (await requestsOf(page, type)).at(-1) as Record<string, unknown>;
+};
+
 // Routes the harness origin, aborts (and counts) every other request, opens the page and waits
 // for artboard:ready, like createPanelOutbox. `state` is a whole saved webview state (`reload`
 // passes what savedState returned); otherwise `savedView` seeds only the stage view. `vscodeHost`
@@ -300,6 +312,7 @@ export const canvasUpdated = (frames: PostedCanvasFrame[]): CanvasUpdatedMessage
 	generation: 1,
 	cspNonce: HARNESS_NONCE,
 	frames,
+	pages: [{ id: 'page-1', title: 'Page 1', updatedAt: null }],
 });
 
 export type Box = { x: number; y: number; width: number; height: number };
@@ -384,6 +397,15 @@ export const enterEditMode = async (page: Page): Promise<void> => {
 };
 
 export const pinOf = (page: Page, id: string): Locator => page.locator(`[data-cd-pin="${id}"]`);
+
+// The toolbar's page button and its Pages menu.
+export const pageButton = (page: Page): Locator => page.locator('[data-cd-page-button]');
+
+export const pagesMenu = (page: Page): Locator =>
+	page.getByRole('dialog', { name: 'Pages', exact: true });
+
+export const pageRow = (page: Page, id: string): Locator =>
+	page.locator(`[data-cd-page-row="${id}"]`);
 
 export const thread = (page: Page): Locator =>
 	page.getByRole('dialog', { name: 'Comment', exact: true });

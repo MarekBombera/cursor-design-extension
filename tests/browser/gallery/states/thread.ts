@@ -3,12 +3,13 @@ import {
 	boxOf,
 	clickChrome,
 	pinOf,
+	lastRequest,
 	postToChrome,
 	stageBox,
 	thread,
 	threadButton,
 } from '../../harness';
-import { lastRequest, openThread } from '../interact';
+import { openThread } from '../interact';
 import {
 	ago,
 	type Definition,

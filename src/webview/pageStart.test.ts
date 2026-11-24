@@ -12,6 +12,7 @@ const canvasOf = (pageId: string): CanvasUpdatedMessage => ({
 	generation: 1,
 	cspNonce: 'nonce',
 	frames: [],
+	pages: [],
 });
 
 const draft: CommentDraft = {

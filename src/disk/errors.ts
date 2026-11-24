@@ -383,6 +383,8 @@ export class PageNotFoundError extends CursorDesignError {
 	readonly code = 'PAGE_NOT_FOUND' as const;
 
 	// noFolder: indexed but its folder is gone; unlisted: project.json does not list the id.
+	readonly reason: 'noFolder' | 'unlisted';
+
 	constructor(
 		readonly pageId: string,
 		{ reason = 'noFolder', ...options }: { reason?: 'noFolder' | 'unlisted'; cause?: unknown } = {},
@@ -393,6 +395,7 @@ export class PageNotFoundError extends CursorDesignError {
 				: `Page "${pageId}" has no folder. Restore ${pageDirSegments(pageId).join('/')}/, or delete ${projectPathSegments.join('/')} to rebuild the page list from the page folders.`,
 			options,
 		);
+		this.reason = reason;
 		this.name = 'PageNotFoundError';
 	}
 }

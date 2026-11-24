@@ -12,7 +12,6 @@ import {
 	frameElementBox,
 	frameOf,
 	inspector,
-	isMessageOfType,
 	loadsOf,
 	nextAnimationFrame,
 	openHarness,
@@ -24,9 +23,9 @@ import {
 	picksOf,
 	pinOf,
 	popover,
-	posted,
 	postToChrome,
 	reload,
+	requestsOf,
 	thread,
 	threadButton,
 } from './harness';
@@ -37,7 +36,14 @@ const FRAME = editFrame({ id: 'artboard', label: 'Artboard' });
 const PAGE_A = 'page-1';
 const PAGE_B = 'page-2';
 
-const stageOf = (pageId: string) => ({ ...canvasUpdated([FRAME]), pageId });
+const stageOf = (pageId: string) => ({
+	...canvasUpdated([FRAME]),
+	pageId,
+	pages: [
+		{ id: PAGE_A, title: 'Page A', updatedAt: null },
+		{ id: PAGE_B, title: 'Page B', updatedAt: null },
+	],
+});
 
 const comment = (id: string): PostedComment => ({
 	id,
@@ -97,11 +103,6 @@ const outlines = (page: Page): Locator => page.locator('.overlay .outline');
 
 const layerTransform = (page: Page): Promise<string | null> =>
 	page.locator('.layer').getAttribute('style');
-
-const requestsOf = async (page: Page, type: string): Promise<Record<string, unknown>[]> =>
-	(await posted(page)).filter((message): message is Record<string, unknown> =>
-		isMessageOfType(message, type),
-	);
 
 test('the first paint is unchanged: a disabled toolbar and the empty state', async ({ page }) => {
 	await openHarness(page);
@@ -264,6 +265,7 @@ test('a canvas:updated with no page while A is staged does not remount A', async
 	await postToChrome(page, {
 		...canvasUpdated([]),
 		pageId: '',
+		pages: [],
 	});
 	await postToChrome(page, { type: 'artboard:error', message: 'Could not read the canvas.' });
 	await expect(page.getByText('No artboard yet', { exact: true })).toBeVisible();

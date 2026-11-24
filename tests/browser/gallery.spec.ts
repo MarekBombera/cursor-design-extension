@@ -7,6 +7,8 @@ import {
 	editFrame,
 	commentButton,
 	copyOpenButton,
+	lastRequest,
+	pageButton,
 	panelButton,
 	pinOf,
 	popover,
@@ -22,14 +24,7 @@ import {
 	sweep,
 	sweepFailures,
 } from './gallery/contrast';
-import {
-	captureAt2x,
-	jumpChip,
-	labelOf,
-	lastRequest,
-	padded,
-	pickElement,
-} from './gallery/interact';
+import { captureAt2x, jumpChip, labelOf, padded, pickElement } from './gallery/interact';
 import {
 	COMMENTS_JSON_ERROR,
 	FRAMES,
@@ -43,6 +38,7 @@ import { bannersStates } from './gallery/states/banners';
 import { focusStates } from './gallery/states/focus';
 import { inspectorStates, openEditMode, pickToEdit } from './gallery/states/inspector';
 import { answerError, panelStates } from './gallery/states/panel';
+import { pagesMenuStates } from './gallery/states/pagesMenu';
 import { pinsStates } from './gallery/states/pins';
 import { popoverStates } from './gallery/states/popover';
 import { stageStates } from './gallery/states/stage';
@@ -88,6 +84,7 @@ test.afterAll(() => {
 // Shot numbers follow this order.
 const states: StateDefinition[] = [
 	...toolbarStates,
+	...pagesMenuStates,
 	...bannersStates,
 	...stageStates,
 	...popoverStates,
@@ -362,6 +359,19 @@ for (const theme of THEMES) {
 			'.mode button',
 			'disabled text (WCAG 1.4.3)',
 		);
+
+		// The Pages menu: a row's time and the rename field's value (not a text node, so the sweep
+		// misses it).
+		await open({
+			pages: [
+				{ id: 'page-1', title: 'Home', updatedAt: new Date().toISOString() },
+				{ id: 'page-2', title: 'Pricing', updatedAt: null },
+			],
+		});
+		await clickChrome(pageButton(page));
+		await text('fg-2 text (page row time)', '[data-cd-pages-menu] .time');
+		await clickChrome(page.locator('[data-cd-page-rename="page-2"]'));
+		await text('input text (page rename field)', '[data-cd-pages-menu] input');
 
 		// The inspector on the h1: input values, placeholders and select text are not text nodes, so
 		// the sweep misses them.

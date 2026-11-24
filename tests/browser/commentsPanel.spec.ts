@@ -17,7 +17,6 @@ import {
 	frameBox,
 	frameElementBox,
 	frameOf,
-	isMessageOfType,
 	messagesOfType,
 	nextAnimationFrame,
 	openThread,
@@ -27,9 +26,9 @@ import {
 	panelItem,
 	panelToggle,
 	pinOf,
-	posted,
 	postToChrome,
 	reload,
+	requestsOf,
 	savedRecord,
 	stageBox,
 	thread,
@@ -84,11 +83,6 @@ const replyBox = (page: Page): Locator => thread(page).getByRole('textbox', { na
 
 // App's comments live region, a root node (Toolbar's pick region sits inside the header).
 const liveRegion = (page: Page): Locator => page.locator('#svelte-root > [aria-live="polite"]');
-
-const requestsOf = async (page: Page, type: string): Promise<Record<string, unknown>[]> =>
-	(await posted(page)).filter((message): message is Record<string, unknown> =>
-		isMessageOfType(message, type),
-	);
 
 // The last posted request of one type, after waiting for the expected count.
 const nthRequest = async (

@@ -6,6 +6,7 @@ import {
 	isArtboardEditAttempt,
 	isArtboardHistoryAttempt,
 	isFramePlaceAttempt,
+	pageRequestType,
 	parseChromeMessage,
 } from '../host/chromeMessages';
 import { clearEditHistories, historyFlags, keepUnchangedHistories } from '../host/editHistory';
@@ -21,6 +22,7 @@ let onPanelBecameVisible: (() => void) | undefined;
 let onFramePlace: ((value: unknown) => void) | undefined;
 let onCommentRequest: ((value: unknown) => void) | undefined;
 let onEditRequest: ((value: unknown) => void) | undefined;
+let onPageRequest: ((value: unknown) => void) | undefined;
 let chromeCspNonce = '';
 
 const outbox = createPanelOutbox({
@@ -49,6 +51,10 @@ export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => vo
 
 export const setArtboardPanelOnEditRequest = (handler: (value: unknown) => void): void => {
 	onEditRequest = handler;
+};
+
+export const setArtboardPanelOnPageRequest = (handler: (value: unknown) => void): void => {
+	onPageRequest = handler;
 };
 
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
@@ -114,6 +120,10 @@ export const openArtboardPanel = ({
 		}
 		if (commentRequestType(message) !== undefined) {
 			onCommentRequest?.(message);
+			return;
+		}
+		if (pageRequestType(message) !== undefined) {
+			onPageRequest?.(message);
 			return;
 		}
 		if (parseChromeMessage(message)?.type !== 'artboard:ready') {

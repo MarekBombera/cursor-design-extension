@@ -9,6 +9,7 @@ import {
 	type HistoryKey,
 	clearEditHistories,
 	forgetHistory,
+	forgetPageHistories,
 	historyEpoch,
 	historyFlags,
 	historyStepTarget,
@@ -148,6 +149,18 @@ test('forgetHistory drops one frame; clearEditHistories drops all', () => {
 	clearEditHistories();
 	assert.deepEqual(historyFlags(key('other')), { canUndo: false, canRedo: false });
 	assert.deepEqual(historyFlags(key('never-edited')), { canUndo: false, canRedo: false });
+});
+
+test("forgetPageHistories drops every frame of that page only, never page-10's or page-2's", () => {
+	edit(page(0), page(1), key(FRAME, 'page-1'));
+	edit(page(0), page(1), key('other', 'page-1'));
+	edit(page(0), page(1), key(FRAME, 'page-10'));
+	edit(page(0), page(1), key(FRAME, 'page-2'));
+	forgetPageHistories('page-1');
+	assert.equal(historyFlags(key(FRAME, 'page-1')).canUndo, false);
+	assert.equal(historyFlags(key('other', 'page-1')).canUndo, false);
+	assert.equal(historyFlags(key(FRAME, 'page-10')).canUndo, true);
+	assert.equal(historyFlags(key(FRAME, 'page-2')).canUndo, true);
 });
 
 test('the same frame id on two pages keeps two independent histories', () => {

@@ -8,13 +8,11 @@ import {
 	commentButton,
 	frameBox,
 	frameOf,
-	isMessageOfType,
 	panel,
 	panelItem,
 	panelToggle,
 	pinOf,
 	popover,
-	posted,
 	thread,
 } from '../harness';
 import { settle } from './scene';
@@ -62,15 +60,6 @@ export const labelOf = (page: Page, id: string): Locator =>
 	page.locator(`[data-cd-frame-label="${id}"]`);
 export const handleOf = (page: Page, id: string): Locator =>
 	page.locator(`[data-cd-frame-resize="${id}"]`);
-
-export const lastRequest = async (page: Page, type: string): Promise<Record<string, unknown>> => {
-	const ofType = async (): Promise<Record<string, unknown>[]> =>
-		(await posted(page)).filter((message): message is Record<string, unknown> =>
-			isMessageOfType(message, type),
-		);
-	await expect.poll(async () => (await ofType()).length).toBeGreaterThan(0);
-	return (await ofType()).at(-1) as Record<string, unknown>;
-};
 
 export const pointIn = async ({
 	page,

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	import type { ChromePick } from './commentPick';
 	import { liveRegionText } from './commentsPanel';
 	import { pickAnnouncementText } from './editInspector';
@@ -10,6 +12,9 @@
 	import IconButton from './ui/IconButton.svelte';
 
 	type Props = {
+		// The page button and its menu, first in the bar. It never follows `disabled`: a page with
+		// no frames or a load error must still switch.
+		pagesMenu: Snippet;
 		artboardId: string;
 		generation: string;
 		handoffStale: boolean;
@@ -26,6 +31,7 @@
 	};
 
 	let {
+		pagesMenu,
 		artboardId,
 		generation,
 		handoffStale,
@@ -56,6 +62,8 @@
 </script>
 
 <header class="bar">
+	{@render pagesMenu()}
+	<span class="divider"></span>
 	<span class="artboard">
 		<Icon name="artboard" />
 		{#if artboardId === ''}

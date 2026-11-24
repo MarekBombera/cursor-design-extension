@@ -118,8 +118,8 @@ const requireProject = async (workspaceRoot: string): Promise<Project> => {
 	return project;
 };
 
-// No project.json, or the id not in it: the unlisted PAGE_NOT_FOUND.
-const listedPage = (
+// The one listed-page rule. No project.json, or the id not in it: the unlisted PAGE_NOT_FOUND.
+export const listedPage = (
 	project: Project | undefined,
 	pageId: string,
 ): { project: Project; entry: PageSummary } => {
@@ -181,7 +181,8 @@ export const listPages = async ({
 		try {
 			updatedAt = await pageUpdatedAt(workspaceRoot, id);
 		} catch (error: unknown) {
-			// ponytail: one unreadable page lists with updatedAt null so the rest still list.
+			// ponytail: one unreadable page lists with updatedAt null so the rest still list. The panel lists
+			// on every refresh, so a page that stays unreadable logs on each one; log once per id if it ever shows.
 			logStderr(`page ${id} updatedAt`, error);
 		}
 		pages.push({ id, title, updatedAt });
@@ -387,7 +388,6 @@ export const openPage = async ({
 };
 
 // Retitles an indexed page; id and folder stay. Never resolves (the 10d host resolved first).
-/** @internal */
 export const renamePage = async ({
 	workspaceRoot,
 	pageId: rawPageId,
@@ -418,7 +418,6 @@ export const renamePage = async ({
 
 // Unlists the page, then moves its folder to deleted/<id>-<stamp>/. Never resolves (the 10d host
 // resolved first). An open page hands off to its previous neighbour, else the next.
-/** @internal */
 export const deletePage = async ({
 	workspaceRoot,
 	pageId: rawPageId,

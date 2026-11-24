@@ -30,6 +30,8 @@
 	import runtimeSource from './frame/runtime.ts?iife';
 	import type { CanvasUpdatedMessage, CommentsUpdatedMessage, HostMessage } from './hostMessages';
 	import { isPageComments, type PageStart } from './pageStart';
+	import PagesMenu from './PagesMenu.svelte';
+	import type { PagesMenuState } from './pagesMenuState.svelte';
 	import Pins from './Pins.svelte';
 	import { PinThread } from './pinThread.svelte';
 	import Stage from './Stage.svelte';
@@ -39,11 +41,18 @@
 
 	// One page's chrome. App remounts it ({#key}) for another page, so nothing here outlives its
 	// page: frames, iframes, picks, pins, threads, composers, drafts and requests all start again.
+	// `pages` is App's: the page menu spans pages.
 	let {
 		start,
 		mcpUnavailable,
 		handoffStale,
-	}: { start: PageStart; mcpUnavailable: boolean; handoffStale: boolean } = $props();
+		pages,
+	}: {
+		start: PageStart;
+		mcpUnavailable: boolean;
+		handoffStale: boolean;
+		pages: PagesMenuState;
+	} = $props();
 
 	// Read once, untracked: App never changes a mounted page's start (another page remounts), and
 	// drops its canvas and comments once this page has applied them.
@@ -91,10 +100,10 @@
 		pinThread.sendAnchors(liveIframeIds(canvas.frames));
 	};
 
-	// Every host message but ui:status (App holds it). Answers to another page's requests match no
-	// requestId here and are dropped.
+	// Every host message but ui:status and page:saved (App holds them). Answers to another page's
+	// requests match no requestId here and are dropped.
 	export const handleHostMessage = (
-		message: Exclude<HostMessage, { type: 'ui:status' }>,
+		message: Exclude<HostMessage, { type: 'ui:status' | 'page:saved' }>,
 	): void => {
 		if (message.type === 'canvas:updated') {
 			applyCanvas(message);
@@ -227,7 +236,29 @@
 	onresize={canvas.recentreScrollSink}
 />
 
+{#snippet pagesMenu()}
+	<PagesMenu
+		{pageId}
+		pages={pages.pages}
+		open={pages.open}
+		renaming={pages.renaming}
+		request={pages.request}
+		error={pages.error}
+		now={pages.now}
+		onToggle={pages.toggle}
+		onClose={pages.close}
+		onOpenPage={pages.openPage}
+		onCreatePage={pages.createPage}
+		onStartRename={pages.startRename}
+		onEditRename={pages.editRename}
+		onSubmitRename={pages.submitRename}
+		onCancelRename={pages.cancelRename}
+		onDeletePage={pages.deletePage}
+	/>
+{/snippet}
+
 <Toolbar
+	{pagesMenu}
 	artboardId={canvas.artboardId}
 	generation={canvas.generation}
 	{handoffStale}

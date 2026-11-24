@@ -10,6 +10,7 @@ import {
 	type FramePlaceMessage,
 	type HostMessage,
 	type PageFree,
+	type PageRequestMessage,
 	parseHostMessage,
 	routeMessage,
 } from './hostMessages';
@@ -93,6 +94,12 @@ export const postEditRequest = (
 	message: PageFree<ArtboardEditMessage | ArtboardHistoryMessage>,
 ): void => {
 	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
+};
+
+// Not page-bound: the message's `pageId` is the target page, so none is added. Built from plain
+// values, so no snapshot.
+export const postPageRequest = (message: PageRequestMessage): void => {
+	vscodeApi.postMessage(message);
 };
 
 // The only chrome → frame send. '*' because a sandboxed frame has an opaque origin; the frame can

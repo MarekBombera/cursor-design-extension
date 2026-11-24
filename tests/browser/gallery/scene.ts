@@ -2,7 +2,11 @@ import { expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FRAME_ANCHOR_RECTS_MESSAGE } from '../../../src/webview/frame/frameMessages';
-import { type PostedCanvasFrame, type PostedComment } from '../../../src/webview/hostMessages';
+import {
+	type PostedCanvasFrame,
+	type PostedComment,
+	type PostedPage,
+} from '../../../src/webview/hostMessages';
 import {
 	type Box,
 	canvasUpdated,
@@ -323,6 +327,8 @@ export type OpenOptions = {
 	definitions?: Definition[];
 	panel?: boolean;
 	noCanvas?: boolean;
+	// The Pages menu's list (canvasUpdated's one page by default).
+	pages?: PostedPage[];
 };
 
 export type Session = {
@@ -378,7 +384,8 @@ export const openScene = async ({
 	await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; }' });
 	if (options.noCanvas !== true) {
 		const frames = options.frames ?? FRAMES;
-		await postToChrome(page, canvasUpdated(frames));
+		const canvas = canvasUpdated(frames);
+		await postToChrome(page, { ...canvas, pages: options.pages ?? canvas.pages });
 		for (const frame of frames) {
 			if (frame.html !== '' && frame.errorMessage === undefined) {
 				await untilHeightReported(page, frame.id);

@@ -9,6 +9,7 @@ import {
 	HISTORY_STEPS,
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
+	MAX_PAGE_TITLE_CHARS,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
 	isPageId,
@@ -18,6 +19,7 @@ import type {
 	ChromeMessage,
 	CommentCreateMessage,
 	CommentRequestMessage,
+	PageRequestMessage,
 	PostedComment,
 } from '../webview/hostMessages';
 
@@ -130,6 +132,32 @@ const artboardHistorySchema = z.object({
 	step: z.enum(HISTORY_STEPS),
 });
 
+// page:* pageId is the target page, not a page-bound staged page.
+const pageOpenSchema = z.object({
+	type: z.literal('page:open'),
+	requestId: requestIdField,
+	pageId: pageIdField,
+});
+
+const pageCreateSchema = z.object({
+	type: z.literal('page:create'),
+	requestId: requestIdField,
+});
+
+// A size cap only: the trim and title rule are parsePageTitle's at the disk boundary.
+const pageRenameSchema = z.object({
+	type: z.literal('page:rename'),
+	requestId: requestIdField,
+	pageId: pageIdField,
+	title: z.string().check(z.maxLength(MAX_PAGE_TITLE_CHARS * 4)),
+});
+
+const pageDeleteSchema = z.object({
+	type: z.literal('page:delete'),
+	requestId: requestIdField,
+	pageId: pageIdField,
+});
+
 // The artboard id charset is enforced by placeFrame's parseArtboardId. Both edit variants share
 // `type`, so they sit beside the discriminated union; text is tried first and unknown keys are
 // stripped, so a message with the text fields and `styles` parses as text.
@@ -149,6 +177,10 @@ const chromeMessageSchema = z.union([
 		commentCopySchema,
 		commentCopyOpenSchema,
 		artboardHistorySchema,
+		pageOpenSchema,
+		pageCreateSchema,
+		pageRenameSchema,
+		pageDeleteSchema,
 	]),
 	artboardEditTextSchema,
 	artboardEditStylesSchema,
@@ -204,6 +236,22 @@ export const commentRequestType = (value: unknown): CommentRequestMessage['type'
 // The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
 export const commentRequestId = (value: unknown): string | undefined =>
 	commentRequestType(value) === undefined ? undefined : claimedRequestId(value);
+
+const PAGE_REQUEST_TYPES: readonly PageRequestMessage['type'][] = [
+	'page:open',
+	'page:create',
+	'page:rename',
+	'page:delete',
+];
+
+// Valid or not, read before any parse, so every attempt gets an answer. Undefined: not a page
+// request.
+export const pageRequestType = (value: unknown): PageRequestMessage['type'] | undefined =>
+	PAGE_REQUEST_TYPES.find((type) => claimsType(value, type));
+
+// The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
+export const pageRequestId = (value: unknown): string | undefined =>
+	pageRequestType(value) === undefined ? undefined : claimedRequestId(value);
 
 // Pin = point / unclipped box, never the (maybe clipped or null) rect. A zero-size box pins at 0,
 // not NaN (addComment clamps 0..1 but leaves NaN). A non-page null rect is left for addComment to

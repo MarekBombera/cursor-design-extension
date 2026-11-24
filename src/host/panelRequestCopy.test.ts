@@ -8,6 +8,7 @@ import {
 	CommentNotFoundError,
 	ConflictError,
 	CorruptMetaError,
+	CorruptProjectError,
 	DiskError,
 	EditRefusedError,
 	InvalidArgsError,
@@ -17,11 +18,13 @@ import {
 } from '../disk/errors';
 import {
 	MALFORMED_EDIT_MESSAGE,
+	MALFORMED_PAGE_REQUEST_MESSAGE,
 	commentRequestErrorMessage,
 	editRequestErrorMessage,
 	malformedRequestMessage,
 	MALFORMED_HISTORY_MESSAGE,
 	PAGE_GONE_MESSAGE,
+	pageRequestErrorMessage,
 } from './panelRequestCopy';
 
 // Pinned values: the module keeps these private.
@@ -128,4 +131,35 @@ test('a gone page maps to the panel copy on every page-bound request kind', () =
 	assert.equal(commentRequestErrorMessage({ type: 'comment:copy', error }), PAGE_GONE_MESSAGE);
 	assert.equal(editRequestErrorMessage(error, 'edit'), PAGE_GONE_MESSAGE);
 	assert.equal(editRequestErrorMessage(error, 'history'), PAGE_GONE_MESSAGE);
+});
+
+test('pageRequestErrorMessage: panel copy by reason and type, domain copy for busy and disk', () => {
+	const unlisted = new PageNotFoundError('page-2', { reason: 'unlisted' });
+	const noFolder = new PageNotFoundError('page-2');
+	const refused = new InvalidArgsError('Agent copy: call list_pages.');
+	const busy = new LockTimeoutError();
+	const disk = new DiskError();
+	const fallback = 'Could not change the pages. Check the Output panel: Cursor Design.';
+	const rows: [Parameters<typeof pageRequestErrorMessage>[0]['type'], unknown, string][] = [
+		['page:open', unlisted, PAGE_GONE_MESSAGE],
+		[
+			'page:delete',
+			noFolder,
+			"This page's folder is missing. Delete the page to remove it from the list.",
+		],
+		['page:create', unlisted, fallback],
+		['page:create', noFolder, fallback],
+		['page:rename', refused, 'A page title needs 1 to 80 characters and no control characters.'],
+		['page:create', refused, 'This project already has 100 pages. Delete one first.'],
+		['page:delete', refused, 'The last page cannot be deleted.'],
+		['page:open', refused, MALFORMED_PAGE_REQUEST_MESSAGE],
+		['page:rename', busy, busy.message],
+		['page:create', disk, disk.message],
+		['page:open', new CorruptProjectError(), fallback],
+		['page:delete', new Error('/Users/someone/secret'), fallback],
+	];
+	for (const [type, error, expected] of rows) {
+		assert.equal(pageRequestErrorMessage({ type, error }), expected);
+	}
+	assert.equal(MALFORMED_PAGE_REQUEST_MESSAGE, 'Could not change the pages. Try again.');
 });

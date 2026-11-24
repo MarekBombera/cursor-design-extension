@@ -6,9 +6,10 @@ import {
 	panel,
 	panelButton,
 	panelItem,
+	lastRequest,
 	postToChrome,
 } from '../../harness';
-import { jumpChip, lastRequest } from '../interact';
+import { jumpChip } from '../interact';
 import {
 	ago,
 	COMMENTS_JSON_ERROR,

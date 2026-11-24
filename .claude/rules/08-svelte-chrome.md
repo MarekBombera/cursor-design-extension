@@ -50,10 +50,11 @@ Rule 05's contract: grep before writing a helper, extend the owner, never add a 
 
 **State and I/O.**
 
-- `App.svelte` → what spans pages (host bridge, staged page id, status, latest comments, comment draft slot, mode handed on, the one comment-UI save `$effect`); `DesignPage.svelte` → one page under `{#key}`: per-page state classes, toolbar, banners, workspace, live region. Page-switch behavior: system-map "Page-scoped panel (10b)".
-- `hostBridge.svelte.ts` → all host I/O; its page-bound post functions are the only place a request gets its `pageId`.
+- `App.svelte` → what spans pages (host bridge, staged page id, status, latest comments, comment draft slot, mode handed on, the one comment-UI save `$effect`, the `PagesMenuState` and page-answer routing); `DesignPage.svelte` → one page under `{#key}`: per-page state classes, toolbar, banners, workspace, live region. Page-switch behavior: system-map "Page-scoped panel (10b)".
+- `hostBridge.svelte.ts` → all host I/O; its page-bound post functions are the only place a request gets its `pageId`; `postPageRequest` posts a `page:*` as built (its `pageId` is the target page, none added).
 - `canvasState.svelte.ts` → frames, the one view write path `commitStageView`, gesture, the one chrome-to-frame send `sendToFrame`.
 - `commentsState.svelte.ts` → comments, panel, reply / status / copy requests. `pinThread.svelte.ts` → anchors, pins, open thread, the one focus gate `canTakeFocus`. `commentPicker.svelte.ts` → mode (one setter), hover, pick, add-comment draft.
+- `pagesMenuState.svelte.ts` → `PagesMenuState`, created once by App: all page-menu state (list, open, rename draft, the one in-flight page request, error), the one page-answer rule `handleAnswer`, the switch rule `pageChanged`.
 - `editState.svelte.ts` → inspector drafts, the one save path for choices / Reset / Add border `handleStyleChanges`, the one-in-flight edit queue, undo / redo, the one live region `announcement`.
 
 **Pure rules** (`src/webview/`):
@@ -65,8 +66,9 @@ Rule 05's contract: grep before writing a helper, extend the owner, never add a 
 - `editInspector.ts` → inspector sections; `editDrafts.ts` → draft lifecycle, the one multi-change save rule `stylesCommit`, field error copy; `editRequests.ts` → edit queue; `undoRedo.ts` → the one flag read `canStep`.
 - `pins.ts` → pin layout, the one live-answer lookup `liveAnchor`, the one comment number `commentNumber`; `commentsPanel.ts` → panel items, the one frame name `frameLabel`, the one count wording `commentsText`; `commentActions.ts` → reply / status / copy actions; `commentPopover.ts` → add-comment draft, the one draft-slot rule `keptCommentDraft`.
 - `pageStart.ts` → what App hands a page: the one page-change test `isPageChange`, the one start rule `nextPageStart`, the comment-list guard `isPageComments`.
+- `pagesMenu.ts` → the one page-row rule `pageRows`, the one menu focus step `nextRowIndex`, the in-flight text `PAGE_REQUEST_PENDING_TEXT`.
 
-**Views** (props in, callbacks out; callbacks named `on*`): `Stage`, `Overlay`, `Pins`, `CommentThread`, `CommentsPanel`, `CommentCard` (panel and thread, via `shell`), the one composer `Composer`, `CommentPopover`, `Inspector`, `PinChip`, `TargetRef`.
+**Views** (props in, callbacks out; callbacks named `on*`): `Stage`, `Overlay`, `Pins`, `CommentThread`, `CommentsPanel`, `CommentCard` (panel and thread, via `shell`), the one composer `Composer`, `CommentPopover`, `Inspector`, `PinChip`, `TargetRef`, `PagesMenu` (page button and Pages menu; DesignPage renders it into Toolbar's `pagesMenu` snippet).
 
 **Frame runtime** (`src/webview/frame/`, inside the iframe; writes the design DOM only via `cd:edit-apply`): `runtime.ts` entry, `commentPicking.ts`, `editTarget.ts` (DOM reads only), `pinAnchors.ts`, `anchorRects.ts`, `pickTarget.ts`, `pickPath.ts`, `selector.ts`.
 

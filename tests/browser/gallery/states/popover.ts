@@ -6,10 +6,11 @@ import {
 	commentButton,
 	frameBox,
 	popover,
+	lastRequest,
 	postToChrome,
 	stageBox,
 } from '../../harness';
-import { hoverOver, lastRequest, pickElement, pointIn } from '../interact';
+import { hoverOver, pickElement, pointIn } from '../interact';
 import { FRAMES, type Session, settle, type StateDefinition, VIEW } from '../scene';
 
 export const popoverStates: StateDefinition[] = [];

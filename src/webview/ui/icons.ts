@@ -91,6 +91,9 @@ export const ICONS = {
 		{ kind: 'circle', cx: 8, cy: 8, radius: 4.5 },
 		{ kind: 'path', path: 'M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3' },
 	],
+	trash: [
+		{ kind: 'path', path: 'M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5' },
+	],
 	undo: [{ kind: 'path', path: 'M7 3.5l-3 3 3 3M4 6.5h6a3 3 0 0 1 0 6H7' }],
 	warning: [
 		{ kind: 'path', path: 'M8 2.3l6.3 11H1.7zM8 6.6v3' },

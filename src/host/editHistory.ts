@@ -122,6 +122,19 @@ export const forgetHistory = (key: HistoryKey): void => {
 	histories.delete(keyText(key));
 };
 
+// A deleted page: every history whose key's page part is exactly pageId (page-1 never matches
+// page-10).
+// ponytail: an artboard:edit on that page whose write finished just before the delete can record
+// after this forget and leave one orphan history (ids are never reused, so it only holds memory
+// until the panel closes). Upgrade path: bump a per-page epoch.
+export const forgetPageHistories = (pageId: string): void => {
+	for (const key of histories.keys()) {
+		if (key.slice(0, key.indexOf('/')) === pageId) {
+			histories.delete(key);
+		}
+	}
+};
+
 // The outside-change rule, per posted frame: a hash the history holds (current, undo or redo) is
 // its own write or a refresh that read disk before it; any other hash, '' (unreadable) included,
 // is a change from elsewhere and forgets that frame's history. Frames not listed, and every other

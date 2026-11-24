@@ -10,7 +10,8 @@ import {
 	PageNotFoundError,
 	toSafeArtboardErrorMessage,
 } from '../disk/errors';
-import type { CommentRequestMessage } from '../webview/hostMessages';
+import { MAX_PAGES, MAX_PAGE_TITLE_CHARS } from '../disk/layout';
+import type { CommentRequestMessage, PageRequestMessage } from '../webview/hostMessages';
 
 // Allowlists that keep the disk lib's Agent copy out of the panel.
 
@@ -110,4 +111,46 @@ export const editRequestErrorMessage = (error: unknown, kind: 'edit' | 'history'
 		return error.message;
 	}
 	return kind === 'edit' ? EDIT_FALLBACK_MESSAGE : HISTORY_FALLBACK_MESSAGE;
+};
+
+// A page:* request that fails the parse, and a page:open the disk lib refuses as malformed.
+export const MALFORMED_PAGE_REQUEST_MESSAGE = 'Could not change the pages. Try again.';
+
+const PAGE_FOLDER_MISSING_MESSAGE =
+	"This page's folder is missing. Delete the page to remove it from the list.";
+
+const PAGES_FALLBACK_MESSAGE = 'Could not change the pages. Check the Output panel: Cursor Design.';
+
+const PAGE_REFUSED_MESSAGES: Record<PageRequestMessage['type'], string> = {
+	'page:open': MALFORMED_PAGE_REQUEST_MESSAGE,
+	'page:create': `This project already has ${MAX_PAGES} pages. Delete one first.`,
+	'page:rename': `A page title needs 1 to ${MAX_PAGE_TITLE_CHARS} characters and no control characters.`,
+	'page:delete': 'The last page cannot be deleted.',
+};
+
+// Panel copy for a failed page:* request, an allowlist: PageNotFoundError and InvalidArgsError
+// carry Agent copy (list_pages), so each gets the panel's own text by reason or type. Corrupt,
+// unsupported and migration errors get the fallback: their code and text are in the log, and the
+// stage's own snapshot error already shows them.
+export const pageRequestErrorMessage = ({
+	type,
+	error,
+}: {
+	type: PageRequestMessage['type'];
+	error: unknown;
+}): string => {
+	if (error instanceof PageNotFoundError) {
+		// A create names no page.
+		if (type === 'page:create') {
+			return PAGES_FALLBACK_MESSAGE;
+		}
+		return error.reason === 'unlisted' ? PAGE_GONE_MESSAGE : PAGE_FOLDER_MISSING_MESSAGE;
+	}
+	if (error instanceof InvalidArgsError) {
+		return PAGE_REFUSED_MESSAGES[type];
+	}
+	if (error instanceof LockTimeoutError || error instanceof DiskError) {
+		return error.message;
+	}
+	return PAGES_FALLBACK_MESSAGE;
 };

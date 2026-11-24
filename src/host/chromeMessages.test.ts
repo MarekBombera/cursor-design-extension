@@ -2,13 +2,20 @@ import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
 import type { CommentView } from '../disk/commentViews';
-import { MAX_EDIT_TEXT_CHARS, MAX_FRAME_COORDINATE, MAX_PICK_TEXT_CHARS } from '../disk/layout';
+import {
+	MAX_EDIT_TEXT_CHARS,
+	MAX_FRAME_COORDINATE,
+	MAX_PAGE_TITLE_CHARS,
+	MAX_PICK_TEXT_CHARS,
+} from '../disk/layout';
 import {
 	claimedRequestId,
 	commentRequestId,
 	isArtboardEditAttempt,
 	commentRequestType,
 	isFramePlaceAttempt,
+	pageRequestId,
+	pageRequestType,
 	parseChromeMessage,
 	toNewComment,
 	toPostedComment,
@@ -400,5 +407,65 @@ test('every page-bound request needs a valid pageId; a missing or bad one is mal
 		]) {
 			assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken).slice(0, 120));
 		}
+	}
+});
+
+const pageRequests = [
+	{ type: 'page:open', requestId: 'p-1', pageId: 'page-2' },
+	{ type: 'page:create', requestId: 'p-2' },
+	{ type: 'page:rename', requestId: 'p-3', pageId: 'page-2', title: '  raw draft ' },
+	{ type: 'page:delete', requestId: 'p-4', pageId: 'page-12' },
+] as const;
+
+test('page requests parse; a bad target pageId or requestId is malformed', () => {
+	for (const request of pageRequests) {
+		assert.deepEqual(parseChromeMessage(request), request, request.type);
+		const { requestId: _requestId, ...withoutRequestId } = request;
+		const broken: unknown[] = [withoutRequestId, { ...request, requestId: 'a b' }];
+		if ('pageId' in request) {
+			const { pageId: _pageId, ...withoutPageId } = request;
+			broken.push(withoutPageId, { ...request, pageId: '../x' }, { ...request, pageId: 'page-0' });
+		}
+		for (const message of broken) {
+			assert.equal(parseChromeMessage(message), undefined, JSON.stringify(message));
+		}
+	}
+});
+
+test('page:rename takes any title up to the size cap; the title rule is the disk lib’s', () => {
+	const [, , rename] = pageRequests;
+	const atCap = { ...rename, title: 'x'.repeat(MAX_PAGE_TITLE_CHARS * 4) };
+	assert.deepEqual(parseChromeMessage(atCap), atCap);
+	assert.deepEqual(parseChromeMessage({ ...rename, title: '' }), { ...rename, title: '' });
+	for (const title of ['x'.repeat(MAX_PAGE_TITLE_CHARS * 4 + 1), 7, null, undefined]) {
+		assert.equal(parseChromeMessage({ ...rename, title }), undefined, String(title));
+	}
+});
+
+test('a page request claim is answerable whatever else fails; anything else is not one', () => {
+	for (const request of pageRequests) {
+		// page:create has no field but requestId to break; its claim is checked all the same.
+		const malformed = { ...request, pageId: '../x', title: 7 };
+		if (request.type !== 'page:create') {
+			assert.equal(parseChromeMessage(malformed), undefined);
+		}
+		assert.equal(pageRequestType(malformed), request.type);
+		assert.equal(pageRequestId(malformed), request.requestId);
+		assert.equal(pageRequestId({ ...request, requestId: 'a b' }), undefined);
+		assert.equal(pageRequestId({ ...request, requestId: 7 }), undefined);
+	}
+	for (const other of [
+		validPlace,
+		{ type: 'comment:copy-open', requestId: 'r-5', pageId: 'page-1' },
+		{ type: 'page:saved', requestId: 'r-1' },
+		{ type: 'page:list', requestId: 'r-1' },
+		null,
+		'page:open',
+		7,
+		undefined,
+		[],
+	]) {
+		assert.equal(pageRequestType(other), undefined, JSON.stringify(other));
+		assert.equal(pageRequestId(other), undefined, JSON.stringify(other));
 	}
 });

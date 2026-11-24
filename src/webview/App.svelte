@@ -5,6 +5,7 @@
 	import DesignPage from './DesignPage.svelte';
 	import { connectHostBridge, readSavedCommentUi, saveCommentUi } from './hostBridge.svelte';
 	import type { CanvasUpdatedMessage, CommentsUpdatedMessage, HostMessage } from './hostMessages';
+	import { PagesMenuState } from './pagesMenuState.svelte';
 	import { isPageChange, nextPageStart, type PageStart } from './pageStart';
 
 	// The state that spans pages. Everything bound to one page lives in DesignPage.
@@ -27,20 +28,24 @@
 		replyDrafts: {},
 	});
 	let page: DesignPage | undefined = $state();
+	const pages = new PagesMenuState({ stagedPageId: () => stage.pageId });
 
 	const NO_IFRAMES: ReadonlyMap<string, HTMLIFrameElement> = new Map();
 
 	// A canvas:updated for another page: the mounted page is thrown away and the new one starts with
-	// the mode, the draft slot and this message. flushSync mounts it before the next message.
-	// ponytail: focus is not moved; focus inside the old page falls to body. Only a hand edit or the
-	// Agent switches pages until 10d's menu, which owns the focus target.
+	// the mode, the draft slot and this message. flushSync mounts it before the next message. Focus
+	// in the page button or menu (a switch the user caused) moves to the new page's button.
+	// ponytail: a switch the user did not cause (the Agent, a hand edit) does not move focus; focus
+	// inside the old page falls to body. Upgrade: focus the new page's matching control.
 	// ponytail: a draft whose Add is in flight at the switch is not kept in the slot. Its comment
 	// lands on its page if the write succeeds; a failed write loses the text (today's tab-hide
 	// ceiling).
 	const stagePage = (message: CanvasUpdatedMessage): void => {
 		const mounted = page?.savable();
 		draftSlot = keptCommentDraft({ slot: draftSlot, page: mounted });
+		const focusInMenu = pages.focusInMenu();
 		page?.leave();
+		pages.pageChanged();
 		stage = nextPageStart({
 			canvas: message,
 			comments: latestComments,
@@ -52,6 +57,9 @@
 		});
 		realPageMounted = true;
 		flushSync();
+		if (focusInMenu) {
+			pages.focusButton();
+		}
 		// The page has applied its start; holding it would keep every frame's first HTML alive.
 		stage = { ...stage, canvas: undefined, comments: undefined };
 	};
@@ -62,11 +70,24 @@
 			handoffStale = message.handoffStale;
 			return;
 		}
+		// The list first, so a page this message stages renders it.
+		if (message.type === 'canvas:updated') {
+			pages.setPages(message.pages);
+		}
 		if (
 			message.type === 'canvas:updated' &&
 			isPageChange({ messagePageId: message.pageId, stagedPageId: stage.pageId })
 		) {
 			stagePage(message);
+			return;
+		}
+		// Page answers are App's (page requests span pages): a page:saved never reaches the page, one
+		// matching nothing is dropped; a ui:error goes on unless it answers the page request.
+		if (message.type === 'page:saved') {
+			pages.handleAnswer(message);
+			return;
+		}
+		if (message.type === 'ui:error' && pages.handleAnswer(message)) {
 			return;
 		}
 		if (message.type === 'comments:updated') {
@@ -102,5 +123,5 @@
 </script>
 
 {#key stage.pageId}
-	<DesignPage bind:this={page} start={stage} {mcpUnavailable} {handoffStale} />
+	<DesignPage bind:this={page} start={stage} {mcpUnavailable} {handoffStale} {pages} />
 {/key}

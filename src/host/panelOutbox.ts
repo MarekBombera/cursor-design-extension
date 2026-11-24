@@ -5,6 +5,8 @@ import type {
 	CommentsUpdatedMessage,
 	CopiedMessage,
 	HostMessage,
+	PageSavedMessage,
+	PostedPage,
 	UiErrorMessage,
 } from '../webview/hostMessages';
 import {
@@ -20,6 +22,7 @@ type CanvasHostView = {
 		activeArtboardId: string;
 		generation: number;
 		frames: UnflaggedPostedFrame[];
+		pages: PostedPage[];
 	};
 	errorMessage?: string;
 };
@@ -32,6 +35,7 @@ export type PanelAnswer =
 	| CommentSavedMessage
 	| CopiedMessage
 	| ArtboardEditedMessage
+	| PageSavedMessage
 	| UiErrorMessage;
 
 type PanelOutbox = {
@@ -120,6 +124,7 @@ export const createPanelOutbox = ({
 					activeArtboardId: snapshot.activeArtboardId,
 					generation: snapshot.generation,
 					frames: snapshot.frames.map(postedFrameFromSnapshot),
+					pages: snapshot.pages,
 				},
 				errorMessage: snapshot.errorMessage,
 			};

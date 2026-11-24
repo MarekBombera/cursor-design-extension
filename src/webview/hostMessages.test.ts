@@ -22,6 +22,7 @@ const validUpdate = {
 	generation: 3,
 	cspNonce: 'n',
 	frames: [validFrame],
+	pages: [{ id: 'page-1', title: 'Page 1', updatedAt: '2026-11-21T10:00:00.000Z' }],
 };
 
 test('a valid canvas:updated parses with its frames', () => {
@@ -44,6 +45,8 @@ test('canvas:updated with any top-level field wrong is rejected', () => {
 		{ generation: '3' },
 		{ frames: 'a' },
 		{ frames: { 0: validFrame } },
+		{ pages: undefined },
+		{ pages: { 0: validUpdate.pages[0] } },
 	]) {
 		assert.equal(
 			parseHostMessage({ ...validUpdate, ...broken }),
@@ -92,6 +95,27 @@ test('invalid frame entries are dropped and the valid ones kept in order', () =>
 		parsed.frames.map(({ id }) => id),
 		['b', 'a'],
 	);
+});
+
+test('invalid page entries are dropped and the valid ones kept in order', () => {
+	const second = { id: 'page-2', title: 'Checkout', updatedAt: null };
+	const first = { id: 'page-1', title: '', updatedAt: '2026-11-21T10:00:00.000Z' };
+	const parsed = parseHostMessage({
+		...validUpdate,
+		pages: [
+			null,
+			'page-1',
+			{ ...first, id: '../x' },
+			{ ...first, id: 'page-0' },
+			{ ...first, title: 7 },
+			{ ...first, updatedAt: 1_700_000_000_000 },
+			{ ...first, updatedAt: undefined },
+			second,
+			{ ...first, extra: 1 },
+		],
+	});
+	assert.ok(parsed?.type === 'canvas:updated');
+	assert.deepEqual(parsed.pages, [second, first]);
 });
 
 test('non-objects and unknown types are ignored', () => {
@@ -243,6 +267,15 @@ test('comment:saved needs a string requestId', () => {
 	});
 	assert.equal(parseHostMessage({ type: 'comment:saved' }), undefined);
 	assert.equal(parseHostMessage({ type: 'comment:saved', requestId: 7 }), undefined);
+});
+
+test('page:saved needs a string requestId', () => {
+	assert.deepEqual(parseHostMessage({ type: 'page:saved', requestId: 'r1', extra: 1 }), {
+		type: 'page:saved',
+		requestId: 'r1',
+	});
+	assert.equal(parseHostMessage({ type: 'page:saved' }), undefined);
+	assert.equal(parseHostMessage({ type: 'page:saved', requestId: 7 }), undefined);
 });
 
 test('comment:added needs a string requestId; ui:error a string message and optional requestId', () => {

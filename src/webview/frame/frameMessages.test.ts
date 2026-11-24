@@ -498,6 +498,7 @@ const HOST_TO_CHROME: Record<HostMessage['type'], true> = {
 	'comment:saved': true,
 	'ui:copied': true,
 	'artboard:edited': true,
+	'page:saved': true,
 	'ui:error': true,
 };
 const CHROME_TO_HOST: Record<ChromeMessage['type'], true> = {
@@ -510,6 +511,10 @@ const CHROME_TO_HOST: Record<ChromeMessage['type'], true> = {
 	'comment:copy-open': true,
 	'artboard:edit': true,
 	'artboard:history': true,
+	'page:open': true,
+	'page:create': true,
+	'page:rename': true,
+	'page:delete': true,
 };
 
 test('system map message contract names exactly the host and chrome messages', () => {

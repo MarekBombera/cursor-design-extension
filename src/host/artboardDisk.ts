@@ -32,6 +32,8 @@ import {
 	workspaceJoin,
 } from '../disk/layoutFs';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
+import { listPages } from '../disk/pageOps';
+import type { PostedPage } from '../webview/hostMessages';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
 
 type WorkspaceDiskArgs = {
@@ -83,7 +85,7 @@ const snapshotFromCanvasView = async ({
 }: {
 	page: PageLocation;
 	outputChannel: vscode.OutputChannel;
-}): Promise<CanvasSnapshot> => {
+}): Promise<Omit<CanvasSnapshot, 'pages'>> => {
 	const view = await readCanvasView({ page });
 	logCanvasViewReadErrors({ view, outputChannel });
 	const activeFrame = view.frames.find((frame) => frame.id === view.activeArtboardId);
@@ -109,6 +111,49 @@ const snapshotFromCanvasView = async ({
 		handoffStale: view.handoffStale,
 		errorMessage,
 	};
+};
+
+const readOpenPageSnapshot = async ({
+	workspaceFolder,
+	outputChannel,
+	page,
+	initializeWhenMissing,
+}: WorkspaceDiskArgs & {
+	page: PageLocation;
+	initializeWhenMissing: boolean;
+}): Promise<Omit<CanvasSnapshot, 'pages'>> => {
+	if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
+		if (!initializeWhenMissing) {
+			// An indexed page whose folder is gone is an error. Only a fresh folder resolves with
+			// no project.json, and it stays an empty stage.
+			if (
+				!(await pageFolderExists(page.workspaceRoot, page.pageId)) &&
+				(await lstatOrUndefined(workspaceJoin(page.workspaceRoot, projectPathSegments))) !==
+					undefined
+			) {
+				throw new PageNotFoundError(page.pageId);
+			}
+			return { ...emptyArtboardSnapshot(), pageId: page.pageId };
+		}
+		await initializeDefaultArtboard(page);
+	}
+	return await snapshotFromCanvasView({ page, outputChannel });
+};
+
+// A list failure never fails the snapshot: it is logged and lists nothing.
+const readPostedPages = async ({
+	page,
+	outputChannel,
+}: {
+	page: PageLocation;
+	outputChannel: vscode.OutputChannel;
+}): Promise<PostedPage[]> => {
+	try {
+		return (await listPages({ workspaceRoot: page.workspaceRoot })).pages;
+	} catch (error: unknown) {
+		logDiskError({ scope: 'artboardDisk.listPages', error, outputChannel });
+		return [];
+	}
 };
 
 type LoadActiveSnapshotArgs = WorkspaceDiskArgs & {
@@ -147,26 +192,20 @@ const loadActiveSnapshot = async ({
 	} catch (error: unknown) {
 		return failed(error);
 	}
+	let snapshot: Omit<CanvasSnapshot, 'pages'>;
 	try {
-		if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
-			if (!initializeWhenMissing) {
-				// An indexed page whose folder is gone is an error. Only a fresh folder resolves with
-				// no project.json, and it stays an empty stage.
-				if (
-					!(await pageFolderExists(page.workspaceRoot, page.pageId)) &&
-					(await lstatOrUndefined(workspaceJoin(page.workspaceRoot, projectPathSegments))) !==
-						undefined
-				) {
-					throw new PageNotFoundError(page.pageId);
-				}
-				return { ...emptyArtboardSnapshot(), pageId: page.pageId };
-			}
-			await initializeDefaultArtboard(page);
-		}
-		return await snapshotFromCanvasView({ page, outputChannel });
+		snapshot = await readOpenPageSnapshot({
+			workspaceFolder,
+			outputChannel,
+			page,
+			initializeWhenMissing,
+		});
 	} catch (error: unknown) {
-		return { ...failed(error), pageId: page.pageId };
+		snapshot = { ...failed(error), pageId: page.pageId };
 	}
+	// Listed after the read (and any initialize), so a just-created page has its time; a failed
+	// read still lists, so the Pages menu offers a way off a broken page.
+	return { ...snapshot, pages: await readPostedPages({ page, outputChannel }) };
 };
 
 export const initAndLoadArtboard = async (args: WorkspaceDiskArgs): Promise<CanvasSnapshot> =>
