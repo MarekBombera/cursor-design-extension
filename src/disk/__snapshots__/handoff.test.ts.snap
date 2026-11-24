@@ -5,6 +5,8 @@ exports[`buildCanvasImplementMarkdown orders sections and frames, collapses newl
 
 exportId: <exportId>
 exportedAt: <exportedAt>
+page: page-1
+pageTitle: Check out
 frames: 4
 
 ## Frames

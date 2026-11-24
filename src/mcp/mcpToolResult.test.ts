@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, test, vi } from 'vite-plus/test';
 
-import { toMcpToolError } from './mcpToolResult';
+import { CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+import { runOnOpenPage, toMcpToolError } from './mcpToolResult';
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
 });
 
 test('a foreign error reaches the Agent as the authored DISK_ERROR copy; its text goes to stderr only', () => {
@@ -22,4 +27,28 @@ test('a foreign error reaches the Agent as the authored DISK_ERROR copy; its tex
 		},
 	]);
 	assert.match(String(stderr.mock.calls[0]?.[0]), /\/Users\/x\/secret: EACCES\n\s+at /);
+});
+
+test('runOnOpenPage reads the page title before the operation, so a project.json the operation corrupts still yields page', async () => {
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-mcp-result-'));
+	try {
+		vi.stubEnv(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, JSON.stringify([workspaceRoot]));
+		const result = await runOnOpenPage({
+			rootPath: undefined,
+			createIfFresh: true,
+			operation: async () => {
+				await writeFile(join(workspaceRoot, '.cursor-design', 'project.json'), '{ not json');
+				return { done: true };
+			},
+		});
+		assert.notEqual(result.isError, true);
+		const [block] = result.content;
+		assert.equal(block?.type, 'text');
+		assert.deepEqual(JSON.parse(block?.type === 'text' ? block.text : ''), {
+			done: true,
+			page: { id: 'page-1', title: 'Page 1' },
+		});
+	} finally {
+		await rm(workspaceRoot, { recursive: true, force: true });
+	}
 });

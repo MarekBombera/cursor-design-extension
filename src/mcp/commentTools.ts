@@ -1,12 +1,13 @@
 import { type McpServer } from '@modelcontextprotocol/server';
 
-import { getComment, listComments, resolveComment } from '../disk/comments';
+import { findCommentPage, getComment, listComments, resolveComment } from '../disk/comments';
 import type { CommentView } from '../disk/commentViews';
-import { resolveOpenPage } from '../disk/openPage';
+import { CommentNotFoundError } from '../disk/errors';
+import { type PageLocation } from '../disk/layoutFs';
 import {
 	READ_ONLY_ANNOTATIONS,
 	ROOT_PATH_DESCRIPTION,
-	runQueued,
+	runOnOpenPage,
 	toolInputSchema,
 } from './mcpToolResult';
 import { GET_COMMENT_TOOL, LIST_COMMENTS_TOOL, RESOLVE_COMMENT_TOOL } from './toolNames';
@@ -56,6 +57,36 @@ const listedComment = ({
 	replyCount: replies.length,
 });
 
+// A comment missing from the open page but held by another page: name that page.
+const namingCommentPage = async <Result>({
+	page,
+	id,
+	tool,
+	operation,
+}: {
+	page: PageLocation;
+	id: unknown;
+	tool: typeof GET_COMMENT_TOOL | typeof RESOLVE_COMMENT_TOOL;
+	operation: () => Promise<Result>;
+}): Promise<Result> => {
+	try {
+		return await operation();
+	} catch (error: unknown) {
+		if (!(error instanceof CommentNotFoundError) || typeof id !== 'string') {
+			throw error;
+		}
+		const pageId = await findCommentPage({
+			workspaceRoot: page.workspaceRoot,
+			id,
+			exceptPageId: page.pageId,
+		});
+		if (pageId === undefined) {
+			throw error;
+		}
+		throw new CommentNotFoundError({ found: { id, pageId, tool }, cause: error });
+	}
+};
+
 export const registerCommentTools = (server: McpServer): void => {
 	server.registerTool(
 		LIST_COMMENTS_TOOL,
@@ -67,12 +98,13 @@ export const registerCommentTools = (server: McpServer): void => {
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ status, rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) => {
-				const { comments } = await listComments({
-					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
-					status,
-				});
-				return { comments: comments.map(listedComment) };
+			runOnOpenPage({
+				rootPath,
+				createIfFresh: false,
+				operation: async (page) => {
+					const { comments } = await listComments({ page, status });
+					return { comments: comments.map(listedComment) };
+				},
 			}),
 	);
 
@@ -86,9 +118,17 @@ export const registerCommentTools = (server: McpServer): void => {
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ id, rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) =>
-				getComment({ page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }), id }),
-			),
+			runOnOpenPage({
+				rootPath,
+				createIfFresh: false,
+				operation: (page) =>
+					namingCommentPage({
+						page,
+						id,
+						tool: GET_COMMENT_TOOL,
+						operation: () => getComment({ page, id }),
+					}),
+			}),
 	);
 
 	server.registerTool(
@@ -101,12 +141,16 @@ export const registerCommentTools = (server: McpServer): void => {
 			annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: false },
 		},
 		async ({ id, note, rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) =>
-				resolveComment({
-					page: await resolveOpenPage({ workspaceRoot, createIfFresh: false }),
-					id,
-					note,
-				}),
-			),
+			runOnOpenPage({
+				rootPath,
+				createIfFresh: false,
+				operation: (page) =>
+					namingCommentPage({
+						page,
+						id,
+						tool: RESOLVE_COMMENT_TOOL,
+						operation: () => resolveComment({ page, id, note }),
+					}),
+			}),
 	);
 };

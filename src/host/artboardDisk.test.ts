@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, test, vi } from 'vite-plus/test';
@@ -11,6 +11,7 @@ import {
 	artboardHtmlPathSegments,
 	artboardsDirSegments,
 	manifestPathSegments,
+	projectPathSegments,
 } from '../disk/layout';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
@@ -207,6 +208,35 @@ test('Open on a page with artboard.html but no manifest keeps its bytes and make
 		assert.equal(await readFile(htmlPath, 'utf8'), '<p>mine</p>');
 		const manifest = await readFile(join(root, ...manifestPathSegments('page-2')), 'utf8');
 		assert.equal(JSON.parse(manifest).activeArtboardId, DEFAULT_ARTBOARD_ID);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+// project.json indexes page-2 (the mocked open page) but pages/page-2/ is gone.
+test('an indexed open page with no folder shows the noFolder error on Open and refresh, creating nothing', async () => {
+	const actual = await vi.importActual<typeof import('../disk/artboardFs')>('../disk/artboardFs');
+	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
+	host.manifestExists = false;
+	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	try {
+		await mkdir(join(root, '.cursor-design', 'pages'), { recursive: true });
+		await writeFile(join(root, ...projectPathSegments), '{}');
+		const before = await readdir(root, { recursive: true });
+		const rootArgs = {
+			workspaceFolder: { uri: { fsPath: root } } as vscode.WorkspaceFolder,
+			outputChannel,
+		};
+		for (const load of [initAndLoadArtboard, readActiveArtboardFromDisk]) {
+			vi.mocked(logDiskError).mockClear();
+			const snapshot = await load(rootArgs);
+			assert.equal(snapshot.errorMessage, new PageNotFoundError('page-2').message);
+			assert.ok(snapshot.errorMessage?.includes('has no folder'));
+			assert.equal(snapshot.pageId, 'page-2');
+			assert.deepEqual(snapshot.frames, []);
+			assert.equal(vi.mocked(logDiskError).mock.calls.length, 1);
+		}
+		assert.deepEqual((await readdir(root, { recursive: true })).sort(), before.sort());
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

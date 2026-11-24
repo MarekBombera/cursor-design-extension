@@ -87,6 +87,11 @@ export const lstatOrUndefined = async (filePath: string): Promise<Stats | undefi
 	}
 };
 
+// The one page-folder check: a real directory (a symlink or a file there is no page folder).
+export const pageFolderExists = async (workspaceRoot: string, pageId: string): Promise<boolean> =>
+	(await lstatOrUndefined(workspaceJoin(workspaceRoot, pageDirSegments(pageId))))?.isDirectory() ===
+	true;
+
 // A layout directory is a real directory or missing; a symlink or a file there throws.
 export const assertDirOwned = async (
 	workspaceRoot: string,

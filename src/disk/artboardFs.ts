@@ -224,6 +224,11 @@ const writeManifestActive = async ({
 	});
 };
 
+// The host's watcher opens the panel when this marker is written.
+export const writeEnsurePanelFile = async (workspaceRoot: string): Promise<void> => {
+	await writeUtf8({ ...workspaceLayoutFile(workspaceRoot, ensurePanelPathSegments), contents: '' });
+};
+
 export const createArtboard = async ({
 	page,
 	artboardId,
@@ -289,10 +294,7 @@ export const createArtboard = async ({
 
 	let panelEnsured = false;
 	if (writeEnsurePanelMarker) {
-		await writeUtf8({
-			...workspaceLayoutFile(page.workspaceRoot, ensurePanelPathSegments),
-			contents: '',
-		});
+		await writeEnsurePanelFile(page.workspaceRoot);
 		panelEnsured = true;
 	}
 

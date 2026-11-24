@@ -32,6 +32,7 @@ import {
 	ensureDir,
 	readCanvasLayoutFile,
 	readManifestFile,
+	readProjectFile,
 	readStoredMeta,
 	readUtf8IfExists,
 	requireActiveManifest,
@@ -40,6 +41,7 @@ import {
 	workspaceLayoutFile,
 	writeUtf8,
 } from './layoutFs';
+import { pageTitle } from './openPage';
 import {
 	type ArtboardManifest,
 	type ArtboardMeta,
@@ -205,6 +207,9 @@ export const exportArtboard = async ({
 		(await readUtf8IfExists(
 			workspaceLayoutFile(page.workspaceRoot, workspaceTokensPathSegments),
 		)) ?? STUB_TOKENS_JSON;
+	const project = await readProjectFile(page.workspaceRoot);
+	const exportPageTitle =
+		project?.pages.find(({ id }) => id === page.pageId)?.title ?? pageTitle(page.pageId);
 
 	const exportId = makeCanvasExportId({ now: exportNow });
 	const exportedAt = exportNow.toISOString();
@@ -230,6 +235,7 @@ export const exportArtboard = async ({
 		exportId,
 		exportedAt,
 		pageId: page.pageId,
+		pageTitle: exportPageTitle,
 		frames: planned.map(({ id, label, width, group, folder, effective }) => {
 			const implementFrame = { id, label, width, folder, artboardHash: effective.hash };
 			return group === undefined ? implementFrame : { ...implementFrame, group };

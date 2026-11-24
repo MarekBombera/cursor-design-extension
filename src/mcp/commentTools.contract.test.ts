@@ -22,12 +22,16 @@ import {
 	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
 	CURSOR_DESIGN_WORKSPACE_ROOTS_ENV,
 } from './mcpIdentity';
+import { registerPageTools } from './pageTools';
 import {
+	CREATE_PAGE_TOOL,
 	EXPORT_ARTBOARD_TOOL,
 	GET_COMMENT_TOOL,
 	HANDOFF_STATUS_TOOL,
 	LIST_ARTBOARDS_TOOL,
 	LIST_COMMENTS_TOOL,
+	LIST_PAGES_TOOL,
+	OPEN_PAGE_TOOL,
 	PLACE_FRAME_TOOL,
 	READ_ARTBOARD_TOOL,
 	RESOLVE_COMMENT_TOOL,
@@ -48,6 +52,9 @@ const TOOL_NAMES = [
 	LIST_COMMENTS_TOOL,
 	GET_COMMENT_TOOL,
 	RESOLVE_COMMENT_TOOL,
+	LIST_PAGES_TOOL,
+	CREATE_PAGE_TOOL,
+	OPEN_PAGE_TOOL,
 ] as const;
 
 const HERO_HTML = '<!DOCTYPE html><html><body><main><h1>Hello</h1></main></body></html>';
@@ -69,6 +76,7 @@ const connectContractPair = async (): Promise<Client> => {
 	});
 	registerArtboardTools(contractServer);
 	registerCommentTools(contractServer);
+	registerPageTools(contractServer);
 	contractClient = new Client({ name: 'cursor-design-comment-contract', version: '0.0.0' });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await Promise.all([
@@ -171,6 +179,7 @@ const requireErrorCode = (result: CallToolResult, code: string): Record<string, 
 	assert.equal(result.isError, true, textOf(result));
 	const body = parsedBody(result);
 	assert.equal(body.code, code, textOf(result));
+	assert.equal('page' in body, false, textOf(result));
 	return body;
 };
 
@@ -205,6 +214,8 @@ const seedHeroComment = async (
 	return { commentId: comment.id };
 };
 
+const PAGE_ONE = { id: 'page-1', title: 'Page 1' };
+
 const assertNoLeak = (result: unknown, workspaceRoot: string): void => {
 	const text = JSON.stringify(result);
 	assert.equal(text.includes(workspaceRoot), false, text);
@@ -212,7 +223,7 @@ const assertNoLeak = (result: unknown, workspaceRoot: string): void => {
 	assert.equal(/\n\s+at /.test(text), false, text);
 };
 
-test('listTools returns the 8 artboard names plus the 3 comment names', async () => {
+test('listTools returns the 8 artboard, 3 comment and 3 page names', async () => {
 	const client = await connectContractPair();
 	const { tools } = await client.listTools();
 	assert.deepEqual(tools.map((tool) => tool.name).sort(), [...TOOL_NAMES].sort());
@@ -230,8 +241,10 @@ test('happy paths: list, get, stale after update, resolve', async () => {
 		// list_comments carries the thread length only; get_comment carries the thread.
 		assert.equal(first?.replyCount, 0);
 		assert.equal('replies' in (first ?? {}), false);
+		assert.deepEqual(listed.page, PAGE_ONE);
 		const got = assertSuccess(await callTool(client, GET_COMMENT_TOOL, { id: commentId }));
 		assert.equal(got.id, commentId);
+		assert.deepEqual(got.page, PAGE_ONE);
 		assert.deepEqual(got.replies, []);
 		assert.equal(got.stale, false);
 		assert.equal(got.targetMissing, false);
@@ -248,6 +261,7 @@ test('happy paths: list, get, stale after update, resolve', async () => {
 			await callTool(client, RESOLVE_COMMENT_TOOL, { id: commentId, note: 'Bolded the heading' }),
 		);
 		assert.equal(resolved.status, 'resolved');
+		assert.deepEqual(resolved.page, PAGE_ONE);
 		assertNoLeak(listed, workspaceRoot);
 		assertNoLeak(got, workspaceRoot);
 		assertNoLeak(stale, workspaceRoot);
@@ -318,7 +332,7 @@ test('multi-root without rootPath matches list_artboards', async () => {
 		const comments = await callTool(client, LIST_COMMENTS_TOOL);
 		assert.notEqual(artboards.isError, true);
 		assert.notEqual(comments.isError, true);
-		assert.deepEqual(parsedBody(comments), { comments: [] });
+		assert.deepEqual(parsedBody(comments), { comments: [], page: null });
 		const wrongRoot = { rootPath: join(first, 'not-a-root') };
 		const artboardsWrong = await callTool(client, LIST_ARTBOARDS_TOOL, wrongRoot);
 		const commentsWrong = await callTool(client, LIST_COMMENTS_TOOL, wrongRoot);
@@ -351,7 +365,10 @@ test('every tool but set_artboard answers a fresh root as an empty folder and cr
 		const listedArtboards = assertSuccess(await callTool(client, LIST_ARTBOARDS_TOOL));
 		assert.deepEqual(listedArtboards.artboards, []);
 		assert.deepEqual(listedArtboards.frames, []);
-		assert.deepEqual(assertSuccess(await callTool(client, LIST_COMMENTS_TOOL)).comments, []);
+		assert.equal(listedArtboards.page, null);
+		const listedComments = assertSuccess(await callTool(client, LIST_COMMENTS_TOOL));
+		assert.deepEqual(listedComments.comments, []);
+		assert.equal(listedComments.page, null);
 		const refusals: [string, Record<string, unknown>, string][] = [
 			[READ_ARTBOARD_TOOL, {}, 'ARTBOARD_NOT_FOUND'],
 			[GET_COMMENT_TOOL, { id: 'c1' }, 'COMMENT_NOT_FOUND'],
@@ -420,7 +437,9 @@ test('with page-2 open, every tool reads and writes page-2 and leaves page-1 byt
 			[commentId],
 		);
 		assertSuccess(await callTool(client, RESOLVE_COMMENT_TOOL, { id: commentId, note: 'done' }));
-		assertSuccess(await callTool(client, EXPORT_ARTBOARD_TOOL));
+		const exported = assertSuccess(await callTool(client, EXPORT_ARTBOARD_TOOL));
+		assert.deepEqual(listed.page, { id: 'page-2', title: 'Page 2' });
+		assert.deepEqual(exported.page, { id: 'page-2', title: 'Page 2' });
 
 		assert.deepEqual(await fileBytes(pageOneDir), pageOneBefore);
 		const pageTwoFile = async (segments: readonly string[]): Promise<string> =>
@@ -429,5 +448,76 @@ test('with page-2 open, every tool reads and writes page-2 and leaves page-1 byt
 		const comments = JSON.parse(await pageTwoFile(commentsPathSegments('page-2')));
 		assert.equal(comments.comments[0].status, 'resolved');
 		assert.ok(JSON.parse(await pageTwoFile(manifestPathSegments('page-2'))).lastExport);
+	});
+});
+
+// page-1 open with no comments; page-2 holds the hero comment; page-3 has a corrupt comments.json.
+const seedCommentOnOtherPage = async (
+	client: Client,
+	workspaceRoot: string,
+): Promise<{ commentId: string }> => {
+	assertSuccess(await callTool(client, SET_ARTBOARD_TOOL, { artboardId: 'hero', html: HERO_HTML }));
+	for (const pageId of ['page-2', 'page-3']) {
+		await mkdir(join(workspaceRoot, ...pageDirSegments(pageId)));
+	}
+	await writeFile(join(workspaceRoot, ...commentsPathSegments('page-3')), '{', 'utf8');
+	await writeFile(
+		join(workspaceRoot, ...projectPathSegments),
+		JSON.stringify({
+			version: 1,
+			openPageId: 'page-2',
+			pages: ['page-1', 'page-2', 'page-3'].map((id) => ({ id, title: `Page ${id.slice(5)}` })),
+		}),
+	);
+	const seeded = await seedHeroComment(client, workspaceRoot, 'page-2');
+	assertSuccess(await callTool(client, OPEN_PAGE_TOOL, { pageId: 'page-1' }));
+	return seeded;
+};
+
+test('get_comment and resolve_comment name the page holding a comment missing from the open page', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		const { commentId } = await seedCommentOnOtherPage(client, workspaceRoot);
+		const commentsBefore = await readFile(
+			join(workspaceRoot, ...commentsPathSegments('page-2')),
+			'utf8',
+		);
+		for (const [name, args] of [
+			[GET_COMMENT_TOOL, { id: commentId }],
+			[RESOLVE_COMMENT_TOOL, { id: commentId, note: 'done' }],
+		] as const) {
+			const body = requireErrorCode(await callTool(client, name, args), 'COMMENT_NOT_FOUND');
+			assert.equal(
+				body.message,
+				`Comment "${commentId}" is on page page-2, which is not open. Call open_page("page-2"), then ${name} again.`,
+			);
+		}
+		assert.equal(
+			await readFile(join(workspaceRoot, ...commentsPathSegments('page-2')), 'utf8'),
+			commentsBefore,
+		);
+		assertSuccess(await callTool(client, OPEN_PAGE_TOOL, { pageId: 'page-2' }));
+		const got = assertSuccess(await callTool(client, GET_COMMENT_TOOL, { id: commentId }));
+		assert.equal(got.id, commentId);
+		assert.deepEqual(got.page, { id: 'page-2', title: 'Page 2' });
+	});
+});
+
+test('a comment id on no page keeps the plain COMMENT_NOT_FOUND text past a corrupt page', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedCommentOnOtherPage(client, workspaceRoot);
+		for (const [name, args] of [
+			[GET_COMMENT_TOOL, { id: 'missing' }],
+			[RESOLVE_COMMENT_TOOL, { id: 'missing', note: 'done' }],
+		] as const) {
+			const body = requireErrorCode(await callTool(client, name, args), 'COMMENT_NOT_FOUND');
+			assert.equal(
+				body.message,
+				'Comment not found. Call list_comments to see current comment ids.',
+			);
+		}
 	});
 });

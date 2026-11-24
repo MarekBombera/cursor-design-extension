@@ -19,8 +19,18 @@ import {
 	PageNotFoundError,
 	toSafeArtboardErrorMessage,
 } from '../disk/errors';
-import { DEFAULT_ARTBOARD_HTML, DEFAULT_ARTBOARD_ID, manifestPathSegments } from '../disk/layout';
-import type { PageLocation } from '../disk/layoutFs';
+import {
+	DEFAULT_ARTBOARD_HTML,
+	DEFAULT_ARTBOARD_ID,
+	manifestPathSegments,
+	projectPathSegments,
+} from '../disk/layout';
+import {
+	type PageLocation,
+	lstatOrUndefined,
+	pageFolderExists,
+	workspaceJoin,
+} from '../disk/layoutFs';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
 
@@ -140,6 +150,15 @@ const loadActiveSnapshot = async ({
 	try {
 		if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
 			if (!initializeWhenMissing) {
+				// An indexed page whose folder is gone is an error. Only a fresh folder resolves with
+				// no project.json, and it stays an empty stage.
+				if (
+					!(await pageFolderExists(page.workspaceRoot, page.pageId)) &&
+					(await lstatOrUndefined(workspaceJoin(page.workspaceRoot, projectPathSegments))) !==
+						undefined
+				) {
+					throw new PageNotFoundError(page.pageId);
+				}
 				return { ...emptyArtboardSnapshot(), pageId: page.pageId };
 			}
 			await initializeDefaultArtboard(page);

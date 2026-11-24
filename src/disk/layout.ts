@@ -219,6 +219,8 @@ const PROJECT_FILE = 'project.json' as const;
 
 const PAGES_DIR = 'pages' as const;
 
+const DELETED_DIR = 'deleted' as const;
+
 export const PROJECT_SCHEMA_VERSION = 1 as const;
 
 export const FIRST_PAGE_ID = 'page-1' as const;
@@ -243,6 +245,14 @@ export type PageEntry = (typeof PAGE_ENTRIES)[number];
 export const projectPathSegments = [CURSOR_DESIGN_DIR, PROJECT_FILE] as const;
 
 export const pagesDirSegments = [CURSOR_DESIGN_DIR, PAGES_DIR] as const;
+
+// Where deletePage moves a page folder; never emptied by cursor-design.
+export const deletedDirSegments = [CURSOR_DESIGN_DIR, DELETED_DIR] as const;
+
+export const deletedPageDirSegments = (
+	pageId: string,
+	stamp: string,
+): readonly [string, string, string] => [...deletedDirSegments, `${pageId}-${stamp}`];
 
 // A regular file where 0.4 kept its artboards folder, so a stale 0.4 MCP fails instead of writing.
 export const artboardsTombstoneSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;

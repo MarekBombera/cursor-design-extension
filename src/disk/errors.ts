@@ -309,8 +309,20 @@ export class UnsupportedCommentsVersionError extends CursorDesignError {
 export class CommentNotFoundError extends CursorDesignError {
 	readonly code = 'COMMENT_NOT_FOUND' as const;
 
-	constructor(options?: { cause?: unknown }) {
-		super('Comment not found. Call list_comments to see current comment ids.', options);
+	// found: the id is on another, unopened page (the Agent's get_comment / resolve_comment hint).
+	constructor({
+		found,
+		...options
+	}: {
+		found?: { id: string; pageId: string; tool: 'get_comment' | 'resolve_comment' };
+		cause?: unknown;
+	} = {}) {
+		super(
+			found === undefined
+				? 'Comment not found. Call list_comments to see current comment ids.'
+				: `Comment "${found.id}" is on page ${found.pageId}, which is not open. Call open_page("${found.pageId}"), then ${found.tool} again.`,
+			options,
+		);
 		this.name = 'CommentNotFoundError';
 	}
 }
@@ -370,12 +382,15 @@ export class EditRefusedError extends CursorDesignError {
 export class PageNotFoundError extends CursorDesignError {
 	readonly code = 'PAGE_NOT_FOUND' as const;
 
+	// noFolder: indexed but its folder is gone; unlisted: project.json does not list the id.
 	constructor(
 		readonly pageId: string,
-		options?: { cause?: unknown },
+		{ reason = 'noFolder', ...options }: { reason?: 'noFolder' | 'unlisted'; cause?: unknown } = {},
 	) {
 		super(
-			`Page "${pageId}" has no folder. Restore ${pageDirSegments(pageId).join('/')}/, or delete ${projectPathSegments.join('/')} to rebuild the page list from the page folders.`,
+			reason === 'unlisted'
+				? `Page "${pageId}" does not exist. Call list_pages for the page ids.`
+				: `Page "${pageId}" has no folder. Restore ${pageDirSegments(pageId).join('/')}/, or delete ${projectPathSegments.join('/')} to rebuild the page list from the page folders.`,
 			options,
 		);
 		this.name = 'PageNotFoundError';

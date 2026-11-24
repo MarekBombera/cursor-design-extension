@@ -30,6 +30,7 @@ import {
 	assertDirOwned,
 	layoutEntryKind,
 	lstatOrUndefined,
+	pageFolderExists,
 	readProjectFile,
 	workspaceJoin,
 	workspaceLayoutFile,
@@ -46,9 +47,10 @@ type FolderState =
 	| { kind: 'indexLost'; pageIds: PageIds }
 	| { kind: 'fresh' };
 
-const pageNumberText = (pageId: string): string => pageId.slice(pageId.indexOf('-') + 1);
+export const pageNumberText = (pageId: string): string => pageId.slice(pageId.indexOf('-') + 1);
 
-const pageTitle = (pageId: string): string => `Page ${pageNumberText(pageId)}`;
+// The default title: "Page <n>".
+export const pageTitle = (pageId: string): string => `Page ${pageNumberText(pageId)}`;
 
 // The 0.4 entries still at the root, in PAGE_ENTRIES order: artboards only as a real directory
 // (the tombstone, or any other non-directory, is not legacy), a JSON name as any kind.
@@ -77,8 +79,7 @@ const scanPageFolders = async (workspaceRoot: string): Promise<string[]> => {
 	}
 	const pageIds: string[] = [];
 	for (const name of names.filter(isPageId)) {
-		const folderStats = await lstatOrUndefined(workspaceJoin(workspaceRoot, pageDirSegments(name)));
-		if (folderStats?.isDirectory() === true) {
+		if (await pageFolderExists(workspaceRoot, name)) {
 			pageIds.push(name);
 		}
 	}
@@ -133,7 +134,7 @@ const writeArtboardsTombstone = async (workspaceRoot: string): Promise<void> => 
 };
 
 // EEXIST is fine only for a real directory; anything else at that name is the directory DiskError.
-const makeLayoutDir = async ({
+export const makeLayoutDir = async ({
 	workspaceRoot,
 	segments,
 	recursive,
@@ -161,7 +162,7 @@ const makeFirstPageFolder = async (workspaceRoot: string): Promise<void> => {
 	});
 };
 
-const writeProjectFile = async (workspaceRoot: string, project: Project): Promise<void> => {
+export const writeProjectFile = async (workspaceRoot: string, project: Project): Promise<void> => {
 	await writeUtf8({
 		...workspaceLayoutFile(workspaceRoot, projectPathSegments),
 		contents: serializeProject(project),
@@ -320,10 +321,9 @@ export const resolveRequestedPage = async ({
 	}
 	const project = await readProjectFile(workspaceRoot);
 	if (project === undefined || !project.pages.some((entry) => entry.id === pageId)) {
-		throw new PageNotFoundError(pageId);
+		throw new PageNotFoundError(pageId, { reason: 'unlisted' });
 	}
-	const folderStats = await lstatOrUndefined(workspaceJoin(workspaceRoot, pageDirSegments(pageId)));
-	if (folderStats?.isDirectory() !== true) {
+	if (!(await pageFolderExists(workspaceRoot, pageId))) {
 		throw new PageNotFoundError(pageId);
 	}
 	return { workspaceRoot, pageId };

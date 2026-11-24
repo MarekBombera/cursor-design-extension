@@ -19,3 +19,9 @@ export const LIST_COMMENTS_TOOL = 'list_comments' as const;
 export const GET_COMMENT_TOOL = 'get_comment' as const;
 
 export const RESOLVE_COMMENT_TOOL = 'resolve_comment' as const;
+
+export const LIST_PAGES_TOOL = 'list_pages' as const;
+
+export const CREATE_PAGE_TOOL = 'create_page' as const;
+
+export const OPEN_PAGE_TOOL = 'open_page' as const;

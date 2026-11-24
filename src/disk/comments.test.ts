@@ -18,6 +18,7 @@ import { afterEach, test, vi } from 'vite-plus/test';
 import { createArtboard } from './artboardFs';
 import {
 	addComment,
+	findCommentPage,
 	getComment,
 	listComments,
 	markCommentsSent,
@@ -808,6 +809,35 @@ test('readComments refuses a symlinked .cursor-design like listComments', async 
 	await symlink(join(elsewhere, CURSOR_DESIGN_DIR), join(workspaceRoot, CURSOR_DESIGN_DIR));
 	await assert.rejects(readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
 	await assert.rejects(listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
+});
+
+test('findCommentPage logs and skips a page folder that is a symlink out of the workspace', async () => {
+	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+	const workspaceRoot = await makeTempRoot();
+	const elsewhere = await makeTempRoot({ seeded: false });
+	await writeFile(
+		join(workspaceRoot, CURSOR_DESIGN_DIR, 'project.json'),
+		JSON.stringify({
+			version: 1,
+			openPageId: FIRST_PAGE_ID,
+			pages: [
+				{ id: FIRST_PAGE_ID, title: 'Page 1' },
+				{ id: 'page-2', title: 'Page 2' },
+			],
+		}),
+	);
+	await writeFile(
+		join(elsewhere, 'comments.json'),
+		JSON.stringify({ version: COMMENTS_SCHEMA_VERSION, comments: [validComment({ id: 'c9' })] }),
+	);
+	await symlink(elsewhere, join(workspaceRoot, CURSOR_DESIGN_DIR, 'pages', 'page-2'));
+	assert.equal(
+		await findCommentPage({ workspaceRoot, id: 'c9', exceptPageId: FIRST_PAGE_ID }),
+		undefined,
+	);
+	assert.ok(
+		stderr.mock.calls.some(([line]) => String(line).includes('page-2 comments lookup failed')),
+	);
 });
 
 const PAGE_PICK: Partial<NewComment> = {

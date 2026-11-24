@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { registerArtboardTools } from './artboardTools';
 import { registerCommentTools } from './commentTools';
 import { CURSOR_DESIGN_MCP_SERVER_NAME } from './mcpIdentity';
+import { registerPageTools } from './pageTools';
 
 const startCursorDesignMcpServer = async (): Promise<void> => {
 	const server = new McpServer({
@@ -12,6 +13,7 @@ const startCursorDesignMcpServer = async (): Promise<void> => {
 	});
 	registerArtboardTools(server);
 	registerCommentTools(server);
+	registerPageTools(server);
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 };

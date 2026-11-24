@@ -7,6 +7,8 @@ import {
 	InvalidArgsError,
 	InvalidRootError,
 } from '../disk/errors';
+import { type PageLocation, readProjectFile } from '../disk/layoutFs';
+import { resolveOpenPage } from '../disk/openPage';
 import { enqueueDiskOp } from './mcpQueue';
 import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
 
@@ -112,3 +114,28 @@ export const runQueued = async (
 		return toMcpToolError(error);
 	}
 };
+
+// Every existing tool's handler: resolve the open page once, then add `page` to the success result.
+// The title is read before the operation so no read after a write can fail (a corrupt index
+// already fails in the resolver). page is null when the read found no project.json or no entry
+// (a fresh folder, or a race).
+export const runOnOpenPage = async ({
+	rootPath,
+	createIfFresh,
+	beforeResolve,
+	operation,
+}: {
+	rootPath: unknown;
+	createIfFresh: boolean;
+	beforeResolve?: () => void;
+	operation: (page: PageLocation) => Promise<object>;
+}): Promise<CallToolResult> =>
+	runQueued(rootPath, async (workspaceRoot) => {
+		beforeResolve?.();
+		const page = await resolveOpenPage({ workspaceRoot, createIfFresh });
+		const entry = (await readProjectFile(workspaceRoot))?.pages.find(
+			({ id }) => id === page.pageId,
+		);
+		const result = await operation(page);
+		return { ...result, page: entry === undefined ? null : { id: entry.id, title: entry.title } };
+	});

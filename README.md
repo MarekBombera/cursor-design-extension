@@ -33,6 +33,11 @@ Server name: `cursor-design`. Tools:
 - `list_comments` - comments from the open page's `.cursor-design/pages/<pageId>/comments.json` with `stale` / `targetMissing` flags (`null` = unchecked) and `replyCount`; `status` optional (`open`, `sent`, `resolved`), omitted = every unresolved comment
 - `get_comment` - one comment with its replies and those flags checked against the artboard on disk; call it before acting on a comment
 - `resolve_comment` - resolve after changing the target; the one-line `note` shows as the Agent's reply in the thread
+- `list_pages` - `{ openPageId, pages: [{ id, title, updatedAt }] }` from `.cursor-design/project.json`
+- `create_page` - new page with one blank artboard `artboard`; opens it (the panel follows)
+- `open_page` - open a page by id (the panel follows); every other tool then acts on it
+
+14 tools. Every success result of the first 11 carries `page: { id, title }`, the open page it acted on.
 
 **Allowlist** the server if Cursor prompts. If MCP is denied, edit the open page's files under `.cursor-design/pages/<pageId>/` on disk (`openPageId` in `.cursor-design/project.json`) and tell the user to allowlist the tools.
 

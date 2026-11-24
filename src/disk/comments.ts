@@ -18,6 +18,7 @@ import {
 	CommentResolvedError,
 	InvalidArgsError,
 	PickOutdatedError,
+	logStderr,
 } from './errors';
 import {
 	COMMENTS_SCHEMA_VERSION,
@@ -27,7 +28,12 @@ import {
 	MAX_PICK_TEXT_CHARS,
 	commentsPathSegments,
 } from './layout';
-import { type PageLocation, assertLayoutDirsOwned, readStoredMeta } from './layoutFs';
+import {
+	type PageLocation,
+	assertLayoutDirsOwned,
+	readProjectFile,
+	readStoredMeta,
+} from './layoutFs';
 import { withWorkspaceLock } from './workspaceLock';
 
 // Every write is a read-modify-write of comments.json under the workspace lock; reads take none.
@@ -349,4 +355,41 @@ export const getComment = async ({
 		throw new CommentNotFoundError();
 	}
 	return view;
+};
+
+// Lock-free: the first indexed page other than exceptPageId whose comments.json holds the id. An
+// unreadable index or comments file, or a symlinked page folder, is logged and skipped: a hint never replaces the caller's error.
+// ponytail: O(pages) comments.json reads on a miss; fine at MAX_PAGES. Upgrade path: a comment id
+// to page index.
+export const findCommentPage = async ({
+	workspaceRoot,
+	id,
+	exceptPageId,
+}: {
+	workspaceRoot: string;
+	id: string;
+	exceptPageId: string;
+}): Promise<string | undefined> => {
+	let pageIds: string[];
+	try {
+		pageIds = ((await readProjectFile(workspaceRoot))?.pages ?? []).map((entry) => entry.id);
+	} catch (error: unknown) {
+		logStderr('comment page lookup', error);
+		return undefined;
+	}
+	for (const pageId of pageIds) {
+		if (pageId === exceptPageId) {
+			continue;
+		}
+		try {
+			await assertLayoutDirsOwned({ workspaceRoot, pageId });
+			const file = await readCommentsFile({ workspaceRoot, pageId });
+			if (file.comments.some((comment) => comment.id === id)) {
+				return pageId;
+			}
+		} catch (error: unknown) {
+			logStderr(`page ${pageId} comments lookup`, error);
+		}
+	}
+	return undefined;
 };

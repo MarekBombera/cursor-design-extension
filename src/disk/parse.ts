@@ -4,6 +4,7 @@ import {
 	CorruptManifestError,
 	CorruptMetaError,
 	CorruptProjectError,
+	InvalidArgsError,
 	InvalidArtboardIdError,
 	UnsupportedProjectVersionError,
 	UnsupportedSchemaVersionError,
@@ -157,6 +158,17 @@ export const parseProject = (value: unknown): Project => {
 	const parsed = projectSchema.safeParse(value);
 	if (!parsed.success) {
 		throw new CorruptProjectError({ cause: parsed.error });
+	}
+	return parsed.data;
+};
+
+const PAGE_TITLE_MESSAGE = `title must be 1 to ${MAX_PAGE_TITLE_CHARS} characters with no control characters. Fix args and retry.`;
+
+// A page title from MCP args or the panel: trimmed, then held to the project.json title rule.
+export const parsePageTitle = (value: unknown): string => {
+	const parsed = pageTitleString.safeParse(typeof value === 'string' ? value.trim() : value);
+	if (!parsed.success) {
+		throw new InvalidArgsError(PAGE_TITLE_MESSAGE);
 	}
 	return parsed.data;
 };

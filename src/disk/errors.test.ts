@@ -3,10 +3,12 @@ import { test } from 'vite-plus/test';
 
 import {
 	ArtboardNotFoundError,
+	CommentNotFoundError,
 	CorruptManifestError,
 	CorruptMetaError,
 	CorruptProjectError,
 	DiskError,
+	PageNotFoundError,
 	throwDiskError,
 	UnsupportedProjectVersionError,
 } from './errors';
@@ -53,5 +55,30 @@ test('throwDiskError wraps an fs failure as DISK_ERROR with authored copy and th
 	assert.throws(
 		() => throwDiskError(domain),
 		(error: unknown) => error === domain,
+	);
+});
+
+test('PageNotFoundError names a missing folder by default and an unlisted id with reason unlisted', () => {
+	assert.equal(
+		new PageNotFoundError('page-2').message,
+		'Page "page-2" has no folder. Restore .cursor-design/pages/page-2/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+	);
+	const unlisted = new PageNotFoundError('page-2', { reason: 'unlisted' });
+	assert.equal(unlisted.code, 'PAGE_NOT_FOUND');
+	assert.equal(unlisted.message, 'Page "page-2" does not exist. Call list_pages for the page ids.');
+});
+
+test('CommentNotFoundError names the page holding the id when found elsewhere', () => {
+	assert.equal(
+		new CommentNotFoundError().message,
+		'Comment not found. Call list_comments to see current comment ids.',
+	);
+	const found = new CommentNotFoundError({
+		found: { id: 'c1', pageId: 'page-2', tool: 'resolve_comment' },
+	});
+	assert.equal(found.code, 'COMMENT_NOT_FOUND');
+	assert.equal(
+		found.message,
+		'Comment "c1" is on page page-2, which is not open. Call open_page("page-2"), then resolve_comment again.',
 	);
 });

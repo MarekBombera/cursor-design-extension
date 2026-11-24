@@ -13,6 +13,7 @@ import {
 } from '../disk/layout';
 import { artboardToolInputSchemas } from './artboardTools';
 import { commentToolInputSchemas } from './commentTools';
+import { pageToolInputSchemas } from './pageTools';
 
 // Drift guard for the shipped Agent skill (skills/cursor-design/SKILL.md): a tool, Agent-visible
 // error code, frame limit or sandbox change that lands without the skill fails here. AGENTS.md
@@ -25,6 +26,7 @@ const skill = readRepoFile('skills/cursor-design/SKILL.md');
 const DOCUMENTED_TOOLS = new Set([
 	...Object.keys(artboardToolInputSchemas),
 	...Object.keys(commentToolInputSchemas),
+	...Object.keys(pageToolInputSchemas),
 ]);
 
 const ERROR_CODES = new Set(

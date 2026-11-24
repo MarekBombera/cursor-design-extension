@@ -1,7 +1,7 @@
 import { Client, InMemoryTransport, type CallToolResult } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
@@ -177,6 +177,7 @@ const requireErrorCode = (result: CallToolResult, code: string): Record<string, 
 	assert.equal(result.isError, true, describeResult(result));
 	const body = requireToolBody(result);
 	assert.equal(body.code, code, describeResult(result));
+	assert.equal('page' in body, false, describeResult(result));
 	return body;
 };
 
@@ -195,6 +196,46 @@ const seedArtboard = async (
 	assertToolSuccess(result);
 	return result;
 };
+
+const PAGE_ONE = { id: 'page-1', title: 'Page 1' };
+
+test('every artboard tool success carries the open page read before the op', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		// set_artboard creates the project first, so its own result already names page-1.
+		const created = await seedArtboard(client, 'hero', '<p>hero</p>');
+		const calls: [string, Record<string, unknown>][] = [
+			[UPDATE_ARTBOARD_TOOL, { artboardId: 'hero', html: '<p>v2</p>', baseGeneration: 1 }],
+			[READ_ARTBOARD_TOOL, {}],
+			[LIST_ARTBOARDS_TOOL, {}],
+			[PLACE_FRAME_TOOL, { id: 'hero', x: 0, y: 0 }],
+			[SET_ACTIVE_ARTBOARD_TOOL, { artboardId: 'hero' }],
+			[EXPORT_ARTBOARD_TOOL, {}],
+			[HANDOFF_STATUS_TOOL, {}],
+		];
+		const pages = [assertToolSuccess(created).page];
+		for (const [name, args] of calls) {
+			pages.push(assertToolSuccess(await callArtboardTool(client, name, args)).page);
+		}
+		assert.deepEqual(pages, Array(calls.length + 1).fill(PAGE_ONE));
+	});
+});
+
+test('a 0.4 folder migrates on the first call, whose result names page-1', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR, 'artboards'), { recursive: true });
+	await writeFile(join(workspaceRoot, CURSOR_DESIGN_DIR, 'artboards', 'hero.html'), '<p>hero</p>');
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		const body = assertToolSuccess(await callArtboardTool(client, LIST_ARTBOARDS_TOOL));
+		assert.deepEqual(body.page, PAGE_ONE);
+		assert.deepEqual(
+			(body.artboards as { artboardId: string }[]).map(({ artboardId }) => artboardId),
+			['hero'],
+		);
+	});
+});
 
 test('set_active_artboard hero then omit-id read returns hero', async () => {
 	const workspaceRoot = await makeTempRoot();

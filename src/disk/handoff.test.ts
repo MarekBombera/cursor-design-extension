@@ -31,6 +31,7 @@ import {
 	handoffDirSegments,
 	handoffRootSegments,
 	manifestPathSegments,
+	projectPathSegments,
 	workspaceTokensPathSegments,
 } from './layout';
 import { resolveOpenPage } from './openPage';
@@ -205,6 +206,7 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 		exportId: 'canvas-1',
 		exportedAt: FIXED_NOW.toISOString(),
 		pageId: FIRST_PAGE_ID,
+		pageTitle: 'Check\nout',
 		frames: [
 			{ id: 'c', label: 'Card\r\nAlt', width: 390, folder: 'ungrouped', artboardHash: hash },
 			{
@@ -228,7 +230,7 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 	});
 	assert.match(
 		markdown,
-		/^# Implement this canvas\n\nexportId: canvas-1\nexportedAt: \S+\nframes: 4\n/,
+		/^# Implement this canvas\n\nexportId: canvas-1\nexportedAt: \S+\npage: page-1\npageTitle: Check out\nframes: 4\n/,
 	);
 	const headings = markdown.split('\n').filter((line) => line.startsWith('### '));
 	assert.deepEqual(headings, ['### (no group) (`ungrouped/`)', '### Desk top (`desk-top/`)']);
@@ -321,6 +323,14 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 	const workspaceRoot = await makeTempRoot();
 	await createFourFrameCanvas(workspaceRoot);
 	const beforeManifest = await readManifestJson(workspaceRoot);
+	const projectPath = join(workspaceRoot, ...projectPathSegments);
+	const project = JSON.parse(await readFile(projectPath, 'utf8')) as {
+		pages: { id: string; title: string }[];
+	};
+	await writeFile(
+		projectPath,
+		JSON.stringify({ ...project, pages: [{ id: FIRST_PAGE_ID, title: 'Checkout' }] }),
+	);
 	const exported = await exportArtboard({
 		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		now: FIXED_NOW,
@@ -345,6 +355,11 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 		),
 	);
 	assert.ok(!implementText.includes('.cursor-design/artboards/'));
+	assert.ok(
+		implementText.includes(
+			`exportedAt: ${FIXED_NOW.toISOString()}\npage: page-1\npageTitle: Checkout\n`,
+		),
+	);
 
 	const leafDir = join(workspaceRoot, ...handoffDirSegments(FIXED_EXPORT_ID));
 	assert.deepEqual(
@@ -472,6 +487,21 @@ test('export with no manifest creates it active on the legacy frame', async () =
 	assert.equal(manifest.activeArtboardId, 'a');
 	assert.equal(manifest.lastExport?.artboardId, 'a');
 	assert.equal(manifest.lastExport?.frames?.length, 4);
+});
+
+test('export titles the page by its default name when project.json has no entry for it', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await createFourFrameCanvas(workspaceRoot);
+	await rm(join(workspaceRoot, ...projectPathSegments));
+	const exported = await exportArtboard({
+		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
+		now: FIXED_NOW,
+	});
+	const implementText = await readFile(
+		join(workspaceRoot, ...handoffDirSegments(exported.exportId), IMPLEMENT_FILE),
+		'utf8',
+	);
+	assert.ok(implementText.includes('\npage: page-1\npageTitle: Page 1\n'));
 });
 
 const STALE_HERO_HTML = '<p>hero edited</p>';

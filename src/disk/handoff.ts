@@ -11,7 +11,7 @@ import { type LastExport } from './parse';
 
 const collapseMarkdownHeaderValue = (value: string): string => value.replaceAll(/[\r\n]+/g, ' ');
 
-const compactIsoTime = (now: Date): string => now.toISOString().replaceAll(/[-:.]/g, '');
+export const compactIsoTime = (now: Date): string => now.toISOString().replaceAll(/[-:.]/g, '');
 
 export const makeCanvasExportId = ({ now }: { now: Date }): string =>
 	`canvas-${compactIsoTime(now)}`;
@@ -77,11 +77,13 @@ export const buildCanvasImplementMarkdown = ({
 	exportId,
 	exportedAt,
 	pageId,
+	pageTitle,
 	frames,
 }: {
 	exportId: string;
 	exportedAt: string;
 	pageId: string;
+	pageTitle: string;
 	frames: readonly CanvasImplementFrame[];
 }): string => {
 	const artboardsDir = artboardsDirSegments(pageId).join('/');
@@ -112,6 +114,8 @@ export const buildCanvasImplementMarkdown = ({
 
 exportId: ${exportId}
 exportedAt: ${exportedAt}
+page: ${pageId}
+pageTitle: ${collapseMarkdownHeaderValue(pageTitle)}
 frames: ${frames.length}
 
 ## Frames

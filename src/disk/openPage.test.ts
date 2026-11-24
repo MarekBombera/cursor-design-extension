@@ -557,10 +557,20 @@ test('resolveRequestedPage refuses an unindexed id, an unindexed folder, a missi
 	// page-5 has a folder that project.json does not list: only the index check refuses it.
 	await mkdir(designDir(root, 'pages', 'page-5'));
 	const before = await readTree(root, { withMtime: true });
-	for (const pageId of ['page-4', 'page-5', 'page-3', '../x']) {
+	const unlisted = (pageId: string): string =>
+		`Page "${pageId}" does not exist. Call list_pages for the page ids.`;
+	const noFolder = (pageId: string): string =>
+		`Page "${pageId}" has no folder. Restore .cursor-design/pages/${pageId}/, or delete .cursor-design/project.json to rebuild the page list from the page folders.`;
+	for (const [pageId, message] of [
+		['page-4', unlisted('page-4')],
+		['page-5', unlisted('page-5')],
+		['page-3', noFolder('page-3')],
+		['../x', noFolder('../x')],
+	] as const) {
 		await assert.rejects(
 			resolveRequestedPage({ workspaceRoot: root, pageId }),
-			(error: unknown) => error instanceof PageNotFoundError && error.pageId === pageId,
+			(error: unknown) =>
+				error instanceof PageNotFoundError && error.pageId === pageId && error.message === message,
 			pageId,
 		);
 	}

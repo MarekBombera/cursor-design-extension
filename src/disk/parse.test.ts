@@ -4,7 +4,12 @@ import { test } from 'vite-plus/test';
 
 import * as z from 'zod/mini';
 
-import { CorruptManifestError, CorruptMetaError, CorruptProjectError } from './errors';
+import {
+	CorruptManifestError,
+	CorruptMetaError,
+	CorruptProjectError,
+	InvalidArgsError,
+} from './errors';
 import { hashHtml } from './hash';
 import { DEFAULT_VIEWPORT, FIRST_PAGE_ID, isPageId } from './layout';
 import {
@@ -13,6 +18,7 @@ import {
 	type Project,
 	parseManifest,
 	parseMeta,
+	parsePageTitle,
 	parseProject,
 	serializeManifest,
 	serializeMeta,
@@ -328,5 +334,20 @@ test('isPageId accepts page-1 to page-999999 only', () => {
 	assert.ok(isPageId('page-999999'));
 	for (const value of ['page-0', 'page-01', 'page-1234567', 'page-', 'Page-1', '../x', 1, null]) {
 		assert.equal(isPageId(value), false, String(value));
+	}
+});
+
+test('parsePageTitle trims and refuses an empty, over-long, control-char or non-string title', () => {
+	assert.equal(parsePageTitle('  Pricing  '), 'Pricing');
+	assert.equal(parsePageTitle(` ${'a'.repeat(80)} `), 'a'.repeat(80));
+	for (const value of ['', '   ', 'a'.repeat(81), 'a\nb', 'a\u0000', 42, undefined, null]) {
+		assert.throws(
+			() => parsePageTitle(value),
+			(error: unknown) =>
+				error instanceof InvalidArgsError &&
+				error.message ===
+					'title must be 1 to 80 characters with no control characters. Fix args and retry.',
+			JSON.stringify(value),
+		);
 	}
 });
