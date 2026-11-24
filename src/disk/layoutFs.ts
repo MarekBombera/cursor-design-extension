@@ -16,7 +16,7 @@ import {
 } from './errors';
 import {
 	CANVAS_SCHEMA_VERSION,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	artboardHtmlFileName,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
@@ -60,7 +60,7 @@ const directoryRequiredMessage = (relativePath: string): string =>
 type LayoutEntryKind = 'missing' | 'symlink' | 'file' | 'other';
 
 // lstat (never stat) at every level: the id charset already blocks `..`, so rejecting
-// symlinks here keeps layout I/O under {workspaceRoot}/.cursor-design/ without realpath.
+// symlinks here keeps layout I/O under {workspaceRoot}/.vibeboard/ without realpath.
 // ponytail: reads check then act, so a symlink swapped in between is followed. Writes are safe:
 // writeUtf8 unlinks the tmp then wx-writes (a leftover symlink tmp cannot redirect the payload),
 // and rename replaces the name without following it. Upgrade path: open reads with O_NOFOLLOW and
@@ -121,7 +121,7 @@ export const assertDirOwned = async (
 export const assertLayoutDirsOwned = async (page: PageLocation): Promise<void> => {
 	// Never root artboards: there it is the 0.4 tombstone file.
 	const dirLayouts: readonly (readonly string[])[] = [
-		[CURSOR_DESIGN_DIR],
+		[VIBEBOARD_DIR],
 		pagesDirSegments,
 		pageDirSegments(page.pageId),
 		artboardsDirSegments(page.pageId),
@@ -349,4 +349,23 @@ export const requireActiveManifest = (manifest: ArtboardManifest | undefined): A
 		throw new ArtboardNotFoundError('');
 	}
 	return manifest;
+};
+
+// TODO(1.0): remove .cursor-design migration
+export const LEGACY_DESIGN_DIR = '.cursor-design';
+
+// Moves the pre-rename design folder to VIBEBOARD_DIR; never over an existing one ('both').
+export const migrateLegacyDesignDir = async (
+	workspaceRoot: string,
+): Promise<'moved' | 'both' | 'none'> => {
+	const legacyPath = join(workspaceRoot, LEGACY_DESIGN_DIR);
+	if ((await lstatOrUndefined(legacyPath)) === undefined) {
+		return 'none';
+	}
+	const currentPath = join(workspaceRoot, VIBEBOARD_DIR);
+	if ((await lstatOrUndefined(currentPath)) !== undefined) {
+		return 'both';
+	}
+	await rename(legacyPath, currentPath);
+	return 'moved';
 };

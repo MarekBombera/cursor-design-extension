@@ -18,7 +18,7 @@ import {
 
 // Pinned values: the module keeps these private.
 const FRAME_READ_ERROR_MESSAGE =
-	'Could not read this artboard file. Check the Output panel: Cursor Design.';
+	'Could not read this artboard file. Check the Output panel: Vibeboard.';
 const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 
 // The real implementations behind counters; a case overrides one call with mockImplementationOnce.

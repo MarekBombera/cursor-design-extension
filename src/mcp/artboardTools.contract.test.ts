@@ -10,15 +10,15 @@ import { registerArtboardTools } from './artboardTools';
 import {
 	ARTBOARDS_TOMBSTONE_TEXT,
 	FIRST_PAGE_ID,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	LOCK_FILE,
 	artboardHtmlPathSegments,
 	artboardMetaPathSegments,
 } from '../disk/layout';
 import {
-	CURSOR_DESIGN_MCP_SERVER_NAME,
-	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
-	CURSOR_DESIGN_WORKSPACE_ROOTS_ENV,
+	VIBEBOARD_MCP_SERVER_NAME,
+	VIBEBOARD_WORKSPACE_ROOT_ENV,
+	VIBEBOARD_WORKSPACE_ROOTS_ENV,
 } from './mcpIdentity';
 import {
 	EXPORT_ARTBOARD_TOOL,
@@ -36,18 +36,18 @@ let contractClient: Client | undefined;
 let contractServer: McpServer | undefined;
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-contract-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-contract-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
 
 const connectContractPair = async (): Promise<Client> => {
 	contractServer = new McpServer({
-		name: CURSOR_DESIGN_MCP_SERVER_NAME,
-		version: process.env.CURSOR_DESIGN_VERSION ?? '0.0.0',
+		name: VIBEBOARD_MCP_SERVER_NAME,
+		version: process.env.VIBEBOARD_VERSION ?? '0.0.0',
 	});
 	registerArtboardTools(contractServer);
-	contractClient = new Client({ name: 'cursor-design-contract', version: '0.0.0' });
+	contractClient = new Client({ name: 'vibeboard-contract', version: '0.0.0' });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await Promise.all([
 		contractClient.connect(clientTransport),
@@ -87,28 +87,28 @@ const restoreEnvVar = (name: string, previous: string | undefined): void => {
 };
 
 const withWorkspaceEnv = async (workspaceRoot: string, run: () => Promise<void>): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	const previousRoot = process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] = workspaceRoot;
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	const previousRoot = process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
+	process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
+	process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] = workspaceRoot;
 	try {
 		await run();
 	} finally {
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOTS_ENV, previousRoots);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOT_ENV, previousRoot);
 	}
 };
 
 const withoutWorkspaceEnv = async (run: () => Promise<void>): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	const previousRoot = process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
-	delete process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	delete process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	const previousRoot = process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
+	delete process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	delete process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
 	try {
 		await run();
 	} finally {
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOTS_ENV, previousRoots);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOT_ENV, previousRoot);
 	}
 };
 
@@ -224,8 +224,8 @@ test('every artboard tool success carries the open page read before the op', asy
 
 test('a 0.4 folder migrates on the first call, whose result names page-1', async () => {
 	const workspaceRoot = await makeTempRoot();
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR, 'artboards'), { recursive: true });
-	await writeFile(join(workspaceRoot, CURSOR_DESIGN_DIR, 'artboards', 'hero.html'), '<p>hero</p>');
+	await mkdir(join(workspaceRoot, VIBEBOARD_DIR, 'artboards'), { recursive: true });
+	await writeFile(join(workspaceRoot, VIBEBOARD_DIR, 'artboards', 'hero.html'), '<p>hero</p>');
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
 		const body = assertToolSuccess(await callArtboardTool(client, LIST_ARTBOARDS_TOOL));
@@ -364,7 +364,7 @@ test('update_artboard under a fresh foreign lock returns WORKSPACE_BUSY and writ
 		const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 		const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 		const metaBefore = await readFile(metaPath, 'utf8');
-		await writeFile(join(workspaceRoot, CURSOR_DESIGN_DIR, LOCK_FILE), '1 live-holder', 'utf8');
+		await writeFile(join(workspaceRoot, VIBEBOARD_DIR, LOCK_FILE), '1 live-holder', 'utf8');
 		const result = await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
 			artboardId: 'hero',
 			html: '<p>v2</p>',
@@ -425,18 +425,15 @@ test('set_artboard on a fresh root creates the project, the tombstone and the pa
 		const client = await connectContractPair();
 		await seedArtboard(client, 'hero', '<p>hero</p>');
 		assert.deepEqual(
-			JSON.parse(await readFile(join(workspaceRoot, '.cursor-design/project.json'), 'utf8')),
+			JSON.parse(await readFile(join(workspaceRoot, '.vibeboard/project.json'), 'utf8')),
 			{ version: 1, openPageId: 'page-1', pages: [{ id: 'page-1', title: 'Page 1' }] },
 		);
 		assert.equal(
-			await readFile(join(workspaceRoot, '.cursor-design/artboards'), 'utf8'),
+			await readFile(join(workspaceRoot, '.vibeboard/artboards'), 'utf8'),
 			ARTBOARDS_TOMBSTONE_TEXT,
 		);
 		assert.equal(
-			await readFile(
-				join(workspaceRoot, '.cursor-design/pages/page-1/artboards/hero.html'),
-				'utf8',
-			),
+			await readFile(join(workspaceRoot, '.vibeboard/pages/page-1/artboards/hero.html'), 'utf8'),
 			'<p>hero</p>',
 		);
 	});
@@ -447,7 +444,7 @@ test('set_artboard after the open page folder was deleted is PAGE_NOT_FOUND and 
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
 		await seedArtboard(client, 'hero', '<p>hero</p>');
-		const pageDir = join(workspaceRoot, '.cursor-design/pages/page-1');
+		const pageDir = join(workspaceRoot, '.vibeboard/pages/page-1');
 		await rm(pageDir, { recursive: true });
 		const body = requireErrorCode(
 			await callArtboardTool(client, SET_ARTBOARD_TOOL, { artboardId: 'side', html: '' }),
@@ -455,7 +452,7 @@ test('set_artboard after the open page folder was deleted is PAGE_NOT_FOUND and 
 		);
 		assert.equal(
 			body.message,
-			'Page "page-1" has no folder. Restore .cursor-design/pages/page-1/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+			'Page "page-1" has no folder. Restore .vibeboard/pages/page-1/, or delete .vibeboard/project.json to rebuild the page list from the page folders.',
 		);
 		await assert.rejects(access(pageDir));
 	});
@@ -466,7 +463,7 @@ test('a project.json that is not JSON is CORRUPT_PROJECT and is left as it was',
 	await withWorkspaceEnv(workspaceRoot, async () => {
 		const client = await connectContractPair();
 		await seedArtboard(client, 'hero', '<p>hero</p>');
-		const projectPath = join(workspaceRoot, '.cursor-design/project.json');
+		const projectPath = join(workspaceRoot, '.vibeboard/project.json');
 		await writeFile(projectPath, '{ not json');
 		const body = requireErrorCode(
 			await callArtboardTool(client, LIST_ARTBOARDS_TOOL),
@@ -474,7 +471,7 @@ test('a project.json that is not JSON is CORRUPT_PROJECT and is left as it was',
 		);
 		assert.equal(
 			body.message,
-			'Project index is invalid. Fix .cursor-design/project.json (version 1), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".',
+			'Project index is invalid. Fix .vibeboard/project.json (version 1), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".',
 		);
 		assert.equal(await readFile(projectPath, 'utf8'), '{ not json');
 	});
@@ -486,7 +483,7 @@ test('CORRUPT_META results still carry artboardId and name the page meta path', 
 		const client = await connectContractPair();
 		await seedArtboard(client, 'hero', '<p>hero</p>');
 		await writeFile(
-			join(workspaceRoot, '.cursor-design/pages/page-1/artboards/hero.meta.json'),
+			join(workspaceRoot, '.vibeboard/pages/page-1/artboards/hero.meta.json'),
 			'{ not json',
 		);
 		const body = requireErrorCode(
@@ -496,7 +493,7 @@ test('CORRUPT_META results still carry artboardId and name the page meta path', 
 		assert.equal(body.artboardId, 'hero');
 		assert.equal(
 			body.message,
-			'Artboard "hero" meta is invalid. Restore .cursor-design/pages/page-1/artboards/hero.meta.json or set_artboard a new id.',
+			'Artboard "hero" meta is invalid. Restore .vibeboard/pages/page-1/artboards/hero.meta.json or set_artboard a new id.',
 		);
 	});
 });

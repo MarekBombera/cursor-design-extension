@@ -38,7 +38,7 @@ const confirmAndDeletePage = async ({
 	}
 	const choice = await vscode.window.showWarningMessage(
 		`Delete "${entry.title}"?`,
-		{ modal: true, detail: 'Its files move to .cursor-design/deleted/.' },
+		{ modal: true, detail: 'Its files move to .vibeboard/deleted/.' },
 		DELETE_ACTION,
 	);
 	if (choice !== DELETE_ACTION) {

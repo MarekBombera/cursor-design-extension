@@ -51,7 +51,7 @@ vi.mock('./workspaceLock', async (importOriginal) => {
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-open-page-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-open-page-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
@@ -64,9 +64,9 @@ afterEach(async () => {
 	);
 });
 
-const TOMBSTONE_TEXT = `cursor-design keeps artboards in .cursor-design/pages/<page id>/artboards/ now.
-Do not delete or replace this file. It stops an older cursor-design MCP server from writing artboards here, where the extension no longer reads them.
-If a cursor-design tool fails with ".cursor-design/artboards must be a directory (symlinks rejected).", quit and reopen Cursor.
+const TOMBSTONE_TEXT = `vibeboard keeps artboards in .vibeboard/pages/<page id>/artboards/ now.
+Do not delete or replace this file. It stops an older vibeboard MCP server from writing artboards here, where the extension no longer reads them.
+If a vibeboard tool fails with ".vibeboard/artboards must be a directory (symlinks rejected).", quit and reopen Cursor.
 `;
 
 const PAGE_ONE_PROJECT = {
@@ -75,8 +75,7 @@ const PAGE_ONE_PROJECT = {
 	pages: [{ id: 'page-1', title: 'Page 1' }],
 };
 
-const designDir = (root: string, ...names: string[]): string =>
-	join(root, '.cursor-design', ...names);
+const designDir = (root: string, ...names: string[]): string => join(root, '.vibeboard', ...names);
 
 const pageOneDir = (root: string, ...names: string[]): string =>
 	designDir(root, 'pages', 'page-1', ...names);
@@ -138,15 +137,13 @@ const migratedTree = (before: Record<string, string>): Record<string, string> =>
 	for (const [path, value] of Object.entries(before)) {
 		const [top, name, ...rest] = path.split('/');
 		const isPageEntry =
-			top === '.cursor-design' &&
-			PAGE_ENTRIES.some((entry) => entry === name) &&
-			name !== undefined;
-		after[isPageEntry ? ['.cursor-design/pages/page-1', name, ...rest].join('/') : path] = value;
+			top === '.vibeboard' && PAGE_ENTRIES.some((entry) => entry === name) && name !== undefined;
+		after[isPageEntry ? ['.vibeboard/pages/page-1', name, ...rest].join('/') : path] = value;
 	}
-	after['.cursor-design/pages'] = 'dir';
-	after['.cursor-design/pages/page-1'] = 'dir';
-	after['.cursor-design/artboards'] = `file:${TOMBSTONE_TEXT}`;
-	after['.cursor-design/project.json'] = `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`;
+	after['.vibeboard/pages'] = 'dir';
+	after['.vibeboard/pages/page-1'] = 'dir';
+	after['.vibeboard/artboards'] = `file:${TOMBSTONE_TEXT}`;
+	after['.vibeboard/project.json'] = `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`;
 	return after;
 };
 
@@ -274,12 +271,12 @@ test('two JSON conflicts are named together in one message', async () => {
 		root,
 		names: ['manifest.json', 'comments.json'],
 		message:
-			'Cannot move the existing design into .cursor-design/pages/page-1/: .cursor-design/manifest.json and .cursor-design/pages/page-1/manifest.json both exist; .cursor-design/comments.json and .cursor-design/pages/page-1/comments.json both exist. Keep one copy of each JSON file: move or delete the other by hand. Then retry.',
+			'Cannot move the existing design into .vibeboard/pages/page-1/: .vibeboard/manifest.json and .vibeboard/pages/page-1/manifest.json both exist; .vibeboard/comments.json and .vibeboard/pages/page-1/comments.json both exist. Keep one copy of each JSON file: move or delete the other by hand. Then retry.',
 	});
 });
 
 const ARTBOARDS_CONFLICT_MESSAGE =
-	'Cannot move the existing design into .cursor-design/pages/page-1/: .cursor-design/artboards/ is a folder, but artboards now live in .cursor-design/pages/page-1/artboards/. Move the files you want from .cursor-design/artboards/ into .cursor-design/pages/page-1/artboards/, then delete .cursor-design/artboards/ (quit and reopen Cursor first if an older cursor-design MCP server may still be running). Then retry.';
+	'Cannot move the existing design into .vibeboard/pages/page-1/: .vibeboard/artboards/ is a folder, but artboards now live in .vibeboard/pages/page-1/artboards/. Move the files you want from .vibeboard/artboards/ into .vibeboard/pages/page-1/artboards/, then delete .vibeboard/artboards/ (quit and reopen Cursor first if an older vibeboard MCP server may still be running). Then retry.';
 
 test('a stale 0.4 artboards folder between the move and the tombstone is a conflict', async () => {
 	const root = await makeTempRoot();
@@ -328,7 +325,7 @@ test('an indexed folder rewrites a deleted tombstone and nothing else', async ()
 	});
 	assert.deepEqual(await readTree(root), {
 		...before,
-		'.cursor-design/artboards': `file:${TOMBSTONE_TEXT}`,
+		'.vibeboard/artboards': `file:${TOMBSTONE_TEXT}`,
 	});
 });
 
@@ -367,7 +364,7 @@ test('a tombstone is not legacy: with a page folder and no index it rebuilds', a
 	await resolveFirstPage(root);
 	assert.deepEqual(await readTree(root), {
 		...before,
-		'.cursor-design/project.json': `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`,
+		'.vibeboard/project.json': `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`,
 	});
 });
 
@@ -427,22 +424,22 @@ test('a fresh write creates the index, the tombstone and an empty page-1', async
 	const root = await makeTempRoot();
 	await resolveFirstPage(root, true);
 	assert.deepEqual(await readTree(root), {
-		'.cursor-design': 'dir',
-		'.cursor-design/artboards': `file:${TOMBSTONE_TEXT}`,
-		'.cursor-design/pages': 'dir',
-		'.cursor-design/pages/page-1': 'dir',
-		'.cursor-design/project.json': `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`,
+		'.vibeboard': 'dir',
+		'.vibeboard/artboards': `file:${TOMBSTONE_TEXT}`,
+		'.vibeboard/pages': 'dir',
+		'.vibeboard/pages/page-1': 'dir',
+		'.vibeboard/project.json': `file:${JSON.stringify(PAGE_ONE_PROJECT, null, 2)}\n`,
 	});
 });
 
-test('.cursor-design as a file or pages as a symlink is the directory DiskError', async () => {
+test('.vibeboard as a file or pages as a symlink is the directory DiskError', async () => {
 	const fileRoot = await makeTempRoot();
 	await writeFile(designDir(fileRoot), 'not a folder\n');
 	await assert.rejects(
 		resolveOpenPage({ workspaceRoot: fileRoot, createIfFresh: true }),
 		(error) =>
 			error instanceof DiskError &&
-			error.message === '.cursor-design must be a directory (symlinks rejected).',
+			error.message === '.vibeboard must be a directory (symlinks rejected).',
 	);
 
 	const linkRoot = await makeTempRoot();
@@ -453,7 +450,7 @@ test('.cursor-design as a file or pages as a symlink is the directory DiskError'
 		resolveOpenPage({ workspaceRoot: linkRoot, createIfFresh: true }),
 		(error) =>
 			error instanceof DiskError &&
-			error.message === '.cursor-design/pages must be a directory (symlinks rejected).',
+			error.message === '.vibeboard/pages must be a directory (symlinks rejected).',
 	);
 });
 
@@ -497,8 +494,7 @@ test('a rebuild over 101 page folders lists the lowest 100 and logs the rest', a
 		Array.from({ length: 100 }, (_, index) => `page-${index + 1}`),
 	);
 	// Once per classify: lock-free, then under the lock; the rebuild reuses the locked scan.
-	const capLine =
-		'cursor-design: page folder scan failed: 1 page folders past 100 are not listed\n';
+	const capLine = 'vibeboard: page folder scan failed: 1 page folders past 100 are not listed\n';
 	assert.deepEqual(
 		stderrWrite.mock.calls.map(([text]) => text),
 		[capLine, capLine],
@@ -515,7 +511,7 @@ test('a file at pages/page-1 in a legacy folder is the directory DiskError and m
 		resolveOpenPage({ workspaceRoot: root, createIfFresh: true }),
 		(error) =>
 			error instanceof DiskError &&
-			error.message === '.cursor-design/pages/page-1 must be a directory (symlinks rejected).',
+			error.message === '.vibeboard/pages/page-1 must be a directory (symlinks rejected).',
 	);
 	assert.deepEqual(await readTree(root), before);
 });
@@ -560,7 +556,7 @@ test('resolveRequestedPage refuses an unindexed id, an unindexed folder, a missi
 	const unlisted = (pageId: string): string =>
 		`Page "${pageId}" does not exist. Call list_pages for the page ids.`;
 	const noFolder = (pageId: string): string =>
-		`Page "${pageId}" has no folder. Restore .cursor-design/pages/${pageId}/, or delete .cursor-design/project.json to rebuild the page list from the page folders.`;
+		`Page "${pageId}" has no folder. Restore .vibeboard/pages/${pageId}/, or delete .vibeboard/project.json to rebuild the page list from the page folders.`;
 	for (const [pageId, message] of [
 		['page-4', unlisted('page-4')],
 		['page-5', unlisted('page-5')],

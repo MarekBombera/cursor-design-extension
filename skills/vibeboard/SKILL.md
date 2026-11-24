@@ -1,20 +1,20 @@
 ---
-name: cursor-design
-description: Use when the cursor-design MCP tools (`set_artboard`, `update_artboard`, `get_comment`) are available and the user wants to design, mock up, wireframe or prototype UI screens as live HTML artboards on the Cursor Design canvas, change a design, act on cursor-design comments, or implement a design from a cursor-design handoff.
+name: vibeboard
+description: Use when the vibeboard MCP tools (`set_artboard`, `update_artboard`, `get_comment`) are available and the user wants to design, mock up, wireframe or prototype UI screens as live HTML artboards on the Vibeboard canvas, change a design, act on vibeboard comments, or implement a design from a vibeboard handoff.
 ---
 
-> Managed by the cursor-design extension: it replaces this file whenever the installed extension version ships a different one, so edits here are lost.
+> Managed by the vibeboard extension: it replaces this file whenever the installed extension version ships a different one, so edits here are lost.
 
-# cursor-design
+# vibeboard
 
-You design UI by writing complete HTML documents ("artboards") into the workspace through MCP tools. The **Cursor Design** panel shows every artboard as a live frame on a canvas, like Figma, and reloads a frame shortly after each write. The user looks at the panel and talks to you in chat. There is no chat in the panel.
+You design UI by writing complete HTML documents ("artboards") into the workspace through MCP tools. The **Vibeboard** panel shows every artboard as a live frame on a canvas, like Figma, and reloads a frame shortly after each write. The user looks at the panel and talks to you in chat. There is no chat in the panel.
 
-- Disk is the source of truth: `.cursor-design/` in the workspace folder. `.cursor-design/project.json` names the open page (`openPageId`), and the tools work on that page's files in `.cursor-design/pages/<openPageId>/` (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`).
-- The first cursor-design call after an update may move an older design folder into `.cursor-design/pages/page-1/`, once. That is expected.
-- `.cursor-design/artboards` is a file, not a folder. Never delete or replace it. A tool failing with `.cursor-design/artboards must be a directory (symlinks rejected).` means an older cursor-design MCP server is still running: ask the user to quit and reopen Cursor.
+- Disk is the source of truth: `.vibeboard/` in the workspace folder. `.vibeboard/project.json` names the open page (`openPageId`), and the tools work on that page's files in `.vibeboard/pages/<openPageId>/` (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`).
+- The first vibeboard call after an update may move an older design folder into `.vibeboard/pages/page-1/`, once. That is expected.
+- `.vibeboard/artboards` is a file, not a folder. Never delete or replace it. A tool failing with `.vibeboard/artboards must be a directory (symlinks rejected).` means an older vibeboard MCP server is still running: ask the user to quit and reopen Cursor.
 - One artboard = one frame = one complete, standalone page (or one state of a page) at one width.
-- If none of these tools are available, cursor-design is not installed or not enabled here. Ignore this skill.
-- **Tool descriptions can be out of date.** After the extension updates, Cursor keeps the old cursor-design server running, with its old tools and descriptions, until Cursor is quit. If a cursor-design tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen Cursor. What a tool actually returns (results and errors) always wins.
+- If none of these tools are available, vibeboard is not installed or not enabled here. Ignore this skill.
+- **Tool descriptions can be out of date.** After the extension updates, Cursor keeps the old vibeboard server running, with its old tools and descriptions, until Cursor is quit. If a vibeboard tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen Cursor. What a tool actually returns (results and errors) always wins.
 
 ## Tools
 
@@ -23,7 +23,7 @@ Argument names differ between tools. Use these exact shapes:
 - `list_artboards()`: every artboard id with its `generation`, and the canvas `frames` (`x`, `y`, `width`, `label`, `group`). Call it first in a new chat. An empty workspace returns empty lists, not an error.
 - `set_artboard({ artboardId, html, title })`: creates a new artboard and returns its `generation`. Fails if the id exists. Ids: letters, digits, `.`, `_`, `-` (max 64).
 - `read_artboard({ artboardId })`: returns `html` and `generation`. It defaults to the active artboard.
-- `update_artboard({ artboardId, html, baseGeneration })`: replaces the whole document and returns the new `generation`. It waits for the workspace lock; `WORKSPACE_BUSY` means another Cursor Design write holds it.
+- `update_artboard({ artboardId, html, baseGeneration })`: replaces the whole document and returns the new `generation`. It waits for the workspace lock; `WORKSPACE_BUSY` means another Vibeboard write holds it.
 - `place_frame({ id, x, y, width, label, group })`: positions one frame. It takes `id`, not `artboardId`. Omitted fields keep their value. Width is clamped to 120–3840. `group: ""` clears the group. Height is never stored. It returns every frame.
 - `set_active_artboard({ artboardId })`: picks the default artboard for `read_artboard` and `handoff_status`.
 - `export_artboard()`: exports every frame and returns `exportId` and `handoffPath`. It takes no arguments. On `WORKSPACE_BUSY`, retry.
@@ -62,7 +62,7 @@ Size and layout:
 ### First design
 
 1. `list_artboards()`. Empty is fine.
-2. `set_artboard(...)` creates `.cursor-design/` on its own. When the result has `panelEnsured: true`, the panel opens. Otherwise, ask the user to run **Cursor Design: Open Artboard** from the Command Palette.
+2. `set_artboard(...)` creates `.vibeboard/` on its own. When the result has `panelEnsured: true`, the panel opens. Otherwise, ask the user to run **Vibeboard: Open Artboard** from the Command Palette.
 3. Pin the frame right away with `place_frame({ id, x: 0, y: 0, width })`.
 
 ### A new design on its own page
@@ -87,11 +87,11 @@ When the user wants a separate design (another screen set, a new idea) rather th
 3. `update_artboard({ artboardId, html, baseGeneration })`.
 4. On `conflict`, the user or another Agent changed the artboard since your read. Read it again, re-apply your change to the new HTML, and retry once. Never send your old copy over theirs. On `WORKSPACE_BUSY`, retry the same call; after a crashed write it can last up to 30 s.
 
-For a small change in a very large document, you may edit `.cursor-design/pages/<openPageId>/artboards/<id>.html` directly with your file edit tool (`openPageId` is in `.cursor-design/project.json`); the panel picks it up. Call `read_artboard` before the next `update_artboard`, because the generation changed.
+For a small change in a very large document, you may edit `.vibeboard/pages/<openPageId>/artboards/<id>.html` directly with your file edit tool (`openPageId` is in `.vibeboard/project.json`); the panel picks it up. Call `read_artboard` before the next `update_artboard`, because the generation changed.
 
 ### Act on comments
 
-The user leaves comments on elements in the Cursor Design panel. Then they give you comment ids, usually in a pasted prompt, or ask you to work through the open comments.
+The user leaves comments on elements in the Vibeboard panel. Then they give you comment ids, usually in a pasted prompt, or ask you to work through the open comments.
 
 1. Collect the ids: the ones the user gave you, or `list_comments({ status: "open" })` when they ask for all open comments. `sent` means the comment was already handed to an Agent in an earlier prompt. Include `sent` ones only when the user asks.
 2. For each id, call `get_comment({ id })`. The request is `body`, refined by the latest `user` entry in `replies` when there is one.
@@ -112,12 +112,12 @@ Rules:
 ### Hand off to code
 
 1. `handoff_status()`. Check its `page` is the design the user means; if not, `open_page` first. If `stale` is true, call `export_artboard()`. Each page exports on its own.
-2. Open `IMPLEMENT.md` in the returned `handoffPath` (`.cursor-design/handoff/<exportId>/`) and follow it. Its `page` line names the page it came from. Implement each frame from its own `index.html`, never from screenshots or `canvas.html`.
+2. Open `IMPLEMENT.md` in the returned `handoffPath` (`.vibeboard/handoff/<exportId>/`) and follow it. Its `page` line names the page it came from. Implement each frame from its own `index.html`, never from screenshots or `canvas.html`.
 3. Frames that show one page at different widths are variants of one responsive page: combine them with media queries.
 4. The design uses system fonts and placeholder boxes only because of the panel's sandbox. In the real app, use the project's real fonts, images and icons.
-5. You write the app code yourself. The tools never touch it, and nothing under `.cursor-design/` is copied into the app.
+5. You write the app code yourself. The tools never touch it, and nothing under `.vibeboard/` is copied into the app.
 
-A handoff exported before pages names the old artboards folder in its step for when the MCP tools are unavailable. Use `.cursor-design/pages/<openPageId>/artboards/` instead, or export again.
+A handoff exported before pages names the old artboards folder in its step for when the MCP tools are unavailable. Use `.vibeboard/pages/<openPageId>/artboards/` instead, or export again.
 
 ## Errors
 
@@ -133,10 +133,10 @@ A failed call returns `isError: true` with JSON `{ code, message, ... }`. The me
 - `WORKSPACE_BUSY`: another write holds the lock. Retry in a moment; after a crashed write it can last up to 30 s.
 - `COMMENT_NOT_FOUND`: call `list_comments` for current ids. When the message says the comment is on another page, call `open_page` with that page id (tell the user the panel moves), then retry.
 - `COMMENT_RESOLVED`: already done. Skip it.
-- `CORRUPT_MANIFEST`, `UNSUPPORTED_SCHEMA_VERSION`, `CORRUPT_META`, `CORRUPT_CANVAS`, `UNSUPPORTED_CANVAS_VERSION`, `CORRUPT_COMMENTS`, `UNSUPPORTED_COMMENTS_VERSION`: a `.cursor-design/` file is broken or from a newer version. Do not overwrite it. Tell the user which file the message names, and fix it only with their agreement.
+- `CORRUPT_MANIFEST`, `UNSUPPORTED_SCHEMA_VERSION`, `CORRUPT_META`, `CORRUPT_CANVAS`, `UNSUPPORTED_CANVAS_VERSION`, `CORRUPT_COMMENTS`, `UNSUPPORTED_COMMENTS_VERSION`: a `.vibeboard/` file is broken or from a newer version. Do not overwrite it. Tell the user which file the message names, and fix it only with their agreement.
 - `PAGE_NOT_FOUND`: when the page does not exist, call `list_pages` for real ids. When its folder is missing, tell the user which folder the message names.
 - `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`: tell the user which file the message names. Never delete `project.json` yourself.
 - `MIGRATION_CONFLICT`: show the user the message. Never move or delete either copy yourself.
-- `DISK_ERROR`: tell the user. Details are in Output → Cursor Design.
+- `DISK_ERROR`: tell the user. Details are in Output → Vibeboard.
 
-When the tools are unavailable, the files under `.cursor-design/pages/<openPageId>/` are plain HTML and JSON you can edit directly; tell the user to enable the cursor-design MCP server. If `.cursor-design/project.json` is missing, the folder has not moved to pages yet: ask the user to open the panel once (**Cursor Design: Open Artboard**), which moves it. Never create `pages/` or `project.json` by hand. If the user declined a tool call, ask before editing files directly. If Cursor lists the server with 0 tools, ask the user to toggle it off and on in the MCP settings.
+When the tools are unavailable, the files under `.vibeboard/pages/<openPageId>/` are plain HTML and JSON you can edit directly; tell the user to enable the vibeboard MCP server. If `.vibeboard/project.json` is missing, the folder has not moved to pages yet: ask the user to open the panel once (**Vibeboard: Open Artboard**), which moves it. Never create `pages/` or `project.json` by hand. If the user declined a tool call, ask before editing files directly. If Cursor lists the server with 0 tools, ask the user to toggle it off and on in the MCP settings.

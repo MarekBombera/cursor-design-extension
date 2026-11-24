@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
 
 import { exportArtboard } from '../disk/exportFs';
-import { CursorDesignError } from '../disk/errors';
+import { VibeboardError } from '../disk/errors';
 import { resolveOpenPage } from '../disk/openPage';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from '../host/canvasSnapshot';
 import { firstWorkspaceFolder, logDiskError } from '../host/hostFs';
 
 const NO_FOLDER_TO_EXPORT_MESSAGE = 'Open a workspace folder to export a handoff.';
-const GENERIC_FAILURE_MESSAGE = 'Could not export handoff. Check the Output panel: Cursor Design.';
+const GENERIC_FAILURE_MESSAGE = 'Could not export handoff. Check the Output panel: Vibeboard.';
 
 export const exportHandoff = async (outputChannel: vscode.OutputChannel): Promise<void> => {
 	const workspaceFolder = firstWorkspaceFolder();
@@ -31,7 +31,7 @@ export const exportHandoff = async (outputChannel: vscode.OutputChannel): Promis
 	} catch (error: unknown) {
 		logDiskError({ scope: 'exportHandoff', error, outputChannel });
 		await vscode.window.showErrorMessage(
-			error instanceof CursorDesignError ? error.message : GENERIC_FAILURE_MESSAGE,
+			error instanceof VibeboardError ? error.message : GENERIC_FAILURE_MESSAGE,
 		);
 	}
 };

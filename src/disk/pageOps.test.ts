@@ -61,7 +61,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-page-ops-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-page-ops-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
@@ -75,8 +75,7 @@ afterEach(async () => {
 	);
 });
 
-const designDir = (root: string, ...names: string[]): string =>
-	join(root, '.cursor-design', ...names);
+const designDir = (root: string, ...names: string[]): string => join(root, '.vibeboard', ...names);
 
 const pageDir = (root: string, pageId: string, ...names: string[]): string =>
 	designDir(root, 'pages', pageId, ...names);
@@ -419,7 +418,7 @@ test('createPage fails with DISK_ERROR and writes no index when project.json goe
 		(error: unknown) =>
 			error instanceof DiskError &&
 			error.message ===
-				'The page list .cursor-design/project.json disappeared. Retry; cursor-design rebuilds it from the page folders.',
+				'The page list .vibeboard/project.json disappeared. Retry; vibeboard rebuilds it from the page folders.',
 	);
 	assert.equal(await exists(designDir(root, 'project.json')), false);
 	assert.equal(await exists(designDir(root, '.ensure-panel')), false);
@@ -435,7 +434,7 @@ test('createPage refuses a symlinked deleted/ before claiming a page folder', as
 		createPage({ workspaceRoot: root, title: 'Next', writeEnsurePanelMarker: false }),
 		(error: unknown) =>
 			error instanceof DiskError &&
-			error.message === '.cursor-design/deleted must be a directory (symlinks rejected).',
+			error.message === '.vibeboard/deleted must be a directory (symlinks rejected).',
 	);
 	assert.deepEqual(await readdir(designDir(root, 'pages')), ['page-1']);
 });
@@ -530,7 +529,7 @@ test('openPage refuses an unlisted id and a listed page with no folder', async (
 		(error: unknown) =>
 			error instanceof PageNotFoundError &&
 			error.message ===
-				'Page "page-2" has no folder. Restore .cursor-design/pages/page-2/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+				'Page "page-2" has no folder. Restore .vibeboard/pages/page-2/, or delete .vibeboard/project.json to rebuild the page list from the page folders.',
 	);
 	assert.equal(((await readProject(root)) as { openPageId: string }).openPageId, 'page-1');
 });
@@ -641,7 +640,7 @@ test('deletePage refuses a file at deleted/ before changing anything', async () 
 		deletePage({ workspaceRoot: root, pageId: 'page-2', now: NOW }),
 		(error: unknown) =>
 			error instanceof DiskError &&
-			error.message === '.cursor-design/deleted must be a directory (symlinks rejected).',
+			error.message === '.vibeboard/deleted must be a directory (symlinks rejected).',
 	);
 	assert.equal(await readFile(designDir(root, 'project.json'), 'utf8'), projectBefore);
 	assert.equal(await exists(pageDir(root, 'page-2')), true);

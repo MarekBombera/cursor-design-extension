@@ -43,7 +43,7 @@ export const buildArtboardChromeHtml = ({
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="${csp}" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>Cursor Design</title>
+	<title>Vibeboard</title>
 	<link rel="stylesheet" nonce="${nonce}" href="${chromeCssUri.toString()}">
 </head>
 <body>

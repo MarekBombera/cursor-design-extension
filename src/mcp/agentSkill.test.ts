@@ -15,13 +15,13 @@ import { artboardToolInputSchemas } from './artboardTools';
 import { commentToolInputSchemas } from './commentTools';
 import { pageToolInputSchemas } from './pageTools';
 
-// Drift guard for the shipped Agent skill (skills/cursor-design/SKILL.md): a tool, Agent-visible
+// Drift guard for the shipped Agent skill (skills/vibeboard/SKILL.md): a tool, Agent-visible
 // error code, frame limit or sandbox change that lands without the skill fails here. AGENTS.md
 // covers the prose a test cannot see.
 
 const readRepoFile = (path: string): string => readFileSync(join(process.cwd(), path), 'utf8');
 
-const skill = readRepoFile('skills/cursor-design/SKILL.md');
+const skill = readRepoFile('skills/vibeboard/SKILL.md');
 
 const DOCUMENTED_TOOLS = new Set([
 	...Object.keys(artboardToolInputSchemas),
@@ -39,8 +39,8 @@ const ERROR_CODES = new Set(
 const HOST_ONLY_CODES = new Set(['FRAME_MOVED', 'PICK_OUTDATED', 'EDIT_REFUSED']);
 
 test('frontmatter names the skill and says when to use it', () => {
-	const frontmatter = /^---\nname: cursor-design\ndescription: (.+)\n---\n/.exec(skill);
-	assert.ok(frontmatter, 'frontmatter must start the file with name: cursor-design');
+	const frontmatter = /^---\nname: vibeboard\ndescription: (.+)\n---\n/.exec(skill);
+	assert.ok(frontmatter, 'frontmatter must start the file with name: vibeboard');
 	assert.ok(frontmatter[1].trim().length > 0);
 });
 
@@ -92,6 +92,6 @@ test('the skill states the frame sandbox the panel uses', () => {
 });
 
 test('the skill never names the old artboards folder', () => {
-	// `.cursor-design/artboards` is the tombstone file now; with a slash it reads as a folder to edit.
-	assert.ok(!skill.includes('.cursor-design/artboards/'));
+	// `.vibeboard/artboards` is the tombstone file now; with a slash it reads as a folder to edit.
+	assert.ok(!skill.includes('.vibeboard/artboards/'));
 });

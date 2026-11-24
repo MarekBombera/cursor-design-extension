@@ -27,12 +27,12 @@ import { serializeMeta } from './parse';
 
 // Pinned values: the module keeps these private.
 const FRAME_READ_ERROR_MESSAGE =
-	'Could not read this artboard file. Check the Output panel: Cursor Design.';
+	'Could not read this artboard file. Check the Output panel: Vibeboard.';
 
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-canvas-view-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-canvas-view-'));
 	tempRoots.push(workspaceRoot);
 	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
@@ -173,7 +173,7 @@ test('corrupt canvas.json auto-places frames and leaves the file unchanged', asy
 	assert.equal(view.activeArtboardId, 'mobile');
 	assert.equal(
 		view.layoutErrorMessage,
-		'Canvas layout is invalid. Fix or restore .cursor-design/pages/page-1/canvas.json (version 1), or delete it to auto-place every frame.',
+		'Canvas layout is invalid. Fix or restore .vibeboard/pages/page-1/canvas.json (version 1), or delete it to auto-place every frame.',
 	);
 	assert.deepEqual(view.frames.map(frameGeometry), [
 		{ id: 'hero', label: 'Artboard', x: 0, y: 0, width: DEFAULT_FRAME_WIDTH },

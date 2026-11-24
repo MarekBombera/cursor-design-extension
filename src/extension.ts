@@ -10,7 +10,7 @@ import { revealDesignFolder } from './commands/revealDesignFolder';
 import { syncAgentSkill } from './host/agentSkill';
 import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard } from './host/handleOpenArtboard';
-import { logDiskError } from './host/hostFs';
+import { logDiskError, migrateLegacyDesignFolders } from './host/hostFs';
 import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
 import { isArtboardHistoryAttempt } from './host/chromeMessages';
@@ -18,7 +18,7 @@ import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
 import { answerPageRequest } from './host/panelPages';
 import { refreshPanel } from './host/refreshPanel';
 import { replaceArtboardWatcher } from './host/watchArtboardDisk';
-import { registerCursorDesignMcp } from './mcp/registerCursorDesignMcp';
+import { registerVibeboardMcp } from './mcp/registerVibeboardMcp';
 import {
 	postUiStatusToPanel,
 	setArtboardPanelOnCommentRequest,
@@ -28,12 +28,14 @@ import {
 	setArtboardPanelOnVisible,
 } from './panel/openArtboardPanel';
 
-export const activate = (context: vscode.ExtensionContext): void => {
-	const outputChannel = vscode.window.createOutputChannel('Cursor Design');
+export const activate = async (context: vscode.ExtensionContext): Promise<void> => {
+	const outputChannel = vscode.window.createOutputChannel('Vibeboard');
 	context.subscriptions.push(outputChannel);
 
-	const syncHostRuntime = (rearmMarker: boolean): void => {
-		const mcpAvailable = registerCursorDesignMcp({ context, outputChannel });
+	const syncHostRuntime = async (rearmMarker: boolean): Promise<void> => {
+		// TODO(1.0): remove .cursor-design migration
+		await migrateLegacyDesignFolders(outputChannel);
+		const mcpAvailable = registerVibeboardMcp({ context, outputChannel });
 		postUiStatusToPanel({ mcpAvailable });
 		if (mcpAvailable) {
 			// Cursor only: the skill documents the MCP tools.
@@ -70,14 +72,14 @@ export const activate = (context: vscode.ExtensionContext): void => {
 	});
 
 	if (vscode.workspace.isTrusted) {
-		syncHostRuntime(false);
+		await syncHostRuntime(false);
 	} else {
 		postUiStatusToPanel({ mcpAvailable: false });
 	}
 
 	context.subscriptions.push(
 		vscode.workspace.onDidGrantWorkspaceTrust(() => {
-			syncHostRuntime(false);
+			void syncHostRuntime(false);
 		}),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => {
 			// ponytail: any folder change clears all undo history, not only a new first folder.
@@ -86,10 +88,10 @@ export const activate = (context: vscode.ExtensionContext): void => {
 			if (!vscode.workspace.isTrusted) {
 				postUiStatusToPanel({ mcpAvailable: false });
 				replaceArtboardWatcher({ context, outputChannel, rearmMarker: true });
+				void refreshPanel({ outputChannel });
 			} else {
-				syncHostRuntime(true);
+				void syncHostRuntime(true).then(() => refreshPanel({ outputChannel }));
 			}
-			void refreshPanel({ outputChannel });
 		}),
 		vscode.commands.registerCommand(OPEN_ARTBOARD_COMMAND, () => {
 			void handleOpenArtboard({ context, outputChannel });

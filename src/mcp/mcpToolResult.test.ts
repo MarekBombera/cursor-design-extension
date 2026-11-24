@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test, vi } from 'vite-plus/test';
 
-import { CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+import { VIBEBOARD_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 import { runOnOpenPage, toMcpToolError } from './mcpToolResult';
 
 afterEach(() => {
@@ -30,14 +30,14 @@ test('a foreign error reaches the Agent as the authored DISK_ERROR copy; its tex
 });
 
 test('runOnOpenPage reads the page title before the operation, so a project.json the operation corrupts still yields page', async () => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-mcp-result-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-mcp-result-'));
 	try {
-		vi.stubEnv(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, JSON.stringify([workspaceRoot]));
+		vi.stubEnv(VIBEBOARD_WORKSPACE_ROOTS_ENV, JSON.stringify([workspaceRoot]));
 		const result = await runOnOpenPage({
 			rootPath: undefined,
 			createIfFresh: true,
 			operation: async () => {
-				await writeFile(join(workspaceRoot, '.cursor-design', 'project.json'), '{ not json');
+				await writeFile(join(workspaceRoot, '.vibeboard', 'project.json'), '{ not json');
 				return { done: true };
 			},
 		});

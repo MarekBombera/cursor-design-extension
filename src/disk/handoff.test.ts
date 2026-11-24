@@ -49,7 +49,7 @@ import { withWorkspaceLock } from './workspaceLock';
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-handoff-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-handoff-'));
 	tempRoots.push(workspaceRoot);
 	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
@@ -254,12 +254,12 @@ test('buildCanvasImplementMarkdown orders sections and frames, collapses newline
 			'## Instructions',
 			'',
 			'1. Call `handoff_status` first. If `stale` is true, call `export_artboard` again (it exports the whole canvas) before implementing.',
-			"2. If MCP is unavailable, compare each frame's `hash` above with `.cursor-design/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/pages/page-1/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.",
+			"2. If MCP is unavailable, compare each frame's `hash` above with `.vibeboard/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.vibeboard/pages/page-1/artboards/*.html`. On any difference, re-export, or ask the user to run **Export Handoff**.",
 			'3. Implement each frame from its own `index.html` (HTML+CSS+JS inline), not from screenshots or `canvas.html`.',
 			"4. Each frame is a complete design at its `width`. In the implemented app, frames that show the same page at different widths (for example desktop and mobile, usually in the same `group`) are variants: build one responsive page that matches each frame at its width, combining their styles with media queries instead of pasting each frame's CSS and JS side by side, and keep each frame's classes and JS behavior. If it is unclear which frames are variants of one page, ask the user. Frames with no narrow variant should adapt to small screens in the implemented app. Never hard-code a frame's width on `body`.",
-			"5. Target the user's app entry files. Never copy `.cursor-design/` into the app.",
+			"5. Target the user's app entry files. Never copy `.vibeboard/` into the app.",
 			'6. Keep semantic structure, classes, and behavior.',
-			'7. Assets referenced as `assets/...` resolve against `.cursor-design/assets/`. Copy them manually.',
+			'7. Assets referenced as `assets/...` resolve against `.vibeboard/assets/`. Copy them manually.',
 			'',
 		].join('\n'),
 	);
@@ -340,21 +340,21 @@ test('canvas export writes one tree, pristine frames, and lastExport.frames', as
 	assert.equal(exported.handoffPath, handoffDirSegments(FIXED_EXPORT_ID).join('/'));
 	// Pages: the handoff stays at the root, lastExport lands in the open page's manifest, and
 	// IMPLEMENT.md's MCP-unavailable step names the page's artboards folder.
-	assert.equal(exported.handoffPath, `.cursor-design/handoff/${FIXED_EXPORT_ID}`);
+	assert.equal(exported.handoffPath, `.vibeboard/handoff/${FIXED_EXPORT_ID}`);
 	const pageManifest = JSON.parse(
-		await readFile(join(workspaceRoot, '.cursor-design/pages/page-1/manifest.json'), 'utf8'),
+		await readFile(join(workspaceRoot, '.vibeboard/pages/page-1/manifest.json'), 'utf8'),
 	) as { lastExport?: { exportId?: string } };
 	assert.equal(pageManifest.lastExport?.exportId, FIXED_EXPORT_ID);
 	const implementText = await readFile(
-		join(workspaceRoot, '.cursor-design/handoff', FIXED_EXPORT_ID, IMPLEMENT_FILE),
+		join(workspaceRoot, '.vibeboard/handoff', FIXED_EXPORT_ID, IMPLEMENT_FILE),
 		'utf8',
 	);
 	assert.ok(
 		implementText.includes(
-			'`.cursor-design/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.cursor-design/pages/page-1/artboards/*.html`',
+			'`.vibeboard/pages/page-1/artboards/<id>.meta.json` `hash`, and the frame list with `.vibeboard/pages/page-1/artboards/*.html`',
 		),
 	);
-	assert.ok(!implementText.includes('.cursor-design/artboards/'));
+	assert.ok(!implementText.includes('.vibeboard/artboards/'));
 	assert.ok(
 		implementText.includes(
 			`exportedAt: ${FIXED_NOW.toISOString()}\npage: page-1\npageTitle: Checkout\n`,
@@ -781,7 +781,7 @@ test('read failures write no handoff leaf and keep their codes', async () => {
 				assert.equal(error.code, 'DISK_ERROR');
 				assert.equal(
 					error.message,
-					`Artboard id "${dotId}" cannot be exported as a folder. Rename .cursor-design/pages/page-1/artboards/${dotId}.html.`,
+					`Artboard id "${dotId}" cannot be exported as a folder. Rename .vibeboard/pages/page-1/artboards/${dotId}.html.`,
 				);
 				return true;
 			},

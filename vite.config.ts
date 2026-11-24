@@ -34,7 +34,7 @@ const bannedLibraries = [
 	})),
 	...['next', '@sveltejs/kit', 'react', 'react-dom'].map((name) => ({
 		name,
-		message: 'Chrome is Svelte 5 + Vite, no Kit / Next / React (00-cursor-design-core).',
+		message: 'Chrome is Svelte 5 + Vite, no Kit / Next / React (00-vibeboard-core).',
 	})),
 ];
 const bannedPatterns = [
@@ -104,7 +104,7 @@ export default defineConfig({
 			},
 			{
 				// Host side of MCP: it may import vscode.
-				files: ['src/mcp/registerCursorDesignMcp.ts'],
+				files: ['src/mcp/registerVibeboardMcp.ts'],
 				rules: {
 					'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],
 				},
@@ -183,7 +183,7 @@ export default defineConfig({
 			...shared,
 			entry: { mcp: 'src/mcp/server.ts' },
 			deps: { alwaysBundle },
-			define: { 'process.env.CURSOR_DESIGN_VERSION': JSON.stringify(pkg.version) },
+			define: { 'process.env.VIBEBOARD_VERSION': JSON.stringify(pkg.version) },
 		},
 	],
 	test: {

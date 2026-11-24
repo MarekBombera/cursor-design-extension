@@ -1,12 +1,12 @@
 ---
 description: VS Code extension host practices - activation, disposables, panel, URIs, trust
-globs: src/extension.ts,src/host/**,src/panel/**,src/commands/**,src/mcp/registerCursorDesignMcp.ts,package.json,vite.config.ts
+globs: src/extension.ts,src/host/**,src/panel/**,src/commands/**,src/mcp/registerVibeboardMcp.ts,package.json,vite.config.ts
 paths:
   - src/extension.ts
   - src/host/**
   - src/panel/**
   - src/commands/**
-  - src/mcp/registerCursorDesignMcp.ts
+  - src/mcp/registerVibeboardMcp.ts
   - package.json
   - vite.config.ts
 alwaysApply: false
@@ -23,7 +23,7 @@ alwaysApply: false
 
 ## Commands
 
-- Every command: `contributes.commands` **and** `registerCommand`. IDs `cursor-design.*`, `category: "Cursor Design"`.
+- Every command: `contributes.commands` **and** `registerCommand`. IDs `vibeboard.*`, `category: "Vibeboard"`.
 - Hide with `when` / `enablement`; still guard the handler (the palette can invoke it anyway).
 
 ## Webview host
@@ -34,7 +34,7 @@ alwaysApply: false
 
 ## FS, trust, bundle
 
-- The host reaches `.cursor-design/` only through the `src/disk/` lib (`node:fs`), the same code the MCP process runs, so they cannot drift. `vscode.workspace.fs` appears only in `agentSkill.ts` (skill sync), existence stats (`hostFs.ts`, `revealDesignFolder.ts`) and the watcher's `.ensure-panel` marker delete.
+- The host reaches `.vibeboard/` only through the `src/disk/` lib (`node:fs`), the same code the MCP process runs, so they cannot drift. `vscode.workspace.fs` appears only in `agentSkill.ts` (skill sync), existence stats (`hostFs.ts`, `revealDesignFolder.ts`) and the watcher's `.ensure-panel` marker delete.
 - `import * as vscode` only in the extension host, never in webview or MCP process code (lint).
 - Artboard HTML is executable workspace code: `package.json` keeps `capabilities.untrustedWorkspaces.supported: false` (never `true`). The `vscode.workspace.isTrusted` guards before disk writes, MCP registration and panel requests stay as defense in depth.
 - `extensionKind: ["workspace"]`: needs the folder, not the local UI host.

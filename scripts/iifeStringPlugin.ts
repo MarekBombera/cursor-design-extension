@@ -9,7 +9,7 @@ const IIFE_SUFFIX = '?iife';
 const VIRTUAL_PREFIX = '\0iife:';
 
 export const iifeStringPlugin = (): Plugin => ({
-	name: 'cursor-design:iife-string',
+	name: 'vibeboard:iife-string',
 	enforce: 'pre',
 	async resolveId(source, importer) {
 		if (!source.endsWith(IIFE_SUFFIX)) {

@@ -18,7 +18,7 @@ test('per-page errors name the page path and keep pageId and artboardId', () => 
 	assert.equal(manifest.pageId, 'page-3');
 	assert.equal(
 		manifest.message,
-		'Artboard manifest is invalid. Fix or restore .cursor-design/pages/page-3/manifest.json (version 1).',
+		'Artboard manifest is invalid. Fix or restore .vibeboard/pages/page-3/manifest.json (version 1).',
 	);
 	const meta = new CorruptMetaError({ pageId: 'page-3', artboardId: 'hero' });
 	assert.equal(meta.artboardId, 'hero');
@@ -30,13 +30,13 @@ test('the project index errors name project.json and the next step', () => {
 	assert.equal(corrupt.code, 'CORRUPT_PROJECT');
 	assert.equal(
 		corrupt.message,
-		'Project index is invalid. Fix .cursor-design/project.json (version 1), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".',
+		'Project index is invalid. Fix .vibeboard/project.json (version 1), or delete it to rebuild the page list from the page folders. Page titles then reset to "Page <n>".',
 	);
 	const unsupported = new UnsupportedProjectVersionError(2);
 	assert.equal(unsupported.code, 'UNSUPPORTED_PROJECT_VERSION');
 	assert.equal(
 		unsupported.message,
-		'Project index version 2 is unsupported (expected 1). Update the cursor-design extension, or fix .cursor-design/project.json.',
+		'Project index version 2 is unsupported (expected 1). Update the vibeboard extension, or fix .vibeboard/project.json.',
 	);
 });
 
@@ -61,7 +61,7 @@ test('throwDiskError wraps an fs failure as DISK_ERROR with authored copy and th
 test('PageNotFoundError names a missing folder by default and an unlisted id with reason unlisted', () => {
 	assert.equal(
 		new PageNotFoundError('page-2').message,
-		'Page "page-2" has no folder. Restore .cursor-design/pages/page-2/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+		'Page "page-2" has no folder. Restore .vibeboard/pages/page-2/, or delete .vibeboard/project.json to rebuild the page list from the page folders.',
 	);
 	assert.equal(new PageNotFoundError('page-2').reason, 'noFolder');
 	const unlisted = new PageNotFoundError('page-2', { reason: 'unlisted' });

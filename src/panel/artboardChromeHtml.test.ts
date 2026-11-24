@@ -31,7 +31,7 @@ test('shell is a complete document whose CSP is exactly the chrome policy', () =
 	assert.ok(chrome.html.startsWith('<!DOCTYPE html>'));
 	assert.ok(chrome.html.endsWith('</html>'));
 	// Artboard frames inherit this CSP. Changing it also updates what Agents are told works in a
-	// frame: skills/cursor-design/SKILL.md § Writing artboard HTML and ARTBOARD_HTML_RULES in
+	// frame: skills/vibeboard/SKILL.md § Writing artboard HTML and ARTBOARD_HTML_RULES in
 	// src/mcp/artboardTools.ts.
 	const csp = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(chrome.html)?.[1];
 	assert.equal(

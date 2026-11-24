@@ -20,7 +20,7 @@ import { answerCommentRequest, postPanelComments } from './panelComments';
 // Pinned values: the module keeps these private.
 const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
-const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
+const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Vibeboard.';
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, calls: [] as string[], clipboard: '' }));
@@ -221,7 +221,7 @@ test('copy writes the clipboard, then marks sent, then answers, then refreshes',
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['clipboard', 'write:sent', 'answer:ui:copied', 'comments:updated']);
 	assert.deepEqual(answers(), [{ type: 'ui:copied', requestId: 'req-4', count: 1 }]);
-	assert.equal(host.clipboard.startsWith('Handle cursor-design comment c-1 only.'), true);
+	assert.equal(host.clipboard.startsWith('Handle vibeboard comment c-1 only.'), true);
 });
 
 test('copy-open sends the open ids in listComments order and answers the marked count', async () => {

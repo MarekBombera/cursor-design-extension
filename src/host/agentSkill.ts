@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 
 import { isFileNotFound, logDiskError } from './hostFs';
 
-const SKILL_PATH_SEGMENTS = ['skills', 'cursor-design', 'SKILL.md'] as const;
+const SKILL_PATH_SEGMENTS = ['skills', 'vibeboard', 'SKILL.md'] as const;
 
 type SyncAgentSkillArgs = {
 	extensionUri: vscode.Uri;
@@ -58,7 +58,7 @@ export const syncAgentSkill = async ({
 		// through a link into a file the extension does not own.
 		if ((await isSymlink(installedDir)) || (await isSymlink(installedUri))) {
 			outputChannel.appendLine(
-				'agentSkill.sync: ~/.cursor/skills/cursor-design is a symlink; leaving it unchanged.',
+				'agentSkill.sync: ~/.cursor/skills/vibeboard is a symlink; leaving it unchanged.',
 			);
 			return;
 		}

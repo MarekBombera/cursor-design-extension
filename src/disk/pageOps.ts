@@ -112,7 +112,7 @@ const requireProject = async (workspaceRoot: string): Promise<Project> => {
 	const project = await readProjectFile(workspaceRoot);
 	if (project === undefined) {
 		throw new DiskError(
-			`The page list ${projectPathSegments.join('/')} disappeared. Retry; cursor-design rebuilds it from the page folders.`,
+			`The page list ${projectPathSegments.join('/')} disappeared. Retry; vibeboard rebuilds it from the page folders.`,
 		);
 	}
 	return project;
@@ -370,7 +370,7 @@ export const openPage = async ({
 	pageId: string;
 }): Promise<{ page: PageSummary }> => {
 	await resolveOpenPage({ workspaceRoot, createIfFresh: false });
-	// Lock-free first: in a fresh folder the lock would create an empty .cursor-design/.
+	// Lock-free first: in a fresh folder the lock would create an empty .vibeboard/.
 	listedPage(await readProjectFile(workspaceRoot), pageId);
 	return withWorkspaceLock({
 		workspaceRoot,

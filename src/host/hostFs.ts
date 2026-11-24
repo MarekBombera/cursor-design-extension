@@ -1,13 +1,15 @@
 import * as vscode from 'vscode';
 
+import { VIBEBOARD_DIR } from '../disk/layout';
+import { LEGACY_DESIGN_DIR, migrateLegacyDesignDir } from '../disk/layoutFs';
 import { CHROME_CSS_SEGMENTS, CHROME_JS_SEGMENTS } from '../panel/artboardChromeHtml';
 
-// ponytail: first folder only. Upgrade path: pick the folder holding .cursor-design/, else ask.
+// ponytail: first folder only. Upgrade path: pick the folder holding .vibeboard/, else ask.
 export const firstWorkspaceFolder = (): vscode.WorkspaceFolder | undefined =>
 	vscode.workspace.workspaceFolders?.[0];
 
 export const NO_FOLDER_MESSAGE =
-	'Open a workspace folder first. Cursor Design does not store artboards without a folder.';
+	'Open a workspace folder first. Vibeboard does not store artboards without a folder.';
 
 export const isFileNotFound = (error: unknown): boolean =>
 	error instanceof vscode.FileSystemError &&
@@ -40,7 +42,33 @@ export const missingChromeAssets = async (extensionUri: vscode.Uri): Promise<str
 };
 
 export const chromeLoadErrorMessage = (missing: readonly string[]): string =>
-	`Cursor Design could not load its panel: ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing. Reinstall the extension, or run pnpm compile in a development checkout.`;
+	`Vibeboard could not load its panel: ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing. Reinstall the extension, or run pnpm compile in a development checkout.`;
+
+let legacyDesignDirWarned = false;
+
+// TODO(1.0): remove .cursor-design migration
+// Runs before MCP registration and any folder read. Never rejects.
+export const migrateLegacyDesignFolders = async (
+	outputChannel: vscode.OutputChannel,
+): Promise<void> => {
+	for (const folder of vscode.workspace.workspaceFolders ?? []) {
+		try {
+			const result = await migrateLegacyDesignDir(folder.uri.fsPath);
+			if (result === 'moved') {
+				outputChannel.appendLine(
+					`Moved ${LEGACY_DESIGN_DIR}/ to ${VIBEBOARD_DIR}/ in ${folder.uri.fsPath}.`,
+				);
+			} else if (result === 'both' && !legacyDesignDirWarned) {
+				legacyDesignDirWarned = true;
+				void vscode.window.showWarningMessage(
+					`${folder.name} has both ${LEGACY_DESIGN_DIR}/ and ${VIBEBOARD_DIR}/. Vibeboard uses ${VIBEBOARD_DIR}/ and ignored the old folder.`,
+				);
+			}
+		} catch (error: unknown) {
+			logDiskError({ scope: 'migrateLegacyDesignFolders', error, outputChannel });
+		}
+	}
+};
 
 type LogDiskErrorArgs = {
 	scope: string;

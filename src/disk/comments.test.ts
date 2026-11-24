@@ -41,7 +41,7 @@ import {
 import {
 	FIRST_PAGE_ID,
 	COMMENTS_SCHEMA_VERSION,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	MAX_COMMENT_BODY_CHARS,
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
@@ -69,9 +69,9 @@ const parseCount = (): number => vi.mocked(parseArtboardDocument).mock.calls.len
 
 const tempRoots: string[] = [];
 
-// Seeded by default; { seeded: false } is a fresh workspace with no .cursor-design.
+// Seeded by default; { seeded: false } is a fresh workspace with no .vibeboard.
 const makeTempRoot = async ({ seeded = true }: { seeded?: boolean } = {}): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-comments-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-comments-'));
 	tempRoots.push(workspaceRoot);
 	if (seeded) {
 		await resolveOpenPage({ workspaceRoot, createIfFresh: true });
@@ -143,7 +143,7 @@ const pick = (overrides: Partial<NewComment> = {}): NewComment => ({
 
 const writeComments = async (workspaceRoot: string, text: string): Promise<string> => {
 	const filePath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
+	await mkdir(join(workspaceRoot, VIBEBOARD_DIR), { recursive: true });
 	await writeFile(filePath, text, 'utf8');
 	return filePath;
 };
@@ -253,7 +253,7 @@ test('at MAX_COMMENTS addComment throws and the file is unchanged', async () => 
 			assert.ok(error instanceof InvalidArgsError);
 			assert.equal(
 				error.message,
-				'comments.json already holds 500 comments. Remove resolved comments from .cursor-design/pages/page-1/comments.json, then retry.',
+				'comments.json already holds 500 comments. Remove resolved comments from .vibeboard/pages/page-1/comments.json, then retry.',
 			);
 			return true;
 		},
@@ -353,7 +353,7 @@ test('corrupt and version-2 files are never overwritten', async () => {
 	}
 });
 
-test('resolve, reply, status and mark-sent on a workspace with no .cursor-design create nothing', async () => {
+test('resolve, reply, status and mark-sent on a workspace with no .vibeboard create nothing', async () => {
 	const workspaceRoot = await makeTempRoot({ seeded: false });
 	await assert.rejects(
 		resolveComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: 'c1', note: 'done' }),
@@ -707,7 +707,7 @@ test('an unreadable frame still lists every comment', async () => {
 	const listed = await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } });
 	assert.ok(
 		stderr.mock.calls.some(([line]) =>
-			String(line).startsWith('cursor-design: comment target read failed: '),
+			String(line).startsWith('vibeboard: comment target read failed: '),
 		),
 	);
 	assert.equal(listed.comments.length, 2);
@@ -802,11 +802,11 @@ test('readComments returns every comment, resolved included, and [] without a fi
 	);
 });
 
-test('readComments refuses a symlinked .cursor-design like listComments', async () => {
+test('readComments refuses a symlinked .vibeboard like listComments', async () => {
 	const workspaceRoot = await makeTempRoot({ seeded: false });
 	const elsewhere = await makeTempRoot();
 	await writeComments(elsewhere, commentsFileOf([validComment()]));
-	await symlink(join(elsewhere, CURSOR_DESIGN_DIR), join(workspaceRoot, CURSOR_DESIGN_DIR));
+	await symlink(join(elsewhere, VIBEBOARD_DIR), join(workspaceRoot, VIBEBOARD_DIR));
 	await assert.rejects(readComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
 	await assert.rejects(listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID } }), DiskError);
 });
@@ -816,7 +816,7 @@ test('findCommentPage logs and skips a page folder that is a symlink out of the 
 	const workspaceRoot = await makeTempRoot();
 	const elsewhere = await makeTempRoot({ seeded: false });
 	await writeFile(
-		join(workspaceRoot, CURSOR_DESIGN_DIR, 'project.json'),
+		join(workspaceRoot, VIBEBOARD_DIR, 'project.json'),
 		JSON.stringify({
 			version: 1,
 			openPageId: FIRST_PAGE_ID,
@@ -830,7 +830,7 @@ test('findCommentPage logs and skips a page folder that is a symlink out of the 
 		join(elsewhere, 'comments.json'),
 		JSON.stringify({ version: COMMENTS_SCHEMA_VERSION, comments: [validComment({ id: 'c9' })] }),
 	);
-	await symlink(elsewhere, join(workspaceRoot, CURSOR_DESIGN_DIR, 'pages', 'page-2'));
+	await symlink(elsewhere, join(workspaceRoot, VIBEBOARD_DIR, 'pages', 'page-2'));
 	assert.equal(
 		await findCommentPage({ workspaceRoot, id: 'c9', exceptPageId: FIRST_PAGE_ID }),
 		undefined,

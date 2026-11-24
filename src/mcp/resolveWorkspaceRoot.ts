@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 
 import { InvalidRootError, NoWorkspaceError, logStderr } from '../disk/errors';
-import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+import { VIBEBOARD_WORKSPACE_ROOT_ENV, VIBEBOARD_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 
 let rootsInvalidLogged = false;
 
@@ -21,14 +21,14 @@ const parseRootsJson = (raw: string): string[] | undefined => {
 		// with an authored error instead of falling back.
 		if (!rootsInvalidLogged) {
 			rootsInvalidLogged = true;
-			logStderr(`${CURSOR_DESIGN_WORKSPACE_ROOTS_ENV} parse`, error);
+			logStderr(`${VIBEBOARD_WORKSPACE_ROOTS_ENV} parse`, error);
 		}
 		return undefined;
 	}
 };
 
 export const parseWorkspaceRootsEnv = (env: NodeJS.Dict<string>): string[] => {
-	const rootsRaw = env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
+	const rootsRaw = env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
 	if (rootsRaw !== undefined) {
 		const parsed = parseRootsJson(rootsRaw);
 		if (parsed !== undefined) {
@@ -38,7 +38,7 @@ export const parseWorkspaceRootsEnv = (env: NodeJS.Dict<string>): string[] => {
 			return parsed;
 		}
 	}
-	const root = env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
+	const root = env[VIBEBOARD_WORKSPACE_ROOT_ENV];
 	if (typeof root === 'string' && root.length > 0) {
 		return [root];
 	}

@@ -92,7 +92,7 @@ beforeEach(() => {
 
 // project.json indexing page-1 and page-2 (open), as the disk lib writes it.
 const writeProject = async (root: string): Promise<void> => {
-	await mkdir(join(root, '.cursor-design'), { recursive: true });
+	await mkdir(join(root, '.vibeboard'), { recursive: true });
 	await writeFile(
 		join(root, ...projectPathSegments),
 		JSON.stringify({
@@ -224,7 +224,7 @@ test('Open on a page with artboard.html but no manifest keeps its bytes and make
 	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
 	vi.mocked(setActiveArtboard).mockImplementationOnce(actual.setActiveArtboard);
 	host.manifestExists = false;
-	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	const root = await mkdtemp(join(tmpdir(), 'vibeboard-artboard-disk-'));
 	try {
 		await mkdir(join(root, ...artboardsDirSegments('page-2')), { recursive: true });
 		const htmlPath = join(root, ...artboardHtmlPathSegments('page-2', DEFAULT_ARTBOARD_ID));
@@ -247,9 +247,9 @@ test('an indexed open page with no folder shows the noFolder error on Open and r
 	const actual = await vi.importActual<typeof import('../disk/artboardFs')>('../disk/artboardFs');
 	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
 	host.manifestExists = false;
-	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	const root = await mkdtemp(join(tmpdir(), 'vibeboard-artboard-disk-'));
 	try {
-		await mkdir(join(root, '.cursor-design', 'pages'), { recursive: true });
+		await mkdir(join(root, '.vibeboard', 'pages'), { recursive: true });
 		await writeProject(root);
 		const before = await readdir(root, { recursive: true });
 		const rootArgs = {
@@ -327,7 +327,7 @@ test('a page Open just initialized is listed with its new files time', async () 
 	const actual = await vi.importActual<typeof import('../disk/artboardFs')>('../disk/artboardFs');
 	vi.mocked(createArtboard).mockImplementationOnce(actual.createArtboard);
 	host.manifestExists = false;
-	const root = await mkdtemp(join(tmpdir(), 'cursor-design-artboard-disk-'));
+	const root = await mkdtemp(join(tmpdir(), 'vibeboard-artboard-disk-'));
 	try {
 		await writeProject(root);
 		const folder = join(root, ...pageDirSegments('page-2'));

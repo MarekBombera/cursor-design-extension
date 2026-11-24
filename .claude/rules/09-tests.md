@@ -13,7 +13,7 @@ alwaysApply: false
 - Colocate `foo.test.ts` next to `foo.ts`. Cover the extracted job (parse, layout, conflict, handoff, tool handlers), not the `activate` wrapper.
 - One runnable check per non-trivial logic (03). Assert edge cases: empty, missing, malformed, stale generation.
 - Edge cases over volume: one happy path per rule is enough. Spend tests on the case that would break it (a message from the wrong frame, a key someone else owns, a null rect, the last frame leaving), not on twenty variations of the normal flow. A test earns its place when deleting the guard it covers makes it fail.
-- Disk tests write to a fresh `mkdtemp(join(tmpdir(), ...))` workspace and remove it after. Never touch `fixtures/dev-workspace` or a real `.cursor-design/`.
+- Disk tests write to a fresh `mkdtemp(join(tmpdir(), ...))` workspace and remove it after. Never touch `fixtures/dev-workspace` or a real `.vibeboard/`.
 - MCP behavior goes through the real tool handlers or the client contract test (`artboardTools.contract.test.ts`, InMemoryTransport), not hand-built JSON-RPC.
 - Properties (`fast-check`) for geometry and parsing invariants. Snapshots only for generated artifacts (handoff markdown, canvas HTML); update them on purpose, never blindly.
 - Do not test Svelte chrome or the artboard iframe as unit tests. The one exception is `src/webview/ui/theme.test.ts`: a static text scan of the chrome's CSS and markup (rule 08 Guard); it renders nothing. Chrome and iframe behavior is proven by the browser tests (`pnpm test:browser`) through the one harness `tests/browser/harness.ts`; pass `vscodeHost` to `openHarness` to run under Cursor's theme variables and `_defaultStyles` (`tests/browser/vscodeHost.ts`), otherwise the page has neither.

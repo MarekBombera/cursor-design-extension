@@ -32,7 +32,7 @@ import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPan
 
 // vscode glue only. Neither export ever rejects.
 
-const READ_FALLBACK_MESSAGE = 'Could not read comments. Check the Output panel: Cursor Design.';
+const READ_FALLBACK_MESSAGE = 'Could not read comments. Check the Output panel: Vibeboard.';
 
 // The last read started wins, so a slow read never overwrites a newer list.
 let readGeneration = 0;

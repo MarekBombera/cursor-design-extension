@@ -26,7 +26,7 @@ pnpm-lock.yaml
 pnpm-workspace.yaml
 .github/**
 .pnpm-store/**
-.cursor-design/**
+.vibeboard/**
 # git-ignored via .remember/.gitignore, but vsce does not read .gitignore
 .remember/**
 notes.md

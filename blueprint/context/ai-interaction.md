@@ -1,6 +1,6 @@
 # AI Interaction Guidelines
 
-> **This blueprint is an overlay layer** on the cursor-design VS Code/Cursor
+> **This blueprint is an overlay layer** on the vibeboard VS Code/Cursor
 > extension. Never run a framework scaffolder (`create-next-app`, SvelteKit,
 > etc.) inside this directory. Coding SoT is `.claude/rules/`.
 

@@ -11,7 +11,7 @@ import {
 import {
 	ARTBOARDS_DIR,
 	ARTBOARDS_TOMBSTONE_TEXT,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	FIRST_PAGE_ID,
 	MAX_PAGES,
 	PAGE_ENTRIES,
@@ -88,7 +88,7 @@ const scanPageFolders = async (workspaceRoot: string): Promise<string[]> => {
 };
 
 const classifyFolder = async (workspaceRoot: string): Promise<FolderState> => {
-	await assertDirOwned(workspaceRoot, [CURSOR_DESIGN_DIR]);
+	await assertDirOwned(workspaceRoot, [VIBEBOARD_DIR]);
 	await assertDirOwned(workspaceRoot, pagesDirSegments);
 	const project = await readProjectFile(workspaceRoot);
 	if (project !== undefined) {
@@ -119,7 +119,7 @@ const writeArtboardsTombstone = async (workspaceRoot: string): Promise<void> => 
 		}
 		if ((await lstatOrUndefined(tombstonePath))?.isDirectory() === true) {
 			throw new DiskError(
-				`${artboardsTombstoneSegments.join('/')} became a folder while cursor-design was replacing it. An older cursor-design MCP server may still be running: quit and reopen Cursor, then retry.`,
+				`${artboardsTombstoneSegments.join('/')} became a folder while vibeboard was replacing it. An older vibeboard MCP server may still be running: quit and reopen Cursor, then retry.`,
 				{ cause: error },
 			);
 		}

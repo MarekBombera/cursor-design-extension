@@ -15,7 +15,7 @@ import { type PanelAnswer, createPanelOutbox } from '../host/panelOutbox';
 import type { CommentsUpdatedMessage } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
 
-const ARTBOARD_VIEW_TYPE = 'cursorDesign.artboard' as const;
+const ARTBOARD_VIEW_TYPE = 'vibeboard.artboard' as const;
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let onPanelBecameVisible: (() => void) | undefined;

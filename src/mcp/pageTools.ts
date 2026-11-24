@@ -66,7 +66,7 @@ export const registerPageTools = (server: McpServer): void => {
 		{
 			title: 'Create page',
 			description:
-				'Create a page with one blank artboard "artboard" and open it: this moves the user\'s panel to the new page, and every other tool then acts on it. Returns page, artboardId, generation and hash. WORKSPACE_BUSY when another Cursor Design write holds the lock: retry; a retry uses a new page id. Pass rootPath when more than one folder is open.',
+				'Create a page with one blank artboard "artboard" and open it: this moves the user\'s panel to the new page, and every other tool then acts on it. Returns page, artboardId, generation and hash. WORKSPACE_BUSY when another Vibeboard write holds the lock: retry; a retry uses a new page id. Pass rootPath when more than one folder is open.',
 			inputSchema: createPageInputSchema,
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},

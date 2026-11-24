@@ -8,7 +8,7 @@ Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 Cursor has no Claude Design-style live HTML artboard. Design talk stays in chat; the human cannot watch pixels change while the Agent iterates, then hand off implementable HTML into the real repo.
 
-**cursor-design** is that canvas inside Cursor: describe, live artboard, iterate via Agent, export a handoff, implement. Runtime is Cursor Agent + local MCP + this extension only. The extension never calls models.
+**vibeboard** is that canvas inside Cursor: describe, live artboard, iterate via Agent, export a handoff, implement. Runtime is Cursor Agent + local MCP + this extension only. The extension never calls models.
 
 ## 2. Users - Who is this for?
 
@@ -23,7 +23,7 @@ Open-source (MIT). Not a multi-tenant SaaS. No accounts in v1.
 Match build phases in Notion section 12:
 
 - Empty Artboard WebviewPanel + MCP `registerServer` on activate (Phase 0).
-- Disk `.cursor-design/` as SoT; file saves refresh the nested iframe; generation bumps (Phase 1).
+- Disk `.vibeboard/` as SoT; file saves refresh the nested iframe; generation bumps (Phase 1).
 - MCP tools: `set_artboard`, `update_artboard` (requires `baseGeneration`), `read_artboard`, `list_artboards`, `set_active_artboard`; conflict path; MCP-offline banner (Phase 2).
 - `export_artboard` + `handoff_status` stale mark; usable `IMPLEMENT.md` (Phase 3).
 - Release polish: MIT, honest limits (Phase 4).
@@ -38,7 +38,7 @@ Shipped demo: Agent designs a landing hero+CTA on the artboard, export, then imp
 
 ## 4. Data - What are we storing?
 
-No database. User-workspace disk under `.cursor-design/` (gitignored by default):
+No database. User-workspace disk under `.vibeboard/` (gitignored by default):
 
 - `project.json` (0.5, 10a) - `{ version: 1, openPageId, pages: [{ id, title }] }`. Page ids are `page-<n>` (1 to 100 pages); array order is menu order. It names the open page every tool and the panel work on.
 - `pages/<pageId>/` (0.5, 10a) - one page's design files, schemas unchanged from 0.4:
@@ -63,9 +63,9 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 - **Chrome:** Svelte 5 + Vite under `src/webview/` from 0.3 (8b); shell in `src/panel/artboardChromeHtml.ts`. Through 0.2 it was a TS template-string document (decided 2026-10-13). Theme tokens `var(--vscode-*)`.
 - **Artboard:** nested sandboxed HTML iframe (`sandbox="allow-scripts"`). Scripts allowed; parent never `eval`s artboard HTML.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
-- **Brain:** Cursor Agent only. Disk is SoT. Brand: `cursor-design`.
+- **Brain:** Cursor Agent only. Disk is SoT. Brand: `vibeboard`.
 - **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR.
-- **Coding SoT:** `.claude/rules/` (00, 02-09), skills `cursor-design-build` (repo) and the shipped Agent skill `cursor-design` (`skills/cursor-design/SKILL.md`).
+- **Coding SoT:** `.claude/rules/` (00, 02-09), skills `vibeboard-build` (repo) and the shipped Agent skill `vibeboard` (`skills/vibeboard/SKILL.md`).
 
 ## 6. Monetize - How will this make money?
 

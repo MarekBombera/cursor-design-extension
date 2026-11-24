@@ -50,7 +50,7 @@ afterEach(async () => {
 });
 
 const seed = async (html: string): Promise<{ workspaceRoot: string; htmlPath: string }> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-edit-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-edit-'));
 	tempRoots.push(workspaceRoot);
 	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	await createArtboard({
@@ -247,7 +247,7 @@ test('a malformed baseHash is InvalidArgsError before any read', async () => {
 	await assert.rejects(
 		editArtboard({
 			page: {
-				workspaceRoot: join(tmpdir(), 'cursor-design-edit-never-created'),
+				workspaceRoot: join(tmpdir(), 'vibeboard-edit-never-created'),
 				pageId: FIRST_PAGE_ID,
 			},
 			artboardId: 'hero',

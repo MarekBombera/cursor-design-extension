@@ -5,6 +5,8 @@ test-results/
 *.vsix
 
 # Runtime artboard state (user workspaces)
+.vibeboard/
+# Pre-rename folder, migrated on activation. TODO(1.0): drop
 .cursor-design/
 
 # Sample implement target (DoD Vite + plain HTML)

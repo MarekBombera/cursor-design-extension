@@ -1,9 +1,9 @@
 ---
-name: cursor-design-build
-description: Use when changing how the cursor-design extension is wired - extension host activation, MCP server registration and spawn, the two vp pack bundles, Cursor API types, or the webview chrome build.
+name: vibeboard-build
+description: Use when changing how the vibeboard extension is wired - extension host activation, MCP server registration and spawn, the two vp pack bundles, Cursor API types, or the webview chrome build.
 ---
 
-# Build cursor-design extension
+# Build vibeboard extension
 
 Product constraints: rule 00; MCP / webview contract: rule 02; chrome: rule 08. This skill holds the wiring details those rules do not repeat.
 
@@ -19,7 +19,7 @@ Product constraints: rule 00; MCP / webview contract: rule 02; chrome: rule 08. 
   - host `src/extension.ts` → `dist/extension.js` (plus `deps.neverBundle: ['vscode']`);
   - MCP `src/mcp/server.ts` → `dist/mcp.js`.
 - Third bundle (chrome): `vp build -c vite.webview.config.ts` → `dist/webview/chrome.js` + `chrome.css`; `vp pack` does not emit it, `compile` / `package` / `verify` run it after pack.
-- Spawn with `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. Env is an explicit allowlist (`ELECTRON_RUN_AS_NODE`, `CURSOR_DESIGN_WORKSPACE_ROOT`, `CURSOR_DESIGN_WORKSPACE_ROOTS`); never spread `process.env`.
+- Spawn with `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. Env is an explicit allowlist (`ELECTRON_RUN_AS_NODE`, `VIBEBOARD_WORKSPACE_ROOT`, `VIBEBOARD_WORKSPACE_ROOTS`); never spread `process.env`.
 - `unregisterServer` then `registerServer` on activate; dispose unregisters. The stdio child never writes to stdout (the MCP protocol); log to stderr.
 
 ## Chrome build and type gates

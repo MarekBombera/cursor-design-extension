@@ -3,13 +3,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 
 import { registerArtboardTools } from './artboardTools';
 import { registerCommentTools } from './commentTools';
-import { CURSOR_DESIGN_MCP_SERVER_NAME } from './mcpIdentity';
+import { VIBEBOARD_MCP_SERVER_NAME } from './mcpIdentity';
 import { registerPageTools } from './pageTools';
 
-const startCursorDesignMcpServer = async (): Promise<void> => {
+const startVibeboardMcpServer = async (): Promise<void> => {
 	const server = new McpServer({
-		name: CURSOR_DESIGN_MCP_SERVER_NAME,
-		version: process.env.CURSOR_DESIGN_VERSION ?? '0.0.0',
+		name: VIBEBOARD_MCP_SERVER_NAME,
+		version: process.env.VIBEBOARD_VERSION ?? '0.0.0',
 	});
 	registerArtboardTools(server);
 	registerCommentTools(server);
@@ -18,8 +18,8 @@ const startCursorDesignMcpServer = async (): Promise<void> => {
 	await server.connect(transport);
 };
 
-void startCursorDesignMcpServer().catch((error: unknown) => {
+void startVibeboardMcpServer().catch((error: unknown) => {
 	const message = error instanceof Error ? error.message : 'Unknown MCP server error';
-	process.stderr.write(`cursor-design MCP: ${message}\n`);
+	process.stderr.write(`vibeboard MCP: ${message}\n`);
 	process.exit(1);
 });

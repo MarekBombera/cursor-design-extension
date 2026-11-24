@@ -28,17 +28,17 @@ import {
 } from './panelRequestCopy';
 
 // Pinned values: the module keeps these private.
-const CREATE_FALLBACK_MESSAGE = 'Could not add the comment. Check the Output panel: Cursor Design.';
+const CREATE_FALLBACK_MESSAGE = 'Could not add the comment. Check the Output panel: Vibeboard.';
 const MALFORMED_CREATE_MESSAGE = 'Could not add the comment. Pick the element again.';
-const CHANGE_FALLBACK_MESSAGE = 'Could not save the change. Check the Output panel: Cursor Design.';
+const CHANGE_FALLBACK_MESSAGE = 'Could not save the change. Check the Output panel: Vibeboard.';
 const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
 const COMMENT_GONE_MESSAGE = 'This comment no longer exists.';
-const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
-const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Cursor Design.';
+const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: Vibeboard.';
+const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Vibeboard.';
 const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
 const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
 const HISTORY_CLEARED_MESSAGE = 'This artboard changed on disk, so its undo history was cleared.';
-const HISTORY_FALLBACK_MESSAGE = 'Could not undo or redo. Check the Output panel: Cursor Design.';
+const HISTORY_FALLBACK_MESSAGE = 'Could not undo or redo. Check the Output panel: Vibeboard.';
 
 test('a copy error: gone comment remapped, domain copy kept, anything else the copy fallback', () => {
 	assert.equal(
@@ -139,7 +139,7 @@ test('pageRequestErrorMessage: panel copy by reason and type, domain copy for bu
 	const refused = new InvalidArgsError('Agent copy: call list_pages.');
 	const busy = new LockTimeoutError();
 	const disk = new DiskError();
-	const fallback = 'Could not change the pages. Check the Output panel: Cursor Design.';
+	const fallback = 'Could not change the pages. Check the Output panel: Vibeboard.';
 	const rows: [Parameters<typeof pageRequestErrorMessage>[0]['type'], unknown, string][] = [
 		['page:open', unlisted, PAGE_GONE_MESSAGE],
 		[

@@ -21,7 +21,7 @@ Full words, strings too (`artboard = readArtboard(artboardId)`, `{ type: 'artboa
 
 Import, never re-type:
 
-- `.cursor-design/` path segments, file names, schema versions, defaults: `src/disk/layout.ts`
+- `.vibeboard/` path segments, file names, schema versions, defaults: `src/disk/layout.ts`
 - MCP tool names: `src/mcp/toolNames.ts`. MCP server name and env names: `src/mcp/mcpIdentity.ts`
 - Command ids: `src/commands/commandIds.ts`
 - Webview message types: `src/webview/hostMessages.ts` (host ↔ chrome, `import type`d by the host) and `src/webview/frame/frameMessages.ts` (frame ↔ chrome)

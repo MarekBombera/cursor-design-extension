@@ -2,7 +2,7 @@ import { type CallToolResult, fromJsonSchema } from '@modelcontextprotocol/serve
 
 import {
 	ConflictError,
-	CursorDesignError,
+	VibeboardError,
 	DiskError,
 	InvalidArgsError,
 	InvalidRootError,
@@ -54,12 +54,12 @@ const optionalRootPath = (value: unknown): string | undefined => {
 
 const logMcpError = (error: unknown): void => {
 	process.stderr.write(
-		`cursor-design MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+		`vibeboard MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
 	);
 };
 
 export const toMcpToolError = (error: unknown): CallToolResult => {
-	if (error instanceof CursorDesignError) {
+	if (error instanceof VibeboardError) {
 		if (error instanceof DiskError) {
 			logMcpError(error);
 			if (error.cause !== undefined) {

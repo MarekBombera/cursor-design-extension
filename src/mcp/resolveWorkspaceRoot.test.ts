@@ -5,14 +5,14 @@ import { join } from 'node:path';
 import { afterEach, test, vi } from 'vite-plus/test';
 
 import { InvalidRootError, NoWorkspaceError } from '../disk/errors';
-import { CURSOR_DESIGN_DIR } from '../disk/layout';
-import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV, CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+import { VIBEBOARD_DIR } from '../disk/layout';
+import { VIBEBOARD_WORKSPACE_ROOT_ENV, VIBEBOARD_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
 
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-roots-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-roots-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
@@ -78,15 +78,15 @@ test('invalid ROOTS falls back to ROOT', async () => {
 	for (const rootsRaw of ['null', '{}', '[1]', '[""]', '["a", 1]', '{oops']) {
 		assert.deepEqual(
 			parseWorkspaceRootsEnv({
-				[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: rootsRaw,
-				[CURSOR_DESIGN_WORKSPACE_ROOT_ENV]: workspaceRoot,
+				[VIBEBOARD_WORKSPACE_ROOTS_ENV]: rootsRaw,
+				[VIBEBOARD_WORKSPACE_ROOT_ENV]: workspaceRoot,
 			}),
 			[workspaceRoot],
 		);
 	}
 	assert.deepEqual(stderr.mock.calls, [
 		[
-			`cursor-design: ${CURSOR_DESIGN_WORKSPACE_ROOTS_ENV} parse failed: expected a JSON array of non-empty strings\n`,
+			`vibeboard: ${VIBEBOARD_WORKSPACE_ROOTS_ENV} parse failed: expected a JSON array of non-empty strings\n`,
 		],
 	]);
 });
@@ -96,8 +96,8 @@ test('valid ROOTS wins over ROOT', async () => {
 	const secondRoot = await makeTempRoot();
 	assert.deepEqual(
 		parseWorkspaceRootsEnv({
-			[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: JSON.stringify([firstRoot, secondRoot]),
-			[CURSOR_DESIGN_WORKSPACE_ROOT_ENV]: firstRoot,
+			[VIBEBOARD_WORKSPACE_ROOTS_ENV]: JSON.stringify([firstRoot, secondRoot]),
+			[VIBEBOARD_WORKSPACE_ROOT_ENV]: firstRoot,
 		}),
 		[firstRoot, secondRoot],
 	);
@@ -112,7 +112,7 @@ test('missing roots is NO_WORKSPACE', () => {
 		},
 	);
 	assert.throws(
-		() => parseWorkspaceRootsEnv({ [CURSOR_DESIGN_WORKSPACE_ROOTS_ENV]: '[]' }),
+		() => parseWorkspaceRootsEnv({ [VIBEBOARD_WORKSPACE_ROOTS_ENV]: '[]' }),
 		(error: unknown) => {
 			assert.ok(error instanceof NoWorkspaceError);
 			return true;
@@ -123,6 +123,6 @@ test('missing roots is NO_WORKSPACE', () => {
 test('omitted rootPath uses the first root', async () => {
 	const firstRoot = await makeTempRoot();
 	const secondRoot = await makeTempRoot();
-	await mkdir(join(secondRoot, CURSOR_DESIGN_DIR));
+	await mkdir(join(secondRoot, VIBEBOARD_DIR));
 	assert.equal(resolveWorkspaceRoot({ roots: [firstRoot, secondRoot] }), firstRoot);
 });

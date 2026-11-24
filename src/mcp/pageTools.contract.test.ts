@@ -8,7 +8,7 @@ import { afterEach, test } from 'vite-plus/test';
 
 import { hashHtml } from '../disk/hash';
 import {
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	DEFAULT_ARTBOARD_HTML,
 	FIRST_PAGE_ID,
 	LOCK_FILE,
@@ -22,9 +22,9 @@ import {
 import { registerArtboardTools } from './artboardTools';
 import { registerCommentTools } from './commentTools';
 import {
-	CURSOR_DESIGN_MCP_SERVER_NAME,
-	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
-	CURSOR_DESIGN_WORKSPACE_ROOTS_ENV,
+	VIBEBOARD_MCP_SERVER_NAME,
+	VIBEBOARD_WORKSPACE_ROOT_ENV,
+	VIBEBOARD_WORKSPACE_ROOTS_ENV,
 } from './mcpIdentity';
 import { registerPageTools } from './pageTools';
 import {
@@ -47,17 +47,17 @@ let contractClient: Client | undefined;
 let contractServer: McpServer | undefined;
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-page-contract-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-page-contract-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
 
 const connectContractPair = async (): Promise<Client> => {
-	contractServer = new McpServer({ name: CURSOR_DESIGN_MCP_SERVER_NAME, version: '0.0.0' });
+	contractServer = new McpServer({ name: VIBEBOARD_MCP_SERVER_NAME, version: '0.0.0' });
 	registerArtboardTools(contractServer);
 	registerCommentTools(contractServer);
 	registerPageTools(contractServer);
-	contractClient = new Client({ name: 'cursor-design-page-contract', version: '0.0.0' });
+	contractClient = new Client({ name: 'vibeboard-page-contract', version: '0.0.0' });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await Promise.all([
 		contractClient.connect(clientTransport),
@@ -89,15 +89,15 @@ const restoreEnvVar = (name: string, previous: string | undefined): void => {
 
 // The first root is the one whose create_page writes .ensure-panel.
 const withRootsEnv = async (roots: readonly string[], run: () => Promise<void>): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	const previousRoot = process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = JSON.stringify(roots);
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] = roots[0];
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	const previousRoot = process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
+	process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = JSON.stringify(roots);
+	process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] = roots[0];
 	try {
 		await run();
 	} finally {
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOTS_ENV, previousRoots);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOT_ENV, previousRoot);
 	}
 };
 
@@ -240,7 +240,7 @@ test('open_page refuses a non-string or malformed pageId without echoing it, and
 		);
 		assert.equal(
 			noFolder.message,
-			'Page "page-2" has no folder. Restore .cursor-design/pages/page-2/, or delete .cursor-design/project.json to rebuild the page list from the page folders.',
+			'Page "page-2" has no folder. Restore .vibeboard/pages/page-2/, or delete .vibeboard/project.json to rebuild the page list from the page folders.',
 		);
 	});
 });
@@ -260,7 +260,7 @@ test('create_page at MAX_PAGES is INVALID_ARGS and writes no page', async () => 
 			'INVALID_ARGS',
 		);
 		assert.equal(body.message, `A project holds at most ${MAX_PAGES} pages. Delete a page first.`);
-		assert.deepEqual(await readdir(join(root, CURSOR_DESIGN_DIR, 'pages')), [FIRST_PAGE_ID]);
+		assert.deepEqual(await readdir(join(root, VIBEBOARD_DIR, 'pages')), [FIRST_PAGE_ID]);
 	});
 });
 
@@ -294,7 +294,7 @@ test('project codes, MIGRATION_CONFLICT, WORKSPACE_BUSY and DISK_ERROR reach the
 			openPageId: 'page-1',
 			pages: [{ id: 'page-1', title: 'Page 1' }],
 		});
-		await writeFile(join(root, CURSOR_DESIGN_DIR, LOCK_FILE), '1 live-holder', 'utf8');
+		await writeFile(join(root, VIBEBOARD_DIR, LOCK_FILE), '1 live-holder', 'utf8');
 		for (const [name, args] of calls.slice(1)) {
 			requireErrorCode(await callTool(client, name, args), 'WORKSPACE_BUSY');
 		}
@@ -304,7 +304,7 @@ test('project codes, MIGRATION_CONFLICT, WORKSPACE_BUSY and DISK_ERROR reach the
 		const client = await connectContractPair();
 		// A 0.4 root canvas.json next to a page-1 copy: the migration refuses to overwrite.
 		await mkdir(join(legacyRoot, ...pageDirSegments(FIRST_PAGE_ID)), { recursive: true });
-		await writeFile(join(legacyRoot, CURSOR_DESIGN_DIR, 'canvas.json'), '{"version":1}\n');
+		await writeFile(join(legacyRoot, VIBEBOARD_DIR, 'canvas.json'), '{"version":1}\n');
 		await writeFile(join(legacyRoot, ...canvasPathSegments(FIRST_PAGE_ID)), '{"version":1}\n');
 		for (const [name, args] of [
 			[LIST_PAGES_TOOL, {}],

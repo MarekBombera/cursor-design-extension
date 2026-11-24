@@ -12,7 +12,7 @@ Every public surface (command, MCP tool, disk read/write, webview message) names
 
 ## Principles
 
-1. **Expected vs unexpected.** Recoverable conditions (no or ambiguous folder, missing / half-written / corrupt / wrong-version `.cursor-design/` data, missing artboard, stale `baseGeneration`, malformed or unknown messages, export with nothing to export) return a typed, actionable error; programmer bugs and broken invariants throw.
+1. **Expected vs unexpected.** Recoverable conditions (no or ambiguous folder, missing / half-written / corrupt / wrong-version `.vibeboard/` data, missing artboard, stale `baseGeneration`, malformed or unknown messages, export with nothing to export) return a typed, actionable error; programmer bugs and broken invariants throw.
 2. **Preserve `cause`.** `new ArtboardNotFoundError(artboardId, { cause: error })`, never `new XError(error.message)`: foreign text goes on `cause`.
 3. **A deliberate silent path logs first** and carries a `// ponytail:` comment naming the ceiling.
 4. **Log once, at the boundary.** Logging helpers never throw (a crashing logger hides the original failure).
@@ -33,4 +33,4 @@ Tool execution failures (validation, disk, stale generation) return a tool resul
 
 Never in UI strings, MCP `content`, or webview posts: `error.stack`, absolute paths outside the workspace (home, extension dir, temp), secrets / tokens / env values, full artboard HTML or handoff bodies, raw `ENOENT` / `EACCES` text as the only message, dependency versions or hostnames. Never pipe `error.message` to the user or agent unless we authored it.
 
-Do include: a stable `code` (`ARTBOARD_NOT_FOUND`, `conflict`, `NO_WORKSPACE`), the artboard id, the path relative to `.cursor-design/`, expected vs actual generation, and the next step (always for MCP): `Artboard "hero" not found. Call list_artboards, then set_artboard.`
+Do include: a stable `code` (`ARTBOARD_NOT_FOUND`, `conflict`, `NO_WORKSPACE`), the artboard id, the path relative to `.vibeboard/`, expected vs actual generation, and the next step (always for MCP): `Artboard "hero" not found. Call list_artboards, then set_artboard.`

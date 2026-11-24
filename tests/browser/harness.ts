@@ -87,7 +87,7 @@ const harnessPage = ({
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	${hostHead(vscodeHost)}
-	<title>Cursor Design</title>
+	<title>Vibeboard</title>
 	<link rel="stylesheet" nonce="${HARNESS_NONCE}" href="/chrome.css">
 </head>
 <body${vscodeHost === undefined ? '' : ` class="vscode-${vscodeHost}"`}>

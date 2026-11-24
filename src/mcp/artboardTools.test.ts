@@ -18,7 +18,7 @@ import {
 	manifestPathSegments,
 } from '../disk/layout';
 import { resolveOpenPage } from '../disk/openPage';
-import { CURSOR_DESIGN_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
+import { VIBEBOARD_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 import {
 	LIST_ARTBOARDS_TOOL,
 	PLACE_FRAME_TOOL,
@@ -31,7 +31,7 @@ type CapturedHandler = (args: Record<string, unknown>) => Promise<CallToolResult
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-tools-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-tools-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
@@ -49,7 +49,7 @@ const spyStderr = () => vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 const loggedSymlinkDiskError = (stderr: ReturnType<typeof spyStderr>): boolean =>
 	stderr.mock.calls.some(
 		([line]) =>
-			String(line).startsWith('cursor-design MCP: DiskError: ') &&
+			String(line).startsWith('vibeboard MCP: DiskError: ') &&
 			String(line).includes('canvas.json must be a regular file (symlinks rejected).'),
 	);
 
@@ -68,15 +68,15 @@ const withWorkspaceRootsEnv = async (
 	workspaceRoot: string,
 	run: () => Promise<void>,
 ): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
 	try {
 		await run();
 	} finally {
 		if (previousRoots === undefined) {
-			delete process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
+			delete process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
 		} else {
-			process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = previousRoots;
+			process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = previousRoots;
 		}
 	}
 };

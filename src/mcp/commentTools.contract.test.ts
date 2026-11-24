@@ -18,9 +18,9 @@ import {
 } from '../disk/layout';
 import { registerCommentTools } from './commentTools';
 import {
-	CURSOR_DESIGN_MCP_SERVER_NAME,
-	CURSOR_DESIGN_WORKSPACE_ROOT_ENV,
-	CURSOR_DESIGN_WORKSPACE_ROOTS_ENV,
+	VIBEBOARD_MCP_SERVER_NAME,
+	VIBEBOARD_WORKSPACE_ROOT_ENV,
+	VIBEBOARD_WORKSPACE_ROOTS_ENV,
 } from './mcpIdentity';
 import { registerPageTools } from './pageTools';
 import {
@@ -64,20 +64,20 @@ let contractClient: Client | undefined;
 let contractServer: McpServer | undefined;
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-comment-contract-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-comment-contract-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
 
 const connectContractPair = async (): Promise<Client> => {
 	contractServer = new McpServer({
-		name: CURSOR_DESIGN_MCP_SERVER_NAME,
-		version: process.env.CURSOR_DESIGN_VERSION ?? '0.0.0',
+		name: VIBEBOARD_MCP_SERVER_NAME,
+		version: process.env.VIBEBOARD_VERSION ?? '0.0.0',
 	});
 	registerArtboardTools(contractServer);
 	registerCommentTools(contractServer);
 	registerPageTools(contractServer);
-	contractClient = new Client({ name: 'cursor-design-comment-contract', version: '0.0.0' });
+	contractClient = new Client({ name: 'vibeboard-comment-contract', version: '0.0.0' });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await Promise.all([
 		contractClient.connect(clientTransport),
@@ -117,15 +117,15 @@ const restoreEnvVar = (name: string, previous: string | undefined): void => {
 };
 
 const withWorkspaceEnv = async (workspaceRoot: string, run: () => Promise<void>): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	const previousRoot = process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] = workspaceRoot;
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	const previousRoot = process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
+	process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = JSON.stringify([workspaceRoot]);
+	process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] = workspaceRoot;
 	try {
 		await run();
 	} finally {
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOTS_ENV, previousRoots);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOT_ENV, previousRoot);
 	}
 };
 
@@ -133,15 +133,15 @@ const withMultiRootEnv = async (
 	roots: readonly string[],
 	run: () => Promise<void>,
 ): Promise<void> => {
-	const previousRoots = process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV];
-	const previousRoot = process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV];
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOTS_ENV] = JSON.stringify(roots);
-	process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] = roots[0];
+	const previousRoots = process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
+	const previousRoot = process.env[VIBEBOARD_WORKSPACE_ROOT_ENV];
+	process.env[VIBEBOARD_WORKSPACE_ROOTS_ENV] = JSON.stringify(roots);
+	process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] = roots[0];
 	try {
 		await run();
 	} finally {
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOTS_ENV, previousRoots);
-		restoreEnvVar(CURSOR_DESIGN_WORKSPACE_ROOT_ENV, previousRoot);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOTS_ENV, previousRoots);
+		restoreEnvVar(VIBEBOARD_WORKSPACE_ROOT_ENV, previousRoot);
 	}
 };
 
@@ -353,7 +353,7 @@ test('corrupt comments.json is CORRUPT_COMMENTS and names the relative path', as
 		await writeFile(join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID)), '{', 'utf8');
 		const result = await callTool(client, LIST_COMMENTS_TOOL);
 		const body = requireErrorCode(result, 'CORRUPT_COMMENTS');
-		assert.ok(String(body.message).includes('.cursor-design/pages/page-1/comments.json'));
+		assert.ok(String(body.message).includes('.vibeboard/pages/page-1/comments.json'));
 		assertNoLeak(result, workspaceRoot);
 	});
 });

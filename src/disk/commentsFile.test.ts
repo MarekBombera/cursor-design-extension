@@ -8,7 +8,7 @@ import { type CommentsFile, readCommentsFile, writeCommentsFile } from './commen
 import { CorruptCommentsError, UnsupportedCommentsVersionError } from './errors';
 import {
 	FIRST_PAGE_ID,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
 	commentsPathSegments,
@@ -18,7 +18,7 @@ import { resolveOpenPage } from './openPage';
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-comments-file-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-comments-file-'));
 	tempRoots.push(workspaceRoot);
 	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
@@ -55,7 +55,7 @@ const validComment = (overrides: Record<string, unknown> = {}): Record<string, u
 
 const writeComments = async (workspaceRoot: string, text: string): Promise<string> => {
 	const filePath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
+	await mkdir(join(workspaceRoot, VIBEBOARD_DIR), { recursive: true });
 	await writeFile(filePath, text, 'utf8');
 	return filePath;
 };

@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { afterEach, test } from 'vite-plus/test';
 
 import { LockTimeoutError } from './errors';
-import { CURSOR_DESIGN_DIR, LOCK_FILE } from './layout';
+import { VIBEBOARD_DIR, LOCK_FILE } from './layout';
 import { isLockOrTempPath, withWorkspaceLock } from './workspaceLock';
 
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-lock-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-lock-'));
 	tempRoots.push(workspaceRoot);
 	return workspaceRoot;
 };
@@ -22,16 +22,15 @@ afterEach(async () => {
 	);
 });
 
-const lockPathOf = (workspaceRoot: string): string =>
-	join(workspaceRoot, CURSOR_DESIGN_DIR, LOCK_FILE);
+const lockPathOf = (workspaceRoot: string): string => join(workspaceRoot, VIBEBOARD_DIR, LOCK_FILE);
 
 const writeForeignLock = async (workspaceRoot: string, token: string): Promise<void> => {
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
+	await mkdir(join(workspaceRoot, VIBEBOARD_DIR), { recursive: true });
 	await writeFile(lockPathOf(workspaceRoot), token, 'utf8');
 };
 
 const lockDirEntries = async (workspaceRoot: string): Promise<string[]> =>
-	readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
+	readdir(join(workspaceRoot, VIBEBOARD_DIR));
 
 test('a throwing operation releases the lock and rethrows the same error', async () => {
 	const workspaceRoot = await makeTempRoot();
@@ -199,7 +198,7 @@ test('a stale lock is not broken while another breaker holds a fresh .lock.break
 });
 
 test('isLockOrTempPath matches the lock, broken locks, and temp files only', () => {
-	const base = join('/w', CURSOR_DESIGN_DIR);
+	const base = join('/w', VIBEBOARD_DIR);
 	assert.equal(isLockOrTempPath(join(base, '.lock')), true);
 	assert.equal(isLockOrTempPath(join(base, '.lock.break')), true);
 	assert.equal(isLockOrTempPath(join(base, 'canvas.json.123.tmp')), true);

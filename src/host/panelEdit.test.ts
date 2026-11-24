@@ -16,7 +16,7 @@ import { clearEditHistories, historyFlags, historyStepTarget } from './editHisto
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
 
 // Pinned values: the module keeps these private.
-const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Cursor Design.';
+const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Vibeboard.';
 const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit again.';
 
 // One shared, ordered log of everything the host does, so order is assertable.

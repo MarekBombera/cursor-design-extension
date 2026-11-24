@@ -897,7 +897,7 @@ test('a copy answer keeps an open reply draft; a matching ui:error is linked to 
 	await postToChrome(page, { type: 'ui:error', message: 'Unrelated.', requestId: 'another' });
 	await nextAnimationFrame(page);
 	await expect(page.getByText('Unrelated.')).toHaveCount(0);
-	const message = 'Could not copy the prompt. Check the Output panel: Cursor Design.';
+	const message = 'Could not copy the prompt. Check the Output panel: Vibeboard.';
 	await postToChrome(page, { type: 'ui:error', message, requestId: String(second.requestId) });
 	await expect(panelItem(page, TITLE.id).getByText(message, { exact: true })).toHaveText(message);
 	await expect(panelButton(page, TITLE.id, 'Copy for Agent')).toHaveAccessibleDescription(message);
@@ -942,7 +942,7 @@ test('Copy open counts open comments only, posts once, and announces the marked 
 
 	await clickChrome(button);
 	const retry = await nthRequest(page, 'comment:copy-open', 2);
-	const message = 'Another Cursor Design write is in progress. Retry in a moment.';
+	const message = 'Another Vibeboard write is in progress. Retry in a moment.';
 	await postToChrome(page, { type: 'ui:error', message, requestId: String(retry.requestId) });
 	await expect(button).toHaveAccessibleDescription(message);
 });

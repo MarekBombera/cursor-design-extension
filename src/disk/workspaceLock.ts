@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { LockTimeoutError, isErrno, logStderr, throwDiskError } from './errors';
-import { CURSOR_DESIGN_DIR, LOCK_FILE } from './layout';
+import { VIBEBOARD_DIR, LOCK_FILE } from './layout';
 
 export type WithWorkspaceLockArgs<T> = {
 	workspaceRoot: string;
@@ -124,14 +124,14 @@ const releaseLock = async (lockPath: string, token: string): Promise<void> => {
 	}
 };
 
-// Cross-process mutex over `.cursor-design/.lock` (MCP process and extension host share it).
+// Cross-process mutex over `.vibeboard/.lock` (MCP process and extension host share it).
 export const withWorkspaceLock = async <T>({
 	workspaceRoot,
 	operation,
 	timeoutMs = 2000,
 	staleMs = 30_000,
 }: WithWorkspaceLockArgs<T>): Promise<T> => {
-	const lockDir = join(workspaceRoot, CURSOR_DESIGN_DIR);
+	const lockDir = join(workspaceRoot, VIBEBOARD_DIR);
 	const lockPath = join(lockDir, LOCK_FILE);
 	const token = `${process.pid} ${randomUUID()}`;
 	try {

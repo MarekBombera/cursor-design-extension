@@ -11,7 +11,7 @@ alwaysApply: false
 
 ## MCP tools
 
-Names: `src/mcp/toolNames.ts`; Agent-facing contract: shipped `skills/cursor-design/SKILL.md` (sync rule: `AGENTS.md`). Non-obvious facts:
+Names: `src/mcp/toolNames.ts`; Agent-facing contract: shipped `skills/vibeboard/SKILL.md` (sync rule: `AGENTS.md`). Non-obvious facts:
 
 - No `open_artboard`: `set_artboard` creates and may set active and open the panel.
 - `update_artboard` requires `baseGeneration` or `baseHash`; mismatch is a conflict. `read_artboard` defaults to the active artboard.
@@ -21,13 +21,13 @@ Names: `src/mcp/toolNames.ts`; Agent-facing contract: shipped `skills/cursor-des
 
 ## Disk and lock
 
-`.cursor-design/`: `project.json` (version 1: `openPageId`, `pages`); `pages/<pageId>/` with `manifest.json`, `canvas.json`, `comments.json`, `artboards/<id>.html` + optional meta; `artboards`, a tombstone FILE (never a directory) so a stale 0.4 MCP fails instead of writing; and at the root `handoff/<exportId>/`, `tokens.json`, `assets/`, `.lock`, `.ensure-panel`. Multi-artboard per page, one active, no gallery. Users gitignore it.
+`.vibeboard/`: `project.json` (version 1: `openPageId`, `pages`); `pages/<pageId>/` with `manifest.json`, `canvas.json`, `comments.json`, `artboards/<id>.html` + optional meta; `artboards`, a tombstone FILE (never a directory) so a stale 0.4 MCP fails instead of writing; and at the root `handoff/<exportId>/`, `tokens.json`, `assets/`, `.lock`, `.ensure-panel`. Multi-artboard per page, one active, no gallery. Users gitignore it.
 
 - Every MCP handler and host entry point calls `resolveOpenPage` (`src/disk/openPage.ts`) once per call, after the trust check, and passes the `PageLocation` down; never re-resolve inside an op (`createPage` and `openPage` resolve again by contract, lock-free after the first). It migrates a 0.4 root layout into `pages/page-1/` (resumable, never overwrites; `MIGRATION_CONFLICT` when both copies exist), rebuilds a lost `project.json` from the page folders, and creates a fresh project only with `createIfFresh` (`set_artboard`, Open Artboard). Per-page paths come from the `pageId` builders in `layout.ts`; root files take `page.workspaceRoot`. Panel requests resolve through `resolveRequestedPage` instead: it calls `resolveOpenPage` once, then checks the requested id is indexed with a folder.
-- MCP serializes its writes (`enqueueDiskOp`). Every `canvas.json` / `comments.json` read-modify-write, `updateArtboard`'s HTML + meta read-compare-write and the export tail (meta refresh + manifest write, after a re-read) run under the cross-process `withWorkspaceLock` (`.cursor-design/.lock`, `WORKSPACE_BUSY` after 2 s), shared by MCP and the panel.
+- MCP serializes its writes (`enqueueDiskOp`). Every `canvas.json` / `comments.json` read-modify-write, `updateArtboard`'s HTML + meta read-compare-write and the export tail (meta refresh + manifest write, after a re-read) run under the cross-process `withWorkspaceLock` (`.vibeboard/.lock`, `WORKSPACE_BUSY` after 2 s), shared by MCP and the panel.
 - Page ops (`src/disk/pageOps.ts`): `createPage` claims `pages/page-<n>` and writes its artboard lock-free (it relies on `createArtboard` staying lock-free), then indexes it under the lock; `deletePage` writes the index first, then moves the folder to `deleted/<id>-<stamp>/`; ids are never reused. `listPages` and `findCommentPage` are lock-free readers and never resolve.
 - The lock is not re-entrant: never call a disk-lib function that takes it (`resolveOpenPage`, `resolveRequestedPage`, `createPage`, `openPage`, `renamePage`, `deletePage`, `updateArtboard`, `editArtboard`, `exportArtboard`, `placeFrame`, `addComment`, `replyToComment`, `setCommentStatus`, `markCommentsSent`, `resolveComment`) inside `withWorkspaceLock`.
-- MCP denied: edit `.cursor-design/pages/<openPageId>/**` directly; tell the user to allowlist the tools. No `project.json` yet: the user opens the panel once to migrate; never create `pages/` or `project.json` by hand.
+- MCP denied: edit `.vibeboard/pages/<openPageId>/**` directly; tell the user to allowlist the tools. No `project.json` yet: the user opens the panel once to migrate; never create `pages/` or `project.json` by hand.
 
 ## Webview CSP and messages
 

@@ -70,7 +70,7 @@ export type ReadCanvasViewArgs = {
 };
 
 const FRAME_READ_ERROR_MESSAGE =
-	'Could not read this artboard file. Check the Output panel: Cursor Design.';
+	'Could not read this artboard file. Check the Output panel: Vibeboard.';
 
 type ScannedArtboard = {
 	artboardId: string;

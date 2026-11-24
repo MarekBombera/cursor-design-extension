@@ -32,7 +32,7 @@ const lines = (prompt: string): string[] => prompt.split('\n');
 test('single prompt is the locked Notion template, word for word', () => {
 	assert.equal(
 		singleCommentPrompt(comment()),
-		`Handle cursor-design comment c-1 only.
+		`Handle vibeboard comment c-1 only.
 First call get_comment("c-1"). If it is resolved, stale or the target is missing, stop and tell me.
 Artboard: Landing page (frame hero, version 3)
 Target: main > h1 "Welcome back"
@@ -45,7 +45,7 @@ Make the change with update_artboard, then call resolve_comment("c-1", note) wit
 test('batch prompt is the locked ids-only template, for three ids and for one', () => {
 	assert.equal(
 		openCommentsPrompt(['c-1', 'c-2', 'c-3']),
-		`Handle these cursor-design comments, in this order:
+		`Handle these vibeboard comments, in this order:
 - c-1
 - c-2
 - c-3
@@ -54,7 +54,7 @@ Otherwise make the change with update_artboard, then call resolve_comment("{id}"
 	);
 	assert.equal(
 		openCommentsPrompt(['c-9']),
-		`Handle these cursor-design comments, in this order:
+		`Handle these vibeboard comments, in this order:
 - c-9
 For each id: first call get_comment("{id}"). If it is resolved, stale or the target is missing, skip it and tell me at the end.
 Otherwise make the change with update_artboard, then call resolve_comment("{id}", note) with a one-line note of what you changed.`,

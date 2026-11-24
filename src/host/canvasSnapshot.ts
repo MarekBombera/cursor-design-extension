@@ -6,7 +6,7 @@ import { sourceTaggedHtml } from '../disk/sourceTags';
 import type { PostedCanvasFrame, PostedPage } from '../webview/hostMessages';
 
 export const UNTRUSTED_WORKSPACE_MESSAGE =
-	'This workspace is not trusted. Cursor Design will not write files or preview artboard HTML.';
+	'This workspace is not trusted. Vibeboard will not write files or preview artboard HTML.';
 
 const ARTBOARD_HTML_TOO_LARGE_MESSAGE = 'Artboard HTML is too large to preview in the panel.';
 

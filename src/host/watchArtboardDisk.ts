@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { CURSOR_DESIGN_DIR, ensurePanelPathSegments } from '../disk/layout';
+import { VIBEBOARD_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { isLockOrTempPath } from '../disk/workspaceLock';
 import { fileExists, firstWorkspaceFolder, isFileNotFound, logDiskError } from './hostFs';
 import { refreshPanel } from './refreshPanel';
@@ -115,7 +115,7 @@ export const replaceArtboardWatcher = ({
 	};
 
 	artboardWatcher = vscode.workspace.createFileSystemWatcher(
-		new vscode.RelativePattern(workspaceFolder, `${CURSOR_DESIGN_DIR}/**`),
+		new vscode.RelativePattern(workspaceFolder, `${VIBEBOARD_DIR}/**`),
 	);
 	const onArtboardDiskEvent = (uri: vscode.Uri): void => {
 		if (isLockOrTempPath(uri.fsPath)) {

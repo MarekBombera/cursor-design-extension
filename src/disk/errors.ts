@@ -16,15 +16,15 @@ import {
 	rootEntrySegments,
 } from './layout';
 
-export abstract class CursorDesignError extends Error {
+export abstract class VibeboardError extends Error {
 	abstract readonly code: string;
 }
 
 // Our authored copy for a domain error; the fallback for anything else (it may carry a path).
 export const toSafeArtboardErrorMessage = (
 	error: unknown,
-	fallback = 'Could not load artboard. Check the Output panel: Cursor Design.',
-): string => (error instanceof CursorDesignError ? error.message : fallback);
+	fallback = 'Could not load artboard. Check the Output panel: Vibeboard.',
+): string => (error instanceof VibeboardError ? error.message : fallback);
 
 export const isErrno = (error: unknown, code: string): boolean =>
 	typeof error === 'object' &&
@@ -32,7 +32,7 @@ export const isErrno = (error: unknown, code: string): boolean =>
 	'code' in error &&
 	(error as { code: unknown }).code === code;
 
-export class InvalidArtboardIdError extends CursorDesignError {
+export class InvalidArtboardIdError extends VibeboardError {
 	readonly code = 'INVALID_ARTBOARD_ID' as const;
 
 	constructor(
@@ -44,7 +44,7 @@ export class InvalidArtboardIdError extends CursorDesignError {
 	}
 }
 
-export class CorruptManifestError extends CursorDesignError {
+export class CorruptManifestError extends VibeboardError {
 	readonly code = 'CORRUPT_MANIFEST' as const;
 
 	readonly pageId: string;
@@ -59,7 +59,7 @@ export class CorruptManifestError extends CursorDesignError {
 	}
 }
 
-export class UnsupportedSchemaVersionError extends CursorDesignError {
+export class UnsupportedSchemaVersionError extends VibeboardError {
 	readonly code = 'UNSUPPORTED_SCHEMA_VERSION' as const;
 
 	readonly pageId: string;
@@ -80,7 +80,7 @@ export class UnsupportedSchemaVersionError extends CursorDesignError {
 	}
 }
 
-export class CorruptCanvasError extends CursorDesignError {
+export class CorruptCanvasError extends VibeboardError {
 	readonly code = 'CORRUPT_CANVAS' as const;
 
 	readonly pageId: string;
@@ -95,7 +95,7 @@ export class CorruptCanvasError extends CursorDesignError {
 	}
 }
 
-export class UnsupportedCanvasVersionError extends CursorDesignError {
+export class UnsupportedCanvasVersionError extends VibeboardError {
 	readonly code = 'UNSUPPORTED_CANVAS_VERSION' as const;
 
 	readonly pageId: string;
@@ -116,7 +116,7 @@ export class UnsupportedCanvasVersionError extends CursorDesignError {
 	}
 }
 
-export class CorruptMetaError extends CursorDesignError {
+export class CorruptMetaError extends VibeboardError {
 	readonly code = 'CORRUPT_META' as const;
 
 	readonly pageId: string;
@@ -137,7 +137,7 @@ export class CorruptMetaError extends CursorDesignError {
 	}
 }
 
-export class InvalidArgsError extends CursorDesignError {
+export class InvalidArgsError extends VibeboardError {
 	readonly code = 'INVALID_ARGS' as const;
 
 	constructor(message: string, options?: { cause?: unknown }) {
@@ -146,7 +146,7 @@ export class InvalidArgsError extends CursorDesignError {
 	}
 }
 
-export class ArtboardExistsError extends CursorDesignError {
+export class ArtboardExistsError extends VibeboardError {
 	readonly code = 'ARTBOARD_EXISTS' as const;
 
 	constructor(
@@ -161,7 +161,7 @@ export class ArtboardExistsError extends CursorDesignError {
 	}
 }
 
-export class ArtboardNotFoundError extends CursorDesignError {
+export class ArtboardNotFoundError extends VibeboardError {
 	readonly code = 'ARTBOARD_NOT_FOUND' as const;
 
 	constructor(
@@ -179,7 +179,7 @@ export class ArtboardNotFoundError extends CursorDesignError {
 }
 
 // Export has nothing to write: no artboards dir, or no artboard files. Same code as not-found.
-export class NoArtboardsToExportError extends CursorDesignError {
+export class NoArtboardsToExportError extends VibeboardError {
 	readonly code = 'ARTBOARD_NOT_FOUND' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -188,7 +188,7 @@ export class NoArtboardsToExportError extends CursorDesignError {
 	}
 }
 
-export class NoWorkspaceError extends CursorDesignError {
+export class NoWorkspaceError extends VibeboardError {
 	readonly code = 'NO_WORKSPACE' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -197,7 +197,7 @@ export class NoWorkspaceError extends CursorDesignError {
 	}
 }
 
-export class InvalidRootError extends CursorDesignError {
+export class InvalidRootError extends VibeboardError {
 	readonly code = 'INVALID_ROOT' as const;
 
 	constructor(
@@ -212,7 +212,7 @@ export class InvalidRootError extends CursorDesignError {
 	}
 }
 
-export class DiskError extends CursorDesignError {
+export class DiskError extends VibeboardError {
 	readonly code = 'DISK_ERROR' as const;
 
 	constructor(message?: string | { cause?: unknown }, options?: { cause?: unknown }) {
@@ -232,7 +232,7 @@ export type ConflictCompared = {
 	actualHash?: string;
 };
 
-export class ConflictError extends CursorDesignError {
+export class ConflictError extends VibeboardError {
 	readonly code = 'conflict' as const;
 
 	constructor(
@@ -248,17 +248,17 @@ export class ConflictError extends CursorDesignError {
 	}
 }
 
-export class LockTimeoutError extends CursorDesignError {
+export class LockTimeoutError extends VibeboardError {
 	readonly code = 'WORKSPACE_BUSY' as const;
 
 	constructor(options?: { cause?: unknown }) {
-		super('Another Cursor Design write is in progress. Retry in a moment.', options);
+		super('Another Vibeboard write is in progress. Retry in a moment.', options);
 		this.name = 'LockTimeoutError';
 	}
 }
 
 // The panel's frame:place base no longer matches disk (the Agent or another write moved it).
-export class FrameMovedError extends CursorDesignError {
+export class FrameMovedError extends VibeboardError {
 	readonly code = 'FRAME_MOVED' as const;
 
 	constructor(
@@ -270,7 +270,7 @@ export class FrameMovedError extends CursorDesignError {
 	}
 }
 
-export class CorruptCommentsError extends CursorDesignError {
+export class CorruptCommentsError extends VibeboardError {
 	readonly code = 'CORRUPT_COMMENTS' as const;
 
 	readonly pageId: string;
@@ -285,7 +285,7 @@ export class CorruptCommentsError extends CursorDesignError {
 	}
 }
 
-export class UnsupportedCommentsVersionError extends CursorDesignError {
+export class UnsupportedCommentsVersionError extends VibeboardError {
 	readonly code = 'UNSUPPORTED_COMMENTS_VERSION' as const;
 
 	readonly pageId: string;
@@ -297,7 +297,7 @@ export class UnsupportedCommentsVersionError extends CursorDesignError {
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Comments file version ${version} is unsupported (expected ${COMMENTS_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${commentsPathSegments(pageId).join('/')}.`,
+			`Comments file version ${version} is unsupported (expected ${COMMENTS_SCHEMA_VERSION}). Update the vibeboard extension, or fix ${commentsPathSegments(pageId).join('/')}.`,
 			options,
 		);
 		this.name = 'UnsupportedCommentsVersionError';
@@ -306,7 +306,7 @@ export class UnsupportedCommentsVersionError extends CursorDesignError {
 	}
 }
 
-export class CommentNotFoundError extends CursorDesignError {
+export class CommentNotFoundError extends VibeboardError {
 	readonly code = 'COMMENT_NOT_FOUND' as const;
 
 	// found: the id is on another, unopened page (the Agent's get_comment / resolve_comment hint).
@@ -327,7 +327,7 @@ export class CommentNotFoundError extends CursorDesignError {
 	}
 }
 
-export class CommentResolvedError extends CursorDesignError {
+export class CommentResolvedError extends VibeboardError {
 	readonly code = 'COMMENT_RESOLVED' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -340,7 +340,7 @@ export class CommentResolvedError extends CursorDesignError {
 }
 
 // The panel's comment pick no longer matches the artboard's generation on disk.
-export class PickOutdatedError extends CursorDesignError {
+export class PickOutdatedError extends VibeboardError {
 	readonly code = 'PICK_OUTDATED' as const;
 
 	constructor(
@@ -367,7 +367,7 @@ const EDIT_REFUSED_MESSAGES: Record<EditRefusedReason, string> = {
 	'too-large': 'This artboard is too large to edit here. Ask the Agent to change it.',
 };
 
-export class EditRefusedError extends CursorDesignError {
+export class EditRefusedError extends VibeboardError {
 	readonly code = 'EDIT_REFUSED' as const;
 
 	constructor(
@@ -379,7 +379,7 @@ export class EditRefusedError extends CursorDesignError {
 	}
 }
 
-export class PageNotFoundError extends CursorDesignError {
+export class PageNotFoundError extends VibeboardError {
 	readonly code = 'PAGE_NOT_FOUND' as const;
 
 	// noFolder: indexed but its folder is gone; unlisted: project.json does not list the id.
@@ -400,7 +400,7 @@ export class PageNotFoundError extends CursorDesignError {
 	}
 }
 
-export class CorruptProjectError extends CursorDesignError {
+export class CorruptProjectError extends VibeboardError {
 	readonly code = 'CORRUPT_PROJECT' as const;
 
 	constructor(options?: { cause?: unknown }) {
@@ -412,7 +412,7 @@ export class CorruptProjectError extends CursorDesignError {
 	}
 }
 
-export class UnsupportedProjectVersionError extends CursorDesignError {
+export class UnsupportedProjectVersionError extends VibeboardError {
 	readonly code = 'UNSUPPORTED_PROJECT_VERSION' as const;
 
 	constructor(
@@ -420,7 +420,7 @@ export class UnsupportedProjectVersionError extends CursorDesignError {
 		options?: { cause?: unknown },
 	) {
 		super(
-			`Project index version ${version} is unsupported (expected ${PROJECT_SCHEMA_VERSION}). Update the cursor-design extension, or fix ${projectPathSegments.join('/')}.`,
+			`Project index version ${version} is unsupported (expected ${PROJECT_SCHEMA_VERSION}). Update the vibeboard extension, or fix ${projectPathSegments.join('/')}.`,
 			options,
 		);
 		this.name = 'UnsupportedProjectVersionError';
@@ -436,7 +436,7 @@ const migrationConflictMessage = (pageId: string, names: readonly PageEntry[]): 
 			: `${rootEntrySegments(name).join('/')} and ${pageEntrySegments(pageId, name).join('/')} both exist`,
 	);
 	const artboardsStep = names.includes(ARTBOARDS_DIR)
-		? ` Move the files you want from ${rootArtboards}/ into ${pageArtboards}/, then delete ${rootArtboards}/ (quit and reopen Cursor first if an older cursor-design MCP server may still be running).`
+		? ` Move the files you want from ${rootArtboards}/ into ${pageArtboards}/, then delete ${rootArtboards}/ (quit and reopen Cursor first if an older vibeboard MCP server may still be running).`
 		: '';
 	const jsonStep = names.some((name) => name !== ARTBOARDS_DIR)
 		? ' Keep one copy of each JSON file: move or delete the other by hand.'
@@ -445,7 +445,7 @@ const migrationConflictMessage = (pageId: string, names: readonly PageEntry[]): 
 };
 
 // A 0.4 entry and its page-folder twin both exist: the migration never picks one, the user does.
-export class MigrationConflictError extends CursorDesignError {
+export class MigrationConflictError extends VibeboardError {
 	readonly code = 'MIGRATION_CONFLICT' as const;
 
 	readonly pageId: string;
@@ -467,7 +467,7 @@ export class MigrationConflictError extends CursorDesignError {
 export const logStderr = (scope: string, error: unknown): void => {
 	try {
 		process.stderr.write(
-			`cursor-design: ${scope} failed: ${error instanceof Error ? error.message : String(error)}\n`,
+			`vibeboard: ${scope} failed: ${error instanceof Error ? error.message : String(error)}\n`,
 		);
 	} catch {
 		// ponytail: a sync throw (a throwing message getter or toString, a sync write failure) is
@@ -479,7 +479,7 @@ export const logStderr = (scope: string, error: unknown): void => {
 
 // Rethrows a domain error as is; any other fs failure becomes DISK_ERROR with the cause kept.
 export const throwDiskError = (error: unknown): never => {
-	if (error instanceof CursorDesignError) {
+	if (error instanceof VibeboardError) {
 		throw error;
 	}
 	throw new DiskError({ cause: error });

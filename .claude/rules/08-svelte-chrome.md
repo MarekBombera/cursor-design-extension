@@ -18,7 +18,7 @@ Chrome (Svelte 5 + Vite, no Kit) renders what the host posts; no MCP, workspace 
 2. **After every edit** to a `.svelte` / `.svelte.ts` file: `svelte-autofixer` on the full file until clean.
 3. Claude Code: delegate Svelte edits to `svelte-file-editor`.
 4. Never `playground-link` repo files.
-5. No MCP (Codex, CI): `npx -y @sveltejs/mcp --help`; never skip the autofixer. If `svelte-check` fails, follow the `cursor-design-build` skill (never weaken lint).
+5. No MCP (Codex, CI): `npx -y @sveltejs/mcp --help`; never skip the autofixer. If `svelte-check` fails, follow the `vibeboard-build` skill (never weaken lint).
 
 ## Container vs view
 

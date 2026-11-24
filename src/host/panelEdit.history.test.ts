@@ -118,7 +118,7 @@ beforeEach(async () => {
 	host.logs = 0;
 	vi.clearAllMocks();
 	clearEditHistories();
-	host.root = await mkdtemp(join(tmpdir(), 'cursor-design-history-'));
+	host.root = await mkdtemp(join(tmpdir(), 'vibeboard-history-'));
 	await resolveOpenPage({ workspaceRoot: host.root, createIfFresh: true });
 	await createArtboard({
 		page: { workspaceRoot: host.root, pageId: FIRST_PAGE_ID },

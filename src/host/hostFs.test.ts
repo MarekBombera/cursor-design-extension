@@ -58,14 +58,14 @@ test('missingChromeAssets: a non-not-found stat error counts as missing and stil
 test('chromeLoadErrorMessage: exact text for js only, css only, and both', () => {
 	assert.equal(
 		chromeLoadErrorMessage([JS]),
-		'Cursor Design could not load its panel: dist/webview/chrome.js is missing. Reinstall the extension, or run pnpm compile in a development checkout.',
+		'Vibeboard could not load its panel: dist/webview/chrome.js is missing. Reinstall the extension, or run pnpm compile in a development checkout.',
 	);
 	assert.equal(
 		chromeLoadErrorMessage([CSS]),
-		'Cursor Design could not load its panel: dist/webview/chrome.css is missing. Reinstall the extension, or run pnpm compile in a development checkout.',
+		'Vibeboard could not load its panel: dist/webview/chrome.css is missing. Reinstall the extension, or run pnpm compile in a development checkout.',
 	);
 	assert.equal(
 		chromeLoadErrorMessage([JS, CSS]),
-		'Cursor Design could not load its panel: dist/webview/chrome.js and dist/webview/chrome.css are missing. Reinstall the extension, or run pnpm compile in a development checkout.',
+		'Vibeboard could not load its panel: dist/webview/chrome.js and dist/webview/chrome.css are missing. Reinstall the extension, or run pnpm compile in a development checkout.',
 	);
 });

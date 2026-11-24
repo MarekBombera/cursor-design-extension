@@ -43,7 +43,7 @@ import {
 	FIRST_PAGE_ID,
 	ARTBOARDS_DIR,
 	CANVAS_SCHEMA_VERSION,
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_FRAME_WIDTH,
 	FRAME_GAP,
@@ -60,7 +60,7 @@ import { resolveOpenPage } from './openPage';
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
-	const workspaceRoot = await mkdtemp(join(tmpdir(), 'cursor-design-conflict-'));
+	const workspaceRoot = await mkdtemp(join(tmpdir(), 'vibeboard-conflict-'));
 	tempRoots.push(workspaceRoot);
 	await resolveOpenPage({ workspaceRoot, createIfFresh: true });
 	return workspaceRoot;
@@ -297,7 +297,7 @@ test('symlinked html is rejected without touching the target', async () => {
 			assert.ok(error instanceof DiskError);
 			assert.equal(
 				error.message,
-				'.cursor-design/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
+				'.vibeboard/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
 			);
 			return true;
 		},
@@ -354,7 +354,7 @@ test('createArtboard over an existing artboard: a file is ARTBOARD_EXISTS, a sym
 		assert.ok(error instanceof DiskError);
 		assert.equal(
 			error.message,
-			'.cursor-design/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
+			'.vibeboard/pages/page-1/artboards/hero.html must be a regular file (symlinks rejected).',
 		);
 		return true;
 	});
@@ -393,8 +393,8 @@ test('writeUtf8 does not follow a tmp symlink and still replaces dest', async ()
 
 test('the root tombstone passes the dir check; a symlink or a file at the page artboards dir is refused', async () => {
 	const workspaceRoot = await makeTempRoot();
-	// The seeded root already holds the tombstone file at .cursor-design/artboards.
-	assert.ok((await lstat(join(workspaceRoot, CURSOR_DESIGN_DIR, ARTBOARDS_DIR))).isFile());
+	// The seeded root already holds the tombstone file at .vibeboard/artboards.
+	assert.ok((await lstat(join(workspaceRoot, VIBEBOARD_DIR, ARTBOARDS_DIR))).isFile());
 	await createArtboard({
 		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		artboardId: 'hero',
@@ -421,7 +421,7 @@ test('the root tombstone passes the dir check; a symlink or a file at the page a
 				assert.ok(error instanceof DiskError);
 				assert.equal(
 					error.message,
-					'.cursor-design/pages/page-1/artboards must be a directory (symlinks rejected).',
+					'.vibeboard/pages/page-1/artboards must be a directory (symlinks rejected).',
 				);
 				return true;
 			},
@@ -572,7 +572,7 @@ test('an unparsable or foreign-id meta reads as defaults and the next update rew
 
 test('v2 manifest is not rewritten by createArtboard', async () => {
 	const workspaceRoot = await makeTempRoot();
-	await mkdir(join(workspaceRoot, CURSOR_DESIGN_DIR), { recursive: true });
+	await mkdir(join(workspaceRoot, VIBEBOARD_DIR), { recursive: true });
 	const manifestPath = join(workspaceRoot, ...manifestPathSegments(FIRST_PAGE_ID));
 	const v2Bytes = `${JSON.stringify({
 		version: 2,
@@ -916,7 +916,7 @@ test('placeFrame clamps width through the disk path and stores negative x/y as g
 		base: { x: -40, y: -8, width: 120 },
 	});
 	assert.deepEqual(wide.frames[0], { id: 'a', label: 'Artboard', x: -40, y: -8, width: 3840 });
-	const entries = await readdir(join(workspaceRoot, CURSOR_DESIGN_DIR));
+	const entries = await readdir(join(workspaceRoot, VIBEBOARD_DIR));
 	assert.ok(!entries.includes(LOCK_FILE), 'lock released');
 });
 

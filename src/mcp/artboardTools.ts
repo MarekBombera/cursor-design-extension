@@ -12,7 +12,7 @@ import { listArtboards } from '../disk/canvasView';
 import { exportArtboard, readHandoffStatus } from '../disk/exportFs';
 import { InvalidArgsError } from '../disk/errors';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
-import { CURSOR_DESIGN_WORKSPACE_ROOT_ENV } from './mcpIdentity';
+import { VIBEBOARD_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import {
 	READ_ONLY_ANNOTATIONS,
 	ROOT_PATH_DESCRIPTION,
@@ -47,7 +47,7 @@ type ToolArgs = {
 	group?: unknown;
 };
 
-// Mirrors skills/cursor-design/SKILL.md § Writing artboard HTML; both change with the frame CSPs
+// Mirrors skills/vibeboard/SKILL.md § Writing artboard HTML; both change with the frame CSPs
 // (artboardChromeHtml.ts, FRAME_CSP).
 const ARTBOARD_HTML_RULES =
 	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes work: keep any already in the file (the user may have set them in the panel) and prefer classes for your own CSS. Inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
@@ -144,7 +144,7 @@ export const artboardToolInputSchemas = {
 	[PLACE_FRAME_TOOL]: placeFrameInputSchema,
 };
 
-const firstFolderRoot = (): string => process.env[CURSOR_DESIGN_WORKSPACE_ROOT_ENV] ?? '';
+const firstFolderRoot = (): string => process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] ?? '';
 
 export const shouldWriteEnsurePanelMarker = (workspaceRoot: string): boolean => {
 	const firstRoot = firstFolderRoot();
@@ -186,7 +186,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Update artboard',
 			description:
-				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML. WORKSPACE_BUSY when another Cursor Design write holds the lock: retry; after a crashed write it can last up to 30 s.',
+				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML. WORKSPACE_BUSY when another Vibeboard write holds the lock: retry; after a crashed write it can last up to 30 s.',
 			inputSchema: updateArtboardInputSchema,
 			annotations: { destructiveHint: true, openWorldHint: false },
 		},
@@ -221,7 +221,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'List artboards',
 			description:
-				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.cursor-design/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. Does not write.',
+				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.vibeboard/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. Does not write.',
 			inputSchema: listArtboardsInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
@@ -238,7 +238,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Place frame',
 			description:
-				'Update one frame (x, y, width, label, group) in the open page (.cursor-design/pages/<pageId>/canvas.json) and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
+				'Update one frame (x, y, width, label, group) in the open page (.vibeboard/pages/<pageId>/canvas.json) and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
 			inputSchema: placeFrameInputSchema,
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
@@ -272,7 +272,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Export artboard',
 			description:
-				'Export every frame on the canvas to .cursor-design/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open. WORKSPACE_BUSY when another Cursor Design write holds the lock: retry; after a crashed write it can last up to 30 s. The handoff folder is still written; a retry writes a new one.',
+				'Export every frame on the canvas to .vibeboard/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open. WORKSPACE_BUSY when another Vibeboard write holds the lock: retry; after a crashed write it can last up to 30 s. The handoff folder is still written; a retry writes a new one.',
 			inputSchema: exportArtboardInputSchema,
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},

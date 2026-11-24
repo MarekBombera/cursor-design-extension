@@ -1,4 +1,4 @@
-export const CURSOR_DESIGN_DIR = '.cursor-design' as const;
+export const VIBEBOARD_DIR = '.vibeboard' as const;
 
 export const ARTBOARDS_DIR = 'artboards' as const;
 
@@ -166,7 +166,7 @@ export const DEFAULT_ARTBOARD_HTML = `<!DOCTYPE html>
 <body>
 	<p>Empty artboard.</p>
 	<script>
-		console.log('cursor-design artboard');
+		console.log('vibeboard artboard');
 	</script>
 </body>
 </html>
@@ -204,11 +204,11 @@ export const artboardMetaPathSegments = (
 	artboardMetaFileName(artboardId),
 ];
 
-export const ensurePanelPathSegments = [CURSOR_DESIGN_DIR, ENSURE_PANEL_FILE] as const;
+export const ensurePanelPathSegments = [VIBEBOARD_DIR, ENSURE_PANEL_FILE] as const;
 
-export const handoffRootSegments = [CURSOR_DESIGN_DIR, HANDOFF_DIR] as const;
+export const handoffRootSegments = [VIBEBOARD_DIR, HANDOFF_DIR] as const;
 
-export const workspaceTokensPathSegments = [CURSOR_DESIGN_DIR, TOKENS_FILE] as const;
+export const workspaceTokensPathSegments = [VIBEBOARD_DIR, TOKENS_FILE] as const;
 
 export const handoffDirSegments = (exportId: string): readonly [string, string, string] => [
 	...handoffRootSegments,
@@ -242,12 +242,12 @@ export const PAGE_ENTRIES = [ARTBOARDS_DIR, MANIFEST_FILE, CANVAS_FILE, COMMENTS
 
 export type PageEntry = (typeof PAGE_ENTRIES)[number];
 
-export const projectPathSegments = [CURSOR_DESIGN_DIR, PROJECT_FILE] as const;
+export const projectPathSegments = [VIBEBOARD_DIR, PROJECT_FILE] as const;
 
-export const pagesDirSegments = [CURSOR_DESIGN_DIR, PAGES_DIR] as const;
+export const pagesDirSegments = [VIBEBOARD_DIR, PAGES_DIR] as const;
 
-// Where deletePage moves a page folder; never emptied by cursor-design.
-export const deletedDirSegments = [CURSOR_DESIGN_DIR, DELETED_DIR] as const;
+// Where deletePage moves a page folder; never emptied by vibeboard.
+export const deletedDirSegments = [VIBEBOARD_DIR, DELETED_DIR] as const;
 
 export const deletedPageDirSegments = (
 	pageId: string,
@@ -255,11 +255,11 @@ export const deletedPageDirSegments = (
 ): readonly [string, string, string] => [...deletedDirSegments, `${pageId}-${stamp}`];
 
 // A regular file where 0.4 kept its artboards folder, so a stale 0.4 MCP fails instead of writing.
-export const artboardsTombstoneSegments = [CURSOR_DESIGN_DIR, ARTBOARDS_DIR] as const;
+export const artboardsTombstoneSegments = [VIBEBOARD_DIR, ARTBOARDS_DIR] as const;
 
 // Where a page entry lived before pages (0.4).
 export const rootEntrySegments = (name: PageEntry): readonly [string, string] => [
-	CURSOR_DESIGN_DIR,
+	VIBEBOARD_DIR,
 	name,
 ];
 
@@ -275,7 +275,7 @@ export const pageEntrySegments = (
 
 // Constants only, no builder call: a module-level call would survive tree-shaking into the frame
 // runtime IIFE that imports this file.
-export const ARTBOARDS_TOMBSTONE_TEXT = `cursor-design keeps artboards in ${CURSOR_DESIGN_DIR}/${PAGES_DIR}/<page id>/${ARTBOARDS_DIR}/ now.
-Do not delete or replace this file. It stops an older cursor-design MCP server from writing artboards here, where the extension no longer reads them.
-If a cursor-design tool fails with "${CURSOR_DESIGN_DIR}/${ARTBOARDS_DIR} must be a directory (symlinks rejected).", quit and reopen Cursor.
+export const ARTBOARDS_TOMBSTONE_TEXT = `vibeboard keeps artboards in ${VIBEBOARD_DIR}/${PAGES_DIR}/<page id>/${ARTBOARDS_DIR}/ now.
+Do not delete or replace this file. It stops an older vibeboard MCP server from writing artboards here, where the extension no longer reads them.
+If a vibeboard tool fails with "${VIBEBOARD_DIR}/${ARTBOARDS_DIR} must be a directory (symlinks rejected).", quit and reopen Cursor.
 `;

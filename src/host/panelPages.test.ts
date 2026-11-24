@@ -209,7 +209,7 @@ test('a cancelled modal answers page:saved, deletes nothing and refreshes', asyn
 	assert.equal(historyFlags({ pageId: 'page-2', frameId: 'hero' }).canUndo, true);
 	assert.deepEqual(showWarningMessage.mock.calls[0], [
 		'Delete "Title of page-2"?',
-		{ modal: true, detail: 'Its files move to .cursor-design/deleted/.' },
+		{ modal: true, detail: 'Its files move to .vibeboard/deleted/.' },
 		'Delete',
 	]);
 });

@@ -1,19 +1,19 @@
-# cursor-design - Project Overview
+# vibeboard - Project Overview
 
 <!-- blueprint:source-hash cc9c24b77348431c0f6823c1deae091c38b236eff51ad195301332558b8e1171 -->
 
-> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.cursor-design/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 (in progress) adds pages: several designs per workspace, each with its own frames, layout and comments.
+> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.vibeboard/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 (in progress) adds pages: several designs per workspace, each with its own frames, layout and comments.
 
-Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `cursor-design-build` (repo) and the shipped Agent skill `cursor-design` (`skills/cursor-design/SKILL.md`). Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
+Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `vibeboard-build` (repo) and the shipped Agent skill `vibeboard` (`skills/vibeboard/SKILL.md`). Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 ## Problem
 
-Cursor has no Claude Design-style live canvas. Design talk stays in chat; the human cannot watch HTML pixels change while the Agent iterates, then hand off implementable markup into a real repo. cursor-design is that loop: prompt, live artboard, export, implement. The extension never calls models.
+Cursor has no Claude Design-style live canvas. Design talk stays in chat; the human cannot watch HTML pixels change while the Agent iterates, then hand off implementable markup into a real repo. vibeboard is that loop: prompt, live artboard, export, implement. The extension never calls models.
 
 ## Users
 
 - **People using Cursor** who want a live HTML artboard the Agent can iterate, then export into a real repo.
-- **Cursor Agent** creating, iterating, and placing frames via MCP, or `.cursor-design/**` files if MCP is denied.
+- **Cursor Agent** creating, iterating, and placing frames via MCP, or `.vibeboard/**` files if MCP is denied.
 - **A second Agent session** implementing from handoff (`IMPLEMENT.md` + HTML/CSS/JS), not screenshots.
 
 No accounts or access tiers in v1.
@@ -23,7 +23,7 @@ No accounts or access tiers in v1.
 Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 
 1. **Phase 0 Bootstrap** - F5 Extension Host, empty Artboard panel, `registerServer` on activate, no CSP errors.
-2. **Phase 1 Disk to pixels** - `.cursor-design/` HTML save refreshes the iframe (~200ms); generation bumps.
+2. **Phase 1 Disk to pixels** - `.vibeboard/` HTML save refreshes the iframe (~200ms); generation bumps.
 3. **Phase 2 MCP loop** - `set_artboard`, `update_artboard` (requires `baseGeneration`), `read_artboard`, `list_artboards`, `set_active_artboard`; conflict path; MCP-offline banner.
 4. **Phase 3 Export** - `export_artboard` + `handoff_status` stale mark; usable `IMPLEMENT.md`; demo = hero+CTA into Vite + plain HTML.
 5. **Phase 4 Release polish** - MIT, honest limits.
@@ -43,7 +43,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
    - 10d. **Pages menu** - toolbar page button + menu: pages with last-edited times, open, New blank page, inline rename, delete behind a host modal; page list rides on `canvas:updated`; `page:*` messages answered once by `page:saved` or `ui:error`, then a direct snapshot post; keyboard and focus; gallery states.
    - 10e. **Verify** - agent-run real Cursor on the `.vsix`: 0.4 workspace migrates unchanged, stale 0.4 MCP fails, Agent page tools drive the panel, no cross-page leaks, edits/undo stay on their page, rename/delete, Copy prompt across pages, per-page export; docs (README, skill, system map, project-plan, overview, Notion).
 
-**0.5 decisions (Bombic, 2026-11-21, all as proposed):** one open page stored on disk, and the Agent's `open_page` / `create_page` move the user's stage; `create_page` opens its page; delete goes to `.cursor-design/deleted/`; migrated page titled "Page 1"; no `pageId` argument or guard on existing tools (they act on the open page, resolved once per call). No rename or delete over MCP.
+**0.5 decisions (Bombic, 2026-11-21, all as proposed):** one open page stored on disk, and the Agent's `open_page` / `create_page` move the user's stage; `create_page` opens its page; delete goes to `.vibeboard/deleted/`; migrated page titled "Page 1"; no `pageId` argument or guard on existing tools (they act on the open page, resolved once per call). No rename or delete over MCP.
 
 **Out of scope:** 0.4: classes and style blocks, per-side spacing, editing one text piece inside mixed content, layers, drag-reordering, GrapesJS/Webstudio/Puck, brand kit; 0.4.1 (mode switch opens the matching panel) is separate. 0.5: duplicate page, brand kit, whole-project export, page search and frame links (0.5.1).
 
@@ -60,10 +60,10 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 
 ## Data model
 
-No database. Gitignored workspace folder `.cursor-design/`. From 0.5 (10a) the per-design files live in a page folder; root files are shared by every page.
+No database. Gitignored workspace folder `.vibeboard/`. From 0.5 (10a) the per-design files live in a page folder; root files are shared by every page.
 
 ```txt
-.cursor-design/
+.vibeboard/
   project.json              # openPageId, pages [{id, title}]
   pages/<pageId>/           # manifest.json, canvas.json, comments.json, artboards/<id>.html + .meta.json
   artboards                 # tombstone FILE, never a directory
@@ -88,7 +88,7 @@ No database. Gitignored workspace folder `.cursor-design/`. From 0.5 (10a) the p
 - `canvas.json` - `{ version: 1, frames: [{ id, label, x, y, width, group? }] }`. `id` matches `artboards/<id>.html`; width default 1280, clamped 120-3840; height never stored (from `cd:frame-height`); a missing entry is auto-placed right of the last frame with a 24px gap. Stage view is chrome state.
 - `comments.json` - `{ version: 1, comments }`, at most 500; comment ids are UUIDs, unique across pages.
 
-### Tombstone (`.cursor-design/artboards`, 0.5)
+### Tombstone (`.vibeboard/artboards`, 0.5)
 
 A regular file where 0.4 kept its artboards folder. Whoever first writes `project.json` (migration, rebuild, fresh create) writes it, and an Indexed read restores it if missing. A still-running 0.4 MCP (old process kept after an update) then fails every tool with `… must be a directory` instead of writing where 0.5 no longer reads. Never treated as legacy; the skill says never delete it and to quit and reopen Cursor.
 
@@ -101,20 +101,20 @@ Runs once per call at every MCP tool and host entry point (after the trust check
 - **Index lost** (page folders, no index) - rebuild `project.json` from folder names, titles `Page <n>`, open = lowest.
 - **Fresh** - reads write nothing and create no folder; only `createIfFresh` callers (`set_artboard`, Open Artboard) create the tombstone, `pages/page-1` and `project.json`.
 
-Page-scoped writes never recreate a missing page folder (`createArtboard` makes only `artboards/`, non-recursively; no folder -> `PAGE_NOT_FOUND`). Per-page helpers take `PageLocation = { workspaceRoot, pageId }`; root files and the lock keep `workspaceRoot`. Untrusted workspaces never migrate or create. Accepted (F-08): reads may migrate or restore the tombstone; read-only `.cursor-design/` is unsupported.
+Page-scoped writes never recreate a missing page folder (`createArtboard` makes only `artboards/`, non-recursively; no folder -> `PAGE_NOT_FOUND`). Per-page helpers take `PageLocation = { workspaceRoot, pageId }`; root files and the lock keep `workspaceRoot`. Untrusted workspaces never migrate or create. Accepted (F-08): reads may migrate or restore the tombstone; read-only `.vibeboard/` is unsupported.
 
-New codes (10a): `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`, `MIGRATION_CONFLICT`. Per-page error messages name `.cursor-design/pages/<id>/...`.
+New codes (10a): `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSION`, `MIGRATION_CONFLICT`. Per-page error messages name `.vibeboard/pages/<id>/...`.
 
 ### Writes and locking
 
-- One cross-process lock `.cursor-design/.lock` (`withWorkspaceLock`, not re-entrant) for every page. `updateArtboard` (MCP and panel), `placeFrame`, comment writes, the export tail and migration take it; `createArtboard` and `setActiveArtboard` do not.
+- One cross-process lock `.vibeboard/.lock` (`withWorkspaceLock`, not re-entrant) for every page. `updateArtboard` (MCP and panel), `placeFrame`, comment writes, the export tail and migration take it; `createArtboard` and `setActiveArtboard` do not.
 - `update_artboard` requires `baseGeneration` (or `baseHash`); mismatch -> conflict, Agent re-reads and retries.
 - 0.4: the panel is a second writer through `updateArtboard`'s compare-and-write, checked by content hash. `data-cd-src` numbers exist only in the frame copy. Undo snapshots live in host memory per panel session (keyed by page and frame from 10b). An edit changes the element's text, so its comments read stale until the bytes return.
 - 0.5 MCP (10c): `list_pages()` -> `{ openPageId, pages: [{ id, title, updatedAt }] }` (`updatedAt` = newest mtime of the page's files; fresh folder -> `{ openPageId: null, pages: [] }`); `create_page({ title })` -> `{ page, artboardId, generation, hash }`; `open_page({ pageId })` -> `{ page }`. Existing tools gain `page: { id, title }` in success results only.
 
 ### Handoff
 
-- `handoff/<exportId>/` at the root, exporting the open page: `IMPLEMENT.md` (index: groups -> frames with label, width, id, hash; its MCP-unavailable step names `.cursor-design/pages/<id>/artboards/`; 10c adds a page line), `canvas.html` (view-only layout), `<group-slug>/<frame-id>/index.html` per frame (`ungrouped/`; colliding slugs get a suffix), `tokens.json`. `assets/` referenced, not copied. Old handoffs never deleted.
+- `handoff/<exportId>/` at the root, exporting the open page: `IMPLEMENT.md` (index: groups -> frames with label, width, id, hash; its MCP-unavailable step names `.vibeboard/pages/<id>/artboards/`; 10c adds a page line), `canvas.html` (view-only layout), `<group-slug>/<frame-id>/index.html` per frame (`ungrouped/`; colliding slugs get a suffix), `tokens.json`. `assets/` referenced, not copied. Old handoffs never deleted.
 - Stale when any frame hash changed or a frame was added or removed since that page's export.
 - Every exported `index.html` is byte-equal to its disk HTML; canvas code never appears (asserted, not stripped). Frames are never merged.
 
@@ -124,7 +124,7 @@ New codes (10a): `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSI
 - **Chrome** - Svelte 5 + Vite under `src/webview/`; the host keeps only the shell `src/panel/artboardChromeHtml.ts` (CSP, `chrome.css`, `chrome.js`). Theme: `--cd-*` tokens in `src/webview/ui/theme.css`, built from `var(--vscode-*)` (the only file that reads them).
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce, inline-only frame CSP. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
-- **State** - disk `.cursor-design/` is SoT. Brain = Cursor Agent only. Brand: `cursor-design`.
+- **State** - disk `.vibeboard/` is SoT. Brain = Cursor Agent only. Brand: `vibeboard`.
 - **Tooling** - Vite+ (`vp check` lint/fmt/types, `vp test` on Vitest, `vp pack`), `svelte-check`; `pnpm verify` locally and in GitHub CI. Browser tests (`pnpm test:browser`) and gallery local only. Cursor-only checks: F5 (`fixtures/dev-workspace`) or the agent-run real-Cursor rig.
 
 Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.claude/rules/02-mcp-webview.md` lock v2 `@modelcontextprotocol/server`. Follow the repo.

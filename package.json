@@ -1,28 +1,30 @@
 {
-	"name": "cursor-design",
-	"displayName": "cursor-design",
+	"name": "vibeboard",
+	"displayName": "Vibeboard: Agent Design Canvas",
 	"version": "0.1.0",
-	"description": "Agent-driven live HTML artboard for Cursor (MCP + webview, no in-panel chat).",
+	"description": "Agent design canvas for Cursor and VS Code: your AI agent writes live HTML artboards through a local MCP server; you review, comment and tweak them in a panel.",
 	"categories": [
 		"Other"
 	],
 	"keywords": [
+		"agent",
 		"artboard",
+		"canvas",
 		"cursor",
 		"design",
 		"mcp",
 		"webview"
 	],
-	"homepage": "https://github.com/marekbombera/cursor-design-extension",
+	"homepage": "https://github.com/MarekBombera/vibeboard",
 	"bugs": {
-		"url": "https://github.com/marekbombera/cursor-design-extension/issues"
+		"url": "https://github.com/MarekBombera/vibeboard/issues"
 	},
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/marekbombera/cursor-design-extension.git"
+		"url": "https://github.com/MarekBombera/vibeboard.git"
 	},
-	"publisher": "cursor-design",
+	"publisher": "bombic",
 	"main": "./dist/extension.js",
 	"scripts": {
 		"vscode:prepublish": "pnpm run package",
@@ -64,19 +66,19 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "cursor-design.openArtboard",
+				"command": "vibeboard.openArtboard",
 				"title": "Open Artboard",
-				"category": "Cursor Design"
+				"category": "Vibeboard"
 			},
 			{
-				"command": "cursor-design.revealDesignFolder",
+				"command": "vibeboard.revealDesignFolder",
 				"title": "Reveal Design Folder",
-				"category": "Cursor Design"
+				"category": "Vibeboard"
 			},
 			{
-				"command": "cursor-design.exportHandoff",
+				"command": "vibeboard.exportHandoff",
 				"title": "Export Handoff",
-				"category": "Cursor Design"
+				"category": "Vibeboard"
 			}
 		]
 	},
@@ -92,7 +94,7 @@
 	"capabilities": {
 		"untrustedWorkspaces": {
 			"supported": false,
-			"description": "Cursor Design writes and previews workspace HTML as executable artboard content."
+			"description": "Vibeboard writes and previews workspace HTML as executable artboard content."
 		}
 	}
 }

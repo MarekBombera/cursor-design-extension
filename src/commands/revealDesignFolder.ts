@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { CURSOR_DESIGN_DIR } from '../disk/layout';
+import { VIBEBOARD_DIR } from '../disk/layout';
 import {
 	firstWorkspaceFolder,
 	isFileNotFound,
@@ -15,7 +15,7 @@ export const revealDesignFolder = async (outputChannel: vscode.OutputChannel): P
 		return;
 	}
 
-	const designFolderUri = vscode.Uri.joinPath(workspaceFolder.uri, CURSOR_DESIGN_DIR);
+	const designFolderUri = vscode.Uri.joinPath(workspaceFolder.uri, VIBEBOARD_DIR);
 	try {
 		await vscode.workspace.fs.stat(designFolderUri);
 		await vscode.commands.executeCommand('revealInExplorer', designFolderUri);
@@ -28,7 +28,7 @@ export const revealDesignFolder = async (outputChannel: vscode.OutputChannel): P
 		}
 		logDiskError({ scope: 'revealDesignFolder', error, outputChannel });
 		await vscode.window.showErrorMessage(
-			'Could not reveal the design folder. Check the Output panel: Cursor Design.',
+			'Could not reveal the design folder. Check the Output panel: Vibeboard.',
 		);
 	}
 };

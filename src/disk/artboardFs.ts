@@ -344,7 +344,7 @@ export const updateArtboard = async ({
 		page.workspaceRoot,
 		artboardHtmlPathSegments(page.pageId, resolvedId),
 	);
-	// Before the lock: a missing artboard must not create .cursor-design/ through the lock's mkdir,
+	// Before the lock: a missing artboard must not create .vibeboard/ through the lock's mkdir,
 	// and a case variant (`HERO` for hero.html on a case-insensitive disk) must never rename it.
 	await requireHtmlFile(page, resolvedId);
 	await requireExactHtmlFileName(page, resolvedId);
