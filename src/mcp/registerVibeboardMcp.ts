@@ -18,18 +18,9 @@ type RegisterVibeboardMcpArgs = {
 
 type McpServerLaunch = { command: string; args: string[]; env: Record<string, string> };
 
-let mcpRegistration: vscode.Disposable | undefined;
 let mcpDisposeHooked = false;
 // VS Code: the provider registers once per host; a later sync swaps the launch and fires the event.
 let vsCodeProvider: { launch: McpServerLaunch; changed: vscode.EventEmitter<void> } | undefined;
-
-const disposeMcpRegistration = (): void => {
-	if (mcpRegistration === undefined) {
-		return;
-	}
-	mcpRegistration.dispose();
-	mcpRegistration = undefined;
-};
 
 // VS Code restarts a running server when the definition's version changes; a changed env alone
 // (another workspace folder) may not.
@@ -62,6 +53,11 @@ const reportRegisterFailure = (error: unknown, outputChannel: vscode.OutputChann
 	return false;
 };
 
+// Cursor runs one server per user for every window under this constant name, so neither a sync
+// nor a closing window unregisters it: that would restart or drop the server other windows use.
+// ponytail: assumes registerServer replaces a same-named registration (Cursor's API docs do not
+// say). If a re-register turns out to be ignored, a new extension path or env never reaches the
+// running server until Cursor restarts; upgrade path: unregister only when the launch changed.
 const registerCursorServer = ({
 	launch,
 	outputChannel,
@@ -69,26 +65,11 @@ const registerCursorServer = ({
 	launch: McpServerLaunch;
 	outputChannel: vscode.OutputChannel;
 }): boolean => {
-	const mcpApi = vscode.cursor.mcp;
-	const unregisterVibeboardMcpServer = (): void => {
-		try {
-			mcpApi.unregisterServer(VIBEBOARD_MCP_SERVER_NAME);
-		} catch (error: unknown) {
-			logDiskError({ scope: 'unregisterVibeboardMcp', error, outputChannel });
-		}
-	};
-
-	unregisterVibeboardMcpServer();
-
 	try {
-		mcpApi.registerServer({ name: VIBEBOARD_MCP_SERVER_NAME, server: launch });
+		vscode.cursor.mcp.registerServer({ name: VIBEBOARD_MCP_SERVER_NAME, server: launch });
 	} catch (error: unknown) {
 		return reportRegisterFailure(error, outputChannel);
 	}
-
-	mcpRegistration = {
-		dispose: unregisterVibeboardMcpServer,
-	};
 	return true;
 };
 
@@ -136,18 +117,23 @@ export const registerVibeboardMcp = ({
 	context,
 	outputChannel,
 }: RegisterVibeboardMcpArgs): boolean => {
-	disposeMcpRegistration();
-
 	if (!mcpDisposeHooked) {
 		// Deactivate disposes the provider; a later activate in the same host registers afresh.
 		context.subscriptions.push({
 			dispose: () => {
-				disposeMcpRegistration();
 				vsCodeProvider = undefined;
 				mcpDisposeHooked = false;
 			},
 		});
 		mcpDisposeHooked = true;
+	}
+
+	// Cursor runs one server per user for every window, and the last registration's env wins: a
+	// folder-less window must not replace another window's folders with none. Cursor's shared server
+	// still serves this window; VS Code's provider is per window, so there it is unavailable.
+	if ((vscode.workspace.workspaceFolders ?? []).length === 0) {
+		outputChannel.appendLine('No folder is open. The Vibeboard MCP registration was left as is.');
+		return vscode.cursor?.mcp !== undefined;
 	}
 
 	if (!vscode.workspace.isTrusted) {

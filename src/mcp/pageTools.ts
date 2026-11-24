@@ -4,7 +4,6 @@ import { MAX_PAGE_TITLE_CHARS } from '../disk/layout';
 import { resolveOpenPage } from '../disk/openPage';
 import { createPage, listPages, openPage, requirePageId } from '../disk/pageOps';
 import { parsePageTitle } from '../disk/parse';
-import { shouldWriteEnsurePanelMarker } from './artboardTools';
 import {
 	READ_ONLY_ANNOTATIONS,
 	ROOT_PATH_DESCRIPTION,
@@ -55,7 +54,7 @@ export const registerPageTools = (server: McpServer): void => {
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
 		async ({ rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) => {
+			runQueued({ server, rootPath }, async (workspaceRoot) => {
 				await resolveOpenPage({ workspaceRoot, createIfFresh: false });
 				return listPages({ workspaceRoot });
 			}),
@@ -71,12 +70,12 @@ export const registerPageTools = (server: McpServer): void => {
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
 		async ({ title, rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) =>
+			runQueued({ server, rootPath }, async (workspaceRoot, isFirstRoot) =>
 				createPage({
 					workspaceRoot,
 					// Required here; createPage's omitted-title default is the 10d New blank page.
 					title: parsePageTitle(title),
-					writeEnsurePanelMarker: shouldWriteEnsurePanelMarker(workspaceRoot),
+					writeEnsurePanelMarker: isFirstRoot,
 				}),
 			),
 	);
@@ -91,7 +90,7 @@ export const registerPageTools = (server: McpServer): void => {
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
 		async ({ pageId, rootPath }) =>
-			runQueued(rootPath, async (workspaceRoot) =>
+			runQueued({ server, rootPath }, async (workspaceRoot) =>
 				openPage({ workspaceRoot, pageId: requirePageId(pageId) }),
 			),
 	);

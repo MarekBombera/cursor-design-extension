@@ -1,3 +1,4 @@
+import { McpServer } from '@modelcontextprotocol/server';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,6 +35,7 @@ test('runOnOpenPage reads the page title before the operation, so a project.json
 	try {
 		vi.stubEnv(VIBEBOARD_WORKSPACE_ROOTS_ENV, JSON.stringify([workspaceRoot]));
 		const result = await runOnOpenPage({
+			server: new McpServer({ name: 'vibeboard-test', version: '0.0.0' }),
 			rootPath: undefined,
 			createIfFresh: true,
 			operation: async () => {

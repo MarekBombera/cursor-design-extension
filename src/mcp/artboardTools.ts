@@ -12,7 +12,6 @@ import { listArtboards } from '../disk/canvasView';
 import { exportArtboard, readHandoffStatus } from '../disk/exportFs';
 import { InvalidArgsError } from '../disk/errors';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
-import { VIBEBOARD_WORKSPACE_ROOT_ENV } from './mcpIdentity';
 import {
 	READ_ONLY_ANNOTATIONS,
 	ROOT_PATH_DESCRIPTION,
@@ -144,13 +143,6 @@ export const artboardToolInputSchemas = {
 	[PLACE_FRAME_TOOL]: placeFrameInputSchema,
 };
 
-const firstFolderRoot = (): string => process.env[VIBEBOARD_WORKSPACE_ROOT_ENV] ?? '';
-
-export const shouldWriteEnsurePanelMarker = (workspaceRoot: string): boolean => {
-	const firstRoot = firstFolderRoot();
-	return firstRoot.length > 0 && workspaceRoot === firstRoot;
-};
-
 export const registerArtboardTools = (server: McpServer): void => {
 	server.registerTool(
 		SET_ARTBOARD_TOOL,
@@ -163,20 +155,21 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ artboardId, html, title, viewport, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: true,
 				// Invalid args refuse before the resolver, so they never create a fresh project.
 				beforeResolve: () => {
 					validateNewArtboardArgs({ artboardId, html, title, viewport });
 				},
-				operation: (page) =>
+				operation: (page, isFirstRoot) =>
 					createArtboard({
 						page,
 						artboardId,
 						html,
 						title,
 						viewport,
-						writeEnsurePanelMarker: shouldWriteEnsurePanelMarker(page.workspaceRoot),
+						writeEnsurePanelMarker: isFirstRoot,
 					}),
 			}),
 	);
@@ -192,6 +185,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ artboardId, html, title, viewport, rootPath, baseGeneration, baseHash }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) =>
@@ -210,6 +204,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ artboardId, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) => readArtboard({ page, artboardId }),
@@ -227,6 +222,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) => listArtboards({ page }),
@@ -244,6 +240,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ id, x, y, width, label, group, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) => placeFrame({ page, id, x, y, width, label, group }),
@@ -261,6 +258,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ artboardId, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) => setActiveArtboard({ page, artboardId }),
@@ -280,6 +278,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		async ({ artboardId, rootPath }) =>
 			artboardId === undefined
 				? runOnOpenPage({
+						server,
 						rootPath,
 						createIfFresh: false,
 						operation: (page) => exportArtboard({ page }),
@@ -298,6 +297,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		},
 		async ({ rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) => readHandoffStatus({ page }),

@@ -55,7 +55,9 @@ const loggedSymlinkDiskError = (stderr: ReturnType<typeof spyStderr>): boolean =
 
 const captureHandlers = (): Map<string, CapturedHandler> => {
 	const handlers = new Map<string, CapturedHandler>();
+	// A client without the roots capability: the env roots are used.
 	const stubServer = {
+		server: { getClientCapabilities: () => undefined, setNotificationHandler: () => {} },
 		registerTool: (name: string, _config: unknown, handler: CapturedHandler): void => {
 			handlers.set(name, handler);
 		},

@@ -99,6 +99,7 @@ export const registerCommentTools = (server: McpServer): void => {
 		},
 		async ({ status, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: async (page) => {
@@ -119,6 +120,7 @@ export const registerCommentTools = (server: McpServer): void => {
 		},
 		async ({ id, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) =>
@@ -142,6 +144,7 @@ export const registerCommentTools = (server: McpServer): void => {
 		},
 		async ({ id, note, rootPath }) =>
 			runOnOpenPage({
+				server,
 				rootPath,
 				createIfFresh: false,
 				operation: (page) =>

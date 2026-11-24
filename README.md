@@ -18,6 +18,8 @@ Any MCP-capable agent drives the artboard; the panel runs in Cursor or VS Code.
 - **VS Code:** the extension registers the same server itself (MCP server definition provider, listed as **Vibeboard**), so GitHub Copilot's agent mode sees it without setup. Start or trust it from the MCP server list when VS Code asks.
 - **Other agents** (Claude Code in a terminal, Codex CLI, Cline, others): add the bundled server to the agent's MCP config by hand. The server is `dist/mcp.js` inside the installed extension (`~/.vscode/extensions/` or `~/.cursor/extensions/`; adjust the version in the paths below), run with Node, and `VIBEBOARD_WORKSPACE_ROOT` names the workspace folder it writes `.vibeboard/` into (`VIBEBOARD_WORKSPACE_ROOTS`, a JSON array of folders, serves several; the first is the default). Keep the panel open in Cursor or VS Code on the same folder to see the artboards.
 
+The server asks the connected client for its workspace folders (MCP roots), so a client that supports roots gets the right folder automatically, even when one server serves several editor windows. `VIBEBOARD_WORKSPACE_ROOT(S)` is the fallback only for clients without roots support; a client that supports roots but reports no folder gets `NO_WORKSPACE`, and a `rootPath` argument must name one of the reported folders. Because Cursor shares one server across windows, a window's agent can write `.vibeboard/` into its own folder even when that window's workspace is untrusted; the writes stay inside `.vibeboard/` and symlinks there are rejected.
+
 Claude Code, from the workspace folder:
 
 ```bash

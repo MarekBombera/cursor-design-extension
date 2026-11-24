@@ -1,4 +1,4 @@
-import { type CallToolResult, fromJsonSchema } from '@modelcontextprotocol/server';
+import { type CallToolResult, type McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 
 import {
 	ConflictError,
@@ -10,7 +10,7 @@ import {
 import { type PageLocation, readProjectFile } from '../disk/layoutFs';
 import { resolveOpenPage } from '../disk/openPage';
 import { enqueueDiskOp } from './mcpQueue';
-import { parseWorkspaceRootsEnv, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
+import { allowedWorkspaceRoots, resolveWorkspaceRoot } from './resolveWorkspaceRoot';
 
 type McpErrorBody = {
 	code: string;
@@ -96,18 +96,20 @@ export const toMcpToolError = (error: unknown): CallToolResult => {
 	);
 };
 
+// isFirstRoot: the host watches only its first folder for `.ensure-panel`, so only that one gets it.
 export const runQueued = async (
-	rootPath: unknown,
-	operation: (workspaceRoot: string) => Promise<unknown>,
+	{ server, rootPath }: { server: McpServer; rootPath: unknown },
+	operation: (workspaceRoot: string, isFirstRoot: boolean) => Promise<unknown>,
 ): Promise<CallToolResult> => {
 	try {
+		// Outside the queue: a slow client roots/list must not hold up other writes.
+		const roots = await allowedWorkspaceRoots(server);
 		const result = await enqueueDiskOp(async () => {
-			const roots = parseWorkspaceRootsEnv(process.env);
 			const workspaceRoot = resolveWorkspaceRoot({
 				roots,
 				rootPath: optionalRootPath(rootPath),
 			});
-			return operation(workspaceRoot);
+			return operation(workspaceRoot, workspaceRoot === roots[0]);
 		});
 		return jsonResult(result);
 	} catch (error: unknown) {
@@ -120,22 +122,24 @@ export const runQueued = async (
 // already fails in the resolver). page is null when the read found no project.json or no entry
 // (a fresh folder, or a race).
 export const runOnOpenPage = async ({
+	server,
 	rootPath,
 	createIfFresh,
 	beforeResolve,
 	operation,
 }: {
+	server: McpServer;
 	rootPath: unknown;
 	createIfFresh: boolean;
 	beforeResolve?: () => void;
-	operation: (page: PageLocation) => Promise<object>;
+	operation: (page: PageLocation, isFirstRoot: boolean) => Promise<object>;
 }): Promise<CallToolResult> =>
-	runQueued(rootPath, async (workspaceRoot) => {
+	runQueued({ server, rootPath }, async (workspaceRoot, isFirstRoot) => {
 		beforeResolve?.();
 		const page = await resolveOpenPage({ workspaceRoot, createIfFresh });
 		const entry = (await readProjectFile(workspaceRoot))?.pages.find(
 			({ id }) => id === page.pageId,
 		);
-		const result = await operation(page);
+		const result = await operation(page, isFirstRoot);
 		return { ...result, page: entry === undefined ? null : { id: entry.id, title: entry.title } };
 	});
