@@ -92,8 +92,8 @@ test('generated class and id names stay out of the selector; word-like ones are 
 	const hero = doc.body.appendChild(doc.createElement('div'));
 	hero.id = 'hero';
 	assert.equal(roundTrip(hero), '#hero');
-	// Every scoping prefix finder's own word check lets through (every 2-letter word fails it,
-	// so `sc-` never reaches us), plus a mid-word capital finder accepts: the case folding.
+	// Every scoping prefix finder's own word check lets through (a 2-letter prefix such as `sc-`
+	// never passes it, so it is not listed), plus a mid-word capital finder accepts: the case folding.
 	for (const id of [
 		'css-header',
 		'svelte-header',

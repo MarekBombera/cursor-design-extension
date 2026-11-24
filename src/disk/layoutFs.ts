@@ -87,6 +87,18 @@ export const lstatOrUndefined = async (filePath: string): Promise<Stats | undefi
 	}
 };
 
+// A missing layout folder lists nothing; any other failure throws.
+export const readdirOrEmpty = async (dirPath: string): Promise<string[]> => {
+	try {
+		return await readdir(dirPath, { encoding: 'utf8' });
+	} catch (error: unknown) {
+		if (isErrno(error, 'ENOENT')) {
+			return [];
+		}
+		return throwDiskError(error);
+	}
+};
+
 // The one page-folder check: a real directory (a symlink or a file there is no page folder).
 export const pageFolderExists = async (workspaceRoot: string, pageId: string): Promise<boolean> =>
 	(await lstatOrUndefined(workspaceJoin(workspaceRoot, pageDirSegments(pageId))))?.isDirectory() ===

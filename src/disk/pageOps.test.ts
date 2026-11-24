@@ -42,6 +42,22 @@ vi.mock('./workspaceLock', async (importOriginal) => {
 	};
 });
 
+// onMkdir runs before every real mkdir; a test sets it to race another creator.
+const mkdirHook = vi.hoisted(() => ({
+	onMkdir: undefined as ((dirPath: string) => Promise<void>) | undefined,
+}));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+	const original = await importOriginal<typeof import('node:fs/promises')>();
+	return {
+		...original,
+		mkdir: async (...args: Parameters<typeof original.mkdir>) => {
+			await mkdirHook.onMkdir?.(String(args[0]));
+			return original.mkdir(...args);
+		},
+	};
+});
+
 const tempRoots: string[] = [];
 
 const makeTempRoot = async (): Promise<string> => {
@@ -52,6 +68,7 @@ const makeTempRoot = async (): Promise<string> => {
 
 afterEach(async () => {
 	lockHook.onLocked = undefined;
+	mkdirHook.onMkdir = undefined;
 	vi.restoreAllMocks();
 	await Promise.all(
 		tempRoots.splice(0).map((workspaceRoot) => rm(workspaceRoot, { recursive: true, force: true })),
@@ -229,6 +246,34 @@ test('createPage next to a page-1 with a manifest appends a page, opens it, and 
 			{ id: 'page-1', title: 'Home' },
 			{ id: 'page-2', title: 'Checkout' },
 			{ id: 'page-3', title: 'Page 3' },
+		],
+	});
+});
+
+test('createPage moves to the next id when another creator takes the number between the scan and the claim', async () => {
+	const root = await makeTempRoot();
+	await createPage({ workspaceRoot: root, title: 'Home', writeEnsurePanelMarker: false });
+	let raced = false;
+	mkdirHook.onMkdir = async (dirPath) => {
+		if (raced || !dirPath.endsWith(join('pages', 'page-2'))) {
+			return;
+		}
+		raced = true;
+		await mkdir(dirPath);
+	};
+	const created = await createPage({
+		workspaceRoot: root,
+		title: 'Raced',
+		writeEnsurePanelMarker: false,
+	});
+	assert.equal(raced, true);
+	assert.equal(created.page.id, 'page-3');
+	assert.deepEqual(await readProject(root), {
+		version: 1,
+		openPageId: 'page-3',
+		pages: [
+			{ id: 'page-1', title: 'Home' },
+			{ id: 'page-3', title: 'Raced' },
 		],
 	});
 });

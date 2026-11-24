@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 
 import {
 	DiskError,
@@ -32,6 +32,7 @@ import {
 	lstatOrUndefined,
 	pageFolderExists,
 	readProjectFile,
+	readdirOrEmpty,
 	workspaceJoin,
 	workspaceLayoutFile,
 	writeUtf8,
@@ -68,15 +69,7 @@ const legacyRootEntries = async (workspaceRoot: string): Promise<PageEntry[]> =>
 };
 
 const scanPageFolders = async (workspaceRoot: string): Promise<string[]> => {
-	let names: string[];
-	try {
-		names = await readdir(workspaceJoin(workspaceRoot, pagesDirSegments), { encoding: 'utf8' });
-	} catch (error: unknown) {
-		if (isErrno(error, 'ENOENT')) {
-			return [];
-		}
-		return throwDiskError(error);
-	}
+	const names = await readdirOrEmpty(workspaceJoin(workspaceRoot, pagesDirSegments));
 	const pageIds: string[] = [];
 	for (const name of names.filter(isPageId)) {
 		if (await pageFolderExists(workspaceRoot, name)) {

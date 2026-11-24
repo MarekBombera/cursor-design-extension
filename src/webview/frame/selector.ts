@@ -9,7 +9,7 @@ import { type FramePickMessage, hasControlChars, isSafeStyleValue } from './fram
 // Past the timeout it returns its :nth-of-type fallback path.
 const FINDER_TIMEOUT_MS = 200;
 
-const GENERATED_PREFIXES = ['css-', 'svelte-', 'sc-', 'jsx-', 'emotion-', 'astro-'];
+const GENERATED_PREFIXES = ['css-', 'svelte-', 'jsx-', 'emotion-', 'astro-'];
 
 // ponytail: framework prefix list plus finder's own word check (idName / className); a
 // letters-only hash without a known prefix can still pass. Upgrade: entropy scoring.

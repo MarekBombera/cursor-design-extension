@@ -1,5 +1,5 @@
 import { type Stats } from 'node:fs';
-import { mkdir, readdir, rename } from 'node:fs/promises';
+import { mkdir, rename } from 'node:fs/promises';
 
 import { type CreateArtboardResult, createArtboard, writeEnsurePanelFile } from './artboardFs';
 import {
@@ -33,6 +33,7 @@ import {
 	lstatOrUndefined,
 	pageFolderExists,
 	readProjectFile,
+	readdirOrEmpty,
 	workspaceJoin,
 } from './layoutFs';
 import {
@@ -62,18 +63,6 @@ export const requirePageId = (pageId: unknown): string => {
 		throw new InvalidArgsError(PAGE_ID_MESSAGE);
 	}
 	return pageId;
-};
-
-// A missing layout folder lists nothing; any other failure throws.
-const readdirOrEmpty = async (dirPath: string): Promise<string[]> => {
-	try {
-		return await readdir(dirPath, { encoding: 'utf8' });
-	} catch (error: unknown) {
-		if (isErrno(error, 'ENOENT')) {
-			return [];
-		}
-		return throwDiskError(error);
-	}
 };
 
 // Ids are never reused: counts every indexed id, every page-id name under pages/ (any kind,

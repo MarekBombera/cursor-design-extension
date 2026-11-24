@@ -374,7 +374,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
 		&quot;svelte-&quot;,
-		&quot;sc-&quot;,
 		&quot;jsx-&quot;,
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
@@ -1481,7 +1480,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
 		&quot;svelte-&quot;,
-		&quot;sc-&quot;,
 		&quot;jsx-&quot;,
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
@@ -2588,7 +2586,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
 		&quot;svelte-&quot;,
-		&quot;sc-&quot;,
 		&quot;jsx-&quot;,
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
@@ -3695,7 +3692,6 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 	var GENERATED_PREFIXES = [
 		&quot;css-&quot;,
 		&quot;svelte-&quot;,
-		&quot;sc-&quot;,
 		&quot;jsx-&quot;,
 		&quot;emotion-&quot;,
 		&quot;astro-&quot;
