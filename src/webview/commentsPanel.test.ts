@@ -156,7 +156,7 @@ test('summaryParts: open, sent, resolved with their status icons, zero counts le
 test('handoffCopy: plural and singular, nothing to send with and without a hint, and copy feedback', () => {
 	assert.deepEqual(handoffCopy({ open: 3, sent: 0 }), {
 		label: 'Copy 3 open comments for Agent',
-		hint: 'Then paste into Cursor Agent chat.',
+		hint: "Then paste into your agent's chat.",
 		disabled: false,
 		copied: false,
 	});
@@ -177,7 +177,7 @@ test('handoffCopy: plural and singular, nothing to send with and without a hint,
 	// Feedback wins over the open count and is never drawn disabled (submitCopyOpen ignores it).
 	assert.deepEqual(handoffCopy({ open: 2, sent: 3, copied: 3 }), {
 		label: 'Copied 3 comments',
-		hint: 'Now paste into Cursor Agent chat.',
+		hint: "Now paste into your agent's chat.",
 		disabled: false,
 		copied: true,
 	});
@@ -186,7 +186,7 @@ test('handoffCopy: plural and singular, nothing to send with and without a hint,
 	// A copied count of 0 is no feedback: never "Copied 0 comments", never an enabled empty button.
 	assert.deepEqual(handoffCopy({ open: 2, sent: 2, copied: 0 }), {
 		label: 'Copy 2 open comments for Agent',
-		hint: 'Then paste into Cursor Agent chat.',
+		hint: "Then paste into your agent's chat.",
 		disabled: false,
 		copied: false,
 	});

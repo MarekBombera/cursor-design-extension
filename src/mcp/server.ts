@@ -1,21 +1,10 @@
-import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 
-import { registerArtboardTools } from './artboardTools';
-import { registerCommentTools } from './commentTools';
-import { VIBEBOARD_MCP_SERVER_NAME } from './mcpIdentity';
-import { registerPageTools } from './pageTools';
+import { createVibeboardMcpServer } from './vibeboardMcpServer';
 
 const startVibeboardMcpServer = async (): Promise<void> => {
-	const server = new McpServer({
-		name: VIBEBOARD_MCP_SERVER_NAME,
-		version: process.env.VIBEBOARD_VERSION ?? '0.0.0',
-	});
-	registerArtboardTools(server);
-	registerCommentTools(server);
-	registerPageTools(server);
 	const transport = new StdioServerTransport();
-	await server.connect(transport);
+	await createVibeboardMcpServer(__dirname).connect(transport);
 };
 
 void startVibeboardMcpServer().catch((error: unknown) => {

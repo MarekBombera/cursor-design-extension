@@ -8,12 +8,12 @@ Spec: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
 Cursor has no Claude Design-style live HTML artboard. Design talk stays in chat; the human cannot watch pixels change while the Agent iterates, then hand off implementable HTML into the real repo.
 
-**vibeboard** is that canvas inside Cursor: describe, live artboard, iterate via Agent, export a handoff, implement. Runtime is Cursor Agent + local MCP + this extension only. The extension never calls models.
+**vibeboard** is that canvas inside Cursor: describe, live artboard, iterate via Agent, export a handoff, implement. Runtime is the user's MCP-capable agent (Cursor Agent, Copilot, Claude Code, Codex, ...) + local MCP + this extension only. The extension never calls models.
 
 ## 2. Users - Who is this for?
 
 - **People using Cursor** who want a live HTML artboard the Agent can iterate in the editor, then export into a real repo.
-- **Cursor Agent** implementing and iterating artboards through MCP (or disk files if MCP is denied).
+- **The user's agent** (Cursor Agent, Copilot, Claude Code, Codex, any MCP-capable agent) implementing and iterating artboards through MCP (or disk files if MCP is denied).
 - **A second Agent session** implementing from the export handoff (`IMPLEMENT.md` + HTML/CSS/JS), not from screenshots.
 
 Open-source (MIT). Not a multi-tenant SaaS. No accounts in v1.
@@ -34,7 +34,7 @@ Shipped demo: Agent designs a landing hero+CTA on the artboard, export, then imp
 
 **0.4 Edit-lite** (Notion 0.4 page, decisions 2026-11-18 and 2026-11-19: https://app.notion.com/p/3fd500344e0881afac07f81f6d53c17d): an Edit mode next to Interact (default) and Comment. Click an element in a frame and change its text, font size, colour, padding or margin in a small in-house inspector; the save changes only that element's text or one inline style declaration in `artboards/<id>.html`, and every other byte stays the same. Elements are found through `data-cd-src` source numbers the host adds to the frame copy only. Inline styles only; text only on plain-text elements. Undo/redo (20 per frame per panel session). Comments on an edited element read stale until the file returns to the commented content (undo turns them fresh again). Zero new dependencies. 0.4 out of scope: classes and style blocks, border and per-side spacing, editing one text piece inside mixed content, layers, drag-reordering, GrapesJS/Webstudio/Puck, brand kit.
 
-**v1 non-goals:** in-extension chat, `vscode.lm` / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP auto-writing production app source.
+**v1 non-goals:** in-extension chat, `vscode.lm` model / chat / tool APIs (its MCP server registration is allowed) / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP auto-writing production app source.
 
 ## 4. Data - What are we storing?
 
@@ -59,11 +59,11 @@ Multi-artboard, one active. No gallery. MCP serializes writes per artboard id.
 ## 5. Tech - What stack are we using?
 
 - **Product:** Cursor/VS Code extension (WebviewPanel + local MCP stdio). Not a Next.js app, not SvelteKit, not a Chrome extension.
-- **Host:** TypeScript, `pnpm`. Bundler esbuild through 0.2; from 0.2.1 Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown), with esbuild kept for the bundle only if the 0.2.1 pack spike fails. `vscode.cursor.mcp.registerServer` (stdio). Never `vscode.lm.registerMcpServerDefinitionProvider`.
+- **Host:** TypeScript, `pnpm`. Bundler esbuild through 0.2; from 0.2.1 Vite+ (`vp check` / `vp test` on Vitest / `vp pack` on tsdown), with esbuild kept for the bundle only if the 0.2.1 pack spike fails. `vscode.cursor.mcp.registerServer` (stdio) in Cursor, else `vscode.lm.registerMcpServerDefinitionProvider` in VS Code, never both; other agents add the stdio server by hand.
 - **Chrome:** Svelte 5 + Vite under `src/webview/` from 0.3 (8b); shell in `src/panel/artboardChromeHtml.ts`. Through 0.2 it was a TS template-string document (decided 2026-10-13). Theme tokens `var(--vscode-*)`.
 - **Artboard:** nested sandboxed HTML iframe (`sandbox="allow-scripts"`). Scripts allowed; parent never `eval`s artboard HTML.
 - **MCP:** `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Two esbuild outfiles: `dist/extension.js` and `dist/mcp.js`.
-- **Brain:** Cursor Agent only. Disk is SoT. Brand: `vibeboard`.
+- **Brain:** the user's agent over MCP; the extension never calls an LLM. Disk is SoT. Brand: `vibeboard`.
 - **Verify:** F5 Extension Development Host (`fixtures/dev-workspace`), plus `pnpm check-types` / `pnpm lint` / `pnpm compile`. From 0.2.1: one Verify command (check, test, pack) run locally and by GitHub CI on push/PR.
 - **Coding SoT:** `.claude/rules/` (00, 02-09), skills `vibeboard-build` (repo) and the shipped Agent skill `vibeboard` (`skills/vibeboard/SKILL.md`).
 
@@ -73,7 +73,7 @@ Not in v1. MIT open-source core. Paid kits only if traction, later.
 
 ## 7. UI/UX - How should this look and feel?
 
-Panel-only MVP. No in-panel chat (chat stays in Cursor Agent).
+Panel-only MVP. No in-panel chat (chat stays in the agent).
 
 Chrome: active artboard id, generation badge, handoff-stale badge, MCP-unavailable banner (still show disk artboard), Reveal / Export actions. Commands: Open Artboard, Reveal Design Folder, Export Handoff.
 

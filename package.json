@@ -80,6 +80,12 @@
 				"title": "Export Handoff",
 				"category": "Vibeboard"
 			}
+		],
+		"mcpServerDefinitionProviders": [
+			{
+				"id": "vibeboard",
+				"label": "Vibeboard"
+			}
 		]
 	},
 	"activationEvents": [

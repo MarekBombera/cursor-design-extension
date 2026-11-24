@@ -976,7 +976,7 @@ test('the panel header sums the comments and copies 3 open, then says what was c
 	const request = await nthRequest(page, 'comment:copy-open', 1);
 	await postToChrome(page, { type: 'ui:copied', requestId: String(request.requestId), count: 3 });
 	await expect(button).toHaveText('Copied 3 comments');
-	await expect(panel(page)).toContainText('Now paste into Cursor Agent chat.');
+	await expect(panel(page)).toContainText("Now paste into your agent's chat.");
 	await page.clock.fastForward(1500);
 	await expect(button).toHaveText('Copy 3 open comments for Agent');
 });

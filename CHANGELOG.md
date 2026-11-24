@@ -8,6 +8,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Renamed from cursor-design to Vibeboard Design (extension id `bombic.vibeboard`): commands `vibeboard.*`, MCP server `vibeboard`, env `VIBEBOARD_WORKSPACE_ROOT(S)`, Agent skill `skills/vibeboard/`, workspace folder `.vibeboard/`. On activation a trusted workspace's `.cursor-design/` is moved to `.vibeboard/` once; when both exist, `.vibeboard/` is used and a warning says the old folder was ignored.
 - README: VS Code setup (add the bundled MCP server to your agent by hand).
+- Agent-agnostic: any MCP-capable agent drives the artboard. VS Code now registers the MCP server itself (`mcpServerDefinitionProviders`, Cursor keeps its own API, never both); the server sends the Agent skill as MCP instructions to every agent; panel copy says "your agent" instead of Cursor Agent.
 - Upgrading from cursor-design: uninstall the old `cursor-design.cursor-design` extension and quit Cursor first (an old extension or MCP process recreates `.cursor-design/`), delete `~/.cursor/skills/cursor-design/`, and allowlist the `vibeboard` MCP server. If you committed `.cursor-design/`, commit the move to `.vibeboard/`.
 
 ## [0.1.0] - 2026-09-13

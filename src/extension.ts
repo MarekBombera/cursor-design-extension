@@ -37,8 +37,8 @@ export const activate = async (context: vscode.ExtensionContext): Promise<void> 
 		await migrateLegacyDesignFolders(outputChannel);
 		const mcpAvailable = registerVibeboardMcp({ context, outputChannel });
 		postUiStatusToPanel({ mcpAvailable });
-		if (mcpAvailable) {
-			// Cursor only: the skill documents the MCP tools.
+		if (mcpAvailable && vscode.cursor?.mcp) {
+			// Cursor reads ~/.cursor/skills/; every agent also gets the skill as MCP instructions.
 			void syncAgentSkill({ extensionUri: context.extensionUri, outputChannel });
 		}
 		replaceArtboardWatcher({ context, outputChannel, rearmMarker });

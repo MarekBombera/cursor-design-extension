@@ -1,3 +1,4 @@
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +15,7 @@ import {
 import { artboardToolInputSchemas } from './artboardTools';
 import { commentToolInputSchemas } from './commentTools';
 import { pageToolInputSchemas } from './pageTools';
+import { createVibeboardMcpServer } from './vibeboardMcpServer';
 
 // Drift guard for the shipped Agent skill (skills/vibeboard/SKILL.md): a tool, Agent-visible
 // error code, frame limit or sandbox change that lands without the skill fails here. AGENTS.md
@@ -94,4 +96,24 @@ test('the skill states the frame sandbox the panel uses', () => {
 test('the skill never names the old artboards folder', () => {
 	// `.vibeboard/artboards` is the tombstone file now; with a slash it reads as a folder to edit.
 	assert.ok(!skill.includes('.vibeboard/artboards/'));
+});
+
+test('the server advertises the skill body as MCP instructions, essentials first', async () => {
+	// The pack outDir: dist/mcp.js runs with __dirname = <extension>/dist.
+	const server = createVibeboardMcpServer(join(process.cwd(), 'dist'));
+	const client = new Client({ name: 'vibeboard-instructions', version: '0.0.0' });
+	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+	await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+	try {
+		const instructions = client.getInstructions() ?? '';
+		// No frontmatter and no Cursor-only managed-file note.
+		assert.ok(instructions.startsWith('# vibeboard\n'), 'instructions start at the skill heading');
+		// Some clients cut long instructions: the essentials must survive a ~2 KB cut.
+		const essentialsEnd = instructions.indexOf('The sections below give every tool');
+		assert.ok(essentialsEnd > 0 && essentialsEnd < 2048, `essentials end at ${essentialsEnd}`);
+		assert.ok(instructions.includes('`DISK_ERROR`'), 'the full skill follows the essentials');
+	} finally {
+		await client.close();
+		await server.close();
+	}
 });

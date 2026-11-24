@@ -5,30 +5,18 @@ Agent design canvas for Cursor and VS Code.
 Your AI agent writes live HTML artboards through a local MCP server; you review, comment on and tweak them in a canvas panel. No in-panel chat.
 
 - **Panel:** Webview artboard (host chrome + sandboxed HTML iframe)
-- **Brain:** your editor's AI agent via the bundled local MCP server + disk under `.vibeboard/`
+- **Brain:** your AI agent (Cursor Agent, Copilot, Claude Code, Codex, ...) via the bundled local MCP server + disk under `.vibeboard/`
 - **Not:** a Next.js app, Chrome extension, or in-extension LLM calls
 
 Not affiliated with or endorsed by Anysphere (Cursor).
 
-## Cursor and VS Code
+## Use with any agent
+
+Any MCP-capable agent drives the artboard; the panel runs in Cursor or VS Code.
 
 - **Cursor:** the extension registers its MCP server (`vibeboard`) itself on startup. Allowlist it in Settings → MCP.
-- **VS Code:** the panel works the same. VS Code has no API for an extension to register this server, so add the bundled MCP server to your AI agent's MCP config by hand (for example Claude Code or GitHub Copilot). The server is `dist/mcp.js` inside the installed extension, run with Node, and `VIBEBOARD_WORKSPACE_ROOT` names the workspace folder it writes `.vibeboard/` into (`VIBEBOARD_WORKSPACE_ROOTS`, a JSON array of folders, serves several; the first is the default).
-
-GitHub Copilot, `.vscode/mcp.json` in the workspace (adjust the version in the path):
-
-```json
-{
-	"servers": {
-		"vibeboard": {
-			"type": "stdio",
-			"command": "node",
-			"args": ["${userHome}/.vscode/extensions/bombic.vibeboard-0.1.0/dist/mcp.js"],
-			"env": { "VIBEBOARD_WORKSPACE_ROOT": "${workspaceFolder}" }
-		}
-	}
-}
-```
+- **VS Code:** the extension registers the same server itself (MCP server definition provider, listed as **Vibeboard**), so GitHub Copilot's agent mode sees it without setup. Start or trust it from the MCP server list when VS Code asks.
+- **Other agents** (Claude Code in a terminal, Codex CLI, Cline, others): add the bundled server to the agent's MCP config by hand. The server is `dist/mcp.js` inside the installed extension (`~/.vscode/extensions/` or `~/.cursor/extensions/`; adjust the version in the paths below), run with Node, and `VIBEBOARD_WORKSPACE_ROOT` names the workspace folder it writes `.vibeboard/` into (`VIBEBOARD_WORKSPACE_ROOTS`, a JSON array of folders, serves several; the first is the default). Keep the panel open in Cursor or VS Code on the same folder to see the artboards.
 
 Claude Code, from the workspace folder:
 
@@ -36,7 +24,18 @@ Claude Code, from the workspace folder:
 claude mcp add vibeboard -e VIBEBOARD_WORKSPACE_ROOT="$PWD" -- node ~/.vscode/extensions/bombic.vibeboard-0.1.0/dist/mcp.js
 ```
 
-Cursor spawns the same file with its own Electron binary (`ELECTRON_RUN_AS_NODE=1`); with a plain `node` command that variable is not needed. Add the shipped Agent skill (`skills/vibeboard/SKILL.md` in the extension) to your agent's instructions so it knows the tools' workflow.
+Codex CLI, `~/.codex/config.toml` (absolute paths):
+
+```toml
+[mcp_servers.vibeboard]
+command = "node"
+args = ["/Users/you/.vscode/extensions/bombic.vibeboard-0.1.0/dist/mcp.js"]
+env = { VIBEBOARD_WORKSPACE_ROOT = "/Users/you/projects/my-app" }
+```
+
+Cursor and VS Code spawn the same file with their own Electron binary (`ELECTRON_RUN_AS_NODE=1`); with a plain `node` command that variable is not needed. On connect the server sends the shipped Agent skill (`skills/vibeboard/SKILL.md` in the extension) as its MCP instructions, so the agent learns the tools' workflow; add that file to the agent's instructions if it ignores server instructions.
+
+Agents should use the MCP tools rather than edit `.vibeboard/` files directly: the tools check conflicts, take the workspace lock and keep the page and canvas layout valid.
 
 ## Status
 
@@ -71,14 +70,14 @@ Server name: `vibeboard`. Tools:
 
 14 tools. Every success result of the first 11 carries `page: { id, title }`, the open page it acted on.
 
-**Allowlist** the server if Cursor prompts. If MCP is denied, edit the open page's files under `.vibeboard/pages/<pageId>/` on disk (`openPageId` in `.vibeboard/project.json`) and tell the user to allowlist the tools.
+**Allowlist** the server if your editor or agent prompts. If MCP is denied, edit the open page's files under `.vibeboard/pages/<pageId>/` on disk (`openPageId` in `.vibeboard/project.json`) and tell the user to allowlist the tools.
 
 ## Install
 
 1. From this repo: `pnpm vsix` writes `vibeboard-0.1.0.vsix` at the repo root.
-2. In Cursor or VS Code: Command Palette → **Extensions: Install from VSIX…** → pick that file → reload. Updating an installed version? Quit and reopen Cursor instead (see Limits).
+2. In Cursor or VS Code: Command Palette → **Extensions: Install from VSIX…** → pick that file → reload. Updating an installed version? Quit and reopen the editor instead (see Limits).
 3. Open a trusted folder. Command Palette → **Vibeboard: Open Artboard**.
-4. Cursor: Settings → MCP: allowlist `vibeboard` (toggle off/on if the tool count stays 0; see Limits). VS Code: add the server to your agent (see Cursor and VS Code).
+4. Cursor: Settings → MCP: allowlist `vibeboard` (toggle off/on if the tool count stays 0; see Limits). VS Code: start the **Vibeboard** server when asked. Other agents: add the server by hand (see Use with any agent).
 
 Smoke-tested 2026-11-20, Cursor 3.29.9 (agent-driven run on the packaged `.vsix`).
 
@@ -87,7 +86,7 @@ Smoke-tested 2026-11-20, Cursor 3.29.9 (agent-driven run on the packaged `.vsix`
 1. In the panel press `C` (or pick **Comment** in the toolbar's mode switch). The hover outline shows what a click will target; Alt+click or ↑ picks the parent, ↓ the child. Clicking empty space in a frame comments on the whole frame. Links and buttons in the design don't fire in Comment mode.
 2. Type in the popover and press Enter (**Add comment**). Shift+Enter adds a newline, Esc cancels. The comment is saved to the page's `comments.json` (`.vibeboard/pages/<pageId>/comments.json`) and its pin follows the element.
 3. **Comments** in the toolbar opens the panel: Reply, Resolve, Reopen, and click a comment's target to jump to its pin.
-4. **Copy for Agent** copies the prompt for one comment; **Copy N open comments for Agent** copies one prompt with every open id. Paste it into Cursor Agent chat. Copied comments are marked `sent`.
+4. **Copy for Agent** copies the prompt for one comment; **Copy N open comments for Agent** copies one prompt with every open id. Paste it into your agent's chat. Copied comments are marked `sent`.
 5. The Agent calls `get_comment`, changes the target with `update_artboard`, then `resolve_comment` with a one-line note that shows as a reply.
 
 ## Edit mode
@@ -141,7 +140,7 @@ Workflow overlay: [AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint) 
 F5 in the Extension Development Host with `fixtures/dev-workspace` open:
 
 1. Command Palette → **Vibeboard: Open Artboard**. No handoff badge.
-2. Design at least two frames via Cursor Agent (`set_artboard` / `update_artboard`), for example a desktop page and a mobile page, and lay them out with `place_frame` (with `group`).
+2. Design at least two frames via your agent (`set_artboard` / `update_artboard`), for example a desktop page and a mobile page, and lay them out with `place_frame` (with `group`).
 3. Call `export_artboard` (or Command Palette → **Vibeboard: Export Handoff**). Confirm `.vibeboard/handoff/<exportId>/` holds `IMPLEMENT.md`, `canvas.html`, `tokens.json`, and one `<group-folder>/<frame-id>/index.html` per frame, and that `.vibeboard/pages/page-1/manifest.json` `lastExport.frames` lists every frame. Badge still hidden. `canvas.html` opens in a browser as a view-only preview of the canvas.
 4. In a second Agent session, open `.vibeboard/handoff/<exportId>/IMPLEMENT.md` (from `lastExport.exportId` in `.vibeboard/pages/page-1/manifest.json`) and implement into `fixtures/dev-workspace/sample-app/`: one responsive page from the desktop and mobile variants. Do not copy `.vibeboard/` into the app.
 5. Edit any frame's `.vibeboard/pages/page-1/artboards/<id>.html` and save. Within ~200ms the panel badge shows `Handoff out of date. Re-export.`
@@ -159,7 +158,7 @@ Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace &&
 
 Facts, not a roadmap. Drift vs the rules or overview is labeled.
 
-- Automatic MCP registration is Cursor only (`vscode.cursor.mcp.registerServer`). In plain VS Code the extension registers nothing (a line in Output → Vibeboard) and the panel still renders `.vibeboard/` from disk; add the server to your agent by hand (see Cursor and VS Code). The Agent skill is copied to `~/.cursor/skills/` only in Cursor.
+- Automatic MCP registration: `vscode.cursor.mcp.registerServer` in Cursor, else `vscode.lm.registerMcpServerDefinitionProvider` in VS Code, never both. An editor with neither registers nothing (a line in Output → Vibeboard, and the panel shows MCP unavailable) and still renders `.vibeboard/` from disk; add the server to your agent by hand (see Use with any agent). The Agent skill is copied to `~/.cursor/skills/` only in Cursor; every agent gets it as MCP instructions.
 - The panel uses the first workspace folder only (`hostFs.ts`). MCP tools see every open folder and take an optional `rootPath` when more than one is open.
 - Untrusted workspaces unsupported (`capabilities.untrustedWorkspaces.supported: false`); artboard HTML is executable workspace content.
 - One open page per workspace folder: `.vibeboard/project.json` names it, and its files (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`) live in `.vibeboard/pages/<pageId>/`. Handoffs, `tokens.json`, `assets/` and the lock stay at the `.vibeboard/` root. The first call or panel open moves a 0.4 folder into `pages/page-1/` once, and leaves a file named `artboards` at the root so an older MCP server still running fails instead of writing there. Every artboard file on the open page is a frame on its canvas. `set_active_artboard` still picks the frame that `read_artboard` and `handoff_status` default to.
@@ -167,7 +166,7 @@ Facts, not a roadmap. Drift vs the rules or overview is labeled.
 - Artboard iframe: `sandbox="allow-scripts"`. CSP blocks inline event handlers and external subresources in the artboard (`artboardChromeHtml.ts`); `style=""` attributes render (`style-src-attr 'unsafe-inline'`, 0.4). Each frame also gets a second, inline-only policy (`FRAME_CSP` in `stampArtboardHtml.ts`), so even a `<script src>` that carries the stamped nonce, or one artboard JS adds at runtime, never loads. Chromium's CSP does not govern WebRTC or DNS prefetch hints. The exported `canvas.html` preview is opened in your own browser and is not restricted.
 - Agent skill: on start in Cursor the extension copies `skills/vibeboard/SKILL.md` to `~/.cursor/skills/vibeboard/` when it differs. In a remote window that is the remote home, which Cursor may not read. Two extension versions running at once (F5 host plus an installed `.vsix`) overwrite each other's copy; the last window started wins. Uninstalling leaves the file; it tells Agents to ignore it when the tools are missing.
 - Each frame's `index.html` carries its whole document (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.vibeboard/assets/` is copied manually; `tokens.json` is passed through without validation.
-- Brain is the editor's AI agent only: no in-panel chat, no model API keys, no `vscode.lm`.
+- Brain is your agent over MCP: no in-panel chat, no model API keys, no `vscode.lm` model, chat or tool APIs (only its MCP server registration).
 - Not on the Marketplace; install from `.vsix` (**Extensions: Install from VSIX…**).
 - Cursor MCP settings may show **0 tools** until the server is toggled off/on. That fixes the tool count, not the version: after updating the extension, quit and reopen Cursor. Toggling the server or reloading the window keeps the old MCP server process running, so the Agent's tools run the old code, with the old descriptions, until Cursor quits.
 - Comment flags are checked against the static artboard HTML on disk. A target that the artboard's own script creates at runtime reads as unchecked (`null`), never guessed (`commentTarget.ts`).

@@ -2,7 +2,7 @@
 
 <!-- blueprint:source-hash cc9c24b77348431c0f6823c1deae091c38b236eff51ad195301332558b8e1171 -->
 
-> Agent-driven live HTML artboards inside Cursor: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.vibeboard/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 (in progress) adds pages: several designs per workspace, each with its own frames, layout and comments.
+> Agent-driven live HTML artboards inside Cursor and VS Code, driven by any MCP-capable agent: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.vibeboard/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 (in progress) adds pages: several designs per workspace, each with its own frames, layout and comments.
 
 Coding SoT remains `.claude/rules/` (00, 02-09; `.cursor/rules/*.mdc` link to them) and skills `vibeboard-build` (repo) and the shipped Agent skill `vibeboard` (`skills/vibeboard/SKILL.md`). Notion hub: https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4
 
@@ -13,7 +13,7 @@ Cursor has no Claude Design-style live canvas. Design talk stays in chat; the hu
 ## Users
 
 - **People using Cursor** who want a live HTML artboard the Agent can iterate, then export into a real repo.
-- **Cursor Agent** creating, iterating, and placing frames via MCP, or `.vibeboard/**` files if MCP is denied.
+- **The user's agent** (Cursor Agent, Copilot, Claude Code, Codex, any MCP-capable agent) creating, iterating, and placing frames via MCP, or `.vibeboard/**` files if MCP is denied.
 - **A second Agent session** implementing from handoff (`IMPLEMENT.md` + HTML/CSS/JS), not screenshots.
 
 No accounts or access tiers in v1.
@@ -56,7 +56,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 - **Active artboard:** exactly one per page (badge, highlight, `set_active_artboard`). Not the export target.
 - **Modes:** Interact (default), Comment (`C`), Edit. Toolbar: zoom presets, fit-all. No frame list or sidebar.
 
-**v1 non-goals:** in-panel chat, `vscode.lm` / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP writing production app source.
+**v1 non-goals:** in-panel chat, `vscode.lm` model / chat / tool APIs (its MCP server registration is allowed) / external model keys, Next.js / TanStack Start / SvelteKit / Chrome extension, CustomTextEditor, OS auxiliary window, gallery UI, Grok Build messaging, MCP writing production app source.
 
 ## Data model
 
@@ -120,11 +120,11 @@ New codes (10a): `PAGE_NOT_FOUND`, `CORRUPT_PROJECT`, `UNSUPPORTED_PROJECT_VERSI
 
 ## Tech stack
 
-- **Host** - TypeScript Cursor/VS Code extension, `pnpm`, bundled by `vp pack` (tsdown). `vscode.cursor.mcp.registerServer` stdio. Never `vscode.lm.registerMcpServerDefinitionProvider`.
+- **Host** - TypeScript Cursor/VS Code extension, `pnpm`, bundled by `vp pack` (tsdown). MCP registers on activate: `vscode.cursor.mcp.registerServer` (stdio) in Cursor, else `vscode.lm.registerMcpServerDefinitionProvider` in VS Code, never both; other agents add the stdio server by hand (README). The server sends the shipped skill body as MCP `instructions`.
 - **Chrome** - Svelte 5 + Vite under `src/webview/`; the host keeps only the shell `src/panel/artboardChromeHtml.ts` (CSP, `chrome.css`, `chrome.js`). Theme: `--cd-*` tokens in `src/webview/ui/theme.css`, built from `var(--vscode-*)` (the only file that reads them).
 - **Artboard frames** - sandboxed blob iframes, `sandbox="allow-scripts"`, null origin, chrome CSP nonce, inline-only frame CSP. Parent never `eval`s artboard HTML.
 - **MCP** - `@modelcontextprotocol/server` (v2), not `@modelcontextprotocol/sdk`. Outfiles: `dist/extension.js`, `dist/mcp.js`.
-- **State** - disk `.vibeboard/` is SoT. Brain = Cursor Agent only. Brand: `vibeboard`.
+- **State** - disk `.vibeboard/` is SoT. Brain = the user's agent over MCP; the extension never calls an LLM. Brand: `vibeboard`.
 - **Tooling** - Vite+ (`vp check` lint/fmt/types, `vp test` on Vitest, `vp pack`), `svelte-check`; `pnpm verify` locally and in GitHub CI. Browser tests (`pnpm test:browser`) and gallery local only. Cursor-only checks: F5 (`fixtures/dev-workspace`) or the agent-run real-Cursor rig.
 
 Notion still mentions `@modelcontextprotocol/sdk`; this repo and `.claude/rules/02-mcp-webview.md` lock v2 `@modelcontextprotocol/server`. Follow the repo.
@@ -135,7 +135,7 @@ Not in v1. MIT open-source core. Paid kits only if traction, later.
 
 ## UI/UX
 
-Panel-only. Chat stays in Cursor Agent.
+Panel-only. Chat stays in the agent.
 
 - **Open Artboard** - panel chrome + stage or the empty state
 - Chrome badges - active id, generation, handoff stale, MCP unavailable (still render disk)

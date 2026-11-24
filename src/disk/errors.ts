@@ -436,7 +436,7 @@ const migrationConflictMessage = (pageId: string, names: readonly PageEntry[]): 
 			: `${rootEntrySegments(name).join('/')} and ${pageEntrySegments(pageId, name).join('/')} both exist`,
 	);
 	const artboardsStep = names.includes(ARTBOARDS_DIR)
-		? ` Move the files you want from ${rootArtboards}/ into ${pageArtboards}/, then delete ${rootArtboards}/ (quit and reopen Cursor first if an older vibeboard MCP server may still be running).`
+		? ` Move the files you want from ${rootArtboards}/ into ${pageArtboards}/, then delete ${rootArtboards}/ (quit and reopen your editor or restart your agent first if an older vibeboard MCP server may still be running).`
 		: '';
 	const jsonStep = names.some((name) => name !== ARTBOARDS_DIR)
 		? ' Keep one copy of each JSON file: move or delete the other by hand.'

@@ -69,10 +69,18 @@ export default defineConfig({
 			'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],
 			'no-restricted-properties': [
 				'error',
+				// Brain = the user's agent over MCP. Any `.lm` read (any namespace name, destructuring) is
+				// banned, so `lm` is reachable only as a named import, and then only for registering the
+				// MCP server definition provider (registerVibeboardMcp.ts). An aliased import or a
+				// reassigned `lm` slips past lint: oxlint's import ban would also flag `import * as vscode`.
 				{
-					object: 'vscode',
 					property: 'lm',
-					message: 'Brain = Cursor Agent only. Never vscode.lm.',
+					message: "Brain = the user's agent over MCP. Never vscode.lm models, tools or chat.",
+				},
+				{
+					object: 'lm',
+					allowProperties: ['registerMcpServerDefinitionProvider'],
+					message: "Brain = the user's agent over MCP. Never vscode.lm models, tools or chat.",
 				},
 			],
 
@@ -104,7 +112,7 @@ export default defineConfig({
 			},
 			{
 				// Host side of MCP: it may import vscode.
-				files: ['src/mcp/registerVibeboardMcp.ts'],
+				files: ['src/mcp/registerVibeboardMcp.ts', 'src/mcp/registerVibeboardMcp.test.ts'],
 				rules: {
 					'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],
 				},
@@ -178,6 +186,7 @@ export default defineConfig({
 			...shared,
 			entry: { extension: 'src/extension.ts' },
 			deps: { neverBundle: ['vscode'], alwaysBundle },
+			define: { 'process.env.VIBEBOARD_VERSION': JSON.stringify(pkg.version) },
 		},
 		{
 			...shared,

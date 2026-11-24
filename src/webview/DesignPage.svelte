@@ -403,7 +403,7 @@
 		example="“Design a pricing page with three plans”"
 		hidden={canvas.frames.length > 0}
 	>
-		Ask Cursor Agent to design something. It shows up here as you work.
+		Ask your agent to design something. It shows up here as you work.
 	</EmptyState>
 </div>
 <span class="visually-hidden" aria-live="polite">{liveRegionText(comments.announcement)}</span>

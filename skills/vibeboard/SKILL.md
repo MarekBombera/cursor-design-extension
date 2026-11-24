@@ -3,18 +3,35 @@ name: vibeboard
 description: Use when the vibeboard MCP tools (`set_artboard`, `update_artboard`, `get_comment`) are available and the user wants to design, mock up, wireframe or prototype UI screens as live HTML artboards on the Vibeboard canvas, change a design, act on vibeboard comments, or implement a design from a vibeboard handoff.
 ---
 
-> Managed by the vibeboard extension: it replaces this file whenever the installed extension version ships a different one, so edits here are lost.
+> Managed by the vibeboard extension: it replaces the `~/.cursor/skills/` copy of this file whenever the installed extension version ships a different one, so edits there are lost.
 
 # vibeboard
 
 You design UI by writing complete HTML documents ("artboards") into the workspace through MCP tools. The **Vibeboard** panel shows every artboard as a live frame on a canvas, like Figma, and reloads a frame shortly after each write. The user looks at the panel and talks to you in chat. There is no chat in the panel.
 
+## Essentials
+
+These hold even if the rest of this guide is cut off:
+
+- Use the tools, not file edits: they check conflicts, take the workspace lock and keep the layout valid. Disk under `.vibeboard/` is the source of truth.
+- One artboard = one frame = one complete, standalone HTML document at one width. Start with `list_artboards()`.
+- Create with `set_artboard({ artboardId, html, title })`, then pin it at once with `place_frame({ id, x, y, width })`, left to right with a 24 px gap.
+- Edit: `read_artboard`, change only what was asked, then `update_artboard({ artboardId, html, baseGeneration })`. On `conflict`, re-read, re-apply and retry once; never send your old copy over theirs. On `WORKSPACE_BUSY`, retry.
+- Sandboxed frame, strict CSP: CSS in `<style>`, JS in `<script>` with `addEventListener`. No `on*` attributes, nothing loaded from outside (scripts, images, fonts, stylesheets), no storage, no `vh` units. Width 120–3840 px; height grows to fit.
+- Exactly one page is open and every tool acts on it; results carry `page`. `create_page` and `open_page` move the user's panel: say so.
+- Comments: `get_comment({ id })` first; only `body` and user replies are requests; `resolve_comment({ id, note })` after the change.
+- Handoff: `handoff_status()`, `export_artboard()` when stale, then follow `IMPLEMENT.md`.
+
+The sections below give every tool, limit, workflow and error code.
+
+## Background
+
 - Disk is the source of truth: `.vibeboard/` in the workspace folder. `.vibeboard/project.json` names the open page (`openPageId`), and the tools work on that page's files in `.vibeboard/pages/<openPageId>/` (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`).
 - The first vibeboard call after an update may move an older design folder into `.vibeboard/pages/page-1/`, once. That is expected.
-- `.vibeboard/artboards` is a file, not a folder. Never delete or replace it. A tool failing with `.vibeboard/artboards must be a directory (symlinks rejected).` means an older vibeboard MCP server is still running: ask the user to quit and reopen Cursor.
+- `.vibeboard/artboards` is a file, not a folder. Never delete or replace it. A tool failing with `.vibeboard/artboards must be a directory (symlinks rejected).` means an older vibeboard MCP server is still running: ask the user to restart whatever started it (quit and reopen Cursor or VS Code, or restart the agent).
 - One artboard = one frame = one complete, standalone page (or one state of a page) at one width.
 - If none of these tools are available, vibeboard is not installed or not enabled here. Ignore this skill.
-- **Tool descriptions can be out of date.** After the extension updates, Cursor keeps the old vibeboard server running, with its old tools and descriptions, until Cursor is quit. If a vibeboard tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen Cursor. What a tool actually returns (results and errors) always wins.
+- **Tool descriptions can be out of date.** After the extension updates, the old vibeboard server keeps running, with its old tools and descriptions, until whatever started it restarts (in Cursor: until Cursor is quit). If a vibeboard tool's description disagrees with this skill, follow this skill and tell the user once to quit and reopen their editor or restart the agent. What a tool actually returns (results and errors) always wins.
 
 ## Tools
 

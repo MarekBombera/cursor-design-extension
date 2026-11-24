@@ -119,7 +119,7 @@ const writeArtboardsTombstone = async (workspaceRoot: string): Promise<void> => 
 		}
 		if ((await lstatOrUndefined(tombstonePath))?.isDirectory() === true) {
 			throw new DiskError(
-				`${artboardsTombstoneSegments.join('/')} became a folder while vibeboard was replacing it. An older vibeboard MCP server may still be running: quit and reopen Cursor, then retry.`,
+				`${artboardsTombstoneSegments.join('/')} became a folder while vibeboard was replacing it. An older vibeboard MCP server may still be running: quit and reopen your editor or restart your agent, then retry.`,
 				{ cause: error },
 			);
 		}

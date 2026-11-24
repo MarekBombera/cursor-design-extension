@@ -277,5 +277,5 @@ export const pageEntrySegments = (
 // runtime IIFE that imports this file.
 export const ARTBOARDS_TOMBSTONE_TEXT = `vibeboard keeps artboards in ${VIBEBOARD_DIR}/${PAGES_DIR}/<page id>/${ARTBOARDS_DIR}/ now.
 Do not delete or replace this file. It stops an older vibeboard MCP server from writing artboards here, where the extension no longer reads them.
-If a vibeboard tool fails with "${VIBEBOARD_DIR}/${ARTBOARDS_DIR} must be a directory (symlinks rejected).", quit and reopen Cursor.
+If a vibeboard tool fails with "${VIBEBOARD_DIR}/${ARTBOARDS_DIR} must be a directory (symlinks rejected).", quit and reopen your editor or restart your agent.
 `;

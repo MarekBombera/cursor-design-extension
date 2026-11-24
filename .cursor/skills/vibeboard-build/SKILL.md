@@ -20,7 +20,9 @@ Product constraints: rule 00; MCP / webview contract: rule 02; chrome: rule 08. 
   - MCP `src/mcp/server.ts` → `dist/mcp.js`.
 - Third bundle (chrome): `vp build -c vite.webview.config.ts` → `dist/webview/chrome.js` + `chrome.css`; `vp pack` does not emit it, `compile` / `package` / `verify` run it after pack.
 - Spawn with `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. Env is an explicit allowlist (`ELECTRON_RUN_AS_NODE`, `VIBEBOARD_WORKSPACE_ROOT`, `VIBEBOARD_WORKSPACE_ROOTS`); never spread `process.env`.
-- `unregisterServer` then `registerServer` on activate; dispose unregisters. The stdio child never writes to stdout (the MCP protocol); log to stderr.
+- Registration (`registerVibeboardMcp.ts`), feature-detected, never both in one host: Cursor (`vscode.cursor.mcp`) `unregisterServer` then `registerServer` on each sync, dispose unregisters; else VS Code (`lm.registerMcpServerDefinitionProvider`, id `vibeboard` = `contributes.mcpServerDefinitionProviders`) registers one provider per host, and each later sync swaps the launch and fires `onDidChangeMcpServerDefinitions`. Same command / args / env on both paths. `lm` is a named import: lint bans every `.lm` read and every `lm.*` but that one (an aliased or reassigned `lm` slips past it; oxlint's import ban would also flag `import * as vscode`). Never raise `engines.vscode` for it (Cursor must install the extension).
+- The MCP server sends `skills/vibeboard/SKILL.md` minus frontmatter as `initialize` `instructions` (`agentInstructions.ts`, also minus the leading managed-file note; `createVibeboardMcpServer(__dirname)` reads it at startup from `dist/..`; `skills/` ships in the `.vsix`; missing file = no instructions, a stderr line).
+- The stdio child never writes to stdout (the MCP protocol); log to stderr.
 
 ## Chrome build and type gates
 

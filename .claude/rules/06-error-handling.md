@@ -24,7 +24,7 @@ Every public surface (command, MCP tool, disk read/write, webview message) names
 | Audience | Channel | Content |
 |----------|---------|---------|
 | Bombic (UI) | `showErrorMessage` / panel banner | short, human, next step, no stack |
-| Cursor Agent (MCP) | tool result `isError: true` | actionable fix hint |
+| Agent (MCP) | tool result `isError: true` | actionable fix hint |
 | Developer | `OutputChannel` via `logDiskError` / MCP stderr | full detail: stack, paths, codes |
 
 Tool execution failures (validation, disk, stale generation) return a tool result with `isError: true` (`toMcpToolError`) so the agent can self-correct; only protocol errors (unknown tool, bad JSON-RPC) stay protocol-layer. MCP stdout is the protocol: never log there.

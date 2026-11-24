@@ -66,7 +66,7 @@ afterEach(async () => {
 
 const TOMBSTONE_TEXT = `vibeboard keeps artboards in .vibeboard/pages/<page id>/artboards/ now.
 Do not delete or replace this file. It stops an older vibeboard MCP server from writing artboards here, where the extension no longer reads them.
-If a vibeboard tool fails with ".vibeboard/artboards must be a directory (symlinks rejected).", quit and reopen Cursor.
+If a vibeboard tool fails with ".vibeboard/artboards must be a directory (symlinks rejected).", quit and reopen your editor or restart your agent.
 `;
 
 const PAGE_ONE_PROJECT = {
@@ -276,7 +276,7 @@ test('two JSON conflicts are named together in one message', async () => {
 });
 
 const ARTBOARDS_CONFLICT_MESSAGE =
-	'Cannot move the existing design into .vibeboard/pages/page-1/: .vibeboard/artboards/ is a folder, but artboards now live in .vibeboard/pages/page-1/artboards/. Move the files you want from .vibeboard/artboards/ into .vibeboard/pages/page-1/artboards/, then delete .vibeboard/artboards/ (quit and reopen Cursor first if an older vibeboard MCP server may still be running). Then retry.';
+	'Cannot move the existing design into .vibeboard/pages/page-1/: .vibeboard/artboards/ is a folder, but artboards now live in .vibeboard/pages/page-1/artboards/. Move the files you want from .vibeboard/artboards/ into .vibeboard/pages/page-1/artboards/, then delete .vibeboard/artboards/ (quit and reopen your editor or restart your agent first if an older vibeboard MCP server may still be running). Then retry.';
 
 test('a stale 0.4 artboards folder between the move and the tombstone is a conflict', async () => {
 	const root = await makeTempRoot();

@@ -1,12 +1,12 @@
 # AGENTS.md
 
-**vibeboard** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = Cursor Agent only. Disk SoT = `.vibeboard/`.
+**vibeboard** is a Cursor/VS Code extension (WebviewPanel + local MCP), not a Next.js app. Brain = the user's agent over MCP (Cursor Agent, Copilot, Claude Code, Codex, ...); the extension never calls an LLM. Disk SoT = `.vibeboard/`.
 
 **Notion:** hub (locks, MCP/disk, Interact vs Edit) https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4 . The active plan is named in `blueprint/build-plan.md` (0.5: `blueprint/reference/0.5-pages-plan.md`).
 
 **After work:** run `pnpm verify`; never skip it.
 
-**Agent skill:** a change to an MCP tool or its args, an Agent-visible error code, an artboard runtime limit, the frame sandbox or either CSP updates `skills/vibeboard/SKILL.md` (shipped; `syncAgentSkill` copies it to `~/.cursor/skills/` on activate) in the same change. `src/mcp/agentSkill.test.ts` guards: frontmatter, every registered tool named and no unknown snake_case name, every Agent-visible error code in `src/disk/errors.ts` named and no unknown code, the frame width / gap / height / posted-HTML limits, the `Frame.svelte` `sandbox` value, and no `.vibeboard/artboards/` path. The CSP and all other prose are on you.
+**Agent skill:** a change to an MCP tool or its args, an Agent-visible error code, an artboard runtime limit, the frame sandbox or either CSP updates `skills/vibeboard/SKILL.md` (shipped; the MCP server sends its body as `initialize` instructions, and in Cursor `syncAgentSkill` copies it to `~/.cursor/skills/` on activate) in the same change. `src/mcp/agentSkill.test.ts` guards: frontmatter, every registered tool named and no unknown snake_case name, every Agent-visible error code in `src/disk/errors.ts` named and no unknown code, the frame width / gap / height / posted-HTML limits, the `Frame.svelte` `sandbox` value, and no `.vibeboard/artboards/` path. The CSP and all other prose are on you.
 
 Claude Code, Codex, and every other AI tool must not add AI attribution to
 commits or pull requests, including AI `Co-Authored-By` trailers or generated-by

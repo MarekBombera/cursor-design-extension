@@ -91,7 +91,7 @@ export const handoffCopy = ({
 	if (copied !== undefined && copied > 0) {
 		return {
 			label: `Copied ${commentsText(copied)}`,
-			hint: 'Now paste into Cursor Agent chat.',
+			hint: "Now paste into your agent's chat.",
 			disabled: false,
 			copied: true,
 		};
@@ -100,7 +100,7 @@ export const handoffCopy = ({
 	if (open > 0) {
 		return {
 			label: `Copy ${open === 1 ? '1 open comment' : `${String(open)} open comments`} for Agent`,
-			hint: 'Then paste into Cursor Agent chat.',
+			hint: "Then paste into your agent's chat.",
 			disabled,
 			copied: false,
 		};
