@@ -75,6 +75,8 @@ Browser tests: `pnpm test:browser` (builds chrome, then Playwright Chromium over
 
 Gallery: `pnpm gallery` (every chrome state, both themes, WCAG contrast, into `test-results/gallery/`; local only; `--no-deps` so only the gallery runs).
 
+Showcase: `pnpm showcase` (the README and portfolio stills and the demo clip's frames, from `fixtures/showcase/`, into `test-results/showcase/`; local only; `CONTRIBUTING.md` has the ffmpeg step).
+
 Agent test runs (keep cycles short):
 
 - Iterate on one spec or one test (`vp build -c vite.webview.config.ts`, then `playwright test -c tests/browser <file> --grep "<test>"`); run the full `pnpm test:browser` once per round, at the end.

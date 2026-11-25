@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Alto</title>
+		<style>
+			:root {
+				--ink: #0a0a0f;
+				--muted: #6e6e73;
+				--tile: #f5f5f7;
+				--violet: #7c6cff;
+				--teal: #2fd4c4;
+				--peach: #ff9d7a;
+				--green: #30d158;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				font-family: -apple-system, 'SF Pro Display', Inter, system-ui, sans-serif;
+				color: var(--ink);
+				background: #fff;
+				-webkit-font-smoothing: antialiased;
+			}
+			a {
+				color: inherit;
+				text-decoration: none;
+			}
+			nav {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				height: 72px;
+				padding: 0 48px;
+			}
+			.logo {
+				display: flex;
+				align-items: center;
+				gap: 9px;
+				font-size: 22px;
+				font-weight: 600;
+				letter-spacing: -0.04em;
+			}
+			.mark {
+				width: 22px;
+				height: 22px;
+				border-radius: 50%;
+				background: conic-gradient(
+					from 210deg,
+					var(--violet),
+					var(--teal),
+					var(--peach),
+					var(--violet)
+				);
+			}
+			.links {
+				display: flex;
+				gap: 34px;
+				font-size: 14.5px;
+				color: #3a3a3f;
+			}
+			.account {
+				display: flex;
+				align-items: center;
+				gap: 22px;
+				font-size: 14.5px;
+			}
+			.pill {
+				display: inline-block;
+				padding: 10px 18px;
+				border-radius: 999px;
+				font-size: 14.5px;
+				font-weight: 500;
+				color: #fff;
+				background: var(--ink);
+			}
+			.hero {
+				position: relative;
+				height: 580px;
+				margin: 0 24px;
+				overflow: hidden;
+				border-radius: 36px;
+				color: #fff;
+				background: #07070b;
+				box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+			}
+			.glow i {
+				position: absolute;
+				border-radius: 50%;
+				filter: blur(80px);
+			}
+			.glow .one {
+				right: 150px;
+				top: 60px;
+				width: 420px;
+				height: 420px;
+				background: var(--violet);
+				opacity: 0.6;
+			}
+			.glow .two {
+				right: -40px;
+				top: 260px;
+				width: 360px;
+				height: 360px;
+				background: var(--teal);
+				opacity: 0.45;
+			}
+			.glow .three {
+				right: 20px;
+				top: -80px;
+				width: 300px;
+				height: 300px;
+				background: var(--peach);
+				opacity: 0.4;
+			}
+			.copy {
+				position: relative;
+				width: 560px;
+				padding: 88px 0 0 64px;
+			}
+			h1 {
+				max-width: 480px;
+				margin: 0;
+				font-size: 76px;
+				font-weight: 600;
+				line-height: 1.02;
+				letter-spacing: -0.035em;
+			}
+			#hero-line {
+				max-width: 500px;
+				margin: 24px 0 0;
+				font-size: 19px;
+				line-height: 1.5;
+				color: rgba(255, 255, 255, 0.66);
+			}
+			.actions {
+				display: flex;
+				gap: 12px;
+				margin-top: 34px;
+			}
+			.actions .pill {
+				padding: 14px 24px;
+				font-size: 16px;
+			}
+			.pill.light {
+				color: var(--ink);
+				background: #fff;
+			}
+			.pill.ghost {
+				background: rgba(255, 255, 255, 0.08);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+			}
+			.perks {
+				display: flex;
+				gap: 26px;
+				margin: 44px 0 0;
+				padding: 0;
+				list-style: none;
+				font-size: 14px;
+				color: rgba(255, 255, 255, 0.6);
+			}
+			.perks li {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+			.perks svg {
+				width: 16px;
+				height: 16px;
+			}
+			.stage {
+				position: absolute;
+				right: 70px;
+				top: 96px;
+				width: 440px;
+				height: 400px;
+			}
+			.card {
+				position: absolute;
+				width: 400px;
+				height: 252px;
+				border-radius: 24px;
+			}
+			.card.back {
+				left: 56px;
+				top: 22px;
+				transform: rotate(9deg);
+				background: linear-gradient(135deg, #cdbfff, #9be7f2 52%, #ffd3bd);
+				box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+			}
+			.card.front {
+				left: 10px;
+				top: 74px;
+				transform: rotate(-8deg);
+				padding: 26px 28px;
+				background:
+					linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.13) 46%, transparent 58%),
+					linear-gradient(135deg, #34343f, #14141a 46%, #262138);
+				box-shadow:
+					0 40px 80px rgba(0, 0, 0, 0.55),
+					inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+			}
+			.card .name {
+				font-size: 24px;
+				font-weight: 600;
+				letter-spacing: -0.04em;
+			}
+			.card .wave {
+				position: absolute;
+				right: 28px;
+				top: 26px;
+				width: 26px;
+				height: 26px;
+			}
+			.card .chip {
+				width: 46px;
+				height: 34px;
+				margin-top: 44px;
+				border-radius: 8px;
+				background: linear-gradient(135deg, #f3e2b0, #b89a52);
+			}
+			.card .number {
+				position: absolute;
+				left: 28px;
+				bottom: 26px;
+				font-size: 17px;
+				letter-spacing: 0.12em;
+				font-variant-numeric: tabular-nums;
+				color: rgba(255, 255, 255, 0.82);
+			}
+			.card .holder {
+				position: absolute;
+				right: 28px;
+				bottom: 26px;
+				font-size: 14px;
+				color: rgba(255, 255, 255, 0.6);
+			}
+			.toast {
+				position: absolute;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				padding: 12px 18px 12px 12px;
+				border-radius: 18px;
+				background: rgba(24, 24, 32, 0.6);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+				backdrop-filter: blur(18px) saturate(160%);
+			}
+			.toast .icon {
+				display: grid;
+				place-items: center;
+				width: 36px;
+				height: 36px;
+				border-radius: 50%;
+				font-size: 14px;
+				font-weight: 600;
+				color: var(--ink);
+			}
+			.toast b {
+				display: block;
+				font-size: 14px;
+				font-weight: 600;
+			}
+			.toast small {
+				font-size: 12.5px;
+				color: rgba(255, 255, 255, 0.6);
+			}
+			.toast .amount {
+				margin-left: 14px;
+				font-size: 14px;
+				font-weight: 600;
+				font-variant-numeric: tabular-nums;
+			}
+			.toast.paid {
+				left: -52px;
+				bottom: 4px;
+			}
+			.toast.paid .icon {
+				background: var(--green);
+			}
+			.toast.paid .amount {
+				color: var(--green);
+			}
+			.toast.spent {
+				right: -44px;
+				top: -12px;
+			}
+			.toast.spent .icon {
+				background: var(--peach);
+			}
+			.bento {
+				display: grid;
+				grid-template-columns: repeat(6, 1fr);
+				gap: 24px;
+				margin: 24px 24px 0;
+			}
+			.tile {
+				position: relative;
+				overflow: hidden;
+				padding: 30px;
+				border-radius: 28px;
+				background: var(--tile);
+			}
+			.tile h2 {
+				margin: 0;
+				font-size: 23px;
+				font-weight: 600;
+				letter-spacing: -0.025em;
+			}
+			.tile p {
+				margin: 6px 0 0;
+				font-size: 15px;
+				line-height: 1.45;
+				color: var(--muted);
+			}
+			.spend {
+				display: grid;
+				grid-column: span 4;
+				grid-template-columns: 250px 1fr;
+				gap: 28px;
+				height: 340px;
+			}
+			#spend-total {
+				margin-top: 30px;
+				font-size: 44px;
+				font-weight: 600;
+				letter-spacing: -0.04em;
+				font-variant-numeric: tabular-nums;
+			}
+			.spend .caption {
+				margin: 2px 0 20px;
+				font-size: 14px;
+			}
+			.split {
+				display: grid;
+				gap: 9px;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+				font-size: 14px;
+			}
+			.split li {
+				display: flex;
+				align-items: center;
+				gap: 9px;
+			}
+			.split i {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+			}
+			.split span {
+				margin-left: auto;
+				font-variant-numeric: tabular-nums;
+				color: var(--muted);
+			}
+			.chart {
+				align-self: end;
+			}
+			.chart svg {
+				display: block;
+				width: 100%;
+				height: 220px;
+			}
+			.axis {
+				display: flex;
+				justify-content: space-between;
+				margin-top: 8px;
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.pots {
+				grid-column: span 2;
+				height: 340px;
+				color: #fff;
+				background: var(--ink);
+			}
+			.pots p {
+				color: rgba(255, 255, 255, 0.6);
+			}
+			.pot {
+				margin-top: 20px;
+			}
+			.pot div {
+				display: flex;
+				justify-content: space-between;
+				font-size: 14.5px;
+				font-weight: 500;
+			}
+			.pot span {
+				font-weight: 400;
+				font-variant-numeric: tabular-nums;
+				color: rgba(255, 255, 255, 0.55);
+			}
+			.pot i {
+				display: block;
+				height: 6px;
+				margin-top: 10px;
+				border-radius: 3px;
+				background: rgba(255, 255, 255, 0.12);
+			}
+			.pot i b {
+				display: block;
+				height: 100%;
+				border-radius: 3px;
+			}
+			.saved {
+				position: absolute;
+				left: 30px;
+				right: 30px;
+				bottom: 28px;
+				display: flex;
+				align-items: baseline;
+				justify-content: space-between;
+				font-size: 14.5px;
+				color: rgba(255, 255, 255, 0.55);
+			}
+			.saved b {
+				font-size: 26px;
+				font-weight: 600;
+				letter-spacing: -0.03em;
+				font-variant-numeric: tabular-nums;
+				color: #fff;
+			}
+			.small {
+				grid-column: span 2;
+				height: 214px;
+			}
+			.visual {
+				position: absolute;
+				left: 30px;
+				right: 30px;
+				bottom: 30px;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+			}
+			.faces {
+				display: flex;
+			}
+			.faces i {
+				display: grid;
+				place-items: center;
+				width: 44px;
+				height: 44px;
+				margin-left: -10px;
+				border: 3px solid var(--tile);
+				border-radius: 50%;
+				font-size: 14px;
+				font-weight: 600;
+				font-style: normal;
+				color: #fff;
+			}
+			.faces i:first-child {
+				margin-left: 0;
+			}
+			.chip-note {
+				padding: 9px 14px;
+				border-radius: 999px;
+				font-size: 13.5px;
+				font-weight: 500;
+				background: #fff;
+			}
+			.switch {
+				width: 54px;
+				height: 32px;
+				padding: 3px;
+				border-radius: 999px;
+				background: var(--green);
+			}
+			.switch i {
+				display: block;
+				width: 26px;
+				height: 26px;
+				margin-left: 22px;
+				border-radius: 50%;
+				background: #fff;
+				box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+			}
+			.visual.rates {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 10px;
+			}
+			.rate {
+				padding: 10px 14px;
+				border-radius: 14px;
+				background: #fff;
+			}
+			.rate small {
+				display: block;
+				font-size: 12px;
+				color: var(--muted);
+			}
+			.rate b {
+				font-size: 19px;
+				font-weight: 600;
+				letter-spacing: -0.02em;
+				font-variant-numeric: tabular-nums;
+			}
+			footer {
+				display: flex;
+				justify-content: space-between;
+				padding: 30px 48px 34px;
+				font-size: 13.5px;
+				color: var(--muted);
+			}
+			footer span + span {
+				display: flex;
+				gap: 24px;
+			}
+		</style>
+	</head>
+	<body>
+		<nav>
+			<a class="logo" href="#"><i class="mark"></i>alto</a>
+			<div class="links">
+				<a href="#">Personal</a>
+				<a href="#">Business</a>
+				<a href="#">Cards</a>
+				<a href="#">Pricing</a>
+			</div>
+			<div class="account">
+				<a href="#">Log in</a>
+				<a id="nav-cta" class="pill" href="#">Get started</a>
+			</div>
+		</nav>
+		<section class="hero">
+			<div class="glow"><i class="one"></i><i class="two"></i><i class="three"></i></div>
+			<div class="copy">
+				<h1 id="headline">Money, minus the noise.</h1>
+				<p id="hero-line">
+					One account for spending, saving and getting paid, with no monthly fees, no transfer fees
+					and no forms to fill in.
+				</p>
+				<div class="actions">
+					<a id="cta" class="pill light" href="#">Open an account</a>
+					<a class="pill ghost" href="#">See the card</a>
+				</div>
+				<ul class="perks">
+					<li>
+						<svg viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2">
+							<path d="M3 8.5l3.2 3L13 4.5" />
+						</svg>
+						No monthly fee
+					</li>
+					<li>
+						<svg viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2">
+							<path d="M3 8.5l3.2 3L13 4.5" />
+						</svg>
+						Free transfers
+					</li>
+					<li>
+						<svg viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2">
+							<path d="M3 8.5l3.2 3L13 4.5" />
+						</svg>
+						Card in two days
+					</li>
+				</ul>
+			</div>
+			<div class="stage">
+				<div class="card back"></div>
+				<div class="card front">
+					<div class="name">alto</div>
+					<svg
+						class="wave"
+						viewBox="0 0 26 26"
+						fill="none"
+						stroke="#fff"
+						stroke-width="2"
+						stroke-linecap="round"
+						opacity="0.7"
+					>
+						<path d="M7 9a8 8 0 010 8M12 6a13 13 0 010 14M17 3a18 18 0 010 20" />
+					</svg>
+					<div class="chip"></div>
+					<div class="number">•••• 4829</div>
+					<div class="holder">Maya Lindqvist</div>
+				</div>
+				<div class="toast spent">
+					<span class="icon">C</span>
+					<span><b>Coffee Collective</b><small>Just now</small></span>
+					<span class="amount">−£3.40</span>
+				</div>
+				<div class="toast paid">
+					<span class="icon">N</span>
+					<span><b>Northwind Studio</b><small>Salary received</small></span>
+					<span class="amount">+£3,250.00</span>
+				</div>
+			</div>
+		</section>
+		<section class="bento">
+			<article class="tile spend">
+				<div>
+					<h2>See where it goes</h2>
+					<p>Every payment is sorted the moment it lands.</p>
+					<div id="spend-total">£1,284.60</div>
+					<p class="caption">spent so far in March</p>
+					<ul class="split">
+						<li><i style="background: #7c6cff"></i>Groceries<span>£412.30</span></li>
+						<li><i style="background: #2fd4c4"></i>Eating out<span>£238.15</span></li>
+						<li><i style="background: #ff9d7a"></i>Transport<span>£121.40</span></li>
+					</ul>
+				</div>
+				<div class="chart">
+					<svg viewBox="0 0 520 220" preserveAspectRatio="none">
+						<defs>
+							<linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+								<stop offset="0" stop-color="#7c6cff" stop-opacity="0.3" />
+								<stop offset="1" stop-color="#7c6cff" stop-opacity="0" />
+							</linearGradient>
+						</defs>
+						<path
+							d="M0 170C40 160 62 118 104 126S170 176 212 146 282 62 330 84 400 150 442 112 500 56 520 66V220H0Z"
+							fill="url(#fill)"
+						/>
+						<path
+							d="M0 170C40 160 62 118 104 126S170 176 212 146 282 62 330 84 400 150 442 112 500 56 520 66"
+							fill="none"
+							stroke="#7c6cff"
+							stroke-width="3"
+							stroke-linecap="round"
+						/>
+						<line
+							x1="330"
+							y1="84"
+							x2="330"
+							y2="220"
+							stroke="#7c6cff"
+							stroke-opacity="0.25"
+							stroke-dasharray="4 5"
+						/>
+						<circle cx="330" cy="84" r="6.5" fill="#fff" stroke="#7c6cff" stroke-width="3" />
+						<rect x="266" y="30" width="128" height="34" rx="17" fill="#0a0a0f" />
+						<text x="330" y="52" fill="#fff" font-size="13" font-weight="600" text-anchor="middle">
+							14 Mar, £86.20
+						</text>
+					</svg>
+					<div class="axis">
+						<span>1 Mar</span><span>8</span><span>15</span><span>22</span><span>29</span>
+					</div>
+				</div>
+			</article>
+			<article class="tile pots">
+				<h2 id="pots-title">Pots for every plan</h2>
+				<p>Put money aside without thinking about it.</p>
+				<div class="pot">
+					<div>Holiday<span>£1,840 of £2,500</span></div>
+					<i><b style="width: 74%; background: #7c6cff"></b></i>
+				</div>
+				<div class="pot">
+					<div>New laptop<span>£960 of £1,600</span></div>
+					<i><b style="width: 60%; background: #2fd4c4"></b></i>
+				</div>
+				<div id="pot-rainy" class="pot">
+					<div>Rainy day<span>£3,200 of £5,000</span></div>
+					<i><b style="width: 64%; background: #ff9d7a"></b></i>
+				</div>
+				<div class="saved">Saved so far<b>£6,000</b></div>
+			</article>
+			<article class="tile small">
+				<h2>Send in a second</h2>
+				<p>Pay anyone from your contacts.</p>
+				<div class="visual">
+					<div class="faces">
+						<i style="background: #7c6cff">JB</i>
+						<i style="background: #2fd4c4">AK</i>
+						<i style="background: #ff9d7a">SR</i>
+						<i style="background: #0a0a0f">+6</i>
+					</div>
+					<span class="chip-note">Sent £40 to Jonas</span>
+				</div>
+			</article>
+			<article class="tile small">
+				<h2>Freeze it in a tap</h2>
+				<p>Lost your card? Lock it from the app.</p>
+				<div class="visual">
+					<span class="chip-note">Card ending 4829</span>
+					<div class="switch"><i></i></div>
+				</div>
+			</article>
+			<article class="tile small">
+				<h2>Abroad at the real rate</h2>
+				<p>No markup and no weekend fees.</p>
+				<div class="visual rates">
+					<div class="rate"><small>You pay</small><b>£100.00</b></div>
+					<div class="rate"><small>They get</small><b>€118.74</b></div>
+				</div>
+			</article>
+		</section>
+		<footer>
+			<span>© 2026 Alto Money</span>
+			<span><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Help</a></span>
+		</footer>
+	</body>
+</html>

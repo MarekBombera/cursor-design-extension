@@ -31,3 +31,11 @@ pnpm-workspace.yaml
 .remember/**
 notes.md
 *.vsix
+# README header only (the Marketplace loads README images from the repo)
+media/logo-long.*
+media/screenshot-*
+CONTRIBUTING.md
+# README-only media and docs (linked from the README, loaded from the repo)
+media/how-it-works.*
+media/demo.*
+docs/**

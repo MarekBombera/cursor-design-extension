@@ -20,4 +20,5 @@ alwaysApply: false
 - Browser tests assert behavior through roles, `data-cd-*` hooks, captured messages and boxes, never pixels or timing sleeps beyond the one stability quiet window. Shared locators and helpers live in `harness.ts`; a spec imports them, never re-declares them.
 - Tests run in parallel (`parallel` project, `tests/browser/playwright.config.ts`). A test that needs the CPU to itself (the quiet window, a CDP gesture, shared output files) or flakes under `--repeat-each=3` takes `{ tag: '@serial' }`: the `serial` project runs it alone, after the rest.
 - The one exception to the no-wait rule is `gallery.spec.ts` (`pnpm gallery`, `CD_GALLERY=1`, local only, never Verify or CI): evidence, not a gate. It takes screenshots and measures contrast, so it may wait for paint and settle animations.
+- `showcase.spec.ts` (`pnpm showcase`, `CD_SHOWCASE=1`, local only) is the same kind of exception: marketing stills and the demo clip's frames, so it waits for paint too. Never a gate.
 - Local factories stay in the test file. Lint relaxes `id-length` and return types in tests only.

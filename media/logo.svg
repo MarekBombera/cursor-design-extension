@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" role="img" aria-label="Vibeboard">
+  <title>Vibeboard</title>
+  <rect width="1000" height="1000" fill="#0d1925"/>
+  <g fill="none" stroke="#fff" stroke-width="14">
+    <path d="M234 194H766M234 806H766M194 234V766M806 234V766"/>
+    <rect x="161" y="161" width="66" height="66" rx="10"/>
+    <rect x="773" y="161" width="66" height="66" rx="10"/>
+    <rect x="161" y="773" width="66" height="66" rx="10"/>
+    <rect x="773" y="773" width="66" height="66" rx="10"/>
+  </g>
+  <path fill="#5af39a" d="M274 308H373L500 600L627 308H726L547 720H453Z"/>
+</svg>

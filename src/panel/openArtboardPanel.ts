@@ -98,6 +98,7 @@ export const openArtboardPanel = ({
 		enableScripts: true,
 		localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
 	});
+	panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'logo.svg');
 	const chrome = buildArtboardChromeHtml({
 		webview: panel.webview,
 		extensionUri: context.extensionUri,

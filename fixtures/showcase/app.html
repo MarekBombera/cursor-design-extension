@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Alto app</title>
+		<style>
+			:root {
+				--violet: #7c6cff;
+				--teal: #2fd4c4;
+				--peach: #ff9d7a;
+				--green: #30d158;
+				--soft: rgba(255, 255, 255, 0.58);
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				position: relative;
+				display: flex;
+				flex-direction: column;
+				min-height: 844px;
+				margin: 0;
+				padding: 0 20px 20px;
+				overflow: hidden;
+				font-family: -apple-system, 'SF Pro Display', Inter, system-ui, sans-serif;
+				color: #fff;
+				background: #08080c;
+				-webkit-font-smoothing: antialiased;
+			}
+			.glow {
+				position: absolute;
+				right: -90px;
+				top: -110px;
+				width: 320px;
+				height: 320px;
+				border-radius: 50%;
+				background: var(--violet);
+				opacity: 0.5;
+				filter: blur(80px);
+			}
+			.glow.two {
+				right: 150px;
+				top: -160px;
+				width: 240px;
+				height: 240px;
+				background: var(--teal);
+				opacity: 0.3;
+			}
+			header {
+				position: relative;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				padding-top: 26px;
+			}
+			.me {
+				display: grid;
+				place-items: center;
+				width: 40px;
+				height: 40px;
+				border-radius: 50%;
+				font-size: 14px;
+				font-weight: 600;
+				background: linear-gradient(135deg, var(--violet), var(--teal));
+			}
+			header p {
+				margin: 0;
+				font-size: 15px;
+				color: var(--soft);
+			}
+			header svg {
+				width: 22px;
+				height: 22px;
+				margin-left: auto;
+			}
+			.balance {
+				position: relative;
+				margin-top: 28px;
+			}
+			.balance small {
+				font-size: 14px;
+				color: var(--soft);
+			}
+			#balance {
+				margin-top: 4px;
+				font-size: 48px;
+				font-weight: 600;
+				letter-spacing: -0.04em;
+				font-variant-numeric: tabular-nums;
+			}
+			#balance span {
+				color: var(--soft);
+			}
+			.change {
+				display: inline-block;
+				margin-top: 10px;
+				padding: 6px 12px;
+				border-radius: 999px;
+				font-size: 13px;
+				font-weight: 500;
+				color: var(--green);
+				background: rgba(48, 209, 88, 0.14);
+			}
+			.card {
+				position: relative;
+				height: 188px;
+				margin-top: 24px;
+				padding: 22px 24px;
+				border-radius: 22px;
+				background:
+					linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.13) 46%, transparent 58%),
+					linear-gradient(135deg, #34343f, #14141a 46%, #262138);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+			}
+			.card .name {
+				font-size: 22px;
+				font-weight: 600;
+				letter-spacing: -0.04em;
+			}
+			.card .chip {
+				width: 40px;
+				height: 30px;
+				margin-top: 28px;
+				border-radius: 7px;
+				background: linear-gradient(135deg, #f3e2b0, #b89a52);
+			}
+			.card .number {
+				position: absolute;
+				left: 24px;
+				bottom: 22px;
+				font-size: 16px;
+				letter-spacing: 0.12em;
+				color: rgba(255, 255, 255, 0.82);
+			}
+			.card .holder {
+				position: absolute;
+				right: 24px;
+				bottom: 22px;
+				font-size: 13.5px;
+				color: var(--soft);
+			}
+			.quick {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				margin-top: 24px;
+				text-align: center;
+				font-size: 12.5px;
+				color: var(--soft);
+			}
+			.quick button {
+				display: grid;
+				place-items: center;
+				width: 56px;
+				height: 56px;
+				margin: 0 auto 8px;
+				border: 0;
+				border-radius: 50%;
+				background: rgba(255, 255, 255, 0.09);
+			}
+			.quick button.main {
+				background: #fff;
+			}
+			.quick svg {
+				width: 22px;
+				height: 22px;
+			}
+			.recent {
+				display: flex;
+				align-items: baseline;
+				justify-content: space-between;
+				margin: 22px 0 5px;
+			}
+			.recent h2 {
+				margin: 0;
+				font-size: 18px;
+				font-weight: 600;
+				letter-spacing: -0.02em;
+			}
+			.recent a {
+				font-size: 14px;
+				color: var(--soft);
+				text-decoration: none;
+			}
+			.row {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				padding: 10px 0;
+			}
+			.row i {
+				display: grid;
+				place-items: center;
+				width: 42px;
+				height: 42px;
+				border-radius: 13px;
+				font-size: 15px;
+				font-weight: 600;
+				font-style: normal;
+			}
+			.row b {
+				display: block;
+				font-size: 15px;
+				font-weight: 500;
+			}
+			.row small {
+				font-size: 13px;
+				color: var(--soft);
+			}
+			.row .amount {
+				margin-left: auto;
+				font-size: 15px;
+				font-weight: 500;
+				font-variant-numeric: tabular-nums;
+			}
+			.row .amount.in {
+				color: var(--green);
+			}
+			.tabs {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				margin-top: auto;
+				padding: 12px 6px;
+				border-radius: 24px;
+				text-align: center;
+				font-size: 11.5px;
+				color: var(--soft);
+				background: rgba(255, 255, 255, 0.07);
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+			}
+			.tabs svg {
+				display: block;
+				width: 22px;
+				height: 22px;
+				margin: 0 auto 4px;
+			}
+			.tabs .on {
+				color: #fff;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="glow"></div>
+		<div class="glow two"></div>
+		<header>
+			<span class="me">ML</span>
+			<p>Good morning, Maya</p>
+			<svg viewBox="0 0 22 22" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+				<path d="M5 16V10a6 6 0 0112 0v6l1.5 2h-15zM9 19.5a2 2 0 004 0" />
+			</svg>
+		</header>
+		<section class="balance">
+			<small>Total balance</small>
+			<div id="balance">£12,480<span>.52</span></div>
+			<span class="change">+£320.14 this month</span>
+		</section>
+		<section id="card" class="card">
+			<div class="name">alto</div>
+			<div class="chip"></div>
+			<div class="number">•••• 4829</div>
+			<div class="holder">Maya Lindqvist</div>
+		</section>
+		<section class="quick">
+			<div>
+				<button class="main" type="button" aria-label="Send">
+					<svg
+						viewBox="0 0 22 22"
+						fill="none"
+						stroke="#08080c"
+						stroke-width="2"
+						stroke-linecap="round"
+					>
+						<path d="M6 16L16 6M8 6h8v8" />
+					</svg></button
+				>Send
+			</div>
+			<div>
+				<button type="button" aria-label="Request">
+					<svg
+						viewBox="0 0 22 22"
+						fill="none"
+						stroke="#fff"
+						stroke-width="2"
+						stroke-linecap="round"
+					>
+						<path d="M16 6L6 16M14 16H6V8" />
+					</svg></button
+				>Request
+			</div>
+			<div>
+				<button type="button" aria-label="Top up">
+					<svg
+						viewBox="0 0 22 22"
+						fill="none"
+						stroke="#fff"
+						stroke-width="2"
+						stroke-linecap="round"
+					>
+						<path d="M11 5v12M5 11h12" />
+					</svg></button
+				>Top up
+			</div>
+			<div>
+				<button type="button" aria-label="More">
+					<svg viewBox="0 0 22 22" fill="#fff">
+						<circle cx="5" cy="11" r="1.8" />
+						<circle cx="11" cy="11" r="1.8" />
+						<circle cx="17" cy="11" r="1.8" />
+					</svg></button
+				>More
+			</div>
+		</section>
+		<div class="recent">
+			<h2>Recent</h2>
+			<a href="#">See all</a>
+		</div>
+		<div class="row">
+			<i style="background: rgba(255, 157, 122, 0.2); color: #ff9d7a">C</i>
+			<span><b>Coffee Collective</b><small>Eating out, 08:14</small></span>
+			<span class="amount">−£3.40</span>
+		</div>
+		<div class="row">
+			<i style="background: rgba(48, 209, 88, 0.18); color: #30d158">N</i>
+			<span><b>Northwind Studio</b><small>Salary, yesterday</small></span>
+			<span class="amount in">+£3,250.00</span>
+		</div>
+		<div class="row">
+			<i style="background: rgba(124, 108, 255, 0.22); color: #a99dff">R</i>
+			<span><b>Riverside Grocer</b><small>Groceries, yesterday</small></span>
+			<span class="amount">−£42.18</span>
+		</div>
+		<nav class="tabs">
+			<span class="on">
+				<svg viewBox="0 0 22 22" fill="#fff">
+					<path d="M3 10l8-7 8 7v8a1 1 0 01-1 1h-4v-6H8v6H4a1 1 0 01-1-1z" /></svg
+				>Home
+			</span>
+			<span>
+				<svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8">
+					<rect x="2.5" y="5" width="17" height="12" rx="2.5" />
+					<path d="M2.5 9.5h17" /></svg
+				>Cards
+			</span>
+			<span>
+				<svg viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8">
+					<circle cx="11" cy="11" r="8" />
+					<path d="M11 6.5v4.5l3 2" stroke-linecap="round" /></svg
+				>Pots
+			</span>
+			<span>
+				<svg
+					viewBox="0 0 22 22"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+				>
+					<circle cx="11" cy="8" r="3.5" />
+					<path d="M4 19a7 7 0 0114 0" /></svg
+				>Profile
+			</span>
+		</nav>
+	</body>
+</html>

@@ -1,32 +1,153 @@
-# Vibeboard Design
+<p align="center">
+  <img src="media/logo-long.png" alt="Vibeboard" width="560">
+</p>
 
-Agent design canvas for Cursor and VS Code.
+<p align="center">
+  <strong>Agent design canvas for Cursor and VS Code.</strong><br>
+  Your AI agent designs live HTML artboards. You review, comment and tweak them on a canvas, right next to your code.
+</p>
 
-Your AI agent writes live HTML artboards through a local MCP server; you review, comment on and tweak them in a canvas panel. No in-panel chat.
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-5af39a?style=flat-square" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/Cursor-supported-0d1925?style=flat-square" alt="Cursor supported">
+  <img src="https://img.shields.io/badge/VS%20Code-supported-0d1925?style=flat-square" alt="VS Code supported">
+  <img src="https://img.shields.io/badge/MCP-14%20tools-0d1925?style=flat-square" alt="14 MCP tools">
+</p>
 
-- **Panel:** Webview artboard (host chrome + sandboxed HTML iframe)
-- **Brain:** your AI agent (Cursor Agent, Copilot, Claude Code, Codex, ...) via the bundled local MCP server + disk under `.vibeboard/`
-- **Not:** a Next.js app, Chrome extension, or in-extension LLM calls
+<p align="center">
+  <img src="media/screenshot-canvas.png" alt="The Vibeboard panel with three artboards on a canvas: a money app's landing page and two phone screens" width="900">
+</p>
 
-Not affiliated with or endorsed by Anysphere (Cursor).
+## Contents
+
+- [Why Vibeboard](#why-vibeboard)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Comments for the agent](#comments-for-the-agent)
+- [Edit mode](#edit-mode)
+- [Handoff](#handoff)
+- [Use with any agent](#use-with-any-agent)
+- [MCP tools](#mcp-tools)
+- [Commands](#commands)
+- [Limits](#limits)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why Vibeboard
+
+Coding agents write good UI, but you only see it after it lands in your app. Vibeboard gives the agent a canvas first: it designs, you point at what to change, and when you like the result you hand it off to build.
+
+- **Any agent.** Cursor Agent, GitHub Copilot, Claude Code, Codex or any other MCP client.
+- **Live canvas.** Every artboard is a real HTML page in a sandboxed frame. Pan, zoom, drag and resize.
+- **Pages.** Keep several designs per project and switch from the Pages menu.
+- **Comments.** Click an element, leave a comment, copy it to your agent. The agent fixes it and replies.
+- **Edit mode.** Change text, colours, spacing and borders yourself, with Undo / Redo.
+- **Handoff.** Export every frame plus an `IMPLEMENT.md`, so an agent can build the real page.
+- **Local and private.** Designs live in `.vibeboard/` in your workspace. No model calls, no API keys.
+
+## Quick start
+
+1. **Install.** Vibeboard is not on the Marketplace yet. Run `pnpm vsix` in this repo, then **Extensions: Install from VSIX…** in Cursor or VS Code and pick `vibeboard-0.1.0.vsix`.
+2. **Open the panel.** Open a trusted folder and run **Vibeboard: Open Artboard** from the Command Palette.
+3. **Connect your agent.**
+   - Cursor: allowlist `vibeboard` in Settings → MCP.
+   - VS Code: start the **Vibeboard** server when asked.
+   - Anything else: see [Use with any agent](#use-with-any-agent).
+4. **Ask for a design** in your agent's chat:
+
+   ```text
+   Use vibeboard to design a pricing page: a desktop frame at 1280 px and a mobile frame at 390 px, side by side.
+   ```
+
+The frames appear in the panel as the agent writes them.
+
+> **Updating?** Quit and reopen the editor afterwards. Until then the old MCP server keeps running.
+
+## How it works
+
+<p align="center">
+  <img src="media/how-it-works.png" alt="You chat with your agent. The agent writes designs to .vibeboard/ on disk through MCP tools. The Vibeboard panel reloads them live, and you review, comment and tweak." width="900">
+</p>
+
+- **Disk is the source of truth.** Everything lives in `.vibeboard/` in your workspace. Add it to `.gitignore` unless you want designs in git.
+- **The agent is the brain.** The panel has no chat, and the extension never calls a model.
+- **Artboards are sandboxed.** Each frame runs in an `allow-scripts` iframe under a strict CSP: inline CSS and JS only, nothing loaded from outside.
+
+## Comments for the agent
+
+<p align="center">
+  <img src="media/demo.gif" alt="Commenting on a headline, copying the comment for the agent, and the agent shortening the headline and replying in the thread" width="900">
+</p>
+
+1. **Pick.** Press `C` (or choose **Comment** in the toolbar) and click an element. Clicking empty space comments on the whole frame.
+2. **Write.** Type your comment and press Enter. Its pin follows the element.
+3. **Send.** **Copy for Agent** copies one comment, **Copy N open comments for Agent** copies all open ones. Paste into your agent's chat.
+4. **Done.** The agent changes the design and resolves the comment with a one-line reply in the thread.
+
+<details>
+<summary><strong>Keys and details</strong></summary>
+
+- The hover outline shows what a click will target. Alt+click or ↑ picks the parent, ↓ the child.
+- Links and buttons in the design don't fire in Comment mode.
+- In the popover, Shift+Enter adds a newline and Esc cancels.
+- **Comments** in the toolbar opens the panel: Reply, Resolve, Reopen, and click a comment's target to jump to its pin.
+- Comments are saved to `.vibeboard/pages/<pageId>/comments.json`. Copied comments are marked `sent`.
+- The agent calls `get_comment`, changes the target with `update_artboard`, then `resolve_comment`.
+
+</details>
+
+## Edit mode
+
+<p align="center">
+  <img src="media/screenshot-edit.png" alt="Edit mode with a headline selected and the Inspector showing its text, appearance, spacing and border fields" width="900">
+</p>
+
+Choose **Edit** in the toolbar and click an element. The Inspector shows the sections that fit it, and each save writes only what you changed to the artboard file.
+
+| Section        | What you can change                                                         |
+| -------------- | --------------------------------------------------------------------------- |
+| **Text**       | Content, size, colour, weight, style, alignment, leading, tracking and case |
+| **Appearance** | Background, radius, overflow and opacity                                    |
+| **Spacing**    | Padding, margin and gap                                                     |
+| **Border**     | Width, style and colour                                                     |
+
+**Undo** and **Redo** are in the Inspector, or use Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z: 20 steps per frame. Esc goes back to Interact.
+
+Every field, value rule and edge case: [Edit mode reference](./docs/edit-mode.md).
+
+## Handoff
+
+When the design is right, run **Vibeboard: Export Handoff** (or let the agent call `export_artboard`). It writes every frame plus an `IMPLEMENT.md` to `.vibeboard/handoff/<exportId>/`. Ask your agent to follow `IMPLEMENT.md` to build the real page.
+
+Change a design after exporting and the panel shows **Handoff out of date**. Export again to refresh it.
 
 ## Use with any agent
 
-Any MCP-capable agent drives the artboard; the panel runs in Cursor or VS Code.
+Any MCP-capable agent can drive the artboard. The panel itself runs in Cursor or VS Code.
 
-- **Cursor:** the extension registers its MCP server (`vibeboard`) itself on startup. Allowlist it in Settings → MCP.
-- **VS Code:** the extension registers the same server itself (MCP server definition provider, listed as **Vibeboard**), so GitHub Copilot's agent mode sees it without setup. Start or trust it from the MCP server list when VS Code asks.
-- **Other agents** (Claude Code in a terminal, Codex CLI, Cline, others): add the bundled server to the agent's MCP config by hand. The server is `dist/mcp.js` inside the installed extension (`~/.vscode/extensions/` or `~/.cursor/extensions/`; adjust the version in the paths below), run with Node, and `VIBEBOARD_WORKSPACE_ROOT` names the workspace folder it writes `.vibeboard/` into (`VIBEBOARD_WORKSPACE_ROOTS`, a JSON array of folders, serves several; the first is the default). Keep the panel open in Cursor or VS Code on the same folder to see the artboards.
+| Agent                                 | Setup                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| **Cursor**                            | Automatic. Allowlist `vibeboard` in Settings → MCP.                        |
+| **VS Code** (GitHub Copilot)          | Automatic. Start or trust the **Vibeboard** server when VS Code asks.      |
+| **Claude Code, Codex, Cline, others** | Add the server by hand (below) and keep the panel open on the same folder. |
 
-The server asks the connected client for its workspace folders (MCP roots), so a client that supports roots gets the right folder automatically, even when one server serves several editor windows. `VIBEBOARD_WORKSPACE_ROOT(S)` is the fallback only for clients without roots support; a client that supports roots but reports no folder gets `NO_WORKSPACE`, and a `rootPath` argument must name one of the reported folders. Because Cursor shares one server across windows, a window's agent can write `.vibeboard/` into its own folder even when that window's workspace is untrusted; the writes stay inside `.vibeboard/` and symlinks there are rejected.
+The server is `dist/mcp.js` inside the installed extension (`~/.vscode/extensions/` or `~/.cursor/extensions/`), run with Node. Adjust the version in the paths below.
 
-Claude Code, from the workspace folder:
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+From the workspace folder:
 
 ```bash
 claude mcp add vibeboard -e VIBEBOARD_WORKSPACE_ROOT="$PWD" -- node ~/.vscode/extensions/bombic.vibeboard-0.1.0/dist/mcp.js
 ```
 
-Codex CLI, `~/.codex/config.toml` (absolute paths):
+</details>
+
+<details>
+<summary><strong>Codex CLI</strong></summary>
+
+In `~/.codex/config.toml` (absolute paths):
 
 ```toml
 [mcp_servers.vibeboard]
@@ -35,144 +156,69 @@ args = ["/Users/you/.vscode/extensions/bombic.vibeboard-0.1.0/dist/mcp.js"]
 env = { VIBEBOARD_WORKSPACE_ROOT = "/Users/you/projects/my-app" }
 ```
 
-Cursor and VS Code spawn the same file with their own Electron binary (`ELECTRON_RUN_AS_NODE=1`); with a plain `node` command that variable is not needed. On connect the server sends the shipped Agent skill (`skills/vibeboard/SKILL.md` in the extension) as its MCP instructions, so the agent learns the tools' workflow; add that file to the agent's instructions if it ignores server instructions.
+</details>
 
-Agents should use the MCP tools rather than edit `.vibeboard/` files directly: the tools check conflicts, take the workspace lock and keep the page and canvas layout valid.
+<details>
+<summary><strong>How the server finds your workspace</strong></summary>
 
-## Status
+- The server asks the connected client for its workspace folders (MCP roots). A client that supports roots gets the right folder automatically.
+- `VIBEBOARD_WORKSPACE_ROOT` (one folder) or `VIBEBOARD_WORKSPACE_ROOTS` (a JSON array; the first is the default) is the fallback only for clients without roots support.
+- A client that supports roots but reports no folder gets `NO_WORKSPACE`. A `rootPath` argument must name one of the reported folders.
 
-v0.1.0: installable `.vsix` with an artboard panel, seven MCP tools, export handoff + stale badge, and documented v1 limits.
+</details>
 
-0.3: Svelte chrome, frame drag and resize, and comments for the Agent (Comment mode, pins, Comments panel, Copy for Agent). 11 MCP tools.
-
-0.4: Edit mode: change an element's text, typography (size, colour, weight, style, align, leading, tracking, case), appearance (background, radius, overflow, opacity), spacing (padding, margin, gap) and border (width, style, colour) in the panel, saved straight to the artboard file, with Undo / Redo (20 steps per frame for the panel session). 11 MCP tools, unchanged.
-
-![Artboard panel](media/artboard-panel.png)
-
-Spec (source of truth): [Notion - Vibeboard](https://app.notion.com/p/3d5500344e0881019a9fd659ccb7ffb4)
+On connect, the server sends its agent skill ([`skills/vibeboard/SKILL.md`](./skills/vibeboard/SKILL.md)) as MCP instructions, so the agent learns the workflow. If your agent ignores server instructions, add that file to its instructions.
 
 ## MCP tools
 
-Server name: `vibeboard`. Tools:
+Server name: `vibeboard`, 14 tools. Exact arguments and error codes are in the [agent skill](./skills/vibeboard/SKILL.md).
 
-- `set_artboard` - create a new artboard id (`html` required; empty string allowed)
-- `update_artboard` - replace HTML; requires `baseGeneration` and/or `baseHash`
-- `read_artboard` - HTML + meta; `artboardId` optional (defaults to active)
-- `list_artboards` - ids on disk (no HTML bodies) plus `frames`, the stage layout from the open page's `.vibeboard/pages/<pageId>/canvas.json` (missing frames auto-placed)
-- `set_active_artboard` - switch the active id (does not open the panel)
-- `place_frame` - set one frame's `x`, `y`, `width`, `label`, or `group` in `canvas.json`; returns every frame
-- `export_artboard` - write `.vibeboard/handoff/<exportId>/` and record `lastExport` (call before implementing)
-- `handoff_status` - `{ stale, activeArtboardId, activeHash, lastExport? }`; re-export when `stale` is true
-- `list_comments` - comments from the open page's `.vibeboard/pages/<pageId>/comments.json` with `stale` / `targetMissing` flags (`null` = unchecked) and `replyCount`; `status` optional (`open`, `sent`, `resolved`), omitted = every unresolved comment
-- `get_comment` - one comment with its replies and those flags checked against the artboard on disk; call it before acting on a comment
-- `resolve_comment` - resolve after changing the target; the one-line `note` shows as the Agent's reply in the thread
-- `list_pages` - `{ openPageId, pages: [{ id, title, updatedAt }] }` from `.vibeboard/project.json`
-- `create_page` - new page with one blank artboard `artboard`; opens it (the panel follows)
-- `open_page` - open a page by id (the panel follows); every other tool then acts on it
+| Tool                  | What it does                                                              |
+| --------------------- | ------------------------------------------------------------------------- |
+| `list_artboards`      | List artboard ids and the canvas layout (`frames`)                        |
+| `set_artboard`        | Create a new artboard from HTML                                           |
+| `read_artboard`       | Read an artboard's HTML and meta (defaults to the active one)             |
+| `update_artboard`     | Replace an artboard's HTML; needs `baseGeneration` and/or `baseHash`      |
+| `set_active_artboard` | Switch the active artboard                                                |
+| `place_frame`         | Set one frame's `x`, `y`, `width`, `label` or `group` on the canvas       |
+| `export_artboard`     | Write the handoff to `.vibeboard/handoff/<exportId>/`                     |
+| `handoff_status`      | Report whether the last handoff is stale                                  |
+| `list_comments`       | List comments on the open page (every unresolved one unless `status` set) |
+| `get_comment`         | Read one comment with its replies                                         |
+| `resolve_comment`     | Resolve a comment with a one-line note, shown as the agent's reply        |
+| `list_pages`          | List the pages and which one is open                                      |
+| `create_page`         | Create a page with one blank artboard and open it                         |
+| `open_page`           | Open a page; every other tool then acts on it                             |
 
-14 tools. Every success result of the first 11 carries `page: { id, title }`, the open page it acted on.
+> **Tip:** agents should use the tools, not edit `.vibeboard/` files. The tools check conflicts, take the workspace lock and keep the page and canvas layout valid. If MCP is denied, allowlist the server; until then an agent can edit the open page's files under `.vibeboard/pages/<pageId>/` (`openPageId` in `.vibeboard/project.json`).
 
-**Allowlist** the server if your editor or agent prompts. If MCP is denied, edit the open page's files under `.vibeboard/pages/<pageId>/` on disk (`openPageId` in `.vibeboard/project.json`) and tell the user to allowlist the tools.
+## Commands
 
-## Install
+| Command                             | What it does                                                         |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| **Vibeboard: Open Artboard**        | Open or reveal the panel                                             |
+| **Vibeboard: Reveal Design Folder** | Reveal `.vibeboard/` if it exists (does not create it)               |
+| **Vibeboard: Export Handoff**       | Export every frame on the canvas to `.vibeboard/handoff/<exportId>/` |
 
-1. From this repo: `pnpm vsix` writes `vibeboard-0.1.0.vsix` at the repo root.
-2. In Cursor or VS Code: Command Palette → **Extensions: Install from VSIX…** → pick that file → reload. Updating an installed version? Quit and reopen the editor instead (see Limits).
-3. Open a trusted folder. Command Palette → **Vibeboard: Open Artboard**.
-4. Cursor: Settings → MCP: allowlist `vibeboard` (toggle off/on if the tool count stays 0; see Limits). VS Code: start the **Vibeboard** server when asked. Other agents: add the server by hand (see Use with any agent).
+Logs: **View → Output → Vibeboard**.
 
-Smoke-tested 2026-11-20, Cursor 3.29.9 (agent-driven run on the packaged `.vsix`).
+## Limits
 
-## Comments for the Agent
+Facts, not a roadmap. The ones you are most likely to meet:
 
-1. In the panel press `C` (or pick **Comment** in the toolbar's mode switch). The hover outline shows what a click will target; Alt+click or ↑ picks the parent, ↓ the child. Clicking empty space in a frame comments on the whole frame. Links and buttons in the design don't fire in Comment mode.
-2. Type in the popover and press Enter (**Add comment**). Shift+Enter adds a newline, Esc cancels. The comment is saved to the page's `comments.json` (`.vibeboard/pages/<pageId>/comments.json`) and its pin follows the element.
-3. **Comments** in the toolbar opens the panel: Reply, Resolve, Reopen, and click a comment's target to jump to its pin.
-4. **Copy for Agent** copies the prompt for one comment; **Copy N open comments for Agent** copies one prompt with every open id. Paste it into your agent's chat. Copied comments are marked `sent`.
-5. The Agent calls `get_comment`, changes the target with `update_artboard`, then `resolve_comment` with a one-line note that shows as a reply.
+- **Install from `.vsix`.** Vibeboard is not on the Marketplace yet.
+- **Trusted folders only.** Artboard HTML is executable workspace content, so untrusted workspaces are unsupported.
+- **First folder only.** In a multi-root workspace the panel shows the first folder. MCP tools see every folder and take an optional `rootPath`.
+- **Self-contained artboards.** No external scripts, images, fonts or stylesheets, and no inline event handlers.
+- **Restart after an update.** The old MCP server runs until the editor quits. In Cursor, MCP settings may also show **0 tools** until you toggle the server off and on.
+- **Direct file edits can be lost.** A write that skips the tools also skips the workspace lock, and an `update_artboard` can overwrite it.
 
-## Edit mode
+The full list, with the locking and sandbox details: [Known limits](./docs/limits.md).
 
-1. In the panel pick **Edit** in the toolbar's mode switch (it has no key; Esc or pressing **Edit** again goes back to Interact). Click an element to select it. As in Comment mode, links and buttons don't fire, Alt+click or ↑ picks the parent and ↓ the child; the Inspector's arrow buttons do the same. Clicking empty space in a frame selects its `body`.
-2. The Inspector shows the sections that fit what you picked:
-   - **Text**: **Content**, **Size**, **Color**, **Weight**, **Text style** (Italic, Underline, Strikethrough), **Align** (left, center, right, justify), **Leading**, **Tracking** and **Case**. An element that mixes text with other elements gets **Typography** instead: the same fields without Content, and a hint to ask the Agent or select a part that holds only text.
-   - **Appearance**: **Background**, **Radius**, **Overflow** and **Opacity**.
-   - **Spacing**: **Padding** and **Margin**, each one shorthand box, and **Gap** when the element is a flex or grid container (or already has a gap).
-   - **Border**: **Width**, **Style** and **Color** when the element has a border; otherwise **Add border**, which saves `1px` `solid` (the colour stays the text colour).
-   - An element that holds only other elements, an `img` and the like get Appearance, Spacing and Border only.
-3. A blue dot and full-strength text mark a value set on this element's `style` attribute; grey text is the value the design's CSS computes. Text boxes (Content, the lengths, the colours) preview as you type and save on Enter or when the field loses focus; an empty style box removes the declaration. A colour field pairs its text box with a picker that saves when you release it. Selects (Weight, Case, Overflow, border Style) and the Text style and Align toggles save on click (a select as soon as you choose), and always show the computed value. Each section's **Reset** removes every value of that section from the `style` attribute in one save (one Undo step); it is greyed out when nothing is set.
-4. Values: a bare number gets `px` in a length (Size, Tracking, Radius, Padding, Margin, Gap, border Width), and a value the browser ignores (`abc`) is saved as typed. Colours take a hex such as `#1a2b3c` or `transparent`. Opacity takes a number from 0 to 1; Leading a number such as `1.5` or a length. A refused value, or one over 200 characters, shows an error under its field and is not saved.
-5. A save writes only that element's text, or the properties it changed in its `style` attribute, to `.vibeboard/pages/<pageId>/artboards/<id>.html`. A shorthand box replaces its longhands (`padding-left` and so on), and Reset on Border also removes a `border` shorthand; Reset never removes an inline `font`, `text-decoration` or `background` shorthand (ask the Agent). Your own save does not reload the frame.
-6. Content is editable only when the element holds plain text. Text mixed with elements or an HTML comment gets the Typography hint, and text over 5,000 characters a hint to ask the Agent in place of Content; the style fields still work. A `style` attribute over 5,000 characters replaces the style fields with a hint. An element a script created or copied shows "Not editable": ask the Agent.
-7. **Undo** and **Redo** in the Inspector, or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z from the panel (outside a text field) or the focused frame, step through your saves in the frame you last picked in. Each step rewrites the file and reloads the frame. History is 20 steps per frame, kept in memory until the panel closes or the workspace folders change. An outside change to the file (the Agent, an editor) clears that frame's history. After the panel reloads (for example when you switch to another tab and back), Undo and Redo stay disabled until you pick an element in that frame again in Edit mode.
-8. A comment on an element you edited, or on an element that contains it, reads `stale` until the element is back as it was, for example after Undo. The panel numbers elements in its own copy only (`data-cd-src`); the file on disk, `read_artboard` and the export never get those tags.
+## Contributing
 
-## Develop
-
-```bash
-pnpm install
-pnpm compile
-pnpm verify
-```
-
-Confirm `dist/mcp.js` exists after compile or the watch/`preLaunchTask` build. F5 will not register a working stdio server without it.
-
-In Cursor: open this folder → **F5** (Run Extension). The Extension Development Host opens `fixtures/dev-workspace` (positional folder arg in `.vscode/launch.json`). The panel does **not** open on startup.
-
-Then in the **Extension Development Host** window (not this repo window):
-
-1. Command Palette → **Vibeboard: Open Artboard** - chrome + disk preview, no CSP errors in the **webview** console.
-2. Check MCP: Settings → MCP. Server name `vibeboard`. Activation is `onStartupFinished`, so it registers without opening the panel.
-3. Allowlist `vibeboard` (toggle off/on if the tool count stays 0).
-
-Commands:
-
-- **Vibeboard: Open Artboard** - open/reveal the panel
-- **Vibeboard: Reveal Design Folder** - reveal `.vibeboard/` if it exists (does not create it)
-- **Vibeboard: Export Handoff** - export every frame on the canvas to `.vibeboard/handoff/<exportId>/`
-
-Output: **View → Output → Vibeboard**.
-
-Agent entry: [`AGENTS.md`](./AGENTS.md)
-
-Workflow overlay: [AI Blueprint](https://github.com/aiblueprinthq/ai-blueprint) (plans and review gates, not the product stack).
-
-## Export to implement trial
-
-F5 in the Extension Development Host with `fixtures/dev-workspace` open:
-
-1. Command Palette → **Vibeboard: Open Artboard**. No handoff badge.
-2. Design at least two frames via your agent (`set_artboard` / `update_artboard`), for example a desktop page and a mobile page, and lay them out with `place_frame` (with `group`).
-3. Call `export_artboard` (or Command Palette → **Vibeboard: Export Handoff**). Confirm `.vibeboard/handoff/<exportId>/` holds `IMPLEMENT.md`, `canvas.html`, `tokens.json`, and one `<group-folder>/<frame-id>/index.html` per frame, and that `.vibeboard/pages/page-1/manifest.json` `lastExport.frames` lists every frame. Badge still hidden. `canvas.html` opens in a browser as a view-only preview of the canvas.
-4. In a second Agent session, open `.vibeboard/handoff/<exportId>/IMPLEMENT.md` (from `lastExport.exportId` in `.vibeboard/pages/page-1/manifest.json`) and implement into `fixtures/dev-workspace/sample-app/`: one responsive page from the desktop and mobile variants. Do not copy `.vibeboard/` into the app.
-5. Edit any frame's `.vibeboard/pages/page-1/artboards/<id>.html` and save. Within ~200ms the panel badge shows `Handoff out of date. Re-export.`
-6. Re-export. Badge clears. The previous handoff directory stays on disk.
-
-Then `cd fixtures/dev-workspace/sample-app && pnpm install --ignore-workspace && pnpm dev` to view the implemented page. (`--ignore-workspace` is required because this repo has a root `pnpm-workspace.yaml`; without it, `pnpm install` no-ops and `vite` is missing.) 0.1 trial, observed 2026-09-12: Vite 8.3.0 served `index.html` at `http://localhost:5173/` (`Implement the exported artboard here.`).
-
-**0.1 trial performed:** 2026-09-12 (live F5 pass, steps 2–6 green; 6 handoffs on disk, `stale:false`, Vite 200 with latest implement).
-
-**0.2 canvas trial:** 2026-10-18 (6f dogfood: four frames exported clean, responsive sample-app built from the handoff).
-
-**0.3 verification:** 2026-11-18 (8i, agent-run: a headless Agent loop over real stdio MCP processes covering comments, sent, fresh process, resolve, stale, target missing, unchecked and a byte-equal export, plus a `.vsix` smoke; no manual Cursor run, earlier per-feature F5 passes cited or waived).
-
-## Limits (v1)
-
-Facts, not a roadmap. Drift vs the rules or overview is labeled.
-
-- Automatic MCP registration: `vscode.cursor.mcp.registerServer` in Cursor, else `vscode.lm.registerMcpServerDefinitionProvider` in VS Code, never both. An editor with neither registers nothing (a line in Output → Vibeboard, and the panel shows MCP unavailable) and still renders `.vibeboard/` from disk; add the server to your agent by hand (see Use with any agent). The Agent skill is copied to `~/.cursor/skills/` only in Cursor; every agent gets it as MCP instructions.
-- The panel uses the first workspace folder only (`hostFs.ts`). MCP tools see every open folder and take an optional `rootPath` when more than one is open.
-- Untrusted workspaces unsupported (`capabilities.untrustedWorkspaces.supported: false`); artboard HTML is executable workspace content.
-- One open page per workspace folder: `.vibeboard/project.json` names it, and its files (`manifest.json`, `canvas.json`, `comments.json`, `artboards/`) live in `.vibeboard/pages/<pageId>/`. Handoffs, `tokens.json`, `assets/` and the lock stay at the `.vibeboard/` root. The first call or panel open moves a 0.4 folder into `pages/page-1/` once, and leaves a file named `artboards` at the root so an older MCP server still running fails instead of writing there. Every artboard file on the open page is a frame on its canvas. `set_active_artboard` still picks the frame that `read_artboard` and `handoff_status` default to.
-- Writes: one process-wide MCP queue for every tool, reads included (`mcpQueue.ts`; recorded drift vs the overview's "MCP serializes writes per artboard id"). `update_artboard`, panel edits and Undo / Redo (HTML + meta), and every `canvas.json` and `comments.json` read-modify-write run under a cross-process lock (`.vibeboard/.lock`, `workspaceLock.ts`) shared by every MCP process and the panel. After an update, until Cursor is quit, the older MCP server keeps running, and an older version's `update_artboard` and export may take no lock (see the update line below). A write that skips the lock (an editor save, the Agent's direct file edit) can still land between `update_artboard`'s compare and its write and be overwritten (`artboardFs.ts` ponytail). `manifest.json` writes from `set_artboard` and `set_active_artboard` take no lock: across windows the last writer wins (`artboardFs.ts`). Export's meta refresh and manifest write run under the lock and re-read first, so the meta refresh no longer overwrites a newer locked meta write, and an unlocked `set_active_artboard` change is reverted only if it lands during the locked tail (`exportFs.ts`). Failed multi-file writes leave partial files (no journal/rollback); orphan handoff dirs are never deleted.
-- Artboard iframe: `sandbox="allow-scripts"`. CSP blocks inline event handlers and external subresources in the artboard (`artboardChromeHtml.ts`); `style=""` attributes render (`style-src-attr 'unsafe-inline'`, 0.4). Each frame also gets a second, inline-only policy (`FRAME_CSP` in `stampArtboardHtml.ts`), so even a `<script src>` that carries the stamped nonce, or one artboard JS adds at runtime, never loads. Chromium's CSP does not govern WebRTC or DNS prefetch hints. The exported `canvas.html` preview is opened in your own browser and is not restricted.
-- Agent skill: on start in Cursor the extension copies `skills/vibeboard/SKILL.md` to `~/.cursor/skills/vibeboard/` when it differs. In a remote window that is the remote home, which Cursor may not read. Two extension versions running at once (F5 host plus an installed `.vsix`) overwrite each other's copy; the last window started wins. Uninstalling leaves the file; it tells Agents to ignore it when the tools are missing.
-- Each frame's `index.html` carries its whole document (no CSS/JS split; recorded Phase 3 lock vs overview "HTML+CSS+JS"); `.vibeboard/assets/` is copied manually; `tokens.json` is passed through without validation.
-- Brain is your agent over MCP: no in-panel chat, no model API keys, no `vscode.lm` model, chat or tool APIs (only its MCP server registration).
-- Not on the Marketplace; install from `.vsix` (**Extensions: Install from VSIX…**).
-- Cursor MCP settings may show **0 tools** until the server is toggled off/on. That fixes the tool count, not the version: after updating the extension, quit and reopen Cursor. Toggling the server or reloading the window keeps the old MCP server process running, so the Agent's tools run the old code, with the old descriptions, until Cursor quits.
-- Comment flags are checked against the static artboard HTML on disk. A target that the artboard's own script creates at runtime reads as unchecked (`null`), never guessed (`commentTarget.ts`).
+Building, debugging (F5), tests and the manual checks are in [CONTRIBUTING.md](./CONTRIBUTING.md). Agents start at [`AGENTS.md`](./AGENTS.md).
 
 ## License
 
-MIT - see [LICENSE](./LICENSE).
+[MIT](./LICENSE)

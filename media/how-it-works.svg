@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 232" width="900" height="232" role="img" aria-label="How Vibeboard works">
+  <title>How Vibeboard works</title>
+  <defs>
+    <marker id="head" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#7b90a6"/>
+    </marker>
+    <marker id="head-green" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#5af39a"/>
+    </marker>
+  </defs>
+  <rect width="900" height="232" rx="14" fill="#0d1925"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">
+    <g fill="#132436" stroke="#2b3f55" stroke-width="1.5">
+      <rect x="20" y="36" width="164" height="84" rx="10"/>
+      <rect x="252" y="36" width="164" height="84" rx="10"/>
+      <rect x="484" y="36" width="164" height="84" rx="10"/>
+      <rect x="716" y="36" width="164" height="84" rx="10" stroke="#5af39a"/>
+    </g>
+    <g fill="#ffffff" font-size="17" font-weight="700">
+      <text x="102" y="74">You</text>
+      <text x="334" y="74">Your agent</text>
+      <text x="566" y="74" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="16">.vibeboard/</text>
+      <text x="798" y="74">Vibeboard panel</text>
+    </g>
+    <g fill="#9db0c4" font-size="13">
+      <text x="102" y="97">ask in chat</text>
+      <text x="334" y="97">any MCP client</text>
+      <text x="566" y="97">designs on disk</text>
+      <text x="798" y="97">live canvas</text>
+    </g>
+    <g fill="none" stroke="#7b90a6" stroke-width="1.5" marker-end="url(#head)">
+      <path d="M192 82H244"/>
+      <path d="M424 82H476"/>
+      <path d="M656 82H708"/>
+    </g>
+    <g fill="#9db0c4" font-size="12">
+      <text x="218" y="70">chat</text>
+      <text x="450" y="70">MCP tools</text>
+      <text x="682" y="70">live reload</text>
+    </g>
+    <path d="M798 128V168Q798 180 786 180H114Q102 180 102 168V129" fill="none" stroke="#5af39a" stroke-width="1.5" stroke-dasharray="5 5" marker-end="url(#head-green)"/>
+    <rect x="336" y="166" width="228" height="28" fill="#0d1925"/>
+    <text x="450" y="185" fill="#5af39a" font-size="13" font-weight="600">you review, comment and tweak</text>
+  </g>
+</svg>

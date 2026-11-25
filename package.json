@@ -39,6 +39,7 @@
 		"test": "vp test",
 		"test:browser": "vp build -c vite.webview.config.ts && playwright test -c tests/browser",
 		"gallery": "CD_GALLERY=1 pnpm test:browser gallery --no-deps",
+		"showcase": "CD_SHOWCASE=1 pnpm test:browser showcase",
 		"coverage": "vp test --coverage",
 		"knip": "knip"
 	},
@@ -94,6 +95,11 @@
 	"extensionKind": [
 		"workspace"
 	],
+	"icon": "media/icon.png",
+	"galleryBanner": {
+		"color": "#0d1925",
+		"theme": "dark"
+	},
 	"engines": {
 		"vscode": "^1.128.0"
 	},

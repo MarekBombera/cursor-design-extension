@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Send money</title>
+		<style>
+			:root {
+				--ink: #0a0a0f;
+				--muted: #6e6e73;
+				--tile: #f5f5f7;
+				--violet: #7c6cff;
+				--teal: #2fd4c4;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				display: flex;
+				flex-direction: column;
+				min-height: 844px;
+				margin: 0;
+				padding: 0 20px 22px;
+				font-family: -apple-system, 'SF Pro Display', Inter, system-ui, sans-serif;
+				color: var(--ink);
+				background: #fff;
+				-webkit-font-smoothing: antialiased;
+			}
+			header {
+				display: grid;
+				grid-template-columns: 40px 1fr 40px;
+				align-items: center;
+				padding-top: 22px;
+			}
+			header svg {
+				width: 24px;
+				height: 24px;
+			}
+			h1 {
+				margin: 0;
+				font-size: 17px;
+				font-weight: 600;
+				text-align: center;
+				letter-spacing: -0.01em;
+			}
+			.to {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				align-self: center;
+				margin-top: 30px;
+				padding: 6px 16px 6px 6px;
+				border-radius: 999px;
+				font-size: 15px;
+				font-weight: 500;
+				background: var(--tile);
+			}
+			.to i {
+				display: grid;
+				place-items: center;
+				width: 34px;
+				height: 34px;
+				border-radius: 50%;
+				font-size: 13px;
+				font-weight: 600;
+				font-style: normal;
+				color: #fff;
+				background: linear-gradient(135deg, var(--violet), var(--teal));
+			}
+			.to span {
+				color: var(--muted);
+				font-weight: 400;
+			}
+			#amount {
+				margin-top: 46px;
+				font-size: 92px;
+				font-weight: 600;
+				line-height: 1;
+				letter-spacing: -0.05em;
+				text-align: center;
+				font-variant-numeric: tabular-nums;
+			}
+			#amount span {
+				color: #c7c7cc;
+			}
+			.after {
+				margin: 14px 0 0;
+				font-size: 14.5px;
+				text-align: center;
+				color: var(--muted);
+			}
+			.note {
+				align-self: center;
+				margin-top: 22px;
+				padding: 9px 16px;
+				border-radius: 999px;
+				font-size: 14.5px;
+				box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+			}
+			.keys {
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				margin-top: auto;
+			}
+			.keys button {
+				height: 72px;
+				border: 0;
+				border-radius: 18px;
+				font:
+					500 30px/1 -apple-system,
+					'SF Pro Display',
+					Inter,
+					system-ui,
+					sans-serif;
+				color: var(--ink);
+				background: transparent;
+			}
+			.keys svg {
+				width: 28px;
+				height: 28px;
+			}
+			#send {
+				height: 58px;
+				margin-top: 14px;
+				border: 0;
+				border-radius: 999px;
+				font:
+					600 17px/1 -apple-system,
+					'SF Pro Display',
+					Inter,
+					system-ui,
+					sans-serif;
+				color: #fff;
+				background: var(--ink);
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="#0a0a0f"
+				stroke-width="2.2"
+				stroke-linecap="round"
+			>
+				<path d="M15 5l-7 7 7 7" />
+			</svg>
+			<h1>Send money</h1>
+		</header>
+		<div class="to"><i>JB</i>Jonas Berg <span>@jonas</span></div>
+		<div id="amount">£120<span>.00</span></div>
+		<p id="after" class="after">You will have £12,360.52 left</p>
+		<div class="note">For dinner on Friday</div>
+		<div class="keys">
+			<button type="button" data-key="1">1</button>
+			<button type="button" data-key="2">2</button>
+			<button type="button" data-key="3">3</button>
+			<button type="button" data-key="4">4</button>
+			<button type="button" data-key="5">5</button>
+			<button type="button" data-key="6">6</button>
+			<button type="button" data-key="7">7</button>
+			<button type="button" data-key="8">8</button>
+			<button type="button" data-key="9">9</button>
+			<button type="button" data-key="00">00</button>
+			<button type="button" data-key="0">0</button>
+			<button type="button" data-key="back" aria-label="Delete">
+				<svg
+					viewBox="0 0 28 28"
+					fill="none"
+					stroke="#0a0a0f"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M10 6h13a2 2 0 012 2v12a2 2 0 01-2 2H10l-7-8zM13.5 11l6 6M19.5 11l-6 6" />
+				</svg>
+			</button>
+		</div>
+		<button id="send" type="button">Send £120.00</button>
+		<script>
+			const BALANCE = 12480.52;
+			let pounds = '120';
+			const money = (value) =>
+				value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+			const render = () => {
+				const value = Number(pounds || '0');
+				const amount = document.getElementById('amount');
+				amount.firstChild.textContent = `£${value.toLocaleString('en-GB')}`;
+				document.getElementById('send').textContent = `Send £${money(value)}`;
+				document.getElementById('after').textContent =
+					`You will have £${money(Math.max(0, BALANCE - value))} left`;
+			};
+			for (const key of document.querySelectorAll('[data-key]')) {
+				key.addEventListener('click', () => {
+					pounds =
+						key.dataset.key === 'back'
+							? pounds.slice(0, -1)
+							: `${pounds}${key.dataset.key}`.replace(/^0+/, '').slice(0, 5);
+					render();
+				});
+			}
+		</script>
+	</body>
+</html>
