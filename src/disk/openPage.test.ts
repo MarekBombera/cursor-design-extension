@@ -278,7 +278,7 @@ test('two JSON conflicts are named together in one message', async () => {
 const ARTBOARDS_CONFLICT_MESSAGE =
 	'Cannot move the existing design into .vibeboard/pages/page-1/: .vibeboard/artboards/ is a folder, but artboards now live in .vibeboard/pages/page-1/artboards/. Move the files you want from .vibeboard/artboards/ into .vibeboard/pages/page-1/artboards/, then delete .vibeboard/artboards/ (quit and reopen your editor or restart your agent first if an older vibeboard MCP server may still be running). Then retry.';
 
-test('a stale 0.4 artboards folder between the move and the tombstone is a conflict', async () => {
+test('a stale artboards folder between the move and the tombstone is a conflict', async () => {
 	const root = await makeTempRoot();
 	await seedLegacy(root, PAGE_ENTRIES);
 	await mkdir(pageOneDir(root), { recursive: true });

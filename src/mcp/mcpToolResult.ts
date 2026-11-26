@@ -35,6 +35,10 @@ export const toolInputSchema = <Args>(
 		additionalProperties: true,
 	});
 
+// ponytail: readOnlyHint describes the steady state. A read resolves the open page first, which can migrate an older
+// design folder once, rebuild a lost project.json or restore a missing tombstone (openPage.ts); the descriptions
+// say so. Upgrade path: drop the hint, or make reads never write, if a client ever auto-approves reads on a folder
+// that still needs settling.
 export const READ_ONLY_ANNOTATIONS = { readOnlyHint: true, openWorldHint: false } as const;
 
 const jsonResult = (body: unknown, isError = false): CallToolResult => ({

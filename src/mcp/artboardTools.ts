@@ -198,7 +198,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Read artboard',
 			description:
-				'Read artboard HTML and meta. artboardId optional (defaults to active). Does not write or bump generation.',
+				'Read artboard HTML and meta. artboardId optional (defaults to active). Does not bump generation. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write.',
 			inputSchema: readArtboardInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
@@ -216,7 +216,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'List artboards',
 			description:
-				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.vibeboard/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. Does not write.',
+				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.vibeboard/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write.',
 			inputSchema: listArtboardsInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
@@ -291,7 +291,7 @@ export const registerArtboardTools = (server: McpServer): void => {
 		{
 			title: 'Handoff status',
 			description:
-				"Read whether the recorded handoff is stale: any frame's HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. Does not write. Pass rootPath when more than one folder is open.",
+				"Read whether the recorded handoff is stale: any frame's HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write. Pass rootPath when more than one folder is open.",
 			inputSchema: handoffStatusInputSchema,
 			annotations: READ_ONLY_ANNOTATIONS,
 		},

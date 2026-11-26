@@ -254,7 +254,8 @@ export const deletedPageDirSegments = (
 	stamp: string,
 ): readonly [string, string, string] => [...deletedDirSegments, `${pageId}-${stamp}`];
 
-// A regular file where 0.4 kept its artboards folder, so a stale 0.4 MCP fails instead of writing.
+// A regular file where 0.4 kept its artboards folder, so a stale server that still expects that folder fails
+// instead of writing (cursor-design 0.4 itself uses only .cursor-design/).
 export const artboardsTombstoneSegments = [VIBEBOARD_DIR, ARTBOARDS_DIR] as const;
 
 // Where a page entry lived before pages (0.4).

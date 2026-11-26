@@ -41,7 +41,7 @@ Content is editable only when the element holds plain text. Text mixed with elem
 
 ## Undo and Redo
 
-**Undo** and **Redo** in the Inspector, or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z from the panel (outside a text field) or the focused frame, step through your saves in the frame you last picked in. Each step rewrites the file and reloads the frame. History is 20 steps per frame, kept in memory until the panel closes or the workspace folders change. An outside change to the file (the Agent, an editor) clears that frame's history. After the panel reloads (for example when you switch to another tab and back), Undo and Redo stay disabled until you pick an element in that frame again in Edit mode.
+**Undo** and **Redo** in the Inspector, or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z from the panel (outside a text field) or the focused frame, step through your saves in the frame you last picked in. Each step rewrites the file and reloads the frame. History is 20 steps per frame, and each page keeps its own (the same frame id on two pages has two histories). It stays in memory until the panel closes, the workspace folders change or its page is deleted. An outside change to the file (the Agent, an editor) clears that frame's history. After the panel reloads (for example when you switch to another tab and back) or you switch pages, Undo and Redo stay disabled until you pick an element in that frame again in Edit mode.
 
 ## Edits and comments
 

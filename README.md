@@ -25,6 +25,7 @@
 - [How it works](#how-it-works)
 - [Comments for the agent](#comments-for-the-agent)
 - [Edit mode](#edit-mode)
+- [Pages](#pages)
 - [Handoff](#handoff)
 - [Use with any agent](#use-with-any-agent)
 - [MCP tools](#mcp-tools)
@@ -115,6 +116,25 @@ Choose **Edit** in the toolbar and click an element. The Inspector shows the sec
 
 Every field, value rule and edge case: [Edit mode reference](./docs/edit-mode.md).
 
+## Pages
+
+The page button at the left of the toolbar shows the open page. Click it for the Pages menu: every page, with when it was last edited.
+
+- **Open.** Click a page. The panel and the agent's tools both move to it.
+- **New blank page.** Adds a page with one blank artboard, titled `Page <n>` (the next never-used page number), and opens it. A project holds up to 100 pages.
+- **Rename.** The pencil turns the title into a field: Enter saves; Esc or clicking elsewhere cancels. A title is 1 to 80 characters after trimming, with no control characters.
+- **Delete.** The trash button asks first, then moves the page's files to `.vibeboard/deleted/` (Vibeboard never empties it). Deleting the open page opens the page above it (below, for the first page). The last page cannot be deleted.
+- **Agent.** `open_page` and `create_page` move your panel to that page too (for the first workspace folder, the one the panel shows).
+
+<details>
+<summary><strong>Keys</strong></summary>
+
+- Enter or Space on the page button opens the menu, with focus on the open page.
+- ↑ and ↓ move between the pages and **New blank page**, wrapping around. Home and End jump to the first and the last.
+- Esc closes the menu and returns focus to the page button (not while a page change is still saving). In the rename field, Esc cancels only the rename.
+
+</details>
+
 ## Handoff
 
 When the design is right, run **Vibeboard: Export Handoff** (or let the agent call `export_artboard`). It writes every frame plus an `IMPLEMENT.md` to `.vibeboard/handoff/<exportId>/`. Ask your agent to follow `IMPLEMENT.md` to build the real page.
@@ -194,11 +214,11 @@ Server name: `vibeboard`, 14 tools. Exact arguments and error codes are in the [
 
 ## Commands
 
-| Command                             | What it does                                                         |
-| ----------------------------------- | -------------------------------------------------------------------- |
-| **Vibeboard: Open Artboard**        | Open or reveal the panel                                             |
-| **Vibeboard: Reveal Design Folder** | Reveal `.vibeboard/` if it exists (does not create it)               |
-| **Vibeboard: Export Handoff**       | Export every frame on the canvas to `.vibeboard/handoff/<exportId>/` |
+| Command                             | What it does                                                            |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| **Vibeboard: Open Artboard**        | Open or reveal the panel                                                |
+| **Vibeboard: Reveal Design Folder** | Reveal `.vibeboard/` if it exists (does not create it)                  |
+| **Vibeboard: Export Handoff**       | Export every frame on the open page to `.vibeboard/handoff/<exportId>/` |
 
 Logs: **View → Output → Vibeboard**.
 

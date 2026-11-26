@@ -175,9 +175,10 @@ const writeIndexFromFolders = async (workspaceRoot: string, pageIds: PageIds): P
 
 // Resumable: each step skips what an earlier, interrupted run already moved, and nothing is
 // overwritten.
-// ponytail (D5): a 0.4 addComment or placeFrame already waiting on the lock re-reads "missing =
-// empty" after this and writes an orphan root file, which 0.5 ignores while project.json exists.
-// Upgrade path: none; the tombstone stops 0.4's artboard writes, and 0.4 goes away with a reload.
+// ponytail (D5): only a pre-pages build on .vibeboard/ (none shipped; 0.4 locks .cursor-design/) could
+// be waiting on the lock here, re-read "missing = empty" and write an orphan root file, which 0.5
+// ignores while project.json exists. Upgrade path: none; the tombstone stops its artboard writes, and
+// it goes away when the editor quits or the agent restarts.
 const migrateLegacyFolder = async (
 	workspaceRoot: string,
 	names: readonly PageEntry[],
@@ -235,7 +236,7 @@ const createFreshProject = async (workspaceRoot: string): Promise<void> => {
 };
 
 // The only write on an Indexed path: restores a deleted tombstone. A root artboards folder next to
-// an index is a stale 0.4 write the user must sort out.
+// an index is a stale server's write the user must sort out.
 const openIndexedPage = async (workspaceRoot: string, project: Project): Promise<PageLocation> => {
 	const rootArtboards = await lstatOrUndefined(
 		workspaceJoin(workspaceRoot, artboardsTombstoneSegments),
