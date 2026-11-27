@@ -1,31 +1,53 @@
-# Comments module (11e2) - Overview for review
+# Stage + Inspector helpers (11e3) - Overview for review
 
-Source of truth: `blueprint/history/features/11e2-comments-module.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/11e3-stage-inspector-helpers.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-Built the five picks from the 11e1 report (C1, C2, C3, C4a, C5). The comments chrome has fewer pass-throughs, one dead path less, no outside writes into `PinThread`, and one more pure rule with a test. Nothing the user sees changed.
+Two views lost their stateful glue. `Stage.svelte`'s gestures now live in `StageGestures` (`src/webview/stageGestures.svelte.ts`), and `Inspector.svelte`'s focus handoff in `InspectorFocus` (`src/webview/inspectorFocus.svelte.ts`). Nothing the user sees changed. A missing browser guard for empty-stage drag panning was written first, and the 11e1 baseline was re-measured. This closes item 11e and the whole quality pass (item 11).
 
-## What changed
+## System map
 
-- **C1, one answer entry:** `CommentsState.handleAnswer` takes every comment answer; `DesignPage` no longer splits one answer across two methods.
-- **C2, dead code gone:** the held draft is always cleared by the page's start canvas, so its extra clears and `DesignPage`'s `handlePinOpen` wrapper went. `heldDraft`, `anchors` and `flash` are private.
-- **C3, one draft-pick entry:** `CommentPicker` calls `pinThread.handleDraftPick` instead of writing `PinThread`'s held thread; `savedThreadId` replaces the public held id.
-- **C4a, id-taking callbacks:** `CommentCard` passes `comment.id` itself, so the panel and the thread hand handlers straight through.
-- **C5, jump view rule:** `jumpView` in `pins.ts`, unit-tested; `handleJump` is find → view → commit → flash.
+```mermaid
+flowchart LR
+  DP[DesignPage] --> ST[Stage view]
+  DP --> IN[Inspector view]
+  ST -->|creates once| SG[StageGestures<br/>pointer + keyboard frame gestures,<br/>Escape cancel, drag pan, wheel]
+  IN -->|creates once| IF[InspectorFocus<br/>Add border Width focus,<br/>section header handoff]
+  SG -->|onFrameGesture / onDragPan / onWheel| CS[CanvasState]
+  IN -->|onStyleChanges| ES[EditState]
+```
 
-## Architecture decisions
+## What you will see
 
-- No single comments module: the three classes keep their three jobs (11e1's answer).
-- The draft hold's "always empty after mount" depends on App mounting a page with its start canvas; the comment in `commentPicker.svelte.ts` names that dependency.
-- Skipping copy-open for `comment:saved` is an equivalence (request ids never cross-match), so it has no test.
+Nothing new in the panel. In the code: Stage's script went from 336 to 160 lines, the Inspector's from 203 to 140, each now reading as layout plus props.
+
+## Data flow
+
+No message, disk, MCP or CSP change. The classes call the same prop callbacks the views called before, at call time, so a changed prop still applies.
+
+## Decisions locked
+
+- Drag pan and the wheel listener count as gesture glue and moved with the frame gestures; frame-focus tracking, focus reveal, `focusViewport` and the resize observer stayed in Stage.
+- Effect order kept: Stage's focus poll before the Escape listener; Inspector's Width focus, then the pre-render read, then the handoff.
+- No unit tests: Vitest here does not compile runes. The browser suites plus eight mutation probes are the check.
+- The re-measure keeps the plan's answer: no single comments module.
 
 ## Out of scope
 
-C4b, C6, C7, D1, D3; any behavior, message or disk change; the Baseline re-measure and the Stage / Inspector helpers (11e3).
+- D1 (stage focus handle off `PinThread`) and the other unpicked 11e1 items.
+- New pure rules; any behavior, look or timing change.
+
+## Glossary
+
+| Term | Why it exists |
+|---|---|
+| Gesture glue | Pointer-capture and key-hold bookkeeping between the DOM events and the pure gesture rules in `frameGesture.ts` |
+| Focus handoff | When a re-render removes the focused inspector field, focus goes to its section header instead of falling to the page body |
+| Probe | A deliberate break in the code to prove one named test fails, then reverted |
 
 ## Done means
 
-- New browser guard: a pick during a held thread cancels the restore (fails with the guard removed).
-- New unit test: `jumpView` (fails with the fit zoom dropped).
-- `pnpm test:browser` 232 passed; `pnpm verify` 75 files, 927 tests.
+- `pnpm verify` green (75 files, 927 tests); `pnpm test:browser` 233 passed.
+- All eight probes failed their named test.
+- Audit F-01 to F-05 (all P3) closed after two re-review rounds.

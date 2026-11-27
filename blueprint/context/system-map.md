@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11e2 Comments module (`feature/comments-module`): chrome-internal refactor, no flow, message or disk change.
+**Last verified against code:** 2026-11-27, 11e3 Stage + Inspector helpers (`feature/stage-inspector-helpers`): chrome-internal refactor, no flow, message or disk change; the wheel-input line names `StageGestures.attachWheel`.
 
 ## Chart checklist
 
@@ -523,11 +523,12 @@ posted frames (and emptied on the untrusted path). Each `canvas:updated` is merg
 (tab switch) changes nothing; new html reloads that frame and restarts its height guard.
 
 Stage pan and zoom have three inputs, all through `wheelToView` / `panStage`: a wheel on the stage
-(Stage's non-passive listener), `cd:frame-wheel` from a frame, and the root scroll sink. Chromium
-latches a trackpad gesture to the out-of-process frame it started over and, once the frame slides
-out from under the pointer, hands the rest to the chrome as native root scroll. The chrome is
-`position: fixed` over a body with hidden scroll room, so `CanvasState` turns each root scroll into a pan and
-scrolls back (`scrollSinkStep`), but only within a second of a frame wheel or an earlier sink pan.
+(`StageGestures.attachWheel`, the non-passive listener Stage attaches), `cd:frame-wheel` from a
+frame, and the root scroll sink. Chromium latches a trackpad gesture to the out-of-process frame it
+started over and, once the frame slides out from under the pointer, hands the rest to the chrome as
+native root scroll. The chrome is `position: fixed` over a body with hidden scroll room, so
+`CanvasState` turns each root scroll into a pan and scrolls back (`scrollSinkStep`), but only within
+a second of a frame wheel or an earlier sink pan.
 
 ## Panel edit message (9c)
 

@@ -5,17 +5,12 @@
 	import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
 	import Frame from './Frame.svelte';
 	import Overlay from './Overlay.svelte';
+	import { StageGestures } from './stageGestures.svelte';
 	import Icon from './ui/Icon.svelte';
 	import type { IconName } from './ui/icons';
 	import type { StageFrame } from './canvasFrames';
 	import type { FrameMode } from './frame/frameMessages';
-	import {
-		arrowNudge,
-		type FrameGestureKind,
-		revealOffset,
-		type StageFrameGesture,
-		type StageWheel,
-	} from './frameGesture';
+	import { revealOffset, type StageFrameGesture, type StageWheel } from './frameGesture';
 	import {
 		type FrameLabelBox,
 		type GroupHeadingBox,
@@ -77,17 +72,7 @@
 
 	const HANDLE_SCREEN_WIDTH = 8;
 
-	type GestureTarget = { id: string; kind: FrameGestureKind };
-
-	let dragging = $state(false);
-	let lastPointerX = 0;
-	let lastPointerY = 0;
 	let viewportElement: HTMLDivElement | undefined;
-	// Cleared before 'end' / 'cancel' is reported, so the lostpointercapture after pointerup
-	// reports nothing. Only Escape reverts: a release outside the panel (capture lost) or a
-	// pointercancel commits the last preview.
-	let captured: (GestureTarget & { pointerId: number; element: Element }) | undefined =
-		$state();
 	// An out-of-process iframe (Cursor's blob frames) never matches :focus and gets no focus events;
 	// the chrome window blurs with it as activeElement and refocuses when focus returns. Frame to
 	// frame fires no chrome event at all, so the effect below polls while a frame holds focus.
@@ -115,85 +100,12 @@
 		};
 	});
 
-	const heldArrows = new Set<string>();
-
-	const viewportPoint = (event: PointerEvent): { screenX: number; screenY: number } => {
-		const rect = viewportElement?.getBoundingClientRect();
-		return {
-			screenX: event.clientX - (rect?.left ?? 0),
-			screenY: event.clientY - (rect?.top ?? 0),
-		};
-	};
-
-	const isCaptured = (event: PointerEvent, target: GestureTarget): boolean =>
-		captured !== undefined &&
-		captured.id === target.id &&
-		captured.kind === target.kind &&
-		captured.pointerId === event.pointerId;
-
-	const startFrameGesture = (
-		event: PointerEvent & { currentTarget: Element },
-		target: GestureTarget,
-	): void => {
-		if (event.button !== 0 || captured !== undefined) {
-			return;
-		}
-		event.currentTarget.setPointerCapture(event.pointerId);
-		captured = { ...target, pointerId: event.pointerId, element: event.currentTarget };
-		onFrameGesture({ ...target, source: 'pointer', phase: 'start', ...viewportPoint(event) });
-	};
-
-	const moveFrameGesture = (event: PointerEvent, target: GestureTarget): void => {
-		if (!isCaptured(event, target)) {
-			return;
-		}
-		onFrameGesture({ ...target, source: 'pointer', phase: 'move', ...viewportPoint(event) });
-	};
-
-	const endFrameGesture = (event: PointerEvent, target: GestureTarget): void => {
-		if (!isCaptured(event, target)) {
-			return;
-		}
-		captured = undefined;
-		onFrameGesture({ ...target, source: 'pointer', phase: 'end', ...viewportPoint(event) });
-	};
-
-	$effect(() => {
-		const current = captured;
-		if (current === undefined) {
-			return;
-		}
-		const handleKeydown = (event: KeyboardEvent): void => {
-			if (event.key !== 'Escape') {
-				return;
-			}
-			captured = undefined;
-			if (current.element.hasPointerCapture(current.pointerId)) {
-				current.element.releasePointerCapture(current.pointerId);
-			}
-			onFrameGesture({
-				id: current.id,
-				kind: current.kind,
-				source: 'pointer',
-				phase: 'cancel',
-				screenX: 0,
-				screenY: 0,
-			});
-		};
-		window.addEventListener('keydown', handleKeydown);
-		return () => {
-			window.removeEventListener('keydown', handleKeydown);
-		};
+	const gestures = new StageGestures({
+		viewport: () => viewportElement,
+		onFrameGesture: (gesture) => onFrameGesture(gesture),
+		onDragPan: (deltaX, deltaY) => onDragPan(deltaX, deltaY),
+		onWheel: (wheel) => onWheel(wheel),
 	});
-
-	// A label or handle removed mid-gesture (its frame was deleted) never gets lostpointercapture,
-	// so teardown drops the capture, or every later drag returns early until Escape.
-	// CanvasState's settleFrameGesture already dropped the gesture.
-	const releaseOnRemove: Attachment<Element> = (element) => () => {
-		if (captured?.element === element) {
-			captured = undefined;
-		}
-	};
 
 	// Keyboard focus on an off-screen label or handle pans the stage, never scrolls the viewport.
 	const revealFocused = (event: FocusEvent & { currentTarget: Element }): void => {
@@ -223,64 +135,6 @@
 		}
 	};
 
-	const handleFrameKeydown = (event: KeyboardEvent, target: GestureTarget): void => {
-		if (event.key === 'Escape') {
-			heldArrows.clear();
-			onFrameGesture({ ...target, source: 'keyboard', phase: 'cancel' });
-			return;
-		}
-		const step = arrowNudge({
-			key: event.key,
-			shiftKey: event.shiftKey,
-			hasModifier: event.ctrlKey || event.metaKey || event.altKey,
-			kind: target.kind,
-		});
-		if (step === undefined) {
-			return;
-		}
-		event.preventDefault();
-		heldArrows.add(event.key);
-		onFrameGesture({
-			...target,
-			source: 'keyboard',
-			phase: 'nudge',
-			...step,
-			repeat: event.repeat,
-		});
-	};
-
-	// Commits once no arrow is held, so holding two arrows and releasing one keeps nudging.
-	const handleFrameKeyup = (event: KeyboardEvent, target: GestureTarget): void => {
-		if (heldArrows.delete(event.key) && heldArrows.size === 0) {
-			onFrameGesture({ ...target, source: 'keyboard', phase: 'end' });
-		}
-	};
-
-	const handleFrameBlur = (target: GestureTarget): void => {
-		heldArrows.clear();
-		onFrameGesture({ ...target, source: 'keyboard', phase: 'end' });
-	};
-
-	// Wheel inside an iframe never bubbles here, so this and cd:frame-wheel cannot double-zoom.
-	// A listener, not onwheel: Svelte makes onwheel passive, and preventDefault needs non-passive.
-	const attachWheel: Attachment<HTMLDivElement> = (element) => {
-		const handleWheel = (event: WheelEvent): void => {
-			event.preventDefault();
-			const rect = element.getBoundingClientRect();
-			onWheel({
-				deltaX: event.deltaX,
-				deltaY: event.deltaY,
-				zoom: event.ctrlKey || event.metaKey,
-				screenX: event.clientX - rect.left,
-				screenY: event.clientY - rect.top,
-			});
-		};
-		element.addEventListener('wheel', handleWheel, { passive: false });
-		return () => {
-			element.removeEventListener('wheel', handleWheel);
-		};
-	};
-
 	// Focus fallback when the chrome closes or unmounts what held focus, so it never falls to body.
 	export const focusViewport = (): void => {
 		viewportElement?.focus({ preventScroll: true });
@@ -303,36 +157,6 @@
 			observer.disconnect();
 		};
 	};
-
-	const startDrag = (event: PointerEvent & { currentTarget: HTMLDivElement }): void => {
-		if (event.button !== 0) {
-			return;
-		}
-		// Empty stage: the viewport or any direct child of it (Pins wraps its buttons for this).
-		const onEmptyStage =
-			event.target === event.currentTarget ||
-			(event.target instanceof Element && event.target.parentElement === event.currentTarget);
-		if (!onEmptyStage) {
-			return;
-		}
-		dragging = true;
-		event.currentTarget.setPointerCapture(event.pointerId);
-		lastPointerX = event.clientX;
-		lastPointerY = event.clientY;
-	};
-
-	const moveDrag = (event: PointerEvent): void => {
-		if (!dragging) {
-			return;
-		}
-		onDragPan(lastPointerX - event.clientX, lastPointerY - event.clientY);
-		lastPointerX = event.clientX;
-		lastPointerY = event.clientY;
-	};
-
-	const endDrag = (): void => {
-		dragging = false;
-	};
 </script>
 
 <svelte:window onblur={trackFrameFocus} onfocus={trackFrameFocus} />
@@ -341,22 +165,22 @@
 	class={[
 		'viewport',
 		{
-			dragging,
-			'frame-gesture-move': captured?.kind === 'move',
-			'frame-gesture-resize': captured?.kind === 'resize',
+			dragging: gestures.dragging,
+			'frame-gesture-move': gestures.captured?.kind === 'move',
+			'frame-gesture-resize': gestures.captured?.kind === 'resize',
 		},
 	]}
 	role="presentation"
 	tabindex="-1"
 	{hidden}
 	{@attach attachViewport}
-	{@attach attachWheel}
+	{@attach gestures.attachWheel}
 	{@attach attachResize}
-	onpointerdown={startDrag}
-	onpointermove={moveDrag}
-	onpointerup={endDrag}
-	onpointercancel={endDrag}
-	onlostpointercapture={endDrag}
+	onpointerdown={gestures.startDrag}
+	onpointermove={gestures.moveDrag}
+	onpointerup={gestures.endDrag}
+	onpointercancel={gestures.endDrag}
+	onlostpointercapture={gestures.endDrag}
 >
 	<div class="layer" style:transform style:--cd-stage-zoom={zoom}>
 		<!-- Frames keep first-seen order and are never moved: moving an iframe reloads it. -->
@@ -375,7 +199,7 @@
 				documentVersion={frame.documentVersion}
 				{nonce}
 				{runtimeSource}
-				lifted={captured?.id === frame.id}
+				lifted={gestures.captured?.id === frame.id}
 				focused={focusedFrameId === frame.id}
 				{onIframe}
 				{onRenderError}
@@ -396,20 +220,20 @@
 				aria-valuemin={MIN_FRAME_WIDTH}
 				aria-valuemax={MAX_FRAME_WIDTH}
 				data-cd-frame-resize={frame.id}
-				{@attach releaseOnRemove}
+				{@attach gestures.releaseOnRemove}
 				style:left="{frame.x + frame.width - HANDLE_SCREEN_WIDTH / zoom / 2}px"
 				style:top="{frame.y}px"
 				style:width="{HANDLE_SCREEN_WIDTH / zoom}px"
 				style:height="{frame.height}px"
-				onpointerdown={(event) => startFrameGesture(event, target)}
-				onpointermove={(event) => moveFrameGesture(event, target)}
-				onpointerup={(event) => endFrameGesture(event, target)}
-				onpointercancel={(event) => endFrameGesture(event, target)}
-				onlostpointercapture={(event) => endFrameGesture(event, target)}
-				onkeydown={(event) => handleFrameKeydown(event, target)}
-				onkeyup={(event) => handleFrameKeyup(event, target)}
+				onpointerdown={(event) => gestures.startFrameGesture(event, target)}
+				onpointermove={(event) => gestures.moveFrameGesture(event, target)}
+				onpointerup={(event) => gestures.endFrameGesture(event, target)}
+				onpointercancel={(event) => gestures.endFrameGesture(event, target)}
+				onlostpointercapture={(event) => gestures.endFrameGesture(event, target)}
+				onkeydown={(event) => gestures.handleFrameKeydown(event, target)}
+				onkeyup={(event) => gestures.handleFrameKeyup(event, target)}
 				onfocus={revealFocused}
-				onblur={() => handleFrameBlur(target)}
+				onblur={() => gestures.handleFrameBlur(target)}
 			></div>
 		{/each}
 		{#each labels as label (label.id)}
@@ -418,21 +242,21 @@
 				type="button"
 				class={['label', { active: label.id === activeId }]}
 				data-cd-frame-label={label.id}
-				{@attach releaseOnRemove}
+				{@attach gestures.releaseOnRemove}
 				aria-label="Move frame {label.text}"
 				style:left="{label.x}px"
 				style:top="{label.y}px"
 				style:width="{label.width}px"
 				style:height="{label.height}px"
-				onpointerdown={(event) => startFrameGesture(event, target)}
-				onpointermove={(event) => moveFrameGesture(event, target)}
-				onpointerup={(event) => endFrameGesture(event, target)}
-				onpointercancel={(event) => endFrameGesture(event, target)}
-				onlostpointercapture={(event) => endFrameGesture(event, target)}
-				onkeydown={(event) => handleFrameKeydown(event, target)}
-				onkeyup={(event) => handleFrameKeyup(event, target)}
+				onpointerdown={(event) => gestures.startFrameGesture(event, target)}
+				onpointermove={(event) => gestures.moveFrameGesture(event, target)}
+				onpointerup={(event) => gestures.endFrameGesture(event, target)}
+				onpointercancel={(event) => gestures.endFrameGesture(event, target)}
+				onlostpointercapture={(event) => gestures.endFrameGesture(event, target)}
+				onkeydown={(event) => gestures.handleFrameKeydown(event, target)}
+				onkeyup={(event) => gestures.handleFrameKeyup(event, target)}
 				onfocus={revealFocused}
-				onblur={() => handleFrameBlur(target)}
+				onblur={() => gestures.handleFrameBlur(target)}
 			>
 				<span class="label-chip">
 					<span class="label-icon"><Icon name="frame" size={12} /></span>

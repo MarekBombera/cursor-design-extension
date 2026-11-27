@@ -1,6 +1,6 @@
 # 11e comments review
 
-Report for build-plan item 11e1 (spec: `blueprint/context/current-feature.md`, archived by `/complete`). Question: can `CommentsState`, `PinThread` and `CommentPicker` become one comments module with a small interface? Sections: Baseline, Method, Map, Candidates, Disputed, Not proposed, Merge log, Picks. 11e2 builds the picks; 11e3 re-measures with the Method below.
+Report for build-plan item 11e1 (spec: `blueprint/context/current-feature.md`, archived by `/complete`). Question: can `CommentsState`, `PinThread` and `CommentPicker` become one comments module with a small interface? Sections: Baseline, Method, Map, Candidates, Disputed, Not proposed, Merge log, Picks, Re-measure. 11e2 builds the picks; 11e3 re-measures with the Method below.
 
 ## Baseline
 
@@ -335,3 +335,73 @@ Reviewer numbers are each reviewer's own order (Opus #1-#7, Sonnet #1-#5); the a
 - **Picked for 11e2:** C1, C2, C3 (its missing browser guard is written first), C4 variant (a), C5.
 - **Not picked:** C4 variant (b), C6, C7, D1, D2, D3.
 - **Plan's question answered "no":** `/complete` softens item 11's "comments behind one small interface" wording.
+
+## Re-measure (11e3)
+
+Measured 2026-11-27 on `feature/stage-inspector-helpers` at `fa399a4` (11e2) plus 11e3 Steps 1-4, uncommitted; the 11e3 inputs rows re-checked after the audit fixes F-01 to F-05. Commands: Method, unchanged (11e2 renamed no instance or file). Each figure is `baseline → now`; the comments rows moved in 11e2.
+
+**Size** (measured set, 21 → 21 files):
+
+| Group | Files | Lines |
+|---|---|---|
+| State classes | `commentsState.svelte.ts` 206 → 209, `pinThread.svelte.ts` 236 → 236, `commentPicker.svelte.ts` 343 → 341 | 785 → 786 |
+| Pure rules | `commentActions.ts` 330 → 330, `commentPick.ts` 189 → 189, `commentPopover.ts` 316 → 316, `commentsPanel.ts` 147 → 147, `pins.ts` 350 → 390 | 1,332 → 1,372 |
+| Rule tests | `commentActions` 395 → 395, `commentPick` 300 → 300, `commentPopover` 277 → 277, `commentsPanel` 199 → 199, `pins` 431 → 448 | 1,602 → 1,619 |
+| Views | `CommentCard` 401 → 404, `CommentPopover` 181 → 181, `CommentThread` 75 → 75, `CommentsPanel` 338 → 338, `Composer` 123 → 123, `PinChip` 42 → 42, `Pins` 167 → 167, `TargetRef` 84 → 84 | 1,411 → 1,414 |
+| Total | 21 → 21 files | 5,130 → 5,191 (3,528 → 3,572 without tests) |
+
+**Wiring:**
+
+- `DesignPage.svelte`: 415 → 402 lines; 107 → 102 non-comment lines name a comments class, instance or view.
+- Comment-UI save path: 14 → 14 lines in `App.svelte`; `savable` lines 191-197 → 185-191.
+
+**Exports used outside their own file:**
+
+| File | Value used / exported | Type used / exported | Not used outside |
+|---|---|---|---|
+| 8 views (`default`) | 8 / 8 → 8 / 8 | 0 / 0 → 0 / 0 | none → none |
+| `commentActions.ts` | 15 / 15 → 15 / 15 | 4 / 4 → 4 / 4 | none → none |
+| `commentPick.ts` | 8 / 8 → 8 / 8 | 6 / 6 → 6 / 6 | none → none |
+| `commentPopover.ts` | 13 / 13 → 13 / 13 | 2 / 4 → 2 / 4 | `DraftTarget`, `PopoverKeyAction` → same |
+| `commentsPanel.ts` | 8 / 8 → 8 / 8 | 2 / 2 → 2 / 2 | none → none |
+| `pins.ts` | 13 / 15 → 14 / 16 (`jumpView`) | 3 / 3 → 3 / 3 | `pinPoint`, `pinLabel` → same |
+| `commentsState.svelte.ts` | 1 / 1 → 1 / 1 | 0 / 0 → 0 / 0 | none → none |
+| `pinThread.svelte.ts` | 2 / 2 → 2 / 2 | 0 / 0 → 0 / 0 | none → none |
+| `commentPicker.svelte.ts` | 2 / 2 → 2 / 2 | 0 / 0 → 0 / 0 | none → none |
+| Total | 70 / 72 → 71 / 73 | 17 / 19 → 17 / 19 | 4 → 4 |
+
+**Test-only exports:** 8 → 8 `@internal` in `src/`; 2 → 2 in the measured set (`pinPoint` `pins.ts:162` → `:169`, `pinLabel` `:186` → `:193`).
+
+**Class interfaces** (Method regex: 23 / 20 / 20 → 22 / 18 / 19):
+
+| Class | Public | Used outside its file |
+|---|---|---|
+| `CommentsState` | 23 → 22 | 23 → 22 |
+| `PinThread` | 20 → 18 | 18 → 18 (all) |
+| `CommentPicker` | 20 → 19 | 20 → 19 |
+
+**Cross-class uses:** 66 → 63 = write 5 → 3 + read 29 → 29 + call 30 → 29 + helper 2 → 2. By owner: `CommentsState` 23 → 22, `PinThread` 20 → 19, `CommentPicker` 21 → 20, helpers 2 → 2. By reader: `DesignPage` 58 → 56, `PinThread` 2 → 2, `CommentPicker` 4 → 3, `EditState` 2 → 2. Between the three classes: 6 → 5. Hand-read hits, no collision: the writes `picker.heldDraft` and `#pinThread.heldThreadId` are gone; `CommentPicker` calls `handleDraftPick` (`commentPicker.svelte.ts:257`) in place of `closeThreadImplicitly`; `DesignPage` reads `savedThreadId` (`:189`) in place of `heldThreadId` and calls `handleAnswer` (`:124,129`) in place of two answer methods.
+
+**Order constraints in `DesignPage.svelte`** (hand read): 8 → 8 where order matters (O1 `:71-76`, O2 `:84-89`, O3 `:95-96`, O4 `:141-145`, O5 `:141,146-147`, O6 `:205-210`, O7 `:198-202`, O8 `:217-218`); 4 → 3 checked and order-free (the `handlePinOpen` wrapper is gone; the `ui:error` fan-out `:123-125` is 3 calls).
+
+**Repo-wide quality-pass metrics:**
+
+- **Unit:** 75 → 75 files, 926 → 927 tests.
+- **Browser** (`--list`, not run): 13 → 13 spec files, 455 → 457 tests: 231 → 233 gating (11e2's held-thread guard, 11e3's pan guard), 220 → 220 gallery, 4 → 4 showcase.
+- **`vi.mock(` calls:** 10 → 10 files, 15 → 15 calls, per file unchanged.
+- **Files touched per feature:** 10b `f8c842b` 61, 11c4 `b94834f` 13, 11d `374d2ed` 13 (unchanged); 11e2 `fa399a4` 14.
+
+**11e3 inputs:**
+
+| File | Lines | `<script>` lines | `$effect` | Handlers |
+|---|---|---|---|---|
+| `Stage.svelte` | 636 → 460 | 336 → 160 | 2 → 1 | 6 → 0 |
+| `Inspector.svelte` | 507 → 444 | 203 → 140 | 3 → 0 | 0 → 0 |
+| `stageGestures.svelte.ts` | new: 234 | n/a (whole file is script; see Lines) | 1 | 3 |
+| `inspectorFocus.svelte.ts` | new: 101 | n/a (whole file is script; see Lines) | 3 (one `$effect.pre`) | 0 |
+
+The handler regex `^\s*(const|function) (handle|on)[A-Z]` misses class fields (`handleFrameKeydown`, `handleFrameKeyup`, `handleFrameBlur`, Stage's other 3 of 6) but matches inner `const`s: it prints Stage 0, `stageGestures` 3 (`handleKeydown`, `handleWheel`, `onEmptyStage`), Inspector 0, `inspectorFocus` 0, as expected.
+
+The plan's 11e question (one comments module?) stays answered "no" (Picks); 11e2 and 11e3 do not change it.
+
+Stage `<script>` 336 → 160 lines, `$effect` 2 → 1, handlers 6 → 0 (gesture glue to `StageGestures`, `stageGestures.svelte.ts`: 1 `$effect`, 3 inner handlers, 3 class-field handlers); Inspector `<script>` 203 → 140 lines, `$effect` 3 → 0, handlers 0 → 0 (focus handoff to `InspectorFocus`, `inspectorFocus.svelte.ts`: the 3 effects).

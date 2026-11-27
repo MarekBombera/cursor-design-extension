@@ -8,10 +8,10 @@
 		type ContentView,
 		type FieldView,
 		inspectorView,
-		type SectionId,
 		type SectionView,
 		type SelectOption,
 	} from './editInspector';
+	import { InspectorFocus } from './inspectorFocus.svelte';
 	import Button from './ui/Button.svelte';
 	import EmptyState from './ui/EmptyState.svelte';
 	import Field from './ui/Field.svelte';
@@ -69,6 +69,8 @@
 
 	const view = $derived(inspectorView(pick, drafted));
 
+	const handoff = new InspectorFocus({ fieldId, view: () => view, pick: () => pick });
+
 	const NOT_EDITABLE_COPY = {
 		'no-number':
 			"Not editable here: this element can't be matched to the artboard file. Ask the Agent to change it.",
@@ -113,12 +115,6 @@
 		}
 	};
 
-	const actionId = (section: SectionId): string => `${fieldId}-${section}-action`;
-
-	// Armed by a saved Add border: Width takes focus the first time it renders for that element.
-	// Not state: the save's preview re-posts the pick, which re-runs the effect that reads it.
-	let widthFocus: { frameId: string; sourceNumber: number } | undefined;
-
 	// detail > 1: the second click of a double-click lands after the label flipped (Add border to
 	// Reset), so it never sends a second save. aria-disabled: the click checks the flag itself.
 	const runAction = (event: MouseEvent, { action }: SectionView): void => {
@@ -128,68 +124,9 @@
 		const saved = onStyleChanges(action.changes, action.announcement);
 		const sourceNumber = pick?.edit?.sourceNumber ?? undefined;
 		if (saved && action.kind === 'add-border' && pick !== undefined && sourceNumber !== undefined) {
-			widthFocus = { frameId: pick.frameId, sourceNumber };
+			handoff.armWidthFocus({ frameId: pick.frameId, sourceNumber });
 		}
 	};
-
-	// Clears when the pick moves to another element or drops (a refusal reload), else on use.
-	$effect(() => {
-		void view;
-		if (widthFocus === undefined) {
-			return;
-		}
-		if (
-			pick?.frameId !== widthFocus.frameId ||
-			pick.edit?.sourceNumber !== widthFocus.sourceNumber
-		) {
-			widthFocus = undefined;
-			return;
-		}
-		const width = document.getElementById(`${fieldId}-border-width`);
-		if (width !== null) {
-			widthFocus = undefined;
-			width.focus();
-		}
-	});
-
-	const sectionOf = (target: EventTarget | null): string | undefined =>
-		target instanceof HTMLElement
-			? target.closest<HTMLElement>('[data-cd-section]')?.dataset.cdSection
-			: undefined;
-
-	// A re-render that removes the focused field (Gap hidden, the border fields gone) hands focus
-	// to its section's header button, which never unmounts. Read before the DOM update, used after.
-	let focusedSection: string | undefined;
-	$effect.pre(() => {
-		void view;
-		const active = document.activeElement;
-		focusedSection =
-			active instanceof HTMLElement && active.closest('[data-cd-inspector]') !== null
-				? sectionOf(active)
-				: undefined;
-	});
-	// Tab to another inspector control: the blur commit re-renders while focus is on body, before it
-	// lands, and can remove Tab's destination. Capture phase: recorded before the commit. Only a
-	// removed destination hands off: a click on a control that stays must keep its focus move.
-	let tabbed: { section: string | undefined; to: Element } | undefined;
-	const recordTab = (event: FocusEvent & { currentTarget: HTMLElement }): void => {
-		const { relatedTarget } = event;
-		tabbed =
-			relatedTarget instanceof Element && event.currentTarget.contains(relatedTarget)
-				? { section: sectionOf(event.target), to: relatedTarget }
-				: undefined;
-	};
-	$effect(() => {
-		void view;
-		const removed =
-			tabbed !== undefined && !tabbed.to.isConnected ? tabbed.section : undefined;
-		tabbed = undefined;
-		const section = focusedSection ?? removed;
-		const active = document.activeElement;
-		if (section !== undefined && (active === null || active === document.body)) {
-			document.getElementById(`${fieldId}-${section}-action`)?.focus();
-		}
-	});
 
 	// Props every text-box field shares; the draft wins over the pick value while it exists.
 	const entryProps = (field: EditField, error: string | undefined) => ({
@@ -231,7 +168,7 @@
 	{/if}
 {/snippet}
 
-<aside aria-label="Inspector" data-cd-inspector onblurcapture={recordTab}>
+<aside aria-label="Inspector" data-cd-inspector onblurcapture={handoff.recordTab}>
 	<div class="head">
 		<p class="title">Inspector</p>
 		<span class="steps">
@@ -310,7 +247,7 @@
 						<!-- Always mounted: label, name and action switch in place, so focus survives. -->
 						<span class="action">
 							<Button
-								id={actionId(section.id)}
+								id={handoff.actionId(section.id)}
 								variant="ghost"
 								size="sm"
 								icon={section.action.kind === 'add-border' ? 'plus' : undefined}

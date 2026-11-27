@@ -34,8 +34,8 @@
 	};
 </script>
 
-<!-- The wrapper is required: Stage's startDrag treats a direct child of the viewport as empty stage,
-     so a bare pin button would start a pan. -->
+<!-- The wrapper is required: StageGestures.startDrag treats a direct child of the viewport as empty
+     stage, so a bare pin button would start a pan. -->
 <div class="pins" data-cd-pins {inert} {@attach attachWrapper}>
 	{#each pins as pin (pin.id)}
 		<!-- A missing target draws a ghost pin; stale and unchecked add a flag. The label says it. -->

@@ -13,6 +13,7 @@ import {
 	centerOf,
 	clickChrome,
 	clickAt,
+	expectBoxNear,
 	frameBox,
 	isMessageOfType,
 	loadsOf,
@@ -687,4 +688,33 @@ test('a frame removed mid-resize does not block the next drag', async ({ page })
 	await page.mouse.move(handle.x + 40, stage.y + 300, { steps: 5 });
 	await postToChrome(page, canvasUpdated([frameB()]));
 	await expectNextDragOnB(page);
+});
+
+// Moves up-left from the bottom-right corner so the whole path, release included, stays on
+// the stage: a release off the page is not reliably delivered.
+test('a pointer drag on the empty stage pans, and stops on release', async ({ page }) => {
+	await openSeededStage(page);
+	const stage = await stageBox(page);
+	const start = { x: stage.x + stage.width - 40, y: stage.y + stage.height - 40 };
+	const release = { x: start.x - 80, y: start.y - 60 };
+	const onViewport = (point: Point): Promise<boolean> =>
+		page.evaluate(
+			({ x, y }) => document.elementFromPoint(x, y)?.classList.contains('viewport') === true,
+			point,
+		);
+	expect(await onViewport(start)).toBe(true);
+	expect(await onViewport(release)).toBe(true);
+	const before = await frameBox(page, 'a');
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(release.x, release.y, { steps: 8 });
+	await page.mouse.up();
+	await nextAnimationFrame(page);
+	const panned = await frameBox(page, 'a');
+	expectBoxNear(panned, { ...before, x: before.x - 80, y: before.y - 60 });
+	const after = { x: release.x - 30, y: release.y - 30 };
+	expect(await onViewport(after)).toBe(true);
+	await page.mouse.move(after.x, after.y, { steps: 4 });
+	await nextAnimationFrame(page);
+	expectBoxNear(await frameBox(page, 'a'), panned);
 });
