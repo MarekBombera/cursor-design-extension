@@ -51,7 +51,7 @@ Rule 05's contract: grep before writing a helper, extend the owner, never add a 
 **State and I/O.**
 
 - `App.svelte` → what spans pages (host bridge, staged page id, status, latest comments, comment draft slot, mode handed on, the one comment-UI save `$effect`, the `PagesMenuState` and page-answer routing); `DesignPage.svelte` → one page under `{#key}`: per-page state classes, toolbar, banners, workspace, live region. Page-switch behavior: system-map "Page-scoped panel (10b)".
-- `hostBridge.svelte.ts` → all host I/O; its page-bound post functions are the only place a request gets its `pageId`; `postPageRequest` posts a `page:*` as built (its `pageId` is the target page, none added).
+- `hostBridge.svelte.ts` → all host I/O; `pageBoundPost(pageId)` is the only place a request gets its `pageId`: `DesignPage` builds the page's one post port and hands it to `CanvasState`, `CommentsState`, `CommentPicker` and `EditState`; `postPageRequest` posts a `page:*` as built (its `pageId` is the target page, none added).
 - `canvasState.svelte.ts` → frames, the one view write path `commitStageView`, gesture, the one chrome-to-frame send `sendToFrame`.
 - `commentsState.svelte.ts` → comments, panel, reply / status / copy requests. `pinThread.svelte.ts` → anchors, pins, open thread, the one focus gate `canTakeFocus`. `commentPicker.svelte.ts` → mode (one setter), hover, pick, add-comment draft.
 - `pagesMenuState.svelte.ts` → `PagesMenuState`, created once by App: all page-menu state (list, open, rename draft, the one in-flight page request, error), the one page-answer rule `handleAnswer`, the switch rule `pageChanged`.

@@ -234,9 +234,14 @@ export type ArtboardHistoryMessage = {
 	step: HistoryStep;
 };
 
-// A page-bound request as the pure rules build it; only hostBridge's post functions add `pageId`.
+// A page-bound request as the pure rules build it; only hostBridge's pageBoundPost adds `pageId`.
 // Distributive, so a union (the edit variants, the comment requests) keeps its members.
 export type PageFree<Message> = Message extends unknown ? Omit<Message, 'pageId'> : never;
+
+// One page's post port: takes a page-free request, posts it with the page's `pageId`. DesignPage
+// builds one per page with hostBridge's `pageBoundPost`; each state class narrows it to the
+// requests it sends.
+export type PagePost<Message> = (message: PageFree<Message>) => void;
 
 type PageOpenMessage = { type: 'page:open'; requestId: string; pageId: string };
 

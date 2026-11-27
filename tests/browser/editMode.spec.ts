@@ -816,7 +816,12 @@ test('Undo posts a step; its answer reloads the restored file, keeps the target 
 	await undoButton(page).click();
 	await expect.poll(async () => (await historyPosted(page)).length).toBe(1);
 	const [undo] = await historyPosted(page);
-	expect(undo).toMatchObject({ type: 'artboard:history', frameId: 'a', step: 'undo' });
+	expect(undo).toMatchObject({
+		type: 'artboard:history',
+		pageId: 'page-1',
+		frameId: 'a',
+		step: 'undo',
+	});
 	expect(undo).not.toHaveProperty('hash');
 	await postToChrome(
 		page,

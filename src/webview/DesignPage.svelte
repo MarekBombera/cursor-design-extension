@@ -25,6 +25,7 @@
 	import { frameLabel, liveRegionText } from './commentsPanel';
 	import { CommentsState } from './commentsState.svelte';
 	import { EditState } from './editState.svelte';
+	import { pageBoundPost } from './hostBridge.svelte';
 	import CommentThread from './CommentThread.svelte';
 	import type { FrameMessage } from './frame/frameMessages';
 	import runtimeSource from './frame/runtime.ts?iife';
@@ -67,17 +68,12 @@
 	} = untrack(() => start);
 	// One module per domain, in dependency order: PinThread's $effect.pre runs on creation and reads
 	// the canvas and the comments.
-	const canvas = new CanvasState(pageId);
-	const comments = new CommentsState({ pageId, replyDrafts });
+	const post = pageBoundPost(pageId);
+	const canvas = new CanvasState({ pageId, post });
+	const comments = new CommentsState({ post, replyDrafts });
 	const pinThread = new PinThread({ canvas, comments, heldThreadId });
-	const picker = new CommentPicker({
-		canvas,
-		pinThread,
-		pageId,
-		mode,
-		heldDraft,
-	});
-	const edit = new EditState({ canvas, picker, pageId });
+	const picker = new CommentPicker({ canvas, pinThread, post, mode, heldDraft });
+	const edit = new EditState({ canvas, picker, post });
 
 	const keepLiveCommentState = (): void => {
 		const liveFrameIds = liveIframeIds(canvas.frames);

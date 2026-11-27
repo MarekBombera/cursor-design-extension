@@ -31,7 +31,7 @@ import type {
 	FramePickMessage,
 	FrameReadyMessage,
 } from './frame/frameMessages';
-import { postCommentRequest } from './hostBridge.svelte';
+import type { CommentCreateMessage, PagePost } from './hostMessages';
 import { canTakeFocus, type PinThread } from './pinThread.svelte';
 
 const popoverHasFocus = (): boolean =>
@@ -48,7 +48,7 @@ export const isTextEntry = (target: EventTarget | null): boolean =>
 export class CommentPicker {
 	readonly #canvas: CanvasState;
 	readonly #pinThread: PinThread;
-	readonly #pageId: string;
+	readonly #post: PagePost<CommentCreateMessage>;
 	picking: CommentPickState;
 	draft: CommentDraft | undefined = $state();
 	popover: { focusBody: (caretAtEnd?: boolean) => void } | undefined = $state();
@@ -97,19 +97,19 @@ export class CommentPicker {
 	constructor({
 		canvas,
 		pinThread,
-		pageId,
+		post,
 		mode,
 		heldDraft,
 	}: {
 		canvas: CanvasState;
 		pinThread: PinThread;
-		pageId: string;
+		post: PagePost<CommentCreateMessage>;
 		mode: FrameMode;
 		heldDraft: CommentDraft | undefined;
 	}) {
 		this.#canvas = canvas;
 		this.#pinThread = pinThread;
-		this.#pageId = pageId;
+		this.#post = post;
 		this.picking = $state({ ...INITIAL_COMMENT_PICK, mode });
 		this.heldDraft = $state.raw(heldDraft);
 
@@ -226,7 +226,7 @@ export class CommentPicker {
 		const submitted = submitDraft({ draft: this.draft, body, requestId: crypto.randomUUID() });
 		if (submitted !== undefined) {
 			this.draft = submitted.draft;
-			postCommentRequest(this.#pageId, submitted.message);
+			this.#post(submitted.message);
 		}
 	};
 

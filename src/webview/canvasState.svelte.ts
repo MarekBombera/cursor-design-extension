@@ -23,16 +23,13 @@ import {
 	type StageWheel,
 	wheelToView,
 } from './frameGesture';
-import {
-	postFramePlace,
-	postToFrame,
-	readSavedStageView,
-	saveStageView,
-} from './hostBridge.svelte';
+import { postToFrame, readSavedStageView, saveStageView } from './hostBridge.svelte';
 import type {
 	ArtboardEditedMessage,
 	CanvasUpdatedMessage,
 	FramePlacement,
+	FramePlaceMessage,
+	PagePost,
 	PostedComment,
 } from './hostMessages';
 import {
@@ -61,8 +58,9 @@ export class CanvasState {
 
 	// Not $state: read at message or handler time only.
 	readonly iframes = new Map<string, HTMLIFrameElement>();
-	// The page this state belongs to ('' is "no page"), named by every page-bound request.
-	readonly pageId: string;
+	// The page this state belongs to ('' is "no page"); only the saved stage view is matched to it.
+	readonly #pageId: string;
+	readonly #post: PagePost<FramePlaceMessage>;
 	// The saved view, only when it is this page's: another page's fits all instead.
 	readonly #savedView: StageView | undefined;
 	#stageView: StageView;
@@ -92,8 +90,9 @@ export class CanvasState {
 			: `translate(${this.committedView.x}px, ${this.committedView.y}px) scale(${this.committedView.zoom})`,
 	);
 
-	constructor(pageId: string) {
-		this.pageId = pageId;
+	constructor({ pageId, post }: { pageId: string; post: PagePost<FramePlaceMessage> }) {
+		this.#pageId = pageId;
+		this.#post = post;
 		const saved = readSavedStageView();
 		this.#savedView =
 			saved?.pageId === pageId ? { x: saved.x, y: saved.y, zoom: saved.zoom } : undefined;
@@ -118,7 +117,7 @@ export class CanvasState {
 			viewportHeight: this.viewportHeight,
 		});
 		this.committedView = this.#stageView;
-		saveStageView({ ...this.#stageView, pageId: this.pageId });
+		saveStageView({ ...this.#stageView, pageId: this.#pageId });
 	};
 
 	// Once per page mount: later edits and artboard switches keep the user's view.
@@ -266,7 +265,7 @@ export class CanvasState {
 		});
 		this.gesture = step.gesture;
 		if (step.commit !== undefined) {
-			postFramePlace(this.pageId, step.commit);
+			this.#post(step.commit);
 		}
 	};
 

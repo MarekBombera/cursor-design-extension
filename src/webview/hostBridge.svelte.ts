@@ -9,7 +9,7 @@ import {
 	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
-	type PageFree,
+	type PagePost,
 	type PageRequestMessage,
 	parseHostMessage,
 	routeMessage,
@@ -75,26 +75,17 @@ export const saveCommentUi = (ui: SavedCommentUi): void => {
 };
 
 // The only place a page-bound request gets its page: the pure rules build it page-free.
-// Snapshot: callers pass gesture fields that are $state proxies, and postMessage's structured
-// clone throws DataCloneError on a Proxy.
-export const postFramePlace = (pageId: string, message: PageFree<FramePlaceMessage>): void => {
-	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
-};
-
-// Snapshot for the same reason: the draft target is $state.
-export const postCommentRequest = (
-	pageId: string,
-	message: PageFree<CommentRequestMessage>,
-): void => {
-	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
-};
-
-export const postEditRequest = (
-	pageId: string,
-	message: PageFree<ArtboardEditMessage | ArtboardHistoryMessage>,
-): void => {
-	vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
-};
+// Snapshot: callers pass gesture fields and drafts that are $state proxies, and postMessage's
+// structured clone throws DataCloneError on a Proxy.
+export const pageBoundPost =
+	(
+		pageId: string,
+	): PagePost<
+		FramePlaceMessage | CommentRequestMessage | ArtboardEditMessage | ArtboardHistoryMessage
+	> =>
+	(message) => {
+		vscodeApi.postMessage({ ...$state.snapshot(message), pageId });
+	};
 
 // Not page-bound: the message's `pageId` is the target page, so none is added. Built from plain
 // values, so no snapshot.

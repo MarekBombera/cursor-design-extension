@@ -27,8 +27,14 @@ import {
 	stylesCommit,
 } from './editDrafts';
 import type { FramePickMessage } from './frame/frameMessages';
-import { postEditRequest } from './hostBridge.svelte';
-import type { ArtboardEditedMessage, HistoryStep, UiErrorMessage } from './hostMessages';
+import type {
+	ArtboardEditedMessage,
+	ArtboardEditMessage,
+	ArtboardHistoryMessage,
+	HistoryStep,
+	PagePost,
+	UiErrorMessage,
+} from './hostMessages';
 import {
 	canStep,
 	forwardedHistoryStep,
@@ -49,7 +55,7 @@ export class EditState {
 
 	readonly #canvas: CanvasState;
 	readonly #picker: CommentPicker;
-	readonly #pageId: string;
+	readonly #post: PagePost<ArtboardEditMessage | ArtboardHistoryMessage>;
 
 	readonly requestError = $derived(this.requests.error?.message);
 	// After a written step or a saved Reset / Add border; a repeat still speaks (liveRegionText).
@@ -58,15 +64,15 @@ export class EditState {
 	constructor({
 		canvas,
 		picker,
-		pageId,
+		post,
 	}: {
 		canvas: CanvasState;
 		picker: CommentPicker;
-		pageId: string;
+		post: PagePost<ArtboardEditMessage | ArtboardHistoryMessage>;
 	}) {
 		this.#canvas = canvas;
 		this.#picker = picker;
-		this.#pageId = pageId;
+		this.#post = post;
 	}
 
 	// A getter, not a field $derived: #canvas is set in the constructor, after field initializers.
@@ -98,7 +104,7 @@ export class EditState {
 		});
 		this.requests = step.state;
 		if (step.send !== undefined) {
-			postEditRequest(this.#pageId, step.send);
+			this.#post(step.send);
 		}
 	};
 

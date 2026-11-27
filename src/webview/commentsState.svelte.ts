@@ -18,15 +18,14 @@ import {
 	submitStatus,
 } from './commentActions';
 import { panelSummary } from './commentsPanel';
-import {
-	postCommentRequest,
-	readSavedCommentsPanelOpen,
-	saveCommentsPanelOpen,
-} from './hostBridge.svelte';
+import { readSavedCommentsPanelOpen, saveCommentsPanelOpen } from './hostBridge.svelte';
 import type {
+	CommentCreateMessage,
+	CommentRequestMessage,
 	CommentSavedMessage,
 	CommentsUpdatedMessage,
 	CopiedMessage,
+	PagePost,
 	PostedComment,
 	UiErrorMessage,
 } from './hostMessages';
@@ -50,17 +49,16 @@ export class CommentsState {
 		copyPending({ actions: this.actions, copyOpen: this.copyOpen }),
 	);
 	readonly summary = $derived(panelSummary(this.comments));
-	// The page this state belongs to, named by every comment request.
-	readonly #pageId: string;
+	readonly #post: PagePost<Exclude<CommentRequestMessage, CommentCreateMessage>>;
 
 	constructor({
-		pageId,
+		post,
 		replyDrafts,
 	}: {
-		pageId: string;
+		post: PagePost<Exclude<CommentRequestMessage, CommentCreateMessage>>;
 		replyDrafts: Readonly<Record<string, string>>;
 	}) {
-		this.#pageId = pageId;
+		this.#post = post;
 		this.actions = $state.raw(
 			new Map<string, CommentAction>(
 				Object.entries(replyDrafts).map(([id, reply]) => [id, { reply }]),
@@ -131,7 +129,7 @@ export class CommentsState {
 		const submitted = submitReply({ actions: this.actions, id, requestId: crypto.randomUUID() });
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(this.#pageId, submitted.message);
+			this.#post(submitted.message);
 		}
 	};
 
@@ -147,7 +145,7 @@ export class CommentsState {
 		});
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(this.#pageId, submitted.message);
+			this.#post(submitted.message);
 		}
 	};
 
@@ -160,7 +158,7 @@ export class CommentsState {
 		});
 		this.actions = submitted.actions;
 		if (submitted.message !== undefined) {
-			postCommentRequest(this.#pageId, submitted.message);
+			this.#post(submitted.message);
 		}
 	};
 
@@ -174,7 +172,7 @@ export class CommentsState {
 		});
 		this.copyOpen = submitted.copyOpen;
 		if (submitted.message !== undefined) {
-			postCommentRequest(this.#pageId, submitted.message);
+			this.#post(submitted.message);
 		}
 	};
 

@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11c3 Watcher pure step (`feature/watcher-pure-step`): no flow or message changed. The watcher's decisions (lock / temp skip, `.ensure-panel` marker, debounce, folder and trust drops) moved into the pure `stepWatch` (`src/host/watchStep.ts`); `watchArtboardDisk.ts` is the vscode shell.
+**Last verified against code:** 2026-11-27, 11c4 Page-bound post port (`feature/page-bound-post-port`): no flow or message changed. The 8 page-bound requests still carry `pageId`, now added by the one `pageBoundPost(pageId)` that `DesignPage` builds per page (Page-scoped panel, Chrome → host).
 
 ## Chart checklist
 
@@ -315,9 +315,10 @@ hand edit of `project.json`; each reaches the chrome as a `canvas:updated` for a
 - **Host → chrome.** `canvas:updated.pageId` and `comments:updated.pageId` are the resolved
   `PageLocation.pageId`, or `''` when no page resolved (see Panel open and handshake). `''` is "no
   page", never a page to switch to.
-- **Chrome → host.** The 8 page-bound requests carry `pageId`, added in one place by the three post
-  functions in `hostBridge.svelte.ts` (the state classes pass their constructor `pageId`). The host
-  parser requires `isPageId` before any path is built.
+- **Chrome → host.** The 8 page-bound requests carry `pageId`, added in one place by
+  `pageBoundPost(pageId)` in `hostBridge.svelte.ts`: `DesignPage` builds it once per page and the
+  state classes post page-free messages through it. The host parser requires `isPageId` before
+  any path is built.
 - **Request path.** `answerEditRequest`, `answerHistoryRequest`, `answerCommentRequest` and
   `placeFrameFromChrome` call `resolveRequestedPage({ workspaceRoot, pageId })` once per request, in
   place of `resolveOpenPage`, and every disk op of the request uses the returned `PageLocation`, not
