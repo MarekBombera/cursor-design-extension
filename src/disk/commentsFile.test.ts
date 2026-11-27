@@ -218,7 +218,7 @@ test('unknown fields, bad styles, oversize pin and upper-case hashes load', asyn
 		],
 	});
 	assert.equal('extra' in parsed, false);
-	assert.equal('unknown' in parsed.comments[0], false);
+	assert.equal('unknown' in (parsed.comments[0] ?? {}), false);
 	assert.deepEqual(parsed.comments[0]?.pin, { x: 1, y: 0 });
 	assert.deepEqual(parsed.comments[0]?.styles, { color: 'rgb(0, 0, 0)' });
 	assert.equal(parsed.comments[0]?.targetFingerprint, `sha256:${'a'.repeat(64)}`);

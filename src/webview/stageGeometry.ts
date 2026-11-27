@@ -8,24 +8,21 @@ import {
 	MAX_FRAME_WIDTH,
 	MIN_FRAME_WIDTH,
 } from '../disk/layout';
+import type { FramePoint, FrameRect } from './frame/frameMessages';
 import type { FramePlacement } from './hostMessages';
 
-export type StageView = { x: number; y: number; zoom: number };
+export type StageView = FramePoint & { zoom: number };
 
-export type StagePoint = { x: number; y: number };
+export type ChromeFrame = FrameRect & { id: string; group?: string };
 
-export type StageRect = { x: number; y: number; width: number; height: number };
+type FrameLabelBox = FrameRect & { id: string };
 
-export type ChromeFrame = StageRect & { id: string; group?: string };
-
-export type FrameLabelBox = StageRect & { id: string };
-
-export type GroupHeadingBox = StageRect & { group: string };
+export type GroupHeadingBox = FrameRect & { group: string };
 
 export type CanvasChromeLayout = {
 	labels: FrameLabelBox[];
 	headings: GroupHeadingBox[];
-	bounds: StageRect | null;
+	bounds: FrameRect | null;
 };
 
 export type FrameHeightGuard = { lastGrowth: number; frozen: boolean };
@@ -62,7 +59,7 @@ export const stageToScreen = ({
 	view: StageView;
 	stageX: number;
 	stageY: number;
-}): StagePoint => ({
+}): FramePoint => ({
 	x: stageX * view.zoom + view.x,
 	y: stageY * view.zoom + view.y,
 });
@@ -74,9 +71,9 @@ export const frameRectToScreen = ({
 	rect,
 }: {
 	view: StageView;
-	frame: StagePoint;
-	rect: StageRect;
-}): StageRect => {
+	frame: FramePoint;
+	rect: FrameRect;
+}): FrameRect => {
 	const origin = stageToScreen({ view, stageX: frame.x + rect.x, stageY: frame.y + rect.y });
 	return {
 		x: origin.x,
@@ -94,7 +91,7 @@ export const screenToStage = ({
 	view: StageView;
 	screenX: number;
 	screenY: number;
-}): StagePoint => ({
+}): FramePoint => ({
 	x: (screenX - view.x) / view.zoom,
 	y: (screenY - view.y) / view.zoom,
 });
@@ -157,7 +154,7 @@ export const panStage = ({
 	zoom: view.zoom,
 });
 
-const frameBounds = ({ frames }: { frames: readonly StageRect[] }): StageRect | null => {
+const frameBounds = ({ frames }: { frames: readonly FrameRect[] }): FrameRect | null => {
 	const [first] = frames;
 	if (first === undefined) {
 		return null;
@@ -225,7 +222,7 @@ export const layoutCanvasChrome = ({
 		width: entry.maxRight - entry.minX,
 		height: GROUP_HEADING_BAND,
 	}));
-	const boxes: StageRect[] = [...frames, ...labels, ...headings].map(({ x, y, width, height }) => ({
+	const boxes: FrameRect[] = [...frames, ...labels, ...headings].map(({ x, y, width, height }) => ({
 		x,
 		y,
 		width,
@@ -291,7 +288,7 @@ export const clampStageView = ({
 	viewportHeight,
 }: {
 	view: StageView;
-	bounds: StageRect | null;
+	bounds: FrameRect | null;
 	viewportWidth: number;
 	viewportHeight: number;
 }): StageView => {
@@ -350,7 +347,7 @@ export const fitStageView = ({
 	viewportWidth,
 	viewportHeight,
 }: {
-	bounds: StageRect | null;
+	bounds: FrameRect | null;
 	viewportWidth: number;
 	viewportHeight: number;
 }): StageView => {
@@ -380,7 +377,7 @@ export const jumpStageView = ({
 	viewportHeight,
 }: {
 	view: StageView;
-	center: StagePoint;
+	center: FramePoint;
 	fitZoom: number | undefined;
 	viewportWidth: number;
 	viewportHeight: number;
@@ -408,9 +405,9 @@ export const dragFrame = ({
 	start,
 	stageDelta,
 }: {
-	start: StagePoint;
-	stageDelta: StagePoint;
-}): StagePoint => ({
+	start: FramePoint;
+	stageDelta: FramePoint;
+}): FramePoint => ({
 	x: clampCoordinate(roundToPixel(start.x + stageDelta.x)),
 	y: clampCoordinate(roundToPixel(start.y + stageDelta.y)),
 });
@@ -433,8 +430,8 @@ export const passedGestureThreshold = ({
 	startScreen,
 	screen,
 }: {
-	startScreen: StagePoint;
-	screen: StagePoint;
+	startScreen: FramePoint;
+	screen: FramePoint;
 }): boolean =>
 	Math.abs(screen.x - startScreen.x) >= GESTURE_THRESHOLD_PX ||
 	Math.abs(screen.y - startScreen.y) >= GESTURE_THRESHOLD_PX;

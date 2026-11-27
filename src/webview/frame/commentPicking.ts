@@ -7,11 +7,13 @@ import {
 	FRAME_PICK_MESSAGE,
 	type FrameMode,
 	type FramePickMessage,
+	type FramePoint,
 	type FrameRect,
 	PICK_CHILD_MESSAGE,
 	PICK_PARENT_MESSAGE,
 	PICK_REFRESH_MESSAGE,
 	parseChromeFrameMessage,
+	postToChrome,
 } from './frameMessages';
 import { describeEditTarget, hasOtherContent } from './editTarget';
 import { stepToChild, stepToParent } from './pickPath';
@@ -77,7 +79,7 @@ export const installCommentPicking = (host: Window): void => {
 	let removed = new WeakSet<Element>();
 	// Last posted hover; undefined means none posted since the last reset.
 	let hover: { element: Element | undefined; rect: FrameRect | null } | undefined;
-	let lastPointer: { x: number; y: number; altKey: boolean } | undefined;
+	let lastPointer: (FramePoint & { altKey: boolean }) | undefined;
 	let pendingHover: number | undefined;
 	// The last cd:pick sent; a scroll or resize re-post that would repeat it is skipped.
 	let lastPosted:
@@ -85,7 +87,7 @@ export const installCommentPicking = (host: Window): void => {
 				element: Element;
 				described: Described;
 				rect: FrameRect | null;
-				point: { x: number; y: number };
+				point: FramePoint;
 		  }
 		| undefined;
 	let pendingRepost: number | undefined;
@@ -123,7 +125,7 @@ export const installCommentPicking = (host: Window): void => {
 		stepToParent({ path: current, parentOf, isRoot });
 
 	// The path a click at this point starts; Alt+click starts one step up, so ↓ returns.
-	const pathAt = (point: { x: number; y: number; altKey: boolean }): readonly Element[] => {
+	const pathAt = (point: FramePoint & { altKey: boolean }): readonly Element[] => {
 		const picked = pickTarget({
 			stack: document.elementsFromPoint(point.x, point.y),
 			resolve,
@@ -172,7 +174,7 @@ export const installCommentPicking = (host: Window): void => {
 	};
 
 	// A page pick is relative to the documentElement box, the same box as its rect.
-	const pickPoint = (anchor: Element, target: Element): { x: number; y: number } =>
+	const pickPoint = (anchor: Element, target: Element): FramePoint =>
 		anchor.isConnected && target.isConnected
 			? pointInTarget({
 					anchorBox: anchor.getBoundingClientRect(),
@@ -218,21 +220,18 @@ export const installCommentPicking = (host: Window): void => {
 		// ponytail: past the cap (a 100000 px element) the pin fraction is off; upgrade is scaling
 		// point and box together.
 		const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
-		host.postMessage(
-			{
-				type: FRAME_PICK_MESSAGE,
-				...described,
-				rect: next.rect,
-				point: next.point,
-				box: {
-					width: Math.min(box.width, MAX_FRAME_COORDINATE),
-					height: Math.min(box.height, MAX_FRAME_COORDINATE),
-				},
-				isPage: isRoot(current),
-				repost,
+		postToChrome(host, {
+			type: FRAME_PICK_MESSAGE,
+			...described,
+			rect: next.rect,
+			point: next.point,
+			box: {
+				width: Math.min(box.width, MAX_FRAME_COORDINATE),
+				height: Math.min(box.height, MAX_FRAME_COORDINATE),
 			},
-			'*',
-		);
+			isPage: isRoot(current),
+			repost,
+		});
 		lastPosted = next;
 	};
 
@@ -242,7 +241,7 @@ export const installCommentPicking = (host: Window): void => {
 			return;
 		}
 		hover = { element, rect };
-		host.postMessage({ type: FRAME_HOVER_MESSAGE, rect }, '*');
+		postToChrome(host, { type: FRAME_HOVER_MESSAGE, rect });
 	};
 
 	const cancelPendingHover = (): void => {

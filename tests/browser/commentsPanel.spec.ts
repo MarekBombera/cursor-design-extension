@@ -477,6 +477,16 @@ test('a panel item shows author, time, target chip, badge and an Agent reply', a
 	await expect(reply).toContainText('Made it bolder.');
 });
 
+test('an open panel card ticks its relative time every minute', async ({ page }) => {
+	await page.clock.install({ time: new Date('2026-10-27T10:00:30.000Z') });
+	await openStage(page, [TITLE]);
+	await openPanel(page);
+	const time = panelItem(page, TITLE.id).locator('time').first();
+	await expect(time).toHaveText('just now');
+	await page.clock.fastForward(61_000);
+	await expect(time).toHaveText('1 minute ago');
+});
+
 test('keyboard Resolve in the panel lands on the Reopen of that comment in the Resolved group', async ({
 	page,
 }) => {

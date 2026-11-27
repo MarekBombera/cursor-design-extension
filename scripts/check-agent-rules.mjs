@@ -17,6 +17,7 @@ const readLinkTarget = (path) => readlink(path).catch(() => null);
 const readFrontmatter = (source) => /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? '';
 
 // Splits on commas outside `{...}` so `**/*.{ts,tsx}` stays one pattern.
+/** @type {(value: string) => string[]} */
 const splitGlobs = (globs) => {
 	const patterns = [];
 	let depth = 0;
@@ -34,6 +35,7 @@ const splitGlobs = (globs) => {
 	return patterns.map(unquote).filter((pattern) => pattern.length > 0);
 };
 
+/** @type {(value: string) => string} */
 const unquote = (value) =>
 	value
 		.trim()

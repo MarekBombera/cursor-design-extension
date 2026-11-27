@@ -165,7 +165,7 @@ test('a throwing snapshot post resolves and logs once under refreshPanel', async
 	});
 	await refreshPanel({ ports });
 	assert.deepEqual(
-		ports.log.mock.calls.map(([scope, error]) => [scope, error]),
+		ports.log.mock.calls.map(([scope, error]): unknown[] => [scope, error]),
 		[['refreshPanel', failure]],
 	);
 });

@@ -230,7 +230,7 @@ test('the scroll sink pans by the offset from where it was re-centred, only duri
 		[5000, 9999.5],
 		[5000, 0],
 		[9999, 4999.5],
-	]) {
+	] as const) {
 		assert.deepEqual(scrollSinkStep({ ...rest, scrollX, scrollY, now: 1016 }), {
 			recentre: true,
 			pan: undefined,

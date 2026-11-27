@@ -30,28 +30,12 @@ import {
 	UPDATE_ARTBOARD_TOOL,
 } from './toolNames';
 
-type ToolArgs = {
-	artboardId?: unknown;
-	html?: unknown;
-	title?: unknown;
-	viewport?: unknown;
-	rootPath?: unknown;
-	baseGeneration?: unknown;
-	baseHash?: unknown;
-	id?: unknown;
-	x?: unknown;
-	y?: unknown;
-	width?: unknown;
-	label?: unknown;
-	group?: unknown;
-};
-
 // Mirrors skills/vibeboard/SKILL.md § Writing artboard HTML; both change with the frame CSPs
 // (artboardChromeHtml.ts, FRAME_CSP).
 const ARTBOARD_HTML_RULES =
 	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes work: keep any already in the file (the user may have set them in the panel) and prefer classes for your own CSS. Inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
 
-const setArtboardInputSchema = toolInputSchema<ToolArgs>({
+const setArtboardInputSchema = toolInputSchema({
 	artboardId: {
 		description: 'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
 	},
@@ -63,7 +47,7 @@ const setArtboardInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const updateArtboardInputSchema = toolInputSchema<ToolArgs>({
+const updateArtboardInputSchema = toolInputSchema({
 	artboardId: { description: 'Required string. Existing artboard id.' },
 	html: {
 		description: `Required string. Replacement HTML document (the whole document). ${ARTBOARD_HTML_RULES}`,
@@ -81,34 +65,34 @@ const updateArtboardInputSchema = toolInputSchema<ToolArgs>({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const readArtboardInputSchema = toolInputSchema<ToolArgs>({
+const readArtboardInputSchema = toolInputSchema({
 	artboardId: {
 		description: 'Optional string artboard id. Defaults to the active artboard when omitted.',
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const listArtboardsInputSchema = toolInputSchema<ToolArgs>({
+const listArtboardsInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const setActiveArtboardInputSchema = toolInputSchema<ToolArgs>({
+const setActiveArtboardInputSchema = toolInputSchema({
 	artboardId: { description: 'Required string. Existing artboard id to make active.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const exportArtboardInputSchema = toolInputSchema<ToolArgs>({
+const exportArtboardInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
 const EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE =
 	'export_artboard exports every frame. Omit artboardId and retry.';
 
-const handoffStatusInputSchema = toolInputSchema<ToolArgs>({
+const handoffStatusInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const placeFrameInputSchema = toolInputSchema<ToolArgs>({
+const placeFrameInputSchema = toolInputSchema({
 	id: {
 		description:
 			'Required string. Existing artboard id to place on the stage (named id here, artboardId in the other tools).',
@@ -274,8 +258,9 @@ export const registerArtboardTools = (server: McpServer): void => {
 			inputSchema: exportArtboardInputSchema,
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
-		// The passthrough schema still delivers a stray artboardId; reject it before any disk work.
-		async ({ artboardId, rootPath }) =>
+		// The passthrough schema still delivers a stray artboardId (unlisted, so typed here); reject it
+		// before any disk work.
+		async ({ artboardId, rootPath }: { artboardId?: unknown; rootPath?: unknown }) =>
 			artboardId === undefined
 				? runOnOpenPage({
 						server,

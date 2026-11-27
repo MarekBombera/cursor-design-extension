@@ -65,6 +65,14 @@ export default defineConfig({
 			'no-console': 'error',
 			'typescript/no-explicit-any': 'error',
 			'typescript/ban-ts-comment': 'error',
+			'typescript/no-non-null-assertion': 'error',
+			'typescript/consistent-type-assertions': [
+				'error',
+				{ assertionStyle: 'as', objectLiteralTypeAssertions: 'never' },
+			],
+			'typescript/no-unnecessary-type-assertion': 'error',
+			'typescript/no-unsafe-return': 'error',
+			'typescript/switch-exhaustiveness-check': 'error',
 
 			'no-restricted-imports': ['error', { paths: bannedLibraries, patterns: bannedPatterns }],
 			'no-restricted-properties': [

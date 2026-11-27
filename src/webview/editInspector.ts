@@ -127,9 +127,10 @@ export type ContentView =
 	| { state: 'plain'; value: string; liveText: string }
 	| { state: 'too-long' };
 
-type SectionAction = {
-	kind: 'reset' | 'add-border';
-	label: 'Reset' | 'Add border';
+type SectionAction = (
+	| { kind: 'reset'; label: 'Reset' }
+	| { kind: 'add-border'; label: 'Add border' }
+) & {
 	name: string;
 	enabled: boolean;
 	changes: StyleChange[];

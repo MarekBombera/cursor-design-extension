@@ -26,10 +26,12 @@ type McpErrorBody = {
 export const ROOT_PATH_DESCRIPTION =
 	'Optional string. Workspace folder fsPath. Pass when more than one folder is open; error roots lists valid values.';
 
-export const toolInputSchema = <Args>(
-	properties: Record<string, { description: string }>,
-): ReturnType<typeof fromJsonSchema<Args>> =>
-	fromJsonSchema<Args>({
+// The handler's args are typed from the listed property keys, so a handler cannot read an arg its
+// schema does not advertise.
+export const toolInputSchema = <Key extends string>(
+	properties: Record<Key, { description: string }>,
+): ReturnType<typeof fromJsonSchema<Partial<Record<Key, unknown>>>> =>
+	fromJsonSchema<Partial<Record<Key, unknown>>>({
 		type: 'object',
 		properties,
 		additionalProperties: true,

@@ -4,6 +4,7 @@ import {
 	CANVAS_RUNTIME_ATTRIBUTE,
 	FRAME_HEIGHT_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
+	type FrameRect,
 } from '../webview/frame/frameMessages';
 import {
 	FIT_PADDING,
@@ -64,17 +65,8 @@ const buildPreviewFrameHtml = ({
 	return `${html.slice(0, index)}${block}${html.slice(index)}`;
 };
 
-const boxStyle = ({
-	x,
-	y,
-	width,
-	height,
-}: {
-	x: number;
-	y: number;
-	width: number;
-	height: number;
-}): string => `left:${x}px;top:${y}px;width:${width}px;height:${height}px`;
+const boxStyle = ({ x, y, width, height }: FrameRect): string =>
+	`left:${x}px;top:${y}px;width:${width}px;height:${height}px`;
 
 // Plain JS, free of the less-than-slash sequence (the ?iife strings are escaped). Accepts only
 // allowlisted messages from its own frames' windows and never posts to frames.
@@ -181,9 +173,14 @@ export const buildCanvasPreviewHtml = ({
 		const y = frame.y + dy;
 		const label = escapeHtml(frame.label);
 		const srcdoc = escapeHtml(buildPreviewFrameHtml(frame));
+		// undefined is unreachable: layoutCanvasChrome returns one label per frame, in frame order.
 		const labelBox = labels[index];
-		return `<div class="cd-label" style="${boxStyle({ ...labelBox, x: labelBox.x + dx, y: labelBox.y + dy })}">${label}</div>
-<iframe data-cd-frame="${escapeHtml(frame.id)}" sandbox="allow-scripts" scrolling="no" title="${label}" style="${boxStyle({ x, y, width: frame.width, height: PROVISIONAL_FRAME_HEIGHT })}" srcdoc="${srcdoc}"></iframe>`;
+		const labelMarkup =
+			labelBox === undefined
+				? ''
+				: `<div class="cd-label" style="${boxStyle({ ...labelBox, x: labelBox.x + dx, y: labelBox.y + dy })}">${label}</div>
+`;
+		return `${labelMarkup}<iframe data-cd-frame="${escapeHtml(frame.id)}" sandbox="allow-scripts" scrolling="no" title="${label}" style="${boxStyle({ x, y, width: frame.width, height: PROVISIONAL_FRAME_HEIGHT })}" srcdoc="${srcdoc}"></iframe>`;
 	});
 	const entries = frames.map((frame) => ({
 		id: frame.id,

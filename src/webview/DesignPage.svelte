@@ -266,7 +266,7 @@
      CSS order draws them on the right, the inspector at the edge. -->
 <div class="workspace">
 	{#if picker.picking.mode === 'edit'}
-		{@const pick = picker.picking.pick}
+		{const pick = $derived(picker.picking.pick)}
 		<Inspector
 			{pick}
 			frameLabel={pick === undefined ? '' : frameLabel(canvas.frames, pick.frameId)}
@@ -335,8 +335,8 @@
 			onOpen={pinThread.handlePinOpen}
 		/>
 		{#if pinThread.openPin !== undefined && pinThread.openComment !== undefined}
-			{@const openPin = pinThread.openPin}
-			{@const openComment = pinThread.openComment}
+			{const openPin = $derived(pinThread.openPin)}
+			{const openComment = $derived(pinThread.openComment)}
 			{#key pinThread.openThreadId}
 				<CommentThread
 					comment={openComment}

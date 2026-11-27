@@ -177,7 +177,7 @@
 {/snippet}
 
 {#snippet entryMeta(author: 'you' | 'agent', iso: string)}
-	{@const time = relativeTime({ iso, now })}
+	{const time = $derived(relativeTime({ iso, now }))}
 	<span class="meta">
 		<span class="author">{author === 'agent' ? 'Agent' : 'You'}</span>
 		{#if time !== undefined}
@@ -206,7 +206,7 @@
 		{#if comment.replies.length > 0}
 			<ol class="replies">
 				{#each comment.replies as reply, index (reply.id)}
-					{@const author = reply.author === 'agent' ? 'agent' : 'you'}
+					{const author = $derived(reply.author === 'agent' ? 'agent' : 'you')}
 					<li
 						class={[
 							'entry',

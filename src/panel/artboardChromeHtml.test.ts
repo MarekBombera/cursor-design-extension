@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
+import { fake } from '../testing/fake';
 import { type ArtboardChromeDocument, buildArtboardChromeHtml } from './artboardChromeHtml';
 
 vi.mock('vscode', () => ({
@@ -12,14 +13,12 @@ vi.mock('vscode', () => ({
 	},
 }));
 
-const fakeExtensionUri = { path: '/extension', scheme: 'file' } as vscode.Uri;
-const fakeWebview = {
+const fakeExtensionUri = fake<vscode.Uri>({ path: '/extension', scheme: 'file' });
+const fakeWebview = fake<vscode.Webview>({
 	cspSource: 'vscode-webview://test',
 	asWebviewUri: (uri: vscode.Uri): vscode.Uri =>
-		({
-			toString: (): string => `vscode-webview://test${uri.path}`,
-		}) as vscode.Uri,
-} as vscode.Webview;
+		fake<vscode.Uri>({ toString: (): string => `vscode-webview://test${uri.path}` }),
+});
 
 const buildChrome = (): ArtboardChromeDocument =>
 	buildArtboardChromeHtml({ webview: fakeWebview, extensionUri: fakeExtensionUri });

@@ -98,11 +98,11 @@ export const parseCanvasLayout = (value: unknown, pageId: string): CanvasLayout 
 	if (!isJsonRecord(value)) {
 		throw new CorruptCanvasError({ pageId });
 	}
-	if (!Number.isInteger(value.version)) {
+	if (typeof value.version !== 'number' || !Number.isInteger(value.version)) {
 		throw new CorruptCanvasError({ pageId });
 	}
 	if (value.version !== CANVAS_SCHEMA_VERSION) {
-		throw new UnsupportedCanvasVersionError({ pageId, version: value.version as number });
+		throw new UnsupportedCanvasVersionError({ pageId, version: value.version });
 	}
 	if (!Array.isArray(value.frames)) {
 		throw new CorruptCanvasError({ pageId });

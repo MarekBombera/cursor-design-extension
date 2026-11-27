@@ -106,9 +106,11 @@ test('parse clamps width and drops an empty group', () => {
 		},
 		FIRST_PAGE_ID,
 	);
-	assert.equal(parsed.frames[0].width, MIN_FRAME_WIDTH);
-	assert.equal(parsed.frames[1].width, MAX_FRAME_WIDTH);
-	assert.ok(!('group' in parsed.frames[0]));
+	const [narrowFrame, wideFrame] = parsed.frames;
+	assert.ok(narrowFrame && wideFrame);
+	assert.equal(narrowFrame.width, MIN_FRAME_WIDTH);
+	assert.equal(wideFrame.width, MAX_FRAME_WIDTH);
+	assert.ok(!('group' in narrowFrame));
 });
 
 test('serialize matches pretty JSON, round-trips, and never writes an empty group', () => {
@@ -208,15 +210,17 @@ test('place clamps width and deletes the group for an empty string', () => {
 		current: stored,
 		placement: { width: 50, group: '' },
 	});
-	assert.equal(narrow.frames[0].width, MIN_FRAME_WIDTH);
-	assert.ok(!('group' in narrow.frames[0]));
+	const [narrowFrame] = narrow.frames;
+	assert.ok(narrowFrame);
+	assert.equal(narrowFrame.width, MIN_FRAME_WIDTH);
+	assert.ok(!('group' in narrowFrame));
 	const wide = placeCanvasFrame({
 		layout: layoutOf([stored]),
 		current: stored,
 		placement: { width: 9999 },
 	});
-	assert.equal(wide.frames[0].width, MAX_FRAME_WIDTH);
-	assert.equal(wide.frames[0].group, 'Desktop');
+	assert.equal(wide.frames[0]?.width, MAX_FRAME_WIDTH);
+	assert.equal(wide.frames[0]?.group, 'Desktop');
 });
 
 test('place appends an unstored frame, keeps orphans, and adds no siblings', () => {
@@ -235,6 +239,7 @@ test('an empty placement upserts the auto-placed current frame', () => {
 		stored: [],
 		artboards: [{ artboardId: 'hero', title: 'Hero' }],
 	});
+	assert.ok(current);
 	const next = placeCanvasFrame({ layout: layoutOf([]), current, placement: {} });
 	assert.deepEqual(next, layoutOf([current]));
 });

@@ -4,6 +4,7 @@ import {
 	COMMENT_ID_PATTERN,
 	COMMENT_STYLE_KEYS,
 	EDIT_STYLE_FIELDS,
+	HISTORY_STEPS,
 	MAX_COMMENTS,
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
@@ -12,6 +13,8 @@ import {
 	MAX_SELECTOR_CHARS,
 	MAX_STYLE_VALUE_CHARS,
 } from '../../disk/layout';
+import type { StyleField } from '../../disk/editValues';
+import type { HistoryStep } from '../hostMessages';
 
 export const CANVAS_RUNTIME_ATTRIBUTE = 'data-cd-canvas-runtime';
 
@@ -45,8 +48,12 @@ export const FRAME_ANCHORS_MESSAGE = 'cd:anchors';
 // Frame → chrome: where those comments' targets are now.
 export const FRAME_ANCHOR_RECTS_MESSAGE = 'cd:anchor-rects';
 
-// Frame-local CSS px (the frame's client coordinates).
+// Frame-local CSS px (the frame's client coordinates). The stage reuses the shapes in stage px.
 export type FrameRect = { x: number; y: number; width: number; height: number };
+
+export type FramePoint = { x: number; y: number };
+
+export type FrameSize = { width: number; height: number };
 
 const FRAME_MODES = ['interact', 'comment', 'edit'] as const;
 
@@ -56,8 +63,6 @@ export const isFrameMode = (value: unknown): value is FrameMode =>
 	(FRAME_MODES as readonly unknown[]).includes(value);
 
 export type CommentStyles = Partial<Record<(typeof COMMENT_STYLE_KEYS)[number], string>>;
-
-export type EditStyleField = (typeof EDIT_STYLE_FIELDS)[number];
 
 const PICK_TEXT_STATES = ['plain', 'mixed', 'elements', 'too-long'] as const;
 
@@ -79,12 +84,12 @@ export type PickEditFields = {
 	// The edit target's computed value per EDIT_STYLE_FIELDS key, the one source of every edit
 	// field's current value; empty and unsafe values are omitted. Shown only as field values and
 	// placeholders, never in an Agent prompt. The comment record stays the pick's `styles`.
-	computed: Partial<Record<EditStyleField, string>>;
+	computed: Partial<Record<StyleField, string>>;
 };
 
 type FrameHeightMessage = { type: typeof FRAME_HEIGHT_MESSAGE; height: number };
 
-type FrameWheelMessage = {
+export type FrameWheelMessage = {
 	type: typeof FRAME_WHEEL_MESSAGE;
 	deltaX: number;
 	deltaY: number;
@@ -105,9 +110,9 @@ export type FramePickMessage = {
 	text: string;
 	rect: FrameRect | null;
 	// CSS px relative to the current target's unclipped border box.
-	point: { x: number; y: number };
+	point: FramePoint;
 	// That unclipped border box's size, so the pin fraction is right for a clipped target.
-	box: { width: number; height: number };
+	box: FrameSize;
 	styles: CommentStyles;
 	isPage: boolean;
 	// True for a scroll or resize re-post of the same pick; false for a click or ↑/↓ step.
@@ -116,14 +121,18 @@ export type FramePickMessage = {
 	edit?: PickEditFields;
 };
 
+// What a comment keeps of a pick: cd:pick and a saved comment draft share these fields and guards.
+export type PickFields = Omit<FramePickMessage, 'type' | 'repost' | 'edit'>;
+
 // The keys a frame forwards so they work with focus inside it: the mode keys C and Escape, and
 // undo / redo for Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
-const FRAME_KEYS = ['c', 'Escape', 'undo', 'redo'] as const;
+const FRAME_KEYS = ['c', 'Escape'] as const;
 
-export type FrameKey = (typeof FRAME_KEYS)[number];
+export type FrameKey = (typeof FRAME_KEYS)[number] | HistoryStep;
 
 const isFrameKey = (value: unknown): value is FrameKey =>
-	(FRAME_KEYS as readonly unknown[]).includes(value);
+	(FRAME_KEYS as readonly unknown[]).includes(value) ||
+	(HISTORY_STEPS as readonly unknown[]).includes(value);
 
 type FrameKeyMessage = { type: typeof FRAME_KEY_MESSAGE; key: FrameKey };
 
@@ -163,6 +172,14 @@ export type ChromeFrameMessage =
 	| { type: typeof PICK_REFRESH_MESSAGE }
 	| EditApplyMessage
 	| FrameAnchorsMessage;
+
+// The one frame → chrome send. A structural host type keeps this module DOM-free.
+export const postToChrome = (
+	host: { postMessage: (message: FrameMessage, targetOrigin: string) => void },
+	message: FrameMessage,
+): void => {
+	host.postMessage(message, '*');
+};
 
 export const isFiniteNumber = (value: unknown): value is number => Number.isFinite(value);
 
@@ -261,14 +278,14 @@ const isPickText = (value: unknown): value is string =>
 const isPointCoordinate = (value: unknown): value is number =>
 	isFiniteNumber(value) && value >= 0 && value <= MAX_FRAME_COORDINATE;
 
-const parsePoint = (value: unknown): { x: number; y: number } | undefined => {
+const parsePoint = (value: unknown): FramePoint | undefined => {
 	if (!isRecord(value) || !isPointCoordinate(value.x) || !isPointCoordinate(value.y)) {
 		return undefined;
 	}
 	return { x: value.x, y: value.y };
 };
 
-const parseBox = (value: unknown): { width: number; height: number } | undefined => {
+const parseBox = (value: unknown): FrameSize | undefined => {
 	if (!isRecord(value) || !isPointCoordinate(value.width) || !isPointCoordinate(value.height)) {
 		return undefined;
 	}
@@ -297,10 +314,7 @@ const parseStyles = <Key extends string>(
 	return styles;
 };
 
-// cd:pick and a saved comment draft share these guards.
-export const parsePickFields = (
-	record: Record<string, unknown>,
-): Omit<FramePickMessage, 'type' | 'repost' | 'edit'> | undefined => {
+export const parsePickFields = (record: Record<string, unknown>): PickFields | undefined => {
 	const { tagName, text, isPage } = record;
 	const rect = parseNullableRect(record.rect);
 	const selector = parseSelector(record.selector);
@@ -402,7 +416,7 @@ const parseAnchorList = <Entry>(
 	return entries;
 };
 
-const isCommentId = (value: unknown): value is string =>
+export const isCommentId = (value: unknown): value is string =>
 	typeof value === 'string' && COMMENT_ID_PATTERN.test(value);
 
 const parseAnchorRequest = (record: Record<string, unknown>): AnchorRequest | undefined => {

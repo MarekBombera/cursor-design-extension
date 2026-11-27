@@ -45,13 +45,13 @@ import {
 
 export class EditState {
 	// Only the focused field gets input, but an invalid commit keeps its draft, so several can exist.
-	drafts: Partial<Record<EditField, EditDraft>> = $state({});
-	requests: EditRequestsState = $state(INITIAL_EDIT_REQUESTS);
+	drafts: Partial<Record<EditField, EditDraft>> = $state.raw({});
+	requests: EditRequestsState = $state.raw(INITIAL_EDIT_REQUESTS);
 	// The frame of the latest accepted Edit-mode pick from a frame that held focus. It outlives the
 	// pick (a step's reload drops it) and mode switches; it clears when the frame leaves, and a
 	// webview reload loses it.
 	historyFrameId: string | undefined = $state(undefined);
-	#announcement = $state({ text: '', sequence: 0 });
+	#announcement = $state.raw({ text: '', sequence: 0 });
 
 	readonly #canvas: CanvasState;
 	readonly #picker: CommentPicker;
@@ -75,21 +75,22 @@ export class EditState {
 		this.#post = post;
 	}
 
-	// A getter, not a field $derived: #canvas is set in the constructor, after field initializers.
-	get history(): HistoryTarget | undefined {
-		return historyTarget({ frames: this.#canvas.frames, frameId: this.historyFrameId });
-	}
+	// $derived.by, not $derived: #canvas and #picker are set in the constructor, and only the lazy
+	// function form may read them (TS2729); nothing reads these during field initialization.
+	readonly history: HistoryTarget | undefined = $derived.by(() =>
+		historyTarget({ frames: this.#canvas.frames, frameId: this.historyFrameId }),
+	);
 
 	// The style fields with an open draft for the picked element: editableSections keeps them shown
 	// while an emptied box's preview says they are unset.
-	get drafted(): ReadonlySet<StyleField> {
+	readonly drafted: ReadonlySet<StyleField> = $derived.by(() => {
 		const pick = this.#picker.picking.pick;
 		return new Set(
 			Object.values(this.drafts).flatMap((draft) =>
 				draft.field === 'text' || !sameElement(draft.key, pick) ? [] : [draft.field],
 			),
 		);
-	}
+	});
 
 	fieldError = (field: EditField): string | undefined => {
 		const error = this.drafts[field]?.error;

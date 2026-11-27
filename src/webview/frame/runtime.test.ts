@@ -28,7 +28,7 @@ test('canvas runtime posts only its frame messages and writes the artboard only 
 		'window.addEventListener("wheel"',
 		'installCommentPicking(host);',
 		'installPinAnchors(host);',
-		'host.postMessage({ type: FRAME_READY_MESSAGE }',
+		'postToChrome(host, { type: FRAME_READY_MESSAGE }',
 	].map((marker) => runtimeSource.indexOf(marker));
 	assert.ok(!order.includes(-1), String(order));
 	assert.deepEqual(
@@ -47,8 +47,9 @@ test('canvas runtime posts only its frame messages and writes the artboard only 
 	]) {
 		assert.ok(runtimeSource.includes(JSON.stringify(type)), type);
 	}
-	// One postMessage per type above, no other.
-	assert.equal(runtimeSource.split('host.postMessage').length - 1, 7);
+	// One send per type above, no other, all through the one typed postToChrome.
+	assert.equal(runtimeSource.split('postToChrome(host, {').length - 1, 7);
+	assert.equal(runtimeSource.split('.postMessage(').length - 1, 1);
 	// Finder reads element.classList; only its mutators are forbidden. pinAnchors.ts is bundled
 	// into the same string, so the check covers it too.
 	for (const forbidden of [
@@ -80,5 +81,5 @@ test('the runtime trusts only the captured parent and announces cd:ready after e
 	// One check per message listener: comment picking and pin anchors.
 	assert.equal(runtimeSource.split('event.source !== host').length - 1, 2);
 	const afterListeners = runtimeSource.slice(runtimeSource.lastIndexOf('addEventListener'));
-	assert.match(afterListeners, /host\.postMessage\(\{ type: (FRAME_READY_MESSAGE|"cd:ready") \}/);
+	assert.match(afterListeners, /postToChrome\(host, \{ type: (FRAME_READY_MESSAGE|"cd:ready") \}/);
 });

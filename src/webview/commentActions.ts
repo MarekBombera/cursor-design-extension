@@ -20,7 +20,7 @@ export type CommentAction = {
 	// button, blocked until the webview reloads. Upgrade path: a host-level answer timeout.
 	pending?:
 		| { requestId: string; kind: 'reply' }
-		| { requestId: string; kind: 'status'; status: 'open' | 'resolved' }
+		| { requestId: string; kind: 'status'; status: CommentSetStatusMessage['status'] }
 		| { requestId: string; kind: 'copy' };
 	// The last failed request's host copy.
 	error?: string;

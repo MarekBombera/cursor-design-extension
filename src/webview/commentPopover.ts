@@ -1,30 +1,19 @@
 import { MAX_COMMENT_BODY_CHARS } from '../disk/layout';
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
-import type { CommentStyles, FramePickMessage, FrameRect } from './frame/frameMessages';
+import type { FramePickMessage, FramePoint, PickFields } from './frame/frameMessages';
 import type {
 	CommentAddedMessage,
 	CommentCreateMessage,
 	PageFree,
 	UiErrorMessage,
 } from './hostMessages';
-import { clampNumber, stageToScreen, type StagePoint, type StageView } from './stageGeometry';
-
-export type DraftTarget = {
-	selector: string | null;
-	tagName: string;
-	text: string;
-	rect: FrameRect | null;
-	point: { x: number; y: number };
-	box: { width: number; height: number };
-	styles: CommentStyles;
-	isPage: boolean;
-};
+import { clampNumber, stageToScreen, type StageView } from './stageGeometry';
 
 export type CommentDraft = {
 	frameId: string;
 	// The frame record's generation when the pick arrived.
 	generation: number;
-	target: DraftTarget;
+	target: PickFields;
 	// Survives a retarget, dies with the draft.
 	body: string;
 	pendingRequestId?: string;
@@ -78,7 +67,7 @@ export const popoverKeyAction = ({
 	return undefined;
 };
 
-const toTarget = (pick: FramePickMessage): DraftTarget => ({
+const toTarget = (pick: FramePickMessage): PickFields => ({
 	selector: pick.selector,
 	tagName: pick.tagName,
 	text: pick.text,
@@ -251,9 +240,7 @@ export const keptCommentDraft = ({
 };
 
 // Frame data, rendered as text only.
-export const targetChipText = (
-	target: Pick<DraftTarget, 'isPage' | 'text' | 'tagName'>,
-): string => {
+export const targetChipText = (target: Pick<PickFields, 'isPage' | 'text' | 'tagName'>): string => {
 	if (target.isPage) {
 		return 'Whole frame';
 	}
@@ -269,9 +256,9 @@ export const popoverAnchor = ({
 	target,
 }: {
 	view: StageView;
-	frame: StagePoint;
-	target: Pick<DraftTarget, 'rect' | 'point'>;
-}): StagePoint => {
+	frame: FramePoint;
+	target: Pick<PickFields, 'rect' | 'point'>;
+}): FramePoint => {
 	const { rect, point } = target;
 	if (rect === null) {
 		return stageToScreen({ view, stageX: frame.x, stageY: frame.y });
@@ -295,12 +282,12 @@ export const placePopover = ({
 	viewportWidth,
 	viewportHeight,
 }: {
-	anchor: StagePoint;
+	anchor: FramePoint;
 	width: number;
 	height: number;
 	viewportWidth: number;
 	viewportHeight: number;
-}): StagePoint => {
+}): FramePoint => {
 	let x = anchor.x + POPOVER_GAP;
 	let y = anchor.y + POPOVER_GAP;
 	if (x + width > viewportWidth - POPOVER_MARGIN) {

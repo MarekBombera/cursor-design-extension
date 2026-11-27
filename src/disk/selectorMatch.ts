@@ -244,8 +244,9 @@ const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[
 		const element = frame.children[frame.next];
 		if (element === undefined) {
 			stack.pop();
+			// Every `?? 0` in this walk is unreachable: index < steps.length, each array's length.
 			for (let index = 0; index < steps.length; index += 1) {
-				ancestorCount[index] -= frame.completed[index] ?? 0;
+				ancestorCount[index] = (ancestorCount[index] ?? 0) - (frame.completed[index] ?? 0);
 			}
 			continue;
 		}
@@ -264,7 +265,12 @@ const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[
 		const completed = new Uint8Array(steps.length);
 		// Index loops in this walk: entries() or forEach cost a pair or a call per element and step.
 		for (let index = 0; index < steps.length; index += 1) {
-			const { compound, child } = steps[index];
+			const step = steps[index];
+			// Unreachable: index < steps.length.
+			if (step === undefined) {
+				break;
+			}
+			const { compound, child } = step;
 			const prefix =
 				index === 0 ||
 				(child ? frame.completed[index - 1] === 1 : (ancestorCount[index - 1] ?? 0) > 0);
@@ -275,7 +281,7 @@ const walk = (document: TreeDocument, { steps, checks }: Selector): TreeElement[
 		// Only now: this element must not count as its own ancestor for its later steps (a lone div
 		// never matches "div div").
 		for (let index = 0; index < steps.length; index += 1) {
-			ancestorCount[index] += completed[index] ?? 0;
+			ancestorCount[index] = (ancestorCount[index] ?? 0) + (completed[index] ?? 0);
 		}
 		if (completed[steps.length - 1] === 1) {
 			matches.push(element);

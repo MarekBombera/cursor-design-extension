@@ -525,8 +525,8 @@ test('system map message contract names exactly the host and chrome messages', (
 	for (const [, direction, cell] of contractSection().matchAll(
 		/^\| (host → chrome|chrome → host) \| ([^|]+) \|/gm,
 	)) {
-		for (const [, name] of cell.matchAll(/`([^`]+)`/g)) {
-			named.get(direction)?.add(name);
+		for (const [, name] of (cell ?? '').matchAll(/`([^`]+)`/g)) {
+			named.get(direction ?? '')?.add(name ?? '');
 		}
 	}
 	assert.deepEqual(named.get('host → chrome'), new Set(Object.keys(HOST_TO_CHROME)));

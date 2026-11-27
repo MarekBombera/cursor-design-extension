@@ -123,6 +123,16 @@ export const MAX_EDIT_TEXT_CHARS = 5000;
 // tagged copy and the total per snapshot.
 export const MAX_POSTED_ARTBOARD_HTML_CHARS = 1_500_000;
 
+// comments.json comment `status` and reply `author` values; the chrome's message types derive from
+// them too.
+export const COMMENT_STATUSES = ['open', 'sent', 'resolved'] as const;
+
+export type CommentStatus = (typeof COMMENT_STATUSES)[number];
+
+export const REPLY_AUTHORS = ['user', 'agent'] as const;
+
+export type ReplyAuthor = (typeof REPLY_AUTHORS)[number];
+
 export const COMMENT_STYLE_KEYS = [
 	'font-family',
 	'font-size',

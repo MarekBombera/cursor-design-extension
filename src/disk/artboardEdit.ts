@@ -8,29 +8,21 @@ import {
 import { leadingWhitespaceLength, trailingWhitespaceLength } from './inlineStyle';
 import {
 	applyStyleChanges,
+	type EditChange,
+	type EditRefusal,
 	hasLoneSurrogate,
 	isRefusedEditText,
 	normalizeEditText,
 	type StyleChange,
 } from './editValues';
 import { EDIT_STYLE_FIELDS, MAX_EDIT_TEXT_CHARS, RAW_TEXT_ELEMENTS } from './layout';
+import { isJsonRecord } from './parse';
 import { entryOffset, numberedElements, tagNameEnd } from './sourceTags';
 
 // One Edit-mode change to disk HTML, by source number: string splices at parse5 offsets change
 // only the element's text or its inline style properties; every other byte stays. Pure.
 
-export type ArtboardEdit =
-	| { sourceNumber: number; field: 'text'; value: string; liveText: string }
-	// An empty value (after trimming) clears that declaration.
-	| { sourceNumber: number; styles: readonly StyleChange[] };
-
-export type EditRefusal =
-	| 'unknown-number'
-	| 'shared-number'
-	| 'not-plain-text'
-	| 'text-changed'
-	| 'invalid-value'
-	| 'unsupported-style';
+export type ArtboardEdit = { sourceNumber: number } & EditChange;
 
 export type EditResult = { ok: true; html: string } | { ok: false; refusal: EditRefusal };
 
@@ -46,10 +38,10 @@ const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
 const refuse = (refusal: EditRefusal): EditResult => ({ ok: false, refusal });
 
 const isStyleChange = (entry: unknown): entry is StyleChange => {
-	if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+	if (!isJsonRecord(entry)) {
 		return false;
 	}
-	const { field, value } = entry as Record<string, unknown>;
+	const { field, value } = entry;
 	return EDIT_STYLE_FIELDS.some((styleField) => styleField === field) && typeof value === 'string';
 };
 

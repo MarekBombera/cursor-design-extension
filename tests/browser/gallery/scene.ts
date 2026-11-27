@@ -289,7 +289,7 @@ export const longList = (): Definition[] => {
 		{ frameId: 'mobile', selector: '#m-fab', tagName: 'button', text: '+' },
 	];
 	return Array.from({ length: 26 }, (_, index) => {
-		const target = targets[index % targets.length] as (typeof targets)[number];
+		const target = targets[index % targets.length];
 		const body = Array.from(
 			{ length: 1 + (index % 4) },
 			(__, offset) => SENTENCES[(index + offset) % SENTENCES.length],

@@ -17,6 +17,7 @@ import {
 	submitDraft,
 	targetChipText,
 } from './commentPopover';
+import { fake } from '../testing/fake';
 import type { FrameRecord } from './canvasFrames';
 import type { FramePickMessage } from './frame/frameMessages';
 
@@ -189,7 +190,7 @@ test('a retarget keeps the body, a new draft starts empty, and a pending draft i
 });
 
 const iframeRecord = (id: string, kind: FrameRecord['kind']): FrameRecord =>
-	({ id, kind }) as FrameRecord;
+	fake<FrameRecord>({ id, kind });
 
 test('a held draft comes back only in Comment mode on a live iframe frame', () => {
 	const held = editDraftBody(draftOf(), 'Bolder');

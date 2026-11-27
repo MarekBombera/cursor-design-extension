@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
+import { fake } from '../testing/fake';
 import { chromeLoadErrorMessage, missingChromeAssets } from './hostFs';
 
 const vscodeMock = vi.hoisted(() => ({
@@ -23,7 +24,7 @@ vi.mock('vscode', () => ({
 	workspace: { fs: { stat: vscodeMock.stat } },
 }));
 
-const extensionUri = { path: '/extension' } as vscode.Uri;
+const extensionUri = fake<vscode.Uri>({ path: '/extension' });
 const JS = 'dist/webview/chrome.js';
 const CSS = 'dist/webview/chrome.css';
 const notFound = (): Error => new vscodeMock.FileSystemError('FileNotFound');

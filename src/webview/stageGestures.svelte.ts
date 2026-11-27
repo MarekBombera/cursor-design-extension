@@ -1,4 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
+import { on } from 'svelte/events';
 
 import {
 	arrowNudge,
@@ -22,7 +23,7 @@ export class StageGestures {
 	// Cleared before 'end' / 'cancel' is reported, so the lostpointercapture after pointerup
 	// reports nothing. Only Escape reverts: a release outside the panel (capture lost) or a
 	// pointercancel commits the last preview.
-	#captured: (GestureTarget & { pointerId: number; element: Element }) | undefined = $state();
+	#captured: (GestureTarget & { pointerId: number; element: Element }) | undefined = $state.raw();
 	// A plain Set on purpose: only the key handlers read it, so it needs no reactivity (not SvelteSet).
 	readonly #heldArrows = new Set<string>();
 
@@ -41,34 +42,6 @@ export class StageGestures {
 		this.#onFrameGesture = onFrameGesture;
 		this.#onDragPan = onDragPan;
 		this.#onWheel = onWheel;
-
-		$effect(() => {
-			const current = this.#captured;
-			if (current === undefined) {
-				return;
-			}
-			const handleKeydown = (event: KeyboardEvent): void => {
-				if (event.key !== 'Escape') {
-					return;
-				}
-				this.#captured = undefined;
-				if (current.element.hasPointerCapture(current.pointerId)) {
-					current.element.releasePointerCapture(current.pointerId);
-				}
-				this.#onFrameGesture({
-					id: current.id,
-					kind: current.kind,
-					source: 'pointer',
-					phase: 'cancel',
-					screenX: 0,
-					screenY: 0,
-				});
-			};
-			window.addEventListener('keydown', handleKeydown);
-			return () => {
-				window.removeEventListener('keydown', handleKeydown);
-			};
-		});
 	}
 
 	get captured(): GestureTarget | undefined {
@@ -144,6 +117,27 @@ export class StageGestures {
 		}
 	};
 
+	// Escape cancels a pointer gesture. Stage's <svelte:window> registers after DesignPage's, so this
+	// still runs after its onkeydown.
+	handleWindowKeydown = (event: KeyboardEvent): void => {
+		const current = this.#captured;
+		if (current === undefined || event.key !== 'Escape') {
+			return;
+		}
+		this.#captured = undefined;
+		if (current.element.hasPointerCapture(current.pointerId)) {
+			current.element.releasePointerCapture(current.pointerId);
+		}
+		this.#onFrameGesture({
+			id: current.id,
+			kind: current.kind,
+			source: 'pointer',
+			phase: 'cancel',
+			screenX: 0,
+			screenY: 0,
+		});
+	};
+
 	handleFrameKeydown = (event: KeyboardEvent, target: GestureTarget): void => {
 		if (event.key === 'Escape') {
 			this.#heldArrows.clear();
@@ -196,10 +190,7 @@ export class StageGestures {
 				screenY: event.clientY - rect.top,
 			});
 		};
-		element.addEventListener('wheel', handleWheel, { passive: false });
-		return () => {
-			element.removeEventListener('wheel', handleWheel);
-		};
+		return on(element, 'wheel', handleWheel, { passive: false });
 	};
 
 	startDrag = (event: PointerEvent & { currentTarget: HTMLDivElement }): void => {

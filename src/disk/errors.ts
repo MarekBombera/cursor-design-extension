@@ -1,4 +1,4 @@
-import type { EditRefusal } from './artboardEdit';
+import type { EditRefusal } from './editValues';
 import {
 	ARTBOARDS_DIR,
 	CANVAS_SCHEMA_VERSION,
@@ -27,10 +27,7 @@ export const toSafeArtboardErrorMessage = (
 ): string => (error instanceof VibeboardError ? error.message : fallback);
 
 export const isErrno = (error: unknown, code: string): boolean =>
-	typeof error === 'object' &&
-	error !== null &&
-	'code' in error &&
-	(error as { code: unknown }).code === code;
+	typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 
 export class InvalidArtboardIdError extends VibeboardError {
 	readonly code = 'INVALID_ARTBOARD_ID' as const;

@@ -286,21 +286,20 @@ test('compareCanvasHandoff covers never exported, unchanged, changed, added, rem
 		exported: true,
 		stale: false,
 	});
+	const [first, second] = current;
+	assert.ok(first && second);
 	const staleOf = (frames: { artboardId: string; hash: string | undefined }[]): boolean =>
 		compareCanvasHandoff({ lastExport: recorded, frames }).stale;
 	assert.equal(staleOf([...current].reverse()), false);
 	assert.equal(
-		staleOf([
-			{ artboardId: 'a', hash: hashA.toUpperCase().replace('SHA256:', 'sha256:') },
-			current[1]!,
-		]),
+		staleOf([{ artboardId: 'a', hash: hashA.toUpperCase().replace('SHA256:', 'sha256:') }, second]),
 		false,
 	);
-	assert.equal(staleOf([{ artboardId: 'a', hash: hashHtml('changed') }, current[1]!]), true);
+	assert.equal(staleOf([{ artboardId: 'a', hash: hashHtml('changed') }, second]), true);
 	assert.equal(staleOf([...current, { artboardId: 'c', hash: hashA }]), true);
-	assert.equal(staleOf([current[0]!]), true);
-	assert.equal(staleOf([{ artboardId: 'a', hash: undefined }, current[1]!]), true);
-	assert.equal(staleOf([current[0]!, { artboardId: 'c', hash: hashB }]), true);
+	assert.equal(staleOf([first]), true);
+	assert.equal(staleOf([{ artboardId: 'a', hash: undefined }, second]), true);
+	assert.equal(staleOf([first, { artboardId: 'c', hash: hashB }]), true);
 });
 
 test('compareCanvasHandoff treats legacy lastExport as a one-frame set', () => {

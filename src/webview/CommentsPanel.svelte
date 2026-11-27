@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Attachment } from 'svelte/attachments';
+	import type { ComponentProps } from 'svelte';
 
 	import CommentCard from './CommentCard.svelte';
-	import { type CommentActions, type CopiedButton, type CopyOpenState } from './commentActions';
+	import { type CommentActions, type CopyOpenState } from './commentActions';
 	import { handoffCopy, type PanelItem, type PanelSummary, summaryParts } from './commentsPanel';
 	import Button from './ui/Button.svelte';
 	import EmptyState from './ui/EmptyState.svelte';
@@ -11,26 +11,27 @@
 
 	// Always mounted (the toolbar toggle's aria-controls must resolve); its content renders only
 	// while open, so a closed panel costs nothing on each cd:anchor-rects.
-	type Props = {
+	// What every card takes is CommentCard's to type.
+	type Props = Pick<
+		ComponentProps<typeof CommentCard>,
+		| 'now'
+		| 'onReplyOpen'
+		| 'onReplyInput'
+		| 'onReplyCancel'
+		| 'onReplySubmit'
+		| 'onToggleStatus'
+		| 'copyBlocked'
+		| 'copied'
+		| 'onCopy'
+	> & {
 		open: boolean;
 		items: { unresolved: PanelItem[]; resolved: PanelItem[] };
 		// comments:updated's error; the banner carries the detail.
 		error: string | undefined;
-		now: number;
 		actions: CommentActions;
 		onJump: (id: string) => void;
-		onReplyOpen: (id: string) => void;
-		onReplyInput: (id: string, text: string) => void;
-		onReplyCancel: (id: string) => void;
-		onReplySubmit: (id: string) => void;
-		onToggleStatus: (id: string) => void;
-		// A copy is in flight, so every Copy button waits (one copy at a time).
-		copyBlocked: boolean;
-		// The button whose copy just succeeded, while its "Copied" shows.
-		copied: CopiedButton | undefined;
 		copyOpen: CopyOpenState;
 		summary: PanelSummary;
-		onCopy: (id: string) => void;
 		onCopyOpen: () => void;
 	};
 
@@ -72,17 +73,10 @@
 		}
 	};
 
-	let aside: HTMLElement | undefined;
+	let aside: HTMLElement | null = null;
 	type KeptFocus = { id: string; key: string | undefined };
 	// The focused item and control before a list update; set by the pre-pass, cleared after.
 	let kept: KeptFocus | undefined;
-
-	const attachAside: Attachment<HTMLElement> = (element) => {
-		aside = element;
-		return () => {
-			aside = undefined;
-		};
-	};
 
 	// An unfocused webview keeps a stale activeElement (the user is typing in Agent chat), so it
 	// records nothing: restoring that would pull focus out of the chat.
@@ -149,7 +143,7 @@
 		<h2 class="section-title">{title} <span aria-hidden="true">·</span> {list.length}</h2>
 		<ol>
 			{#each list as item (item.comment.id)}
-				{@const id = item.comment.id}
+				{const id = $derived(item.comment.id)}
 				<li data-cd-comment-item={id} data-cd-status={item.comment.status}>
 					<CommentCard
 						comment={item.comment}
@@ -181,7 +175,7 @@
 	tabindex="-1"
 	data-cd-comments-panel
 	hidden={!open}
-	{@attach attachAside}
+	bind:this={aside}
 >
 	{#if open}
 		<!-- Outside the scrolling list, so a focused card control is never under it. -->

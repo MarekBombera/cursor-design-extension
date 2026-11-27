@@ -12,24 +12,18 @@ import {
 } from './mcpToolResult';
 import { CREATE_PAGE_TOOL, LIST_PAGES_TOOL, OPEN_PAGE_TOOL } from './toolNames';
 
-type PageToolArgs = {
-	title?: unknown;
-	pageId?: unknown;
-	rootPath?: unknown;
-};
-
-const listPagesInputSchema = toolInputSchema<PageToolArgs>({
+const listPagesInputSchema = toolInputSchema({
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const createPageInputSchema = toolInputSchema<PageToolArgs>({
+const createPageInputSchema = toolInputSchema({
 	title: {
 		description: `Required string. Page title, 1 to ${MAX_PAGE_TITLE_CHARS} characters, no control characters.`,
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const openPageInputSchema = toolInputSchema<PageToolArgs>({
+const openPageInputSchema = toolInputSchema({
 	pageId: { description: 'Required string. Page id from list_pages, e.g. page-2.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });

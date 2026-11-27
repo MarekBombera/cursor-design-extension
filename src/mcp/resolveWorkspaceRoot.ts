@@ -12,7 +12,7 @@ const parseRootsJson = (raw: string): string[] | undefined => {
 		const parsed = JSON.parse(raw) as unknown;
 		if (
 			!Array.isArray(parsed) ||
-			!parsed.every((item) => typeof item === 'string' && item.length > 0)
+			!parsed.every((item: unknown): item is string => typeof item === 'string' && item.length > 0)
 		) {
 			throw new Error('expected a JSON array of non-empty strings');
 		}

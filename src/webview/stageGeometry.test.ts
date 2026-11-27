@@ -3,7 +3,8 @@ import * as fc from 'fast-check';
 import { test } from 'vite-plus/test';
 
 import * as geometry from './stageGeometry';
-import type { StagePoint as Point, StageRect as Rect, StageView as View } from './stageGeometry';
+import type { FramePoint as Point, FrameRect as Rect } from './frame/frameMessages';
+import type { StageView as View } from './stageGeometry';
 import stageGeometrySource from './stageGeometry.ts?iife';
 
 const TOLERANCE = 1e-9;
@@ -25,7 +26,7 @@ const assertClose = (
 	assert.ok(actual !== null);
 	for (const [key, value] of Object.entries(expected)) {
 		assert.ok(
-			Math.abs(actual[key] - value) <= TOLERANCE,
+			Math.abs((actual[key] ?? Number.NaN) - value) <= TOLERANCE,
 			`${key}: expected ${value}, got ${actual[key]}`,
 		);
 	}
@@ -230,7 +231,7 @@ test('clamp with null bounds only clamps zoom', () => {
 	for (const [viewportWidth, viewportHeight] of [
 		[0, 600],
 		[800, 0],
-	]) {
+	] as const) {
 		assert.deepEqual(
 			geometry.clampStageView({ view, bounds, viewportWidth, viewportHeight }),
 			view,
@@ -640,7 +641,7 @@ test('resizeFrameWidth rounds the width to whole px and clamps to 120..3840', ()
 		[120, 120],
 		[3840, 3840],
 		[3841, 3840],
-	]) {
+	] as const) {
 		assert.equal(geometry.resizeFrameWidth({ startWidth: target, stageDeltaX: 0 }), expected);
 	}
 	assert.equal(geometry.resizeFrameWidth({ startWidth: 400, stageDeltaX: 5.4 }), 405);

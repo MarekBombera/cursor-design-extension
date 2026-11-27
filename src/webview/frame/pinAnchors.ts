@@ -6,6 +6,7 @@ import {
 	FRAME_ANCHOR_RECTS_MESSAGE,
 	FRAME_ANCHORS_MESSAGE,
 	parseChromeFrameMessage,
+	postToChrome,
 } from './frameMessages';
 
 const CAPTURED_TRIGGERS = ['scroll', 'transitionend', 'animationend'] as const;
@@ -69,7 +70,7 @@ export const installPinAnchors = (host: Window): void => {
 		}
 		force = false;
 		last = anchors;
-		host.postMessage({ type: FRAME_ANCHOR_RECTS_MESSAGE, anchors }, '*');
+		postToChrome(host, { type: FRAME_ANCHOR_RECTS_MESSAGE, anchors });
 	};
 
 	const schedule = (): void => {

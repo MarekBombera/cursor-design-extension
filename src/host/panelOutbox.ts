@@ -2,32 +2,27 @@ import type {
 	ArtboardEditedMessage,
 	CommentAddedMessage,
 	CommentSavedMessage,
+	CanvasUpdatedMessage,
 	CommentsUpdatedMessage,
 	CopiedMessage,
 	HostMessage,
 	PageSavedMessage,
-	PostedPage,
 	UiErrorMessage,
+	UiStatusMessage,
 } from '../webview/hostMessages';
-import {
-	type CanvasSnapshot,
-	type UnflaggedPostedFrame,
-	postedFrameFromSnapshot,
-} from './canvasSnapshot';
+import type { CanvasViewFrame } from '../disk/canvasView';
+import { type CanvasSnapshot, postedFrameFromSnapshot } from './canvasSnapshot';
 import type * as editHistory from './editHistory';
 
+// The nonce and the history flags are added at send time.
 type CanvasHostView = {
-	updated: {
-		pageId: string;
-		activeArtboardId: string;
-		generation: number;
-		frames: UnflaggedPostedFrame[];
-		pages: PostedPage[];
+	updated: Omit<CanvasUpdatedMessage, 'type' | 'cspNonce' | 'frames'> & {
+		frames: CanvasViewFrame[];
 	};
 	errorMessage?: string;
 };
 
-type UiStatusPartial = { mcpAvailable?: boolean; handoffStale?: boolean };
+type UiStatusPartial = Partial<Omit<UiStatusMessage, 'type'>>;
 
 // Every answer to one chrome request: posted only while ready, never held or replayed.
 export type PanelAnswer =

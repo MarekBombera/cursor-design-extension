@@ -60,8 +60,8 @@ Rule 05's contract: grep before writing a helper, extend the owner, never add a 
 
 **Pure rules** (`src/webview/`):
 
-- `hostMessages.ts` → host ↔ chrome message types; `hostMessageGuard.ts` → host message parse and routing; `savedState.ts` → saved stage view and comment UI parse.
-- `frame/frameMessages.ts` → frame message parse, pick fields, the one prompt line `toOneLine`, `isFiniteNumber`, the one array-accepting record guard `isRecord`; `stampArtboardHtml.ts` → nonce stamping, `FRAME_CSP`.
+- `hostMessages.ts` → host ↔ chrome message types (`FramePlacement`, `UiStatusMessage`; disk and host derive from them, never re-type); `hostMessageGuard.ts` → host message parse and routing; `savedState.ts` → saved stage view and comment UI parse.
+- `frame/frameMessages.ts` → frame message parse, the one frame → chrome send `postToChrome`, pick fields `PickFields` (cd:pick and the saved draft), the geometry shapes `FrameRect` / `FramePoint` / `FrameSize` (frame px and stage px alike), the one comment-id guard `isCommentId`, the one prompt line `toOneLine`, `isFiniteNumber`, the one array-accepting record guard `isRecord`; `stampArtboardHtml.ts` → nonce stamping, `FRAME_CSP`.
 - `stageGeometry.ts` → stage math, the one fit-zoom rule `fitZoom`, the one pre-report frame height `PROVISIONAL_FRAME_HEIGHT` (embedded in `canvas.html`); `zoomChoices.ts` → zoom menu; `frameGesture.ts` → drag / resize / wheel steps; `canvasFrames.ts` → frame merge and per-frame updates.
 - `commentPick.ts` → `ChromePick`, mode choice, the one counts-in-mode verdict `pickCounts`.
 - `editInspector.ts` → inspector sections; `editDrafts.ts` → draft lifecycle, the one multi-change save rule `stylesCommit`, field error copy; `editRequests.ts` → edit queue; `undoRedo.ts` → the one flag read `canStep`.

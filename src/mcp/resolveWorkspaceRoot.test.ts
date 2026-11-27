@@ -162,10 +162,10 @@ const connectClient = async (clientRoots?: { current: string[] | undefined }): P
 };
 
 const setArtboard = async (client: Client, rootPath?: string): Promise<CallToolResult> =>
-	(await client.callTool({
+	client.callTool({
 		name: SET_ARTBOARD_TOOL,
 		arguments: { artboardId: `a${Date.now()}`, html: '<p>x</p>', rootPath },
-	})) as CallToolResult;
+	});
 
 const hasVibeboardDir = async (workspaceRoot: string): Promise<boolean> =>
 	access(join(workspaceRoot, VIBEBOARD_DIR)).then(

@@ -3,7 +3,7 @@ import { test } from 'vite-plus/test';
 
 import { type ArtboardEdit, type EditResult, editArtboardHtml } from './artboardEdit';
 import { parseArtboardDocument } from './commentTarget';
-import type { StyleChange, StyleField } from './editValues';
+import type { EditRefusal, StyleChange, StyleField } from './editValues';
 import { MAX_EDIT_TEXT_CHARS } from './layout';
 
 const edited = (html: string, edit: ArtboardEdit): EditResult =>
@@ -20,7 +20,7 @@ const styles = (html: string, changes: StyleChange[]): EditResult =>
 
 const ok = (html: string): EditResult => ({ ok: true, html });
 
-const refused = (refusal: string): EditResult => ({ ok: false, refusal }) as EditResult;
+const refused = (refusal: EditRefusal): EditResult => ({ ok: false, refusal });
 
 test('a text edit replaces only the trimmed middle of the one text node', () => {
 	assert.deepEqual(text('<div><p>Old</p></div>', 1, 'New', 'Old'), ok('<div><p>New</p></div>'));

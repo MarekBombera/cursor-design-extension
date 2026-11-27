@@ -59,6 +59,7 @@ import {
 	serializeMeta,
 } from './parse';
 import { withWorkspaceLock } from './workspaceLock';
+import type { FramePlacement } from '../webview/hostMessages';
 
 export type CreateArtboardArgs = {
 	page: PageLocation;
@@ -122,7 +123,7 @@ export type PlaceFrameArgs = {
 	label?: unknown;
 	group?: unknown;
 	// Panel drag only: the frame's x/y/width when the gesture started; MCP never passes it.
-	base?: Pick<CanvasFrame, 'x' | 'y' | 'width'>;
+	base?: FramePlacement;
 };
 
 export type PlaceFrameResult = {

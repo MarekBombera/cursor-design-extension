@@ -27,7 +27,7 @@
 		mode: savedCommentUi.mode,
 		replyDrafts: {},
 	});
-	let page: DesignPage | undefined = $state();
+	let page: DesignPage | undefined = $state.raw();
 	const pages = new PagesMenuState({ stagedPageId: () => stage.pageId });
 
 	const NO_IFRAMES: ReadonlyMap<string, HTMLIFrameElement> = new Map();

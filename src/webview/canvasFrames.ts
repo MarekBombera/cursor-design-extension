@@ -7,28 +7,20 @@ import {
 	frameRectToScreen,
 	nextFrameHeight,
 	PROVISIONAL_FRAME_HEIGHT,
-	type StageRect,
 	type StageView,
 } from './stageGeometry';
 
-export type StageFrame = {
-	id: string;
-	label: string;
-	x: number;
-	y: number;
-	width: number;
+// generation: sent with comment:create for the pick check. html: the latest known tagged copy,
+// posted or adopted from an edit answer.
+export type StageFrame = Pick<
+	PostedCanvasFrame,
+	'id' | 'label' | 'x' | 'y' | 'width' | 'generation' | 'hash' | 'canUndo' | 'canRedo' | 'html'
+> & {
 	height: number;
-	// Sent with comment:create for the pick check.
-	generation: number;
-	hash: string;
-	canUndo: boolean;
-	canRedo: boolean;
 	kind: 'tile' | 'iframe';
 	// Read only while kind is 'tile'.
 	tileKind: 'empty' | 'error';
 	tileText: string;
-	// The latest known tagged copy: posted, or adopted from an edit answer.
-	html: string;
 	// What the iframe was built from; Frame's blob effect reads only these two, so adopting an
 	// edit answer never reloads. The version bumps on every reload.
 	documentHtml: string;
@@ -259,7 +251,7 @@ export const frameOutline = ({
 	view: StageView | undefined;
 	frames: readonly FrameRecord[];
 	target: { frameId: string; rect: FrameRect | null } | undefined;
-}): StageRect | undefined => {
+}): FrameRect | undefined => {
 	if (target === undefined || target.rect === null || view === undefined) {
 		return undefined;
 	}

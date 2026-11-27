@@ -12,6 +12,7 @@
 		"src/**/*.ts!",
 		"src/webview/**/*.{ts,svelte}!",
 		"!src/**/*.cases.ts!",
+		"!src/testing/**!",
 		"scripts/iifeStringPlugin.ts",
 		"tests/browser/**/*.ts"
 	],

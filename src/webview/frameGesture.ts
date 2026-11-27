@@ -1,3 +1,4 @@
+import type { FramePoint } from './frame/frameMessages';
 import type { FramePlaceMessage, FramePlacement, PageFree } from './hostMessages';
 import {
 	dragFrame,
@@ -8,7 +9,6 @@ import {
 	placementChanged,
 	resizeFrameWidth,
 	screenToStage,
-	type StagePoint,
 	type StageView,
 	zoomStageAt,
 } from './stageGeometry';
@@ -37,8 +37,8 @@ export type FrameGesture = {
 	source: 'pointer' | 'keyboard';
 	base: FramePlacement;
 	// Pointer only: where the gesture started, in stage and viewport screen px.
-	startStage?: StagePoint;
-	startScreen?: StagePoint;
+	startStage?: FramePoint;
+	startScreen?: FramePoint;
 	override?: FramePlacement;
 	phase: 'active' | 'committing';
 };
@@ -57,7 +57,7 @@ const previewPlacement = ({
 }: {
 	kind: FrameGestureKind;
 	from: FramePlacement;
-	delta: StagePoint;
+	delta: FramePoint;
 }): FramePlacement =>
 	kind === 'move'
 		? { ...dragFrame({ start: from, stageDelta: delta }), width: from.width }

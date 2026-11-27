@@ -37,8 +37,9 @@ export class PinThread {
 	// A thread restored after a reload, kept apart so the live rules never see it. It waits for its
 	// pin; a user pick or pin open ends it.
 	#heldThreadId: string | undefined = $state();
-	pinsView: { focusPin: (id: string) => void } | undefined = $state();
-	stage: { focusViewport: () => void } | undefined = $state();
+	// bind:this targets: raw (no proxy of the exports), not plain (binding_property_non_reactive).
+	pinsView: { focusPin: (id: string) => void } | undefined = $state.raw();
+	stage: { focusViewport: () => void } | undefined = $state.raw();
 	#flash: { commentId: string; sequence: number } | undefined = $state.raw();
 
 	// The drawn frames, like the outlines. Pins and panel items number from the full list, so a pin,

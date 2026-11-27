@@ -10,35 +10,35 @@ import { isArtboardHash, normalizeHash } from './hash';
 import {
 	COMMENTS_SCHEMA_VERSION,
 	COMMENT_ID_PATTERN,
+	COMMENT_STATUSES,
 	COMMENT_STYLE_KEYS,
 	MAX_COMMENT_BODY_CHARS,
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
 	MAX_PICK_TEXT_CHARS,
 	MAX_SELECTOR_CHARS,
+	REPLY_AUTHORS,
+	type CommentStatus,
+	type ReplyAuthor,
 	commentsPathSegments,
 } from './layout';
 import { type PageLocation, readUtf8IfExists, workspaceLayoutFile, writeUtf8 } from './layoutFs';
 import { isJsonRecord, parseArtboardId } from './parse';
 import {
 	type CommentStyles,
+	type FramePoint,
+	type FrameRect,
 	hasControlChars,
 	isSafeStyleValue,
 	isTagName,
 } from '../webview/frame/frameMessages';
 
-export type CommentStatus = 'open' | 'sent' | 'resolved';
-
 type CommentReply = {
 	id: string;
-	author: 'user' | 'agent';
+	author: ReplyAuthor;
 	body: string;
 	createdAt: string;
 };
-
-type CommentRect = { x: number; y: number; width: number; height: number };
-
-type CommentPin = { x: number; y: number };
 
 export type Comment = {
 	id: string;
@@ -48,8 +48,8 @@ export type Comment = {
 	selector: string;
 	tagName: string;
 	text: string;
-	rect: CommentRect | null;
-	pin: CommentPin;
+	rect: FrameRect | null;
+	pin: FramePoint;
 	styles: CommentStyles;
 	body: string;
 	isPage: boolean;
@@ -70,8 +70,8 @@ export type NewComment = {
 	selector: string;
 	tagName: string;
 	text: string;
-	rect: CommentRect | null;
-	pin: CommentPin;
+	rect: FrameRect | null;
+	pin: FramePoint;
 	styles: CommentStyles;
 	body: string;
 	isPage: boolean;
@@ -137,7 +137,7 @@ const pinSchema = z.object({
 
 const replySchema = z.object({
 	id: commentIdString,
-	author: z.union([z.literal('user'), z.literal('agent')]),
+	author: z.enum(REPLY_AUTHORS),
 	body: commentBodyString,
 	createdAt: createdAtString,
 });
@@ -172,7 +172,7 @@ const commentSchema = z.object({
 	body: target.body,
 	isPage: target.isPage,
 	targetFingerprint: z.optional(z.string().check(z.refine(isArtboardHash))),
-	status: z.union([z.literal('open'), z.literal('sent'), z.literal('resolved')]),
+	status: z.enum(COMMENT_STATUSES),
 	createdAt: createdAtString,
 	replies: z.array(replySchema).check(z.maxLength(MAX_COMMENT_REPLIES)),
 });

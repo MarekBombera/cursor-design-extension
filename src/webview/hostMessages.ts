@@ -1,6 +1,6 @@
-import type { StyleChange } from '../disk/editValues';
-import type { HISTORY_STEPS } from '../disk/layout';
-import type { CommentStyles, FrameRect } from './frame/frameMessages';
+import type { EditChange } from '../disk/editValues';
+import type { CommentStatus, HISTORY_STEPS, ReplyAuthor } from '../disk/layout';
+import type { CommentStyles, FramePoint, FrameRect, FrameSize } from './frame/frameMessages';
 
 // DOM-free: the root tsconfig (no DOM lib) type-checks this file through the host's imports.
 
@@ -44,7 +44,7 @@ type ArtboardErrorMessage = {
 	message: string;
 };
 
-type UiStatusMessage = {
+export type UiStatusMessage = {
 	type: 'ui:status';
 	mcpAvailable: boolean;
 	handoffStale: boolean;
@@ -52,7 +52,7 @@ type UiStatusMessage = {
 
 type PostedReply = {
 	id: string;
-	author: 'user' | 'agent';
+	author: ReplyAuthor;
 	body: string;
 	createdAt: string;
 };
@@ -66,10 +66,10 @@ export type PostedComment = {
 	tagName: string;
 	text: string;
 	rect: FrameRect | null;
-	pin: { x: number; y: number };
+	pin: FramePoint;
 	body: string;
 	isPage: boolean;
-	status: 'open' | 'sent' | 'resolved';
+	status: CommentStatus;
 	createdAt: string;
 	replies: PostedReply[];
 	stale: boolean | null;
@@ -126,7 +126,7 @@ export type HostMessage =
 	| PageSavedMessage
 	| UiErrorMessage;
 
-export type FramePlacement = { x: number; y: number; width: number };
+export type FramePlacement = FramePoint & Pick<FrameSize, 'width'>;
 
 // Sent once per drag/resize/nudge on release. `base` is the frame's placement at gesture start.
 export type FramePlaceMessage = {
@@ -151,8 +151,8 @@ export type CommentCreateMessage = {
 	tagName: string;
 	text: string;
 	rect: FrameRect | null;
-	point: { x: number; y: number };
-	box: { width: number; height: number };
+	point: FramePoint;
+	box: FrameSize;
 	styles: CommentStyles;
 	isPage: boolean;
 	body: string;
@@ -171,7 +171,8 @@ export type CommentSetStatusMessage = {
 	requestId: string;
 	pageId: string;
 	id: string;
-	status: 'open' | 'resolved';
+	// `sent` is the host's to set.
+	status: Exclude<CommentStatus, 'sent'>;
 };
 
 export type CommentCopyMessage = {
@@ -206,13 +207,8 @@ export type ArtboardEditMessage = {
 	frameId: string;
 	sourceNumber: number;
 	hash: string;
-} &
-	// liveText: the element's full live text (never the pick excerpt).
-	(
-		| { field: 'text'; value: string; liveText: string }
-		// 1..EDIT_STYLE_FIELDS.length distinct fields, set or cleared together: one write, one undo step.
-		| { styles: StyleChange[] }
-	);
+	// A styles change is one write, one undo step.
+} & EditChange;
 
 export type HistoryStep = (typeof HISTORY_STEPS)[number];
 

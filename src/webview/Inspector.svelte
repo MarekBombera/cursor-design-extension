@@ -149,7 +149,7 @@
 
 {#snippet contentRow(content: ContentView)}
 	{#if content.state === 'plain'}
-		{@const error = fieldError('text')}
+		{const error = $derived(fieldError('text'))}
 		<Field
 			{...entryProps('text', error)}
 			control="textarea"
@@ -295,7 +295,7 @@
 										onchoose={(value) => choose(field.options, value)}
 									/>
 								{:else}
-									{@const error = fieldError(field.field)}
+									{const error = $derived(fieldError(field.field))}
 									{#if field.control === 'color'}
 										<Field
 											{...entryProps(field.field, error)}

@@ -2,7 +2,7 @@
 
 import { MAX_FRAME_COORDINATE } from '../../disk/layout';
 import { clampNumber } from '../stageGeometry';
-import type { FrameRect } from './frameMessages';
+import type { FramePoint, FrameRect } from './frameMessages';
 
 type PickTargetArgs<T> = {
 	// Topmost first, the `elementsFromPoint` order.
@@ -49,9 +49,9 @@ export const sameRect = (left: FrameRect | null, right: FrameRect | null): boole
 type PostedPick<T> = {
 	element: T;
 	// Compared by identity: a new description object means the pick was described again.
-	described: object;
+	described: unknown;
 	rect: FrameRect | null;
-	point: { x: number; y: number };
+	point: FramePoint;
 };
 
 export const isUnchangedPick = <T>({
@@ -92,9 +92,9 @@ export const pointInTarget = ({
 	targetBox,
 }: {
 	anchorBox: FrameRect;
-	offset: { x: number; y: number };
+	offset: FramePoint;
 	targetBox: FrameRect;
-}): { x: number; y: number } => ({
+}): FramePoint => ({
 	x: clampNumber({
 		value: anchorBox.x + offset.x - targetBox.x,
 		min: 0,

@@ -1,18 +1,23 @@
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
-import type { AnchorRect, AnchorRequest, FrameRect } from './frame/frameMessages';
+import type {
+	AnchorRect,
+	AnchorRequest,
+	FramePoint,
+	FrameRect,
+	FrameSize,
+} from './frame/frameMessages';
 import { clipRect } from './frame/pickTarget';
 import type { PostedComment } from './hostMessages';
 import {
 	clampNumber,
 	fitZoom,
 	jumpStageView,
-	type StagePoint,
 	type StageView,
 	stageToScreen,
 } from './stageGeometry';
 import type { BadgeProps } from './ui/badge';
 
-type LiveAnchor = { box: FrameRect | null; visible: FrameRect | null };
+type LiveAnchor = Omit<AnchorRect, 'id'>;
 
 // Frame id, then comment id. Maps, never plain objects: the ids come from an untrusted frame.
 export type AnchorState = ReadonlyMap<string, ReadonlyMap<string, LiveAnchor>>;
@@ -174,8 +179,8 @@ export const pinPoint = ({
 }: {
 	comment: PostedComment;
 	live: LiveAnchor | undefined;
-	frame: { width: number; height: number };
-}): StagePoint => {
+	frame: FrameSize;
+}): FramePoint => {
 	if (comment.isPage) {
 		return { x: comment.pin.x * frame.width, y: comment.pin.y * frame.height };
 	}
@@ -183,7 +188,7 @@ export const pinPoint = ({
 	return base === null ? { x: 0, y: 0 } : { x: base.x, y: base.y };
 };
 
-const isOutside = (point: StagePoint, rect: FrameRect): boolean =>
+const isOutside = (point: FramePoint, rect: FrameRect): boolean =>
 	point.x < rect.x - PIN_TOLERANCE_PX ||
 	point.y < rect.y - PIN_TOLERANCE_PX ||
 	point.x > rect.x + rect.width + PIN_TOLERANCE_PX ||
@@ -275,7 +280,7 @@ export const layoutPins = ({
 	});
 };
 
-const clampIntoRect = (point: StagePoint, rect: FrameRect): StagePoint => ({
+const clampIntoRect = (point: FramePoint, rect: FrameRect): FramePoint => ({
 	x: clampNumber({ value: point.x, min: rect.x, max: rect.x + rect.width }),
 	y: clampNumber({ value: point.y, min: rect.y, max: rect.y + rect.height }),
 });
@@ -289,10 +294,10 @@ export const jumpTarget = ({
 }: {
 	comment: PostedComment;
 	live: LiveAnchor | undefined;
-	frame: { width: number; height: number };
+	frame: FrameSize;
 }): {
-	center: StagePoint;
-	fit: { width: number; height: number } | undefined;
+	center: FramePoint;
+	fit: FrameSize | undefined;
 	outline: FrameRect | undefined;
 } => {
 	const frameRect = { x: 0, y: 0, width: frame.width, height: frame.height };

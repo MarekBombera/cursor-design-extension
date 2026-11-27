@@ -1,18 +1,18 @@
 <script lang="ts">
-	import type { StageRect } from './stageGeometry';
+	import type { FrameRect } from './frame/frameMessages';
 
 	// Viewport-local screen px, so the outline thickness is constant at any zoom.
 	type Props = {
-		hover: StageRect | undefined;
-		pick: StageRect | undefined;
+		hover: FrameRect | undefined;
+		pick: FrameRect | undefined;
 		// After a jump, for JUMP_FLASH_MS.
-		flash: StageRect | undefined;
+		flash: FrameRect | undefined;
 	};
 
 	let { hover, pick, flash }: Props = $props();
 </script>
 
-{#snippet outline(rect: StageRect, kind: 'hover' | 'pick' | 'flash')}
+{#snippet outline(rect: FrameRect, kind: 'hover' | 'pick' | 'flash')}
 	<div
 		class={['outline', kind]}
 		data-cd-flash={kind === 'flash' ? '' : undefined}

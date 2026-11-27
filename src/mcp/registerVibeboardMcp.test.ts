@@ -121,6 +121,7 @@ test('no Cursor API, VS Code API present: one provider whose definition follows 
 		[providerId],
 	);
 	const [definition] = provider.provideMcpServerDefinitions();
+	assert.ok(definition);
 	assert.deepEqual(definition.args, ['/extension/dist/mcp.js']);
 	assert.equal(definition.env[VIBEBOARD_WORKSPACE_ROOT_ENV], '/work/one');
 	assert.ok(definition.version.length > 0);
@@ -133,6 +134,7 @@ test('no Cursor API, VS Code API present: one provider whose definition follows 
 	assert.equal(registerProvider.mock.calls.length, 1, 'never registers a second provider');
 	assert.equal(changed.mock.calls.length, 1);
 	const [resynced] = provider.provideMcpServerDefinitions();
+	assert.ok(resynced);
 	assert.equal(resynced.env[VIBEBOARD_WORKSPACE_ROOT_ENV], '/work/two');
 	assert.notEqual(resynced.version, definition.version, 'a new version makes VS Code restart it');
 });

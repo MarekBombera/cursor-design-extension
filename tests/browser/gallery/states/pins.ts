@@ -59,7 +59,7 @@ pinsState(
 			'#feature-3',
 		];
 		const definitions: Definition[] = Array.from({ length: 24 }, (_, index) => {
-			const selector = targets[index % targets.length] as string;
+			const selector = targets[index % targets.length];
 			return {
 				id: `m-${index}`,
 				frameId: 'home',

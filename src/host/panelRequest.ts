@@ -18,7 +18,7 @@ export const panelRequest = ({
 	afterRefuse,
 }: {
 	value: unknown;
-	type: string;
+	type: ChromeMessage['type'];
 	scope: string;
 	ports: PanelPorts;
 	afterRefuse?: () => void;

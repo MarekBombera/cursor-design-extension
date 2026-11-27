@@ -10,7 +10,7 @@ import {
 	toChromeFrames,
 	withGestureOverride,
 } from './canvasFrames';
-import type { ChromeFrameMessage, FrameMessage } from './frame/frameMessages';
+import type { ChromeFrameMessage, FrameWheelMessage } from './frame/frameMessages';
 import {
 	failFrameGesture,
 	type FrameGesture,
@@ -43,13 +43,13 @@ import {
 } from './stageGeometry';
 
 export class CanvasState {
-	frames: FrameRecord[] = $state([]);
+	frames: FrameRecord[] = $state.raw([]);
 	artboardId = $state('');
 	generation = $state('');
 	nonce = $state('');
 	errorMessage: string | undefined = $state();
-	committedView: StageView | undefined = $state();
-	gesture: FrameGesture | undefined = $state();
+	committedView: StageView | undefined = $state.raw();
+	gesture: FrameGesture | undefined = $state.raw();
 	// Set by the first canvas:updated, even one with no frames.
 	framesKnown = $state(false);
 	// $state: the popover and the thread place themselves inside the viewport.
@@ -189,10 +189,7 @@ export class CanvasState {
 		this.commitStageView(this.#stageView);
 	};
 
-	handleFrameWheel = (
-		frame: FrameRecord,
-		message: Extract<FrameMessage, { type: 'cd:frame-wheel' }>,
-	): void => {
+	handleFrameWheel = (frame: FrameRecord, message: FrameWheelMessage): void => {
 		// The gesture may leave this frame and continue as root scroll (handleSinkScroll).
 		this.#lastSinkGestureAt = performance.now();
 		const anchor = stageToScreen({

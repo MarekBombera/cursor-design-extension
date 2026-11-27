@@ -81,6 +81,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var postToChrome = (host, message) =&gt; {
+		host.postMessage(message, &quot;*&quot;);
+	};
 	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
@@ -713,7 +716,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				next
 			})) return;
 			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
@@ -724,7 +727,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				},
 				isPage: isRoot(current),
 				repost
-			}, &quot;*&quot;);
+			});
 			lastPosted = next;
 		};
 		const postHover = (element) =&gt; {
@@ -734,10 +737,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				element,
 				rect
 			};
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_HOVER_MESSAGE,
 				rect
-			}, &quot;*&quot;);
+			});
 		};
 		const cancelPendingHover = () =&gt; {
 			if (pendingHover !== void 0) {
@@ -985,10 +988,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			})) return;
 			force = false;
 			last = anchors;
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_ANCHOR_RECTS_MESSAGE,
 				anchors
-			}, &quot;*&quot;);
+			});
 		};
 		const schedule = () =&gt; {
 			if (pending === void 0) pending = requestAnimationFrame(measure);
@@ -1045,10 +1048,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_HEIGHT_MESSAGE,
 			height
-		}, &quot;*&quot;);
+		});
 	};
 	var scheduleHeight = () =&gt; {
 		if (heightTimer !== void 0) clearTimeout(heightTimer);
@@ -1077,14 +1080,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return false;
 	};
 	var postWheel = (event, ctrlKey) =&gt; {
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_WHEEL_MESSAGE,
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			ctrlKey,
 			x: event.clientX,
 			y: event.clientY
-		}, &quot;*&quot;);
+		});
 	};
 	window.addEventListener(&quot;wheel&quot;, (event) =&gt; {
 		if (event.ctrlKey || event.metaKey) {
@@ -1114,14 +1117,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_KEY_MESSAGE,
 			key
-		}, &quot;*&quot;);
+		});
 	}, { capture: true });
 	installCommentPicking(host);
 	installPinAnchors(host);
-	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
+	postToChrome(host, { type: FRAME_READY_MESSAGE });
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:548px;top:80px;width:400px;height:24px">b</div>
@@ -1187,6 +1190,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var postToChrome = (host, message) =&gt; {
+		host.postMessage(message, &quot;*&quot;);
+	};
 	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
@@ -1819,7 +1825,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				next
 			})) return;
 			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
@@ -1830,7 +1836,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				},
 				isPage: isRoot(current),
 				repost
-			}, &quot;*&quot;);
+			});
 			lastPosted = next;
 		};
 		const postHover = (element) =&gt; {
@@ -1840,10 +1846,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				element,
 				rect
 			};
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_HOVER_MESSAGE,
 				rect
-			}, &quot;*&quot;);
+			});
 		};
 		const cancelPendingHover = () =&gt; {
 			if (pendingHover !== void 0) {
@@ -2091,10 +2097,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			})) return;
 			force = false;
 			last = anchors;
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_ANCHOR_RECTS_MESSAGE,
 				anchors
-			}, &quot;*&quot;);
+			});
 		};
 		const schedule = () =&gt; {
 			if (pending === void 0) pending = requestAnimationFrame(measure);
@@ -2151,10 +2157,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_HEIGHT_MESSAGE,
 			height
-		}, &quot;*&quot;);
+		});
 	};
 	var scheduleHeight = () =&gt; {
 		if (heightTimer !== void 0) clearTimeout(heightTimer);
@@ -2183,14 +2189,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return false;
 	};
 	var postWheel = (event, ctrlKey) =&gt; {
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_WHEEL_MESSAGE,
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			ctrlKey,
 			x: event.clientX,
 			y: event.clientY
-		}, &quot;*&quot;);
+		});
 	};
 	window.addEventListener(&quot;wheel&quot;, (event) =&gt; {
 		if (event.ctrlKey || event.metaKey) {
@@ -2220,14 +2226,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_KEY_MESSAGE,
 			key
-		}, &quot;*&quot;);
+		});
 	}, { capture: true });
 	installCommentPicking(host);
 	installPinAnchors(host);
-	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
+	postToChrome(host, { type: FRAME_READY_MESSAGE });
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:1080px;width:400px;height:24px">c</div>
@@ -2293,6 +2299,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var postToChrome = (host, message) =&gt; {
+		host.postMessage(message, &quot;*&quot;);
+	};
 	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
@@ -2925,7 +2934,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				next
 			})) return;
 			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
@@ -2936,7 +2945,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				},
 				isPage: isRoot(current),
 				repost
-			}, &quot;*&quot;);
+			});
 			lastPosted = next;
 		};
 		const postHover = (element) =&gt; {
@@ -2946,10 +2955,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				element,
 				rect
 			};
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_HOVER_MESSAGE,
 				rect
-			}, &quot;*&quot;);
+			});
 		};
 		const cancelPendingHover = () =&gt; {
 			if (pendingHover !== void 0) {
@@ -3197,10 +3206,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			})) return;
 			force = false;
 			last = anchors;
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_ANCHOR_RECTS_MESSAGE,
 				anchors
-			}, &quot;*&quot;);
+			});
 		};
 		const schedule = () =&gt; {
 			if (pending === void 0) pending = requestAnimationFrame(measure);
@@ -3257,10 +3266,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_HEIGHT_MESSAGE,
 			height
-		}, &quot;*&quot;);
+		});
 	};
 	var scheduleHeight = () =&gt; {
 		if (heightTimer !== void 0) clearTimeout(heightTimer);
@@ -3289,14 +3298,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return false;
 	};
 	var postWheel = (event, ctrlKey) =&gt; {
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_WHEEL_MESSAGE,
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			ctrlKey,
 			x: event.clientX,
 			y: event.clientY
-		}, &quot;*&quot;);
+		});
 	};
 	window.addEventListener(&quot;wheel&quot;, (event) =&gt; {
 		if (event.ctrlKey || event.metaKey) {
@@ -3326,14 +3335,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_KEY_MESSAGE,
 			key
-		}, &quot;*&quot;);
+		});
 	}, { capture: true });
 	installCommentPicking(host);
 	installPinAnchors(host);
-	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
+	postToChrome(host, { type: FRAME_READY_MESSAGE });
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <div class="cd-label" style="left:48px;top:2080px;width:400px;height:24px">d</div>
@@ -3399,6 +3408,9 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		&quot;edit&quot;
 	];
 	var isFrameMode = (value) =&gt; FRAME_MODES.includes(value);
+	var postToChrome = (host, message) =&gt; {
+		host.postMessage(message, &quot;*&quot;);
+	};
 	var isRecord = (value) =&gt; value !== null &amp;&amp; typeof value === &quot;object&quot;;
 	var CONTROL_CHARS = /[\\p{Cc}\\u2028\\u2029]/u;
 	var hasControlChars = (value) =&gt; CONTROL_CHARS.test(value);
@@ -4031,7 +4043,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				next
 			})) return;
 			const box = (isRoot(current) ? document.documentElement : current).getBoundingClientRect();
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_PICK_MESSAGE,
 				...described,
 				rect: next.rect,
@@ -4042,7 +4054,7 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				},
 				isPage: isRoot(current),
 				repost
-			}, &quot;*&quot;);
+			});
 			lastPosted = next;
 		};
 		const postHover = (element) =&gt; {
@@ -4052,10 +4064,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 				element,
 				rect
 			};
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_HOVER_MESSAGE,
 				rect
-			}, &quot;*&quot;);
+			});
 		};
 		const cancelPendingHover = () =&gt; {
 			if (pendingHover !== void 0) {
@@ -4303,10 +4315,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 			})) return;
 			force = false;
 			last = anchors;
-			host.postMessage({
+			postToChrome(host, {
 				type: FRAME_ANCHOR_RECTS_MESSAGE,
 				anchors
-			}, &quot;*&quot;);
+			});
 		};
 		const schedule = () =&gt; {
 			if (pending === void 0) pending = requestAnimationFrame(measure);
@@ -4363,10 +4375,10 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		const height = measured &gt; 2e4 ? MAX_FRAME_HEIGHT : measured;
 		if (height === lastSentHeight) return;
 		lastSentHeight = height;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_HEIGHT_MESSAGE,
 			height
-		}, &quot;*&quot;);
+		});
 	};
 	var scheduleHeight = () =&gt; {
 		if (heightTimer !== void 0) clearTimeout(heightTimer);
@@ -4395,14 +4407,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		return false;
 	};
 	var postWheel = (event, ctrlKey) =&gt; {
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_WHEEL_MESSAGE,
 			deltaX: event.deltaX,
 			deltaY: event.deltaY,
 			ctrlKey,
 			x: event.clientX,
 			y: event.clientY
-		}, &quot;*&quot;);
+		});
 	};
 	window.addEventListener(&quot;wheel&quot;, (event) =&gt; {
 		if (event.ctrlKey || event.metaKey) {
@@ -4432,14 +4444,14 @@ iframe { position: absolute; display: block; border: 0; background: #fff; box-sh
 		if (key === void 0) return;
 		const origin = event.composedPath()[0];
 		if (origin instanceof HTMLElement &amp;&amp; (origin.isContentEditable || origin.matches(&quot;input, textarea, select&quot;))) return;
-		host.postMessage({
+		postToChrome(host, {
 			type: FRAME_KEY_MESSAGE,
 			key
-		}, &quot;*&quot;);
+		});
 	}, { capture: true });
 	installCommentPicking(host);
 	installPinAnchors(host);
-	host.postMessage({ type: FRAME_READY_MESSAGE }, &quot;*&quot;);
+	postToChrome(host, { type: FRAME_READY_MESSAGE });
 })();
 &lt;/script&gt;&lt;p&gt;frame&lt;/p&gt;"></iframe>
 <script>

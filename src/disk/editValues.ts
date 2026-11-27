@@ -139,6 +139,22 @@ export const normalizeStyleValue = (field: StyleField, value: string): string | 
 
 export type StyleChange = { field: StyleField; value: string };
 
+// One Edit-mode change to one element: its whole text node (liveText: the element's full live text
+// the edit started from, never the pick excerpt), or 1..EDIT_STYLE_FIELDS.length distinct style
+// fields set or cleared together (an empty value clears). The panel message, the edit core and the
+// chrome's save queue all carry it.
+export type EditChange =
+	| { field: 'text'; value: string; liveText: string }
+	| { styles: readonly StyleChange[] };
+
+export type EditRefusal =
+	| 'unknown-number'
+	| 'shared-number'
+	| 'not-plain-text'
+	| 'text-changed'
+	| 'invalid-value'
+	| 'unsupported-style';
+
 export type StyleChangesResult =
 	| { ok: true; styleText: string }
 	| { ok: false; refusal: 'invalid-value' | 'unsupported-style' };

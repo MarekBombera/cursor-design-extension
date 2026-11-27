@@ -15,7 +15,7 @@ import {
 	MAX_SELECTOR_CHARS,
 	isPageId,
 } from '../disk/layout';
-import { hasControlChars, isTagName } from '../webview/frame/frameMessages';
+import { hasControlChars, isRecord, isTagName } from '../webview/frame/frameMessages';
 import type {
 	ArtboardEditMessage,
 	ChromeMessage,
@@ -163,7 +163,9 @@ const pageDeleteSchema = z.object({
 // The artboard id charset is enforced by placeFrame's parseArtboardId. Both edit variants share
 // `type`, so they sit beside the discriminated union; text is tried first and unknown keys are
 // stripped, so a message with the text fields and `styles` parses as text.
-const chromeMessageSchema = z.union([
+// Exported for tests: chromeMessages.test.ts checks its output type both ways against ChromeMessage.
+/** @internal */
+export const chromeMessageSchema = z.union([
 	z.discriminatedUnion('type', [
 		z.object({ type: z.literal('artboard:ready') }),
 		z.object({
@@ -194,11 +196,11 @@ export const parseChromeMessage = (value: unknown): ChromeMessage | undefined =>
 	return parsed.success ? parsed.data : undefined;
 };
 
-const claimsType = (value: unknown, type: string): value is Record<string, unknown> =>
-	value !== null &&
-	typeof value === 'object' &&
-	'type' in value &&
-	(value as { type: unknown }).type === type;
+const claimsType = (
+	value: unknown,
+	type: ChromeMessage['type'],
+): value is Record<string, unknown> =>
+	value !== null && typeof value === 'object' && 'type' in value && value.type === type;
 
 // Valid or not: every claimed attempt gets an answer.
 export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value, 'frame:place');
@@ -214,37 +216,48 @@ export const isArtboardHistoryAttempt = (value: unknown): boolean =>
 export const claimedRequestId = (value: unknown): string | undefined => {
 	const requestId =
 		value !== null && typeof value === 'object' && 'requestId' in value
-			? (value as { requestId: unknown }).requestId
+			? value.requestId
 			: undefined;
 	return typeof requestId === 'string' && REQUEST_ID_PATTERN.test(requestId)
 		? requestId
 		: undefined;
 };
 
-const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
-	'comment:create',
-	'comment:reply',
-	'comment:set-status',
-	'comment:copy',
-	'comment:copy-open',
-];
+// Records, not lists: `satisfies` fails the build when a request type is added to or removed from
+// the message union without this table.
+const COMMENT_REQUEST_TYPES = {
+	'comment:create': true,
+	'comment:reply': true,
+	'comment:set-status': true,
+	'comment:copy': true,
+	'comment:copy-open': true,
+} satisfies Record<CommentRequestMessage['type'], true>;
+
+const PAGE_REQUEST_TYPES = {
+	'page:open': true,
+	'page:create': true,
+	'page:rename': true,
+	'page:delete': true,
+} satisfies Record<PageRequestMessage['type'], true>;
+
+const claimedTypeIn = <Type extends string>(
+	types: Record<Type, true>,
+	type: unknown,
+): type is Type => typeof type === 'string' && Object.hasOwn(types, type);
 
 // Valid or not, read before any parse, so every attempt gets an answer. Undefined: not a comment
 // request.
-export const commentRequestType = (value: unknown): CommentRequestMessage['type'] | undefined =>
-	COMMENT_REQUEST_TYPES.find((type) => claimsType(value, type));
-
-const PAGE_REQUEST_TYPES: readonly PageRequestMessage['type'][] = [
-	'page:open',
-	'page:create',
-	'page:rename',
-	'page:delete',
-];
+export const commentRequestType = (value: unknown): CommentRequestMessage['type'] | undefined => {
+	const type = isRecord(value) ? value.type : undefined;
+	return claimedTypeIn(COMMENT_REQUEST_TYPES, type) ? type : undefined;
+};
 
 // Valid or not, read before any parse, so every attempt gets an answer. Undefined: not a page
 // request.
-export const pageRequestType = (value: unknown): PageRequestMessage['type'] | undefined =>
-	PAGE_REQUEST_TYPES.find((type) => claimsType(value, type));
+export const pageRequestType = (value: unknown): PageRequestMessage['type'] | undefined => {
+	const type = isRecord(value) ? value.type : undefined;
+	return claimedTypeIn(PAGE_REQUEST_TYPES, type) ? type : undefined;
+};
 
 // The edit core's union, built key by key: nothing else of the message reaches it.
 export const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit =>

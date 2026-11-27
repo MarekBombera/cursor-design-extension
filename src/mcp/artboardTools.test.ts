@@ -85,7 +85,7 @@ const withWorkspaceRootsEnv = async (
 
 const textOf = (result: CallToolResult): string => {
 	const [firstBlock] = result.content;
-	assert(firstBlock.type === 'text');
+	assert(firstBlock?.type === 'text');
 	return firstBlock.text;
 };
 
@@ -106,10 +106,10 @@ const handlerFor = (toolName: string): CapturedHandler => {
 const captureStderr = async (run: () => Promise<void>): Promise<string> => {
 	const originalWrite = process.stderr.write.bind(process.stderr);
 	let captured = '';
-	process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+	process.stderr.write = (chunk: string | Uint8Array): boolean => {
 		captured += String(chunk);
 		return true;
-	}) as typeof process.stderr.write;
+	};
 	try {
 		await run();
 	} finally {

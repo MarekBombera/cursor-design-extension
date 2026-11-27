@@ -1,11 +1,13 @@
 import {
 	type ChromeFrameMessage,
 	type FrameMessage,
+	isRecord,
 	parseFrameMessage,
 } from './frame/frameMessages';
 import {
 	type ArtboardEditMessage,
 	type ArtboardHistoryMessage,
+	type ChromeMessage,
 	type CommentRequestMessage,
 	type FramePlaceMessage,
 	type HostMessage,
@@ -21,7 +23,7 @@ import {
 } from './savedState';
 
 type VsCodeApi = {
-	postMessage: (message: unknown) => void;
+	postMessage: (message: ChromeMessage) => void;
 	getState: () => unknown;
 	setState: (state: unknown) => void;
 };
@@ -33,7 +35,7 @@ const vscodeApi = acquireVsCodeApi();
 // Webview state is one record; each save keeps the other keys, so no save erases another's.
 const savedRecord = (): Record<string, unknown> => {
 	const state = vscodeApi.getState();
-	return state !== null && typeof state === 'object' ? { ...state } : {};
+	return isRecord(state) ? { ...state } : {};
 };
 
 export const readSavedStageView = (): SavedStageView | undefined =>
@@ -51,9 +53,9 @@ export const saveCommentsPanelOpen = (open: boolean): void => {
 
 export const readSavedCommentUi = (): SavedCommentUi => parseSavedCommentUi(vscodeApi.getState());
 
-// Snapshot: a deep $state proxy cannot be cloned. A key at its default is left out; the previous
-// record's `mode` (and the pre-9d `commentMode` key) is dropped first, so leaving a mode is saved
-// too.
+// Snapshot: insurance, setState's structured clone throws on a $state proxy. A key at its default
+// is left out; the previous record's `mode` (and the pre-9d `commentMode` key) is dropped first,
+// so leaving a mode is saved too.
 export const saveCommentUi = (ui: SavedCommentUi): void => {
 	const {
 		mode: _mode,
@@ -74,8 +76,8 @@ export const saveCommentUi = (ui: SavedCommentUi): void => {
 };
 
 // The only place a page-bound request gets its page: the pure rules build it page-free.
-// Snapshot: callers pass gesture fields and drafts that are $state proxies, and postMessage's
-// structured clone throws DataCloneError on a Proxy.
+// Snapshot: insurance; the callers' state is $state.raw, but postMessage's structured clone throws
+// DataCloneError on a $state proxy.
 export const pageBoundPost =
 	(
 		pageId: string,

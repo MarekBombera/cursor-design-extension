@@ -57,7 +57,7 @@ const threadState = ({
 	});
 };
 const withFirst = (change: Partial<Definition>): Definition[] => [
-	{ ...(SHORT[0] as Definition), ...change },
+	{ ...SHORT[0], ...change },
 	...SHORT.slice(1),
 ];
 const typeReply = async (page: Page, text: string, submit = false): Promise<void> => {

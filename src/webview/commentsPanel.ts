@@ -1,3 +1,4 @@
+import { COMMENT_STATUSES } from '../disk/layout';
 import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { PostedComment } from './hostMessages';
 import {
@@ -65,13 +66,11 @@ const SUMMARY_WORDS: Record<PostedComment['status'], string> = {
 export const summaryParts = (
 	summary: PanelSummary,
 ): { text: string; icon: IconName; tone: BadgeTone }[] =>
-	(['open', 'sent', 'resolved'] as const)
-		.filter((status) => summary[status] > 0)
-		.map((status) => ({
-			text: `${String(summary[status])} ${SUMMARY_WORDS[status]}`,
-			icon: statusBadge(status).icon,
-			tone: statusBadge(status).tone,
-		}));
+	COMMENT_STATUSES.filter((status) => summary[status] > 0).map((status) => ({
+		text: `${String(summary[status])} ${SUMMARY_WORDS[status]}`,
+		icon: statusBadge(status).icon,
+		tone: statusBadge(status).tone,
+	}));
 
 export const commentsText = (count: number): string =>
 	count === 1 ? '1 comment' : `${String(count)} comments`;

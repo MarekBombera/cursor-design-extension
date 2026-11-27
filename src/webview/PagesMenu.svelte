@@ -2,9 +2,8 @@
 	import type { Attachment } from 'svelte/attachments';
 
 	import { MAX_PAGE_TITLE_CHARS } from '../disk/layout';
-	import type { PostedPage } from './hostMessages';
 	import { nextRowIndex, PAGE_REQUEST_PENDING_TEXT, pageRows } from './pagesMenu';
-	import type { PageRequest, PageRequestError } from './pagesMenuState.svelte';
+	import type { PagesMenuState } from './pagesMenuState.svelte';
 	import Button from './ui/Button.svelte';
 	import Icon from './ui/Icon.svelte';
 	import IconButton from './ui/IconButton.svelte';
@@ -16,21 +15,21 @@
 	type Props = {
 		// The staged page.
 		pageId: string;
-		pages: PostedPage[];
-		open: boolean;
-		renaming: { pageId: string; draft: string } | undefined;
-		request: PageRequest | undefined;
-		error: PageRequestError | undefined;
-		now: number;
-		onToggle: () => void;
-		onClose: (options?: { focusButton?: boolean }) => void;
-		onOpenPage: (pageId: string) => void;
-		onCreatePage: () => void;
-		onStartRename: (pageId: string) => void;
-		onEditRename: (draft: string) => void;
-		onSubmitRename: () => void;
-		onCancelRename: (options?: { focusRename?: boolean }) => void;
-		onDeletePage: (pageId: string) => void;
+		pages: PagesMenuState['pages'];
+		open: PagesMenuState['open'];
+		renaming: PagesMenuState['renaming'];
+		request: PagesMenuState['request'];
+		error: PagesMenuState['error'];
+		now: PagesMenuState['now'];
+		onToggle: PagesMenuState['toggle'];
+		onClose: PagesMenuState['close'];
+		onOpenPage: PagesMenuState['openPage'];
+		onCreatePage: PagesMenuState['createPage'];
+		onStartRename: PagesMenuState['startRename'];
+		onEditRename: PagesMenuState['editRename'];
+		onSubmitRename: PagesMenuState['submitRename'];
+		onCancelRename: PagesMenuState['cancelRename'];
+		onDeletePage: PagesMenuState['deletePage'];
 	};
 
 	let {

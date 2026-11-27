@@ -135,16 +135,15 @@ test('artboard:error falls back to the default copy for a non-string message', (
 	});
 });
 
-test('ui:status needs a boolean mcpAvailable; handoffStale is true only when true', () => {
-	assert.equal(parseHostMessage({ type: 'ui:status', mcpAvailable: 'no' }), undefined);
-	assert.deepEqual(parseHostMessage({ type: 'ui:status', mcpAvailable: false }), {
-		type: 'ui:status',
-		mcpAvailable: false,
-		handoffStale: false,
-	});
-	assert.deepEqual(
+test('ui:status needs a boolean mcpAvailable and a boolean handoffStale', () => {
+	assert.equal(
+		parseHostMessage({ type: 'ui:status', mcpAvailable: 'no', handoffStale: false }),
+		undefined,
+	);
+	assert.equal(parseHostMessage({ type: 'ui:status', mcpAvailable: false }), undefined);
+	assert.equal(
 		parseHostMessage({ type: 'ui:status', mcpAvailable: true, handoffStale: 'yes' }),
-		{ type: 'ui:status', mcpAvailable: true, handoffStale: false },
+		undefined,
 	);
 	assert.deepEqual(
 		parseHostMessage({ type: 'ui:status', mcpAvailable: true, handoffStale: true }),

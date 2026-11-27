@@ -75,7 +75,10 @@ test('an artboard runs its inline code but cannot load remote scripts, static, i
 
 	expect(await frame.evaluate(() => (window as { __inlineRan?: boolean }).__inlineRan)).toBe(true);
 	expect(
-		await frame.evaluate(() => getComputedStyle(document.querySelector('.probe')!).color),
+		await frame.evaluate(() => {
+			const probe = document.querySelector('.probe');
+			return probe === null ? null : getComputedStyle(probe).color;
+		}),
 	).toBe('rgb(1, 2, 3)');
 	await expect
 		.poll(() => frame.evaluate(() => (window as { __violations?: string[] }).__violations ?? []))
@@ -166,7 +169,10 @@ test('under the chrome CSP, a styled frame and its pin log no violation', async 
 	const frame = await frameOf(page, 'a');
 
 	expect(
-		await frame.evaluate(() => getComputedStyle(document.querySelector('.probe')!).color),
+		await frame.evaluate(() => {
+			const probe = document.querySelector('.probe');
+			return probe === null ? null : getComputedStyle(probe).color;
+		}),
 	).toBe('rgb(1, 2, 3)');
 	expect(await frame.evaluate(() => document.documentElement.lang)).toBe('cs');
 	expect(violations).toEqual([]);
@@ -230,10 +236,12 @@ test('under the chrome CSP, style attributes render, inline handlers and style u
 	const frame = await frameOf(page, 'a');
 
 	expect(
-		await frame.evaluate(() => [
-			getComputedStyle(document.querySelector('.a')!).color,
-			getComputedStyle(document.querySelector('.b')!).color,
-		]),
+		await frame.evaluate(() =>
+			['.a', '.b'].map((selector) => {
+				const element = document.querySelector(selector);
+				return element === null ? null : getComputedStyle(element).color;
+			}),
+		),
 	).toEqual(['rgb(4, 5, 6)', 'rgb(7, 8, 9)']);
 	await clickAt(page, centerOf(await frameElementBox({ page, frameId: 'a', selector: 'button' })));
 	await expect

@@ -6,13 +6,14 @@ import {
 	normalizeStyleValue,
 	previewText,
 	type StyleChange,
+	type StyleField,
 } from '../disk/editValues';
 import { leadingWhitespaceLength, trailingWhitespaceLength } from '../disk/inlineStyle';
 import { MAX_EDIT_TEXT_CHARS, MAX_PICK_STYLE_CHARS } from '../disk/layout';
 import type { ChromePick } from './commentPick';
 import { editability, inlineValue } from './editInspector';
 import { type EditCommit, type EditField, type EditKey, NOT_SAVED_COPY } from './editRequests';
-import type { EditApplyMessage, EditStyleField } from './frame/frameMessages';
+import type { EditApplyMessage } from './frame/frameMessages';
 
 // The host stays the authority on every save; these rules only decide what to preview and send.
 
@@ -108,7 +109,7 @@ export const textMaxLength = (liveText: string): number => {
 type StylePreview = { style: string } | { error: FieldErrorKind };
 
 // A refused text-box value, named by its field's own rule.
-const invalidValueError = (field: EditStyleField): FieldErrorKind => {
+const invalidValueError = (field: StyleField): FieldErrorKind => {
 	if (COLOR_FIELDS.has(field)) {
 		return 'invalid-color';
 	}
@@ -119,7 +120,7 @@ const invalidValueError = (field: EditStyleField): FieldErrorKind => {
 };
 
 // The edit core's apply rule, so the preview is what a save writes.
-const stylePreview = (draft: EditDraft, field: EditStyleField): StylePreview => {
+const stylePreview = (draft: EditDraft, field: StyleField): StylePreview => {
 	const applied = applyStyleChanges({
 		styleText: draft.style,
 		changes: [{ field, value: draft.value }],

@@ -1036,7 +1036,7 @@ test('a pick from a frame without focus never retargets Undo / Redo', async ({ p
 			(data) => {
 				window.parent.postMessage(data, '*');
 			},
-			{ ...(pickData as Record<string, unknown>), repost: false },
+			{ ...pickData, repost: false },
 		);
 	};
 	await undoButton(page).focus();

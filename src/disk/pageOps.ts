@@ -200,6 +200,7 @@ type CreatePageResult = {
 const isSoleUntitledFirstPage = (project: Project): boolean => {
 	const [onlyPage, ...otherPages] = project.pages;
 	return (
+		onlyPage !== undefined &&
 		otherPages.length === 0 &&
 		onlyPage.id === FIRST_PAGE_ID &&
 		onlyPage.title === pageTitle(FIRST_PAGE_ID)

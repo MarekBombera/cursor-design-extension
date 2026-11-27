@@ -1,3 +1,5 @@
+import { createSubscriber } from 'svelte/reactivity';
+
 import {
 	answerAction,
 	answerCopyOpen,
@@ -32,18 +34,30 @@ import type {
 } from './hostMessages';
 
 export class CommentsState {
-	comments: PostedComment[] = $state([]);
+	comments: PostedComment[] = $state.raw([]);
 	commentsError: string | undefined = $state();
 	// The last comments:updated carried no error.
 	commentsKnown = $state(false);
 	// By comment id. Restored reply text opens its composer.
 	actions: CommentActions;
-	copyOpen: CopyOpenState = $state({});
-	copyFeedback: (CopiedButton & { sequence: number }) | undefined = $state.raw();
+	copyOpen: CopyOpenState = $state.raw({});
+	copyFeedback: CopiedButton | undefined = $state.raw();
 	// The comments live region's text; the sequence makes a repeat speak again (liveRegionText).
-	announcement = $state({ text: '', sequence: 0 });
+	announcement = $state.raw({ text: '', sequence: 0 });
 	commentsPanelOpen = $state(readSavedCommentsPanelOpen());
-	now = $state(Date.now());
+	// One shared clock, so every card reads the same time. It ticks only while something reads `now`
+	// (an open panel or thread) and is fresh when the first reader subscribes.
+	#now = $state(Date.now());
+	readonly #subscribeNow = createSubscriber((update) => {
+		this.#now = Date.now();
+		const timer = setInterval(() => {
+			this.#now = Date.now();
+			update();
+		}, 60_000);
+		return () => {
+			clearInterval(timer);
+		};
+	});
 
 	// One copy at a time across the chrome.
 	readonly copyBlocked = $derived.by(() =>
@@ -77,15 +91,11 @@ export class CommentsState {
 				clearTimeout(timer);
 			};
 		});
+	}
 
-		$effect(() => {
-			const timer = setInterval(() => {
-				this.now = Date.now();
-			}, 60_000);
-			return () => {
-				clearInterval(timer);
-			};
-		});
+	get now(): number {
+		this.#subscribeNow();
+		return this.#now;
 	}
 
 	// Reply text kept across a reload: never a pending reply's (the host never replays its answer).
@@ -178,9 +188,9 @@ export class CommentsState {
 		}
 	};
 
-	// A new success replaces any other button's "Copied" and restarts its timer (sequence).
+	// A new success replaces any other button's "Copied" and restarts its timer (a new object).
 	#showCopied = (button: CopiedButton): void => {
-		this.copyFeedback = { ...button, sequence: (this.copyFeedback?.sequence ?? 0) + 1 };
+		this.copyFeedback = { ...button };
 	};
 
 	handleToggleCommentsPanel = (): void => {

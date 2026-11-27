@@ -3,7 +3,7 @@ import { cachedArtboardDocument, frameCacheKey } from '../disk/commentViews';
 import { ArtboardNotFoundError, DiskError } from '../disk/errors';
 import { MAX_POSTED_ARTBOARD_HTML_CHARS } from '../disk/layout';
 import { sourceTaggedHtml } from '../disk/sourceTags';
-import type { PostedCanvasFrame, PostedPage } from '../webview/hostMessages';
+import type { PostedPage } from '../webview/hostMessages';
 
 export const UNTRUSTED_WORKSPACE_MESSAGE =
 	'This workspace is not trusted. Vibeboard will not write files or preview artboard HTML.';
@@ -116,12 +116,10 @@ export const panelFrames = ({
 	return posted;
 };
 
-// The outbox adds the history flags at send time.
-export type UnflaggedPostedFrame = Omit<PostedCanvasFrame, 'canUndo' | 'canRedo'>;
-
-// Frames arrive capped and tagged by panelFrames; this only maps the fields.
-export const postedFrameFromSnapshot = (frame: CanvasViewFrame): UnflaggedPostedFrame => {
-	const posted: UnflaggedPostedFrame = {
+// Frames arrive capped and tagged by panelFrames; this only maps the fields. The outbox adds the
+// history flags at send time.
+export const postedFrameFromSnapshot = (frame: CanvasViewFrame): CanvasViewFrame => {
+	const posted: CanvasViewFrame = {
 		id: frame.id,
 		label: frame.label,
 		x: frame.x,

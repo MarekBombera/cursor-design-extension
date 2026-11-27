@@ -50,10 +50,6 @@
 	const focus = (part: string): string | undefined =>
 		focusKey === undefined ? undefined : `${focusKey}-${part}`;
 
-	const handleInput = (event: Event & { currentTarget: HTMLTextAreaElement }): void => {
-		oninput(event.currentTarget.value);
-	};
-
 	const handleCancel = (): void => {
 		if (!pending) {
 			oncancel();
@@ -77,8 +73,7 @@
 		{placeholder}
 		maxlength={MAX_COMMENT_BODY_CHARS}
 		readonly={pending}
-		{value}
-		oninput={handleInput}
+		bind:value={() => value, (text) => oninput(text)}
 	></textarea>
 	{@render message?.()}
 	<div class="row">

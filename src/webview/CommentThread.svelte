@@ -4,14 +4,14 @@
 
 	import CommentCard from './CommentCard.svelte';
 	import { placePopover } from './commentPopover';
-	import type { StagePoint } from './stageGeometry';
+	import type { FramePoint } from './frame/frameMessages';
 	import IconButton from './ui/IconButton.svelte';
 	import Widget from './ui/Widget.svelte';
 
 	// Owns placement, Escape and the focus on open; the rest is CommentCard's.
 	type Props = Omit<ComponentProps<typeof CommentCard>, 'shell' | 'frameShown' | 'onJump'> & {
 		// Viewport-local screen px of the pin.
-		anchor: StagePoint;
+		anchor: FramePoint;
 		viewportWidth: number;
 		viewportHeight: number;
 		onClose: () => void;

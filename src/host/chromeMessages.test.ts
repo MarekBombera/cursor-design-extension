@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { test } from 'vite-plus/test';
+import { expectTypeOf, test } from 'vite-plus/test';
+import type * as z from 'zod/mini';
 
 import type { CommentView } from '../disk/commentViews';
+import type { StyleChange } from '../disk/editValues';
 import {
 	MAX_EDIT_TEXT_CHARS,
 	MAX_FRAME_COORDINATE,
@@ -9,6 +11,7 @@ import {
 	MAX_PICK_TEXT_CHARS,
 } from '../disk/layout';
 import {
+	chromeMessageSchema,
 	claimedRequestId,
 	isArtboardEditAttempt,
 	commentRequestType,
@@ -20,7 +23,27 @@ import {
 	toPostedComment,
 	isArtboardHistoryAttempt,
 } from './chromeMessages';
-import type { ArtboardEditMessage, CommentCreateMessage } from '../webview/hostMessages';
+import type { ChromeMessage, CommentCreateMessage } from '../webview/hostMessages';
+
+// Each member and its object fields flattened, so intersections (ArtboardEditMessage,
+// FramePlacement) compare as the plain objects zod outputs, and its arrays read-only, as the
+// message types declare them. comment:create `styles` stays a plain string record on the wire
+// (addComment owns the key allowlist), so only parseChromeMessage's return type checks it, one way.
+// Flat distributes, so a field typed as a union of objects keeps every variant.
+type Flat<Value> = Value extends object ? { [Field in keyof Value]: Value[Field] } : Value;
+type Compared<Message> = Message extends { type: 'comment:create' }
+	? Omit<Message, 'styles'>
+	: {
+			[Key in keyof Message]: Message[Key] extends readonly (infer Item)[]
+				? readonly Item[]
+				: Flat<Message[Key]>;
+		};
+
+test('the parse schema and ChromeMessage describe the same messages', () => {
+	expectTypeOf<Compared<z.output<typeof chromeMessageSchema>>>().toEqualTypeOf<
+		Compared<ChromeMessage>
+	>();
+});
 
 const validPlace = {
 	type: 'frame:place',
@@ -475,8 +498,8 @@ test('toArtboardEdit hands the edit core only the edit, never the rest of the me
 		sourceNumber: 1,
 		hash: `sha256:${'a'.repeat(64)}`,
 	} as const;
-	const styles = [{ field: 'padding', value: '8' }];
-	assert.deepEqual(toArtboardEdit({ ...wire, styles } as ArtboardEditMessage), {
+	const styles: StyleChange[] = [{ field: 'padding', value: '8' }];
+	assert.deepEqual(toArtboardEdit({ ...wire, styles }), {
 		sourceNumber: 1,
 		styles,
 	});
@@ -486,7 +509,7 @@ test('toArtboardEdit hands the edit core only the edit, never the rest of the me
 			field: 'text',
 			value: 'New',
 			liveText: 'Old',
-		} as ArtboardEditMessage),
+		}),
 		{ sourceNumber: 1, field: 'text', value: 'New', liveText: 'Old' },
 	);
 });

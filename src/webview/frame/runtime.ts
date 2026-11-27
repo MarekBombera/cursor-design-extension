@@ -6,6 +6,7 @@ import {
 	FRAME_READY_MESSAGE,
 	FRAME_WHEEL_MESSAGE,
 	type FrameKey,
+	postToChrome,
 } from './frameMessages';
 import { installPinAnchors } from './pinAnchors';
 
@@ -29,7 +30,7 @@ const postHeight = (): void => {
 		return;
 	}
 	lastSentHeight = height;
-	host.postMessage({ type: FRAME_HEIGHT_MESSAGE, height }, '*');
+	postToChrome(host, { type: FRAME_HEIGHT_MESSAGE, height });
 };
 
 const scheduleHeight = (): void => {
@@ -83,17 +84,14 @@ const canTakeWheel = (element: Element, event: WheelEvent, useY: boolean): boole
 };
 
 const postWheel = (event: WheelEvent, ctrlKey: boolean): void => {
-	host.postMessage(
-		{
-			type: FRAME_WHEEL_MESSAGE,
-			deltaX: event.deltaX,
-			deltaY: event.deltaY,
-			ctrlKey,
-			x: event.clientX,
-			y: event.clientY,
-		},
-		'*',
-	);
+	postToChrome(host, {
+		type: FRAME_WHEEL_MESSAGE,
+		deltaX: event.deltaX,
+		deltaY: event.deltaY,
+		ctrlKey,
+		x: event.clientX,
+		y: event.clientY,
+	});
 };
 
 window.addEventListener(
@@ -157,7 +155,7 @@ window.addEventListener(
 		) {
 			return;
 		}
-		host.postMessage({ type: FRAME_KEY_MESSAGE, key }, '*');
+		postToChrome(host, { type: FRAME_KEY_MESSAGE, key });
 	},
 	{ capture: true },
 );
@@ -166,4 +164,4 @@ installCommentPicking(host);
 installPinAnchors(host);
 
 // Last, after every listener exists: chrome answers with the current cd:mode.
-host.postMessage({ type: FRAME_READY_MESSAGE }, '*');
+postToChrome(host, { type: FRAME_READY_MESSAGE });

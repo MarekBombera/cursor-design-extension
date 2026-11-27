@@ -3,7 +3,6 @@ import { type CommentView, withCommentViews } from './commentViews';
 import { matchCommentTarget, parseArtboardDocument, targetAgrees } from './commentTarget';
 import {
 	COMMENT_BODY_MESSAGE,
-	type CommentStatus,
 	type NewComment,
 	commentsTextIfExists,
 	orderedComment,
@@ -25,6 +24,7 @@ import {
 	MAX_COMMENT_REPLIES,
 	MAX_COMMENTS,
 	MAX_PICK_TEXT_CHARS,
+	type CommentStatus,
 	commentsPathSegments,
 } from './layout';
 import {

@@ -155,13 +155,13 @@ export const parseHostMessage = (data: unknown): HostMessage | undefined => {
 		};
 	}
 	if (data.type === 'ui:status') {
-		if (typeof data.mcpAvailable !== 'boolean') {
+		if (typeof data.mcpAvailable !== 'boolean' || typeof data.handoffStale !== 'boolean') {
 			return undefined;
 		}
 		return {
 			type: 'ui:status',
 			mcpAvailable: data.mcpAvailable,
-			handoffStale: data.handoffStale === true,
+			handoffStale: data.handoffStale,
 		};
 	}
 	if (data.type === 'comments:updated') {

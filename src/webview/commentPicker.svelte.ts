@@ -50,7 +50,7 @@ export class CommentPicker {
 	readonly #pinThread: PinThread;
 	readonly #post: PagePost<CommentCreateMessage>;
 	picking: CommentPickState;
-	draft: CommentDraft | undefined = $state();
+	draft: CommentDraft | undefined = $state.raw();
 	popover: { focusBody: (caretAtEnd?: boolean) => void } | undefined = $state();
 	// A draft restored after a reload, kept apart so the live rules never see it. It lives only until
 	// the start canvas this page applies in its own script (restoreHeldDraft). That relies on App's
@@ -112,7 +112,7 @@ export class CommentPicker {
 		this.#canvas = canvas;
 		this.#pinThread = pinThread;
 		this.#post = post;
-		this.picking = $state({ ...INITIAL_COMMENT_PICK, mode });
+		this.picking = $state.raw({ ...INITIAL_COMMENT_PICK, mode });
 		this.#heldDraft = heldDraft;
 
 		// The restored popover mounts only once the stage has committed a view, so its focus waits for

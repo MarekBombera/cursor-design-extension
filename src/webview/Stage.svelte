@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import type { ComponentProps, Snippet } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 
 	import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
@@ -9,18 +9,14 @@
 	import Icon from './ui/Icon.svelte';
 	import type { IconName } from './ui/icons';
 	import type { StageFrame } from './canvasFrames';
-	import type { FrameMode } from './frame/frameMessages';
+	import type { CanvasState } from './canvasState.svelte';
+	import type { FrameMode, FrameRect } from './frame/frameMessages';
 	import { revealOffset, type StageFrameGesture, type StageWheel } from './frameGesture';
-	import {
-		type FrameLabelBox,
-		type GroupHeadingBox,
-		type StageRect,
-	} from './stageGeometry';
+	import type { GroupHeadingBox } from './stageGeometry';
 
 	type Props = {
 		frames: StageFrame[];
-		// size: frameSizeText, '' on a tile.
-		labels: Array<FrameLabelBox & { text: string; size: string }>;
+		labels: CanvasState['labels'];
 		headings: GroupHeadingBox[];
 		activeId: string;
 		nonce: string;
@@ -29,14 +25,14 @@
 		zoom: number;
 		hidden: boolean;
 		mode: FrameMode;
-		hoverOutline: StageRect | undefined;
-		pickOutline: StageRect | undefined;
-		flashOutline: StageRect | undefined;
+		hoverOutline: FrameRect | undefined;
+		pickOutline: FrameRect | undefined;
+		flashOutline: FrameRect | undefined;
 		onWheel: (wheel: StageWheel) => void;
 		onDragPan: (deltaX: number, deltaY: number) => void;
 		onViewportSize: (width: number, height: number) => void;
-		onIframe: (id: string, iframe: HTMLIFrameElement | undefined) => void;
-		onRenderError: (id: string) => void;
+		onIframe: ComponentProps<typeof Frame>['onIframe'];
+		onRenderError: ComponentProps<typeof Frame>['onRenderError'];
 		onFrameGesture: (gesture: StageFrameGesture) => void;
 		// Viewport-local chrome above the frames and outlines: pins, the thread, the add popover.
 		children?: Snippet;
@@ -159,7 +155,11 @@
 	};
 </script>
 
-<svelte:window onblur={trackFrameFocus} onfocus={trackFrameFocus} />
+<svelte:window
+	onblur={trackFrameFocus}
+	onfocus={trackFrameFocus}
+	onkeydown={gestures.handleWindowKeydown}
+/>
 
 <div
 	class={[
@@ -207,7 +207,7 @@
 		{/each}
 		<!-- After the frames so handles paint above the iframes (no frame sets a z-index). -->
 		{#each frames as frame (frame.id)}
-			{@const target = { id: frame.id, kind: 'resize' as const }}
+			{const target = $derived({ id: frame.id, kind: 'resize' as const })}
 			<!-- A focusable separator is the WAI-ARIA window-splitter widget; Svelte classes the role as static. -->
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 			<div
@@ -237,7 +237,7 @@
 			></div>
 		{/each}
 		{#each labels as label (label.id)}
-			{@const target = { id: label.id, kind: 'move' as const }}
+			{const target = $derived({ id: label.id, kind: 'move' as const })}
 			<button
 				type="button"
 				class={['label', { active: label.id === activeId }]}
@@ -284,7 +284,7 @@
 	<Overlay hover={hoverOutline} pick={pickOutline} flash={flashOutline} />
 	<!-- aria-hidden: the toolbar's live region already announces the mode. -->
 	{#if mode !== 'interact'}
-		{@const hint = MODE_HINTS[mode]}
+		{const hint = $derived(MODE_HINTS[mode])}
 		<div class="mode-hint" aria-hidden="true">
 			<span class="hint-icon"><Icon name={hint.icon} size={14} /></span>
 			Click an element to {hint.verb} <span class="separator">·</span> <kbd>Esc</kbd> to leave

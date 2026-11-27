@@ -108,7 +108,7 @@
 	{:else}
 		<label class="label" for={props.id}>{props.label}</label>
 		{#if props.control === 'select'}
-			{@const { selected, onchoose } = props}
+			{const { selected, onchoose } = $derived(props)}
 			<!-- The DOM value goes back to `selected` after every choice, so the select shows the
 			     computed value until the pick re-posts it.
 			     ponytail: a native select fires no change for its current option, so an inherited value

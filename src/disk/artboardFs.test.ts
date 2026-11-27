@@ -144,7 +144,9 @@ test('uppercase on-disk hash does not conflict or extra-bump', async () => {
 		writeEnsurePanelMarker: false,
 	});
 	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
-	const storedMeta = (await readFile(metaPath, 'utf8').then((text) => JSON.parse(text))) as {
+	const storedMeta = (await readFile(metaPath, 'utf8').then((text): unknown =>
+		JSON.parse(text),
+	)) as {
 		hash: string;
 	};
 	storedMeta.hash = `sha256:${storedMeta.hash.slice('sha256:'.length).toUpperCase()}`;
@@ -202,7 +204,9 @@ test('meta id mismatch reads as corrupt meta', async () => {
 		writeEnsurePanelMarker: false,
 	});
 	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
-	const storedMeta = (await readFile(metaPath, 'utf8').then((text) => JSON.parse(text))) as {
+	const storedMeta = (await readFile(metaPath, 'utf8').then((text): unknown =>
+		JSON.parse(text),
+	)) as {
 		id: string;
 	};
 	storedMeta.id = 'other';

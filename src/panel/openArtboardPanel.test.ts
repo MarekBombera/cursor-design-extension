@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
 import type * as vscode from 'vscode';
 
+import { fake } from '../testing/fake';
+
 const panelMock = vi.hoisted(() => ({
 	receive: undefined as ((message: unknown) => void) | undefined,
 	isTrusted: true,
@@ -101,7 +103,7 @@ test('each claimed chrome request type reaches exactly its own handler', () => {
 });
 
 test('createPanelPorts: the delete confirm is the native modal; trust and root are read per call', async () => {
-	const ports = createPanelPorts({} as vscode.OutputChannel);
+	const ports = createPanelPorts(fake<vscode.OutputChannel>({}));
 	const prompt = { message: 'Delete "Home"?', detail: 'Gone.', action: 'Delete' };
 	panelMock.choice = 'Delete';
 	assert.equal(await ports.confirmModal(prompt), true);
@@ -122,7 +124,7 @@ test('createPanelPorts: the delete confirm is the native modal; trust and root a
 
 // Rule 02: a failed clipboard write must reject, so panelComments never marks the comment sent.
 test('createPanelPorts: a rejected clipboard write rejects writeClipboard', async () => {
-	const ports = createPanelPorts({} as vscode.OutputChannel);
+	const ports = createPanelPorts(fake<vscode.OutputChannel>({}));
 	await ports.writeClipboard('prompt');
 	panelMock.clipboardError = new Error('denied');
 	await assert.rejects(ports.writeClipboard('prompt'), /denied/);

@@ -49,5 +49,7 @@ export const stepWatch = (
 			? { state, effect: 'openPanel' }
 			: { state: { markerPending: false }, effect: 'ignore' };
 	}
+	// The last event left; a new WatchEvent fails the build here.
+	event.type satisfies 'opened';
 	return { state: { markerPending: false }, effect: 'ignore' };
 };

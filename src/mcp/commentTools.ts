@@ -12,26 +12,19 @@ import {
 } from './mcpToolResult';
 import { GET_COMMENT_TOOL, LIST_COMMENTS_TOOL, RESOLVE_COMMENT_TOOL } from './toolNames';
 
-type CommentToolArgs = {
-	id?: unknown;
-	note?: unknown;
-	status?: unknown;
-	rootPath?: unknown;
-};
-
-const listCommentsInputSchema = toolInputSchema<CommentToolArgs>({
+const listCommentsInputSchema = toolInputSchema({
 	status: {
 		description: 'Optional string: open, sent, or resolved. Omit for every unresolved comment.',
 	},
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const getCommentInputSchema = toolInputSchema<CommentToolArgs>({
+const getCommentInputSchema = toolInputSchema({
 	id: { description: 'Required string. Comment id from the prompt or list_comments.' },
 	rootPath: { description: ROOT_PATH_DESCRIPTION },
 });
 
-const resolveCommentInputSchema = toolInputSchema<CommentToolArgs>({
+const resolveCommentInputSchema = toolInputSchema({
 	id: { description: 'Required string. Comment id from the prompt or list_comments.' },
 	note: {
 		description: 'Required string. One line saying what you changed (stored as an agent reply).',

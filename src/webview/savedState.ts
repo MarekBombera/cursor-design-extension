@@ -1,7 +1,8 @@
-import { COMMENT_ID_PATTERN, isPageId, MAX_COMMENT_BODY_CHARS, MAX_COMMENTS } from '../disk/layout';
+import { isPageId, MAX_COMMENT_BODY_CHARS, MAX_COMMENTS } from '../disk/layout';
 import type { CommentDraft, CommentDraftSlot } from './commentPopover';
 import {
 	type FrameMode,
+	isCommentId,
 	isFiniteNumber,
 	isFrameMode,
 	isRecord,
@@ -39,14 +40,13 @@ export type SavedCommentUi = {
 	replyDrafts: Readonly<Record<string, string>>;
 };
 
-const isCommentId = (value: unknown): value is string =>
-	typeof value === 'string' && COMMENT_ID_PATTERN.test(value);
-
 const isSavedBody = (value: unknown): value is string =>
 	typeof value === 'string' && value.length <= MAX_COMMENT_BODY_CHARS;
 
 // The frame id is only compared against live frame ids, so any non-empty string will do.
-const parseSavedDraft = (value: unknown): CommentDraft | undefined => {
+const parseSavedDraft = (
+	value: unknown,
+): Omit<CommentDraft, 'pendingRequestId' | 'error'> | undefined => {
 	if (!isRecord(value) || !isRecord(value.target)) {
 		return undefined;
 	}

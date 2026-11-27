@@ -1,4 +1,4 @@
-import type { StyleChange, StyleField } from '../disk/editValues';
+import type { EditChange, StyleField } from '../disk/editValues';
 import { MAX_HISTORY_STEPS } from '../disk/layout';
 import type { FrameRecord } from './canvasFrames';
 import type {
@@ -27,9 +27,7 @@ export type EditField = 'text' | StyleField;
 export type EditKey = { frameId: string; sourceNumber: number; documentVersion: number };
 
 // Values are the raw drafts: the host normalizes. liveText: the draft's baseline raw text node.
-export type EditCommit =
-	| { key: EditKey; field: 'text'; value: string; liveText: string }
-	| { key: EditKey; styles: StyleChange[] };
+export type EditCommit = { key: EditKey } & EditChange;
 
 // A step has no element and no preview: it undoes or redoes the frame's last own write.
 type QueuedRequest =

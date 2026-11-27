@@ -33,7 +33,7 @@ const DOCUMENTED_TOOLS = new Set([
 
 const ERROR_CODES = new Set(
 	[...readRepoFile('src/disk/errors.ts').matchAll(/readonly code = '([A-Za-z_]+)'/g)].map(
-		(match) => match[1],
+		(match) => match[1] ?? '',
 	),
 );
 
@@ -43,7 +43,7 @@ const HOST_ONLY_CODES = new Set(['FRAME_MOVED', 'PICK_OUTDATED', 'EDIT_REFUSED']
 test('frontmatter names the skill and says when to use it', () => {
 	const frontmatter = /^---\nname: vibeboard\ndescription: (.+)\n---\n/.exec(skill);
 	assert.ok(frontmatter, 'frontmatter must start the file with name: vibeboard');
-	assert.ok(frontmatter[1].trim().length > 0);
+	assert.ok((frontmatter[1] ?? '').trim().length > 0);
 });
 
 test('every registered MCP tool is documented in the skill', () => {
@@ -73,7 +73,7 @@ test('every Agent-visible error code is documented in the skill', () => {
 
 test('every error code in the skill exists', () => {
 	for (const [, word] of skill.matchAll(/`([A-Z]+(?:_[A-Z]+)+)`/g)) {
-		assert.ok(ERROR_CODES.has(word), `skill mentions unknown error code \`${word}\``);
+		assert.ok(ERROR_CODES.has(word ?? ''), `skill mentions unknown error code \`${word}\``);
 	}
 });
 

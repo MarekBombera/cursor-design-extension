@@ -10,7 +10,7 @@
 		targetChipText,
 	} from './commentPopover';
 	import Composer from './Composer.svelte';
-	import type { StagePoint } from './stageGeometry';
+	import type { FramePoint } from './frame/frameMessages';
 	import TargetRef from './TargetRef.svelte';
 	import IconButton from './ui/IconButton.svelte';
 	import Message from './ui/Message.svelte';
@@ -22,7 +22,7 @@
 		body: string;
 		frameLabel: string;
 		// Viewport-local screen px of the pick point.
-		anchor: StagePoint;
+		anchor: FramePoint;
 		viewportWidth: number;
 		viewportHeight: number;
 		// A live pick exists for the draft's frame; false after that frame reloaded.

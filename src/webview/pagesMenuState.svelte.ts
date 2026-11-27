@@ -10,9 +10,10 @@ import type {
 
 type PageRequestType = PageRequestMessage['type'];
 
-export type PageRequest = { requestId: string; type: PageRequestType; pageId?: string };
+// pageId: the target page; none for page:create.
+type PageRequest = Pick<PageRequestMessage, 'requestId' | 'type'> & { pageId?: string };
 
-export type PageRequestError = { type: PageRequestType; pageId?: string; message: string };
+type PageRequestError = { type: PageRequestType; pageId?: string; message: string };
 
 const PAGE_BUTTON = '[data-cd-page-button]';
 const PAGES_MENU = '[data-cd-pages-menu]';
