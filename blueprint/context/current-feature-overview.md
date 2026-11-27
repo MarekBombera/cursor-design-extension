@@ -1,71 +1,82 @@
-# Host tests on real disk (11c2) - Overview for review
+# Watcher pure step (11c3) - Overview for review
 
-Source of truth: `blueprint/history/features/11c2-host-tests-on-real-disk.md`. This file is the
-steering summary, not the build spec.
+Source of truth: `blueprint/history/features/11c3-watcher-pure-step.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-The panel request and refresh tests stopped checking mocks and started checking disk. Five host test
-files (`artboardDisk`, `refreshPanel`, `panelPages`, `panelComments`, `panelEdit`) now run on a real
-temp workspace with the fake ports from 11c1. Across the six host request and refresh test files
-there are 0 `vi.mock` (32 before 11c1, 15 after it). The product behaves exactly as before. The one
-source edit is an audit repair: the edit-message mapping `toArtboardEdit` moved, unchanged, into
-`chromeMessages.ts` with its own unit test.
+The disk watcher's decisions now live in one pure function, `stepWatch`, which has the watcher's
+first test (35 cases, every transition row, 10 mutation probes all caught). The vscode watcher,
+the 200 ms timer and the marker stat and delete stay a thin shell that asks `stepWatch` what to
+do. Nothing the user or the Agent sees changed.
 
-## Key loop
+## System map
+
+No message, call or disk write between processes changed. Inside the host:
 
 ```mermaid
-sequenceDiagram
-    participant T as Test
-    participant H as Host handler (real)
-    participant D as Temp workspace (real disk lib)
-    participant P as Fake ports
-    T->>D: build fixture (page-1 open, page-2, artboard hero)
-    T->>H: answerPageRequest / answerCommentRequest / answerEditRequest
-    H->>P: isTrusted, workspaceRoot
-    H->>D: resolve page, write
-    H->>P: postAnswer, then refresh posts
-    T->>P: vi.waitFor the posts
-    T->>D: assert bytes: requested page changed, other page untouched
+flowchart LR
+  FS["vscode FileSystemWatcher .vibeboard/**"] --> Shell["watchArtboardDisk shell"]
+  Shell -->|"disk, settled, markerChecked, opened"| Step["stepWatch (pure)"]
+  Step -->|"ignore, debounce, refresh, checkMarker, openPanel"| Shell
+  Shell --> Timer["200 ms debounce timer"]
+  Shell --> Refresh["refreshPanel"]
+  Shell --> Open["openArtboardPanel, preserveFocus"]
+```
+
+## Rule logic
+
+One flag, `markerPending`, decides between a plain refresh and opening the panel:
+
+```mermaid
+flowchart TD
+  D["disk event"] --> L{"lock or temp path?"}
+  L -->|yes| I1["ignore"]
+  L -->|no| M{"the .ensure-panel marker?"}
+  M -->|"write"| P1["pending = true, debounce"]
+  M -->|"delete"| P0["pending = false, ignore"]
+  M -->|"other path"| DB["debounce"]
+  S["debounce settled"] --> F{"same first folder?"}
+  F -->|no| X0["pending = false, ignore"]
+  F -->|yes| PN{"pending?"}
+  PN -->|no| R["refresh"]
+  PN -->|yes| T{"trusted?"}
+  T -->|no| X1["pending = false, ignore"]
+  T -->|yes| C["check marker"]
+  C -->|"missing or stat error"| X2["pending = false, ignore"]
+  C -->|"there"| O["open panel, refresh, delete marker"]
+  O --> X3["opened: pending = false"]
 ```
 
 ## What you will see
 
-Nothing in the product. In the tests: "this file on disk now says X" in place of "this mock was called
-with Y". Six host test files plus `chromeMessages.test.ts` changed. 892 tests, up from 882. The six
-files run in about 3.2 s.
+Nothing new. The panel still refreshes about 200 ms after a write under `.vibeboard/`, ignores
+lock and temp files, and opens without taking focus when the Agent's `create_page` writes
+`.ensure-panel`.
 
 ## Decisions locked
 
-- **Test-only**, except the F-08 repair above. A test that needed a source seam, a module mock or a spy
-  would have stopped the build. None did.
-- **Writes nothing** = a byte-for-byte tree compare of the temp root.
-- **Never resolved** = a tripwire workspace whose index is lost: any resolve rebuilds `project.json`,
-  so an identical tree proves the refusal came first. Used only where no trusted refresh follows.
-- **Fixtures** come from the disk lib in a fixed order. Broken states (`{` in a JSON file, a
-  directory in place of the `artboards` tombstone) are hand-written.
-- **Background refreshes** are awaited with `vi.waitFor` on the fake post (5 s timeout), never a
-  sleep.
-- **Proof:**
-  - 24 one-line source probes from the spec, plus one each for F-06 and F-08, each turned a test
-    red and were reverted.
-  - The six files passed 3 runs in a row, 4 concurrent runs and 3 shuffled-order runs.
-- **Every finding fixed**, by Bombic's call: F-01..F-12 closed by fresh re-reviews, none accepted.
+- Behavior unchanged, edge races included; a fix would be its own `/fix`. No new
+  `try`/`finally`: a throw mid-open leaves the marker pending, as before.
+- The state stays one module-level flag shared across watcher replacements. No watcher factory:
+  the 11c3 line asked only for the pure step.
+- `watchStep.ts` exports exactly `stepWatch`, `IDLE_WATCH_STATE` and the `WatchEvent` type, and
+  imports the one lock/temp rule `isLockOrTempPath`.
+- The shell reads trust and the folder through the existing ports.
 
 ## Out of scope
 
-`canvasSnapshot.test.ts` / `hostFs.test.ts` mocks (kept by plan), the watcher (11c3), webview ports
-(11c4), the message guard (11d).
+A watcher factory, clock injection, a unit test of the vscode shell, the page-bound post port
+(11c4), `parseHostMessage` (11d), comments (11e).
 
 ## Glossary
 
 | Term | Why it exists |
 |------|---------------|
-| Fake ports | The test stand-in for `PanelPorts` (trust, root, log, posts, clipboard, modal) |
-| Tripwire workspace | A folder whose `project.json` is gone, so any page resolve visibly rewrites it |
-| Probe | A deliberate one-line bug in the source; a good test turns red on it |
+| `.ensure-panel` | Marker file the Agent's `create_page` writes so the host opens the panel |
+| Pure step | A function with no I/O: state and event in, next state and effect out, so it tests without mocks |
+| Debounce | Waits 200 ms after the last disk event so a burst of writes causes one refresh |
 
 ## Done means
 
-`pnpm verify` passes (74 files, 892 tests). Build-plan 11c2 is checked; parent 11 stays open
-(11c3, 11c4, 11d, 11e remain).
+`pnpm verify` passed (75 files, 927 tests); probes a-j each turned a test red; one fresh Opus
+audit traced every old watcher branch to one new row and found nothing to fix.

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 
 import { VIBEBOARD_DIR, ensurePanelPathSegments } from '../disk/layout';
-import { isLockOrTempPath } from '../disk/workspaceLock';
 import { fileExists, firstWorkspaceFolder, isFileNotFound } from './hostFs';
 import { refreshPanel } from './refreshPanel';
+import { type WatchEvent, IDLE_WATCH_STATE, stepWatch } from './watchStep';
 import {
 	type PanelPorts,
 	hasCurrentArtboardPanel,
@@ -23,8 +23,14 @@ type ReplaceArtboardWatcherArgs = WatchArtboardDiskArgs & {
 
 let artboardWatcher: vscode.FileSystemWatcher | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-let pendingMarkerEnsure = false;
+let watchState = IDLE_WATCH_STATE;
 let watchChain: Promise<void> = Promise.resolve();
+
+const applyWatchEvent = (event: WatchEvent) => {
+	const next = stepWatch(watchState, event);
+	watchState = next.state;
+	return next.effect;
+};
 
 const clearDebounceTimer = (): void => {
 	if (debounceTimer !== undefined) {
@@ -36,7 +42,7 @@ const clearDebounceTimer = (): void => {
 // A no-op without a watcher; activate hooks it to deactivate.
 export const disposeArtboardWatcher = (): void => {
 	clearDebounceTimer();
-	pendingMarkerEnsure = false;
+	watchState = IDLE_WATCH_STATE;
 	artboardWatcher?.dispose();
 	artboardWatcher = undefined;
 };
@@ -70,38 +76,33 @@ export const replaceArtboardWatcher = ({
 	}
 
 	const markerUri = vscode.Uri.joinPath(workspaceFolder.uri, ...ensurePanelPathSegments);
-	const isMarkerUri = (uri: vscode.Uri): boolean => uri.fsPath === markerUri.fsPath;
 
 	const runDebouncedWatch = async (): Promise<void> => {
-		const currentFirstFolder = firstWorkspaceFolder();
-		if (!currentFirstFolder || currentFirstFolder.uri.fsPath !== workspaceFolder.uri.fsPath) {
-			pendingMarkerEnsure = false;
-			return;
-		}
-		if (pendingMarkerEnsure) {
-			if (!vscode.workspace.isTrusted) {
-				pendingMarkerEnsure = false;
-				return;
-			}
-			let markerStillThere = false;
-			try {
-				markerStillThere = await fileExists(markerUri);
-			} catch (error: unknown) {
-				pendingMarkerEnsure = false;
-				ports.log('watchArtboardDisk.markerStat', error);
-				return;
-			}
-			if (!markerStillThere) {
-				pendingMarkerEnsure = false;
-				return;
-			}
-			openArtboardPanel({ context, preserveFocus: true });
+		const effect = applyWatchEvent({
+			type: 'settled',
+			sameFolder: ports.workspaceRoot() === workspaceFolder.uri.fsPath,
+			trusted: ports.isTrusted(),
+		});
+		if (effect === 'refresh') {
 			await refreshWatchedArtboard({ ports });
-			await deleteEnsurePanelMarker(markerUri, ports);
-			pendingMarkerEnsure = false;
 			return;
 		}
+		if (effect !== 'checkMarker') {
+			return;
+		}
+		let markerStillThere = false;
+		try {
+			markerStillThere = await fileExists(markerUri);
+		} catch (error: unknown) {
+			ports.log('watchArtboardDisk.markerStat', error);
+		}
+		if (applyWatchEvent({ type: 'markerChecked', exists: markerStillThere }) !== 'openPanel') {
+			return;
+		}
+		openArtboardPanel({ context, preserveFocus: true });
 		await refreshWatchedArtboard({ ports });
+		await deleteEnsurePanelMarker(markerUri, ports);
+		applyWatchEvent({ type: 'opened' });
 	};
 
 	const scheduleDebounce = (): void => {
@@ -115,27 +116,20 @@ export const replaceArtboardWatcher = ({
 	artboardWatcher = vscode.workspace.createFileSystemWatcher(
 		new vscode.RelativePattern(workspaceFolder, `${VIBEBOARD_DIR}/**`),
 	);
-	const onArtboardDiskEvent = (uri: vscode.Uri): void => {
-		if (isLockOrTempPath(uri.fsPath)) {
-			return;
+	const onArtboardDiskEvent = (change: 'write' | 'delete', uri: vscode.Uri): void => {
+		const event: WatchEvent = {
+			type: 'disk',
+			change,
+			path: uri.fsPath,
+			markerPath: markerUri.fsPath,
+		};
+		if (applyWatchEvent(event) === 'debounce') {
+			scheduleDebounce();
 		}
-		if (isMarkerUri(uri)) {
-			pendingMarkerEnsure = true;
-		}
-		scheduleDebounce();
 	};
-	artboardWatcher.onDidCreate(onArtboardDiskEvent);
-	artboardWatcher.onDidChange(onArtboardDiskEvent);
-	artboardWatcher.onDidDelete((uri) => {
-		if (isLockOrTempPath(uri.fsPath)) {
-			return;
-		}
-		if (isMarkerUri(uri)) {
-			pendingMarkerEnsure = false;
-			return;
-		}
-		scheduleDebounce();
-	});
+	artboardWatcher.onDidCreate((uri) => onArtboardDiskEvent('write', uri));
+	artboardWatcher.onDidChange((uri) => onArtboardDiskEvent('write', uri));
+	artboardWatcher.onDidDelete((uri) => onArtboardDiskEvent('delete', uri));
 
 	if (!rearmMarker) {
 		return;
@@ -146,8 +140,7 @@ export const replaceArtboardWatcher = ({
 	void fileExists(markerUri)
 		.then((markerStillThere) => {
 			if (markerStillThere) {
-				pendingMarkerEnsure = true;
-				scheduleDebounce();
+				onArtboardDiskEvent('write', markerUri);
 			}
 		})
 		.catch((error: unknown) => {

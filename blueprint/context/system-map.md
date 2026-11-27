@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11c2 Host tests on real disk (`feature/host-tests-on-real-disk`): no flow or message changed. The host request and refresh tests run on a real temp workspace with fake ports; the edit-message mapping `toArtboardEdit` moved unchanged from `panelEdit.ts` to `chromeMessages.ts`.
+**Last verified against code:** 2026-11-27, 11c3 Watcher pure step (`feature/watcher-pure-step`): no flow or message changed. The watcher's decisions (lock / temp skip, `.ensure-panel` marker, debounce, folder and trust drops) moved into the pure `stepWatch` (`src/host/watchStep.ts`); `watchArtboardDisk.ts` is the vscode shell.
 
 ## Chart checklist
 
