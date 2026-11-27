@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11c1 Host ports (`feature/host-ports`): no flow or message changed. Host request and refresh handlers now get trust, root, log, panel posts, clipboard and the delete modal from one `PanelPorts` object built in `activate` (`createPanelPorts`, `openArtboardPanel.ts`); the manifest existence check reads through the disk lib (`lstat`).
+**Last verified against code:** 2026-11-27, 11c2 Host tests on real disk (`feature/host-tests-on-real-disk`): no flow or message changed. The host request and refresh tests run on a real temp workspace with fake ports; the edit-message mapping `toArtboardEdit` moved unchanged from `panelEdit.ts` to `chromeMessages.ts`.
 
 ## Chart checklist
 

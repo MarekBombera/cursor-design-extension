@@ -1,4 +1,5 @@
 import { panelFrameHtml } from './canvasSnapshot';
+import { toArtboardEdit } from './chromeMessages';
 import {
 	type HistoryKey,
 	forgetHistory,
@@ -16,7 +17,6 @@ import {
 	NOTHING_TO_UNDO_MESSAGE,
 	editRequestErrorMessage,
 } from './panelRequestCopy';
-import type { ArtboardEdit } from '../disk/artboardEdit';
 import { editArtboard } from '../disk/artboardEditFs';
 import { updateArtboard } from '../disk/artboardFs';
 import { ArtboardNotFoundError, ConflictError, InvalidArgsError } from '../disk/errors';
@@ -24,7 +24,6 @@ import type { PageLocation } from '../disk/layoutFs';
 import { resolveRequestedPage } from '../disk/openPage';
 import { parseArtboardId } from '../disk/parse';
 import type { PanelPorts } from '../panel/openArtboardPanel';
-import type { ArtboardEditMessage } from '../webview/hostMessages';
 
 // Panel edit and undo/redo handlers; all I/O through ports. Neither export ever rejects.
 // ponytail: no host guard against two requests in flight (the chrome sends one at a time). A
@@ -68,17 +67,6 @@ const postEdited = ({
 		...historyFlags({ pageId: page.pageId, frameId: written.artboardId }),
 	});
 };
-
-// The edit core's union, built key by key: nothing else of the message reaches it.
-const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit =>
-	'styles' in message
-		? { sourceNumber: message.sourceNumber, styles: message.styles }
-		: {
-				sourceNumber: message.sourceNumber,
-				field: 'text',
-				value: message.value,
-				liveText: message.liveText,
-			};
 
 // Answered exactly once unless it has no usable requestId.
 export const answerEditRequest = async ({

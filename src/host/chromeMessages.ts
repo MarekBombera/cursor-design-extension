@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 
+import type { ArtboardEdit } from '../disk/artboardEdit';
 import type { CommentView } from '../disk/commentViews';
 import type { NewComment } from '../disk/commentsFile';
 import { isArtboardHash } from '../disk/hash';
@@ -16,6 +17,7 @@ import {
 } from '../disk/layout';
 import { hasControlChars, isTagName } from '../webview/frame/frameMessages';
 import type {
+	ArtboardEditMessage,
 	ChromeMessage,
 	CommentCreateMessage,
 	CommentRequestMessage,
@@ -243,6 +245,17 @@ const PAGE_REQUEST_TYPES: readonly PageRequestMessage['type'][] = [
 // request.
 export const pageRequestType = (value: unknown): PageRequestMessage['type'] | undefined =>
 	PAGE_REQUEST_TYPES.find((type) => claimsType(value, type));
+
+// The edit core's union, built key by key: nothing else of the message reaches it.
+export const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit =>
+	'styles' in message
+		? { sourceNumber: message.sourceNumber, styles: message.styles }
+		: {
+				sourceNumber: message.sourceNumber,
+				field: 'text',
+				value: message.value,
+				liveText: message.liveText,
+			};
 
 // Pin = point / unclipped box, never the (maybe clipped or null) rect. A zero-size box pins at 0,
 // not NaN (addComment clamps 0..1 but leaves NaN). A non-page null rect is left for addComment to

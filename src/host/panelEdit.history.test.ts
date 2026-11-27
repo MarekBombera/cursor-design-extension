@@ -25,8 +25,8 @@ import type { PanelPorts } from '../panel/openArtboardPanel';
 const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
 const HISTORY_CLEARED_MESSAGE = 'This artboard changed on disk, so its undo history was cleared.';
 
-// End to end over a real temp workspace: only the ports are faked (panelEdit.test.ts mocks the
-// disk lib instead).
+// Undo and redo end to end over a real temp workspace: only the ports are faked
+// (panelEdit.test.ts covers edit answers the same way).
 
 const host = vi.hoisted(() => ({ isTrusted: true, root: '', logs: 0 }));
 

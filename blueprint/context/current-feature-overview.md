@@ -1,98 +1,71 @@
-# 11c1 Host ports - Overview for review
+# Host tests on real disk (11c2) - Overview for review
 
-Source of truth: `blueprint/history/features/11c1-host-ports.md`. This file is the steering summary, not the build spec.
-
-**Branch:** `feature/host-ports` · **Build attempt:** 1 · **Shipped:** 2026-11-27
+Source of truth: `blueprint/history/features/11c2-host-tests-on-real-disk.md`. This file is the
+steering summary, not the build spec.
 
 ## TL;DR
 
-Shipped. Six host handlers get all vscode I/O from one `PanelPorts` object built in `activate`; none imports `vscode`. Tests swap glue mocks for a fake ports object: `vi.mock(` 32 → 15, every test name kept. `pnpm verify`: 74 files, 882 tests. Audit: five P3s, all fixed (await re-audit).
+The panel request and refresh tests stopped checking mocks and started checking disk. Five host test
+files (`artboardDisk`, `refreshPanel`, `panelPages`, `panelComments`, `panelEdit`) now run on a real
+temp workspace with the fake ports from 11c1. Across the six host request and refresh test files
+there are 0 `vi.mock` (32 before 11c1, 15 after it). The product behaves exactly as before. The one
+source edit is an audit repair: the edit-message mapping `toArtboardEdit` moved, unchanged, into
+`chromeMessages.ts` with its own unit test.
 
-## Goal
+## Key loop
 
-The host's panel request and refresh handlers stop importing vscode. One small `PanelPorts` object
-(trust, workspace root, log, the three panel posts, clipboard, modal confirm) is built once in
-`activate` and passed in. Six modules (`panelRequest`, `panelEdit`, `panelComments`, `panelPages`,
-`artboardDisk`, `refreshPanel`) then load without vscode, and their tests drop the glue mocks.
-11c2 moves those tests onto real disk.
+```mermaid
+sequenceDiagram
+    participant T as Test
+    participant H as Host handler (real)
+    participant D as Temp workspace (real disk lib)
+    participant P as Fake ports
+    T->>D: build fixture (page-1 open, page-2, artboard hero)
+    T->>H: answerPageRequest / answerCommentRequest / answerEditRequest
+    H->>P: isTrusted, workspaceRoot
+    H->>D: resolve page, write
+    H->>P: postAnswer, then refresh posts
+    T->>P: vi.waitFor the posts
+    T->>D: assert bytes: requested page changed, other page untouched
+```
 
 ## What you will see
 
-Nothing in the product. The panel, the Agent and disk behave exactly as before. In the code:
-`vi.mock(` calls across the six host tests drop from 32 to 15, and the six modules have no runtime
-`vscode` import.
+Nothing in the product. In the tests: "this file on disk now says X" in place of "this mock was called
+with Y". Six host test files plus `chromeMessages.test.ts` changed. 892 tests, up from 882. The six
+files run in about 3.2 s.
 
-## Scope at a glance
+## Decisions locked
 
-| In | Out |
-|---|---|
-| `PanelPorts` + `createPanelPorts` in `openArtboardPanel.ts` | Real-disk test rewrites (11c2) |
-| The six modules take `ports` instead of `outputChannel` | Watcher logic (11c3), only its log arg changes |
-| Watcher, Open Artboard, `extension.ts` pass `ports` through | Webview post port (11c4) |
-| Manifest check via the disk lib's `lstatOrUndefined` | `canvasSnapshot`, `hostFs`, `openArtboardPanel` test mocks |
-| Tests swap glue mocks for a fake ports object, assertions kept | Messages, disk format, MCP, Agent skill, chrome |
+- **Test-only**, except the F-08 repair above. A test that needed a source seam, a module mock or a spy
+  would have stopped the build. None did.
+- **Writes nothing** = a byte-for-byte tree compare of the temp root.
+- **Never resolved** = a tripwire workspace whose index is lost: any resolve rebuilds `project.json`,
+  so an identical tree proves the refusal came first. Used only where no trusted refresh follows.
+- **Fixtures** come from the disk lib in a fixed order. Broken states (`{` in a JSON file, a
+  directory in place of the `artboards` tombstone) are hand-written.
+- **Background refreshes** are awaited with `vi.waitFor` on the fake post (5 s timeout), never a
+  sleep.
+- **Proof:**
+  - 24 one-line source probes from the spec, plus one each for F-06 and F-08, each turned a test
+    red and were reverted.
+  - The six files passed 3 runs in a row, 4 concurrent runs and 3 shuffled-order runs.
+- **Every finding fixed**, by Bombic's call: F-01..F-12 closed by fresh re-reviews, none accepted.
 
-## Wiring (11c1)
+## Out of scope
 
-```mermaid
-flowchart LR
-  VS["vscode<br/>isTrusted, folders, clipboard,<br/>showWarningMessage, OutputChannel"] --> B["createPanelPorts<br/>(openArtboardPanel.ts)"]
-  OB["panel outbox<br/>answer / snapshot / comments"] --> B
-  B -->|"one ports object, built in activate"| EXT["extension.ts"]
-  EXT --> H["answer* handlers<br/>placeFrameFromChrome"]
-  EXT --> R["refreshPanel"]
-  EXT --> W["watcher, Open Artboard"]
-  W --> R
-  H --> R
-  H --> D[("disk lib<br/>.vibeboard/")]
-  R --> D
-```
+`canvasSnapshot.test.ts` / `hostFs.test.ts` mocks (kept by plan), the watcher (11c3), webview ports
+(11c4), the message guard (11d).
 
-No message between processes, and no disk write, changes. The diagram shows the in-process wiring
-only.
+## Glossary
 
-## Locked decisions
-
-- **Split of 11c (2026-11-27, Bombic):** 11c1 host ports, 11c2 host tests on real disk, 11c3 watcher
-  pure step, 11c4 page-bound post port. The split is by layer, because the shared preamble ties
-  every handler together.
-- **refreshPanel joins the ports**: it is the same panel I/O. `canvasSnapshot` and `hostFs` keep
-  their mocks: spies only, or the vscode edge itself.
-- **Getters for trust and root**, read at call time, as today, and tested: ports are built once in
-  `activate`, so a captured value would send panel writes to a stale folder.
-- **Logs stay byte-identical**: the canvas read-log line goes through `log(scope, text)`, which
-  prints the same text.
-- **One behavior detail:** the manifest existence check moves from a vscode stat to the disk lib's
-  lstat (rule 07: the host reaches `.vibeboard/` only through the disk lib). Only a *dangling*
-  symlinked manifest changes: it now counts as present, so the page reads as an empty stage or
-  shows the ownership error, where today Open fails trying to create the default artboard. Neither
-  version writes anything. A `ponytail:` comment marks it in code; the build-plan line and the
-  Notion page say so too.
-
-## Steps
-
-1. Ports type and builder, plus one builder test: the native delete modal (`modal: true`) and the
-   trust / root getters following live changes.
-2. Manifest check through the disk lib first (it needs no ports); `artboardDisk.test` moves to a
-   temp root with a real manifest file, and the page-list test gains a `readCanvasView` count so it
-   cannot pass on the manifest-missing path.
-3. Every handler on ports in one mechanical step; the test glue mocks become a fake ports object.
-   Only a named list of assertion rewrites is allowed; anything else means behavior changed.
-4. Owner catalog, system map check, `pnpm verify`.
-
-## Try it
-
-No F5 needed: no chrome or message change. Optional `/check` in the Extension Development Host:
-Copy prompt (clipboard port) and a page delete (modal port).
+| Term | Why it exists |
+|------|---------------|
+| Fake ports | The test stand-in for `PanelPorts` (trust, root, log, posts, clipboard, modal) |
+| Tripwire workspace | A folder whose `project.json` is gone, so any page resolve visibly rewrites it |
+| Probe | A deliberate one-line bug in the source; a good test turns red on it |
 
 ## Done means
 
-- No runtime `vscode`, `hostFs` or panel import in the six modules (grep checked).
-- Same test names; only the spec's allowed rewrites.
-- `createPanelPorts` tested: native modal, call-time trust/root, rejected clipboard write rejects.
-- One behavior detail: a dangling symlinked `manifest.json` now counts as present (`ponytail:` comment).
-
-## Your actions
-
-- Add the manifest-check note to the Notion 0.5 version page (rule 00).
-- Optional: `/check` Copy prompt and page delete in the Extension Development Host (vscode side not run live).
+`pnpm verify` passes (74 files, 892 tests). Build-plan 11c2 is checked; parent 11 stays open
+(11c3, 11c4, 11d, 11e remain).

@@ -15,11 +15,12 @@ import {
 	isFramePlaceAttempt,
 	pageRequestType,
 	parseChromeMessage,
+	toArtboardEdit,
 	toNewComment,
 	toPostedComment,
 	isArtboardHistoryAttempt,
 } from './chromeMessages';
-import type { CommentCreateMessage } from '../webview/hostMessages';
+import type { ArtboardEditMessage, CommentCreateMessage } from '../webview/hostMessages';
 
 const validPlace = {
 	type: 'frame:place',
@@ -463,4 +464,29 @@ test('a page request claim is answerable whatever else fails; anything else is n
 	]) {
 		assert.equal(pageRequestType(other), undefined, JSON.stringify(other));
 	}
+});
+
+test('toArtboardEdit hands the edit core only the edit, never the rest of the message', () => {
+	const wire = {
+		type: 'artboard:edit',
+		requestId: 'edit-1',
+		pageId: 'page-2',
+		frameId: 'hero',
+		sourceNumber: 1,
+		hash: `sha256:${'a'.repeat(64)}`,
+	} as const;
+	const styles = [{ field: 'padding', value: '8' }];
+	assert.deepEqual(toArtboardEdit({ ...wire, styles } as ArtboardEditMessage), {
+		sourceNumber: 1,
+		styles,
+	});
+	assert.deepEqual(
+		toArtboardEdit({
+			...wire,
+			field: 'text',
+			value: 'New',
+			liveText: 'Old',
+		} as ArtboardEditMessage),
+		{ sourceNumber: 1, field: 'text', value: 'New', liveText: 'Old' },
+	);
 });
