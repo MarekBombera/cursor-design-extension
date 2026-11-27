@@ -1,6 +1,6 @@
 # vibeboard - Project Overview
 
-<!-- blueprint:source-hash ed86e6a506d12d720baca8be0cad280ee72b8b5d91bbbe89f9532a865587c300 -->
+<!-- blueprint:source-hash 055ea3895134c743dd98deef28e6e867d8168942c688ad35018800ebec16ec60 -->
 
 > Agent-driven live HTML artboards inside Cursor and VS Code, driven by any MCP-capable agent: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.vibeboard/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 added pages: several designs per workspace, each with its own frames, layout and comments. A quality pass (item 11) follows.
 

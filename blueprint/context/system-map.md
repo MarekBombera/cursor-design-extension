@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11d Host message guard (`feature/host-message-guard`): no message shape changed. `parseHostMessage` and `routeMessage` moved to `src/webview/hostMessageGuard.ts`; `comments:updated` entries are no longer re-checked in the chrome (routing paragraph in "Agent edit to live frame", contract table row).
+**Last verified against code:** 2026-11-27, 11e1 Comments review report (`feature/comments-review-report`): report only, no flow, message or code changed.
 
 ## Chart checklist
 
