@@ -3,7 +3,7 @@
 	import type { FrameMode } from './frame/frameMessages';
 
 	// The page's comment UI to save, stamped with its own pageId (never App's stage id), so a read
-	// taken mid-swap names the right page. `draft` and `threadId` are the live or the held one.
+	// taken mid-swap names the right page. `draft` is the live one; `threadId` the live or held one.
 	export type PageSavable = {
 		pageId: string;
 		mode: FrameMode;
@@ -121,18 +121,12 @@
 		// cross-match.
 		if (message.type === 'ui:error') {
 			picker.handleCommentAnswer(message);
-			comments.handleActionAnswer(message);
-			comments.handleCopyOpenAnswer(message);
+			comments.handleAnswer(message);
 			edit.handleEditAnswer(message);
 			return;
 		}
-		if (message.type === 'comment:saved') {
-			comments.handleActionAnswer(message);
-			return;
-		}
-		if (message.type === 'ui:copied') {
-			comments.handleActionAnswer(message);
-			comments.handleCopyOpenAnswer(message);
+		if (message.type === 'comment:saved' || message.type === 'ui:copied') {
+			comments.handleAnswer(message);
 			return;
 		}
 		edit.handleEditAnswer(message);
@@ -191,20 +185,14 @@
 	export const savable = (): PageSavable => ({
 		pageId,
 		mode: picker.picking.mode,
-		draft: picker.heldDraft ?? picker.savedDraft,
-		threadId: pinThread.openThreadId ?? pinThread.heldThreadId,
+		draft: picker.savedDraft,
+		threadId: pinThread.savedThreadId,
 		replyDrafts: comments.savedReplyDrafts,
 	});
 
 	const handleWindowKeydown = (event: KeyboardEvent): void => {
 		canvas.endSinkGesture();
 		picker.handleKeydown(event);
-	};
-
-	// A user open ends any restore still held: the draft here, the thread in handlePinOpen.
-	const handlePinOpen = (id: string): void => {
-		picker.heldDraft = undefined;
-		pinThread.handlePinOpen(id);
 	};
 
 	const handleRenderError = (id: string): void => {
@@ -344,7 +332,7 @@
 			pins={pinThread.pins}
 			inert={picker.draft !== undefined}
 			openId={pinThread.openThreadId}
-			onOpen={handlePinOpen}
+			onOpen={pinThread.handlePinOpen}
 		/>
 		{#if pinThread.openPin !== undefined && pinThread.openComment !== undefined}
 			{@const openPin = pinThread.openPin}
@@ -362,15 +350,14 @@
 					action={comments.actions.get(openComment.id)}
 					onClose={pinThread.handleThreadClose}
 					focusOnOpen={pinThread.threadFocusOnOpen}
-					onReplyOpen={() => comments.handleReplyOpen(openComment.id)}
-					onReplyInput={(text) => comments.handleReplyInput(openComment.id, text)}
-					onReplyCancel={() => comments.handleReplyCancel(openComment.id)}
-					onReplySubmit={() => comments.handleReplySubmit(openComment.id)}
-					onToggleStatus={() => comments.handleToggleStatus(openComment.id)}
+					onReplyOpen={comments.handleReplyOpen}
+					onReplyInput={comments.handleReplyInput}
+					onReplyCancel={comments.handleReplyCancel}
+					onReplySubmit={comments.handleReplySubmit}
+					onToggleStatus={comments.handleToggleStatus}
 					copyBlocked={comments.copyBlocked}
-					copied={comments.copyFeedback?.kind === 'comment' &&
-						comments.copyFeedback.id === openComment.id}
-					onCopy={() => comments.handleCopy(openComment.id)}
+					copied={comments.copyFeedback}
+					onCopy={comments.handleCopy}
 				/>
 			{/key}
 		{/if}

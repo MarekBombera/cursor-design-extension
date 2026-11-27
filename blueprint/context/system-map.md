@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11e1 Comments review report (`feature/comments-review-report`): report only, no flow, message or code changed.
+**Last verified against code:** 2026-11-27, 11e2 Comments module (`feature/comments-module`): chrome-internal refactor, no flow, message or disk change.
 
 ## Chart checklist
 

@@ -10,12 +10,12 @@ import {
 	dropFrameAnchors,
 	JUMP_FLASH_MS,
 	jumpTarget,
+	jumpView,
 	keepOpenThread,
 	layoutPins,
 	liveAnchor,
 	resolveHeldThread,
 } from './pins';
-import { fitZoom, jumpStageView } from './stageGeometry';
 
 // A restore takes focus only when nothing has it, so it never steals focus from typing.
 export const canTakeFocus = (): boolean =>
@@ -30,23 +30,23 @@ export class PinThread {
 	readonly #canvas: CanvasState;
 	readonly #comments: CommentsState;
 	// Each live frame's last cd:anchor-rects.
-	anchors: AnchorState = $state.raw(new Map());
+	#anchors: AnchorState = $state.raw(new Map());
 	openThreadId: string | undefined = $state();
 	// False only for a restored thread that found focus elsewhere (canTakeFocus).
 	threadFocusOnOpen = $state(true);
 	// A thread restored after a reload, kept apart so the live rules never see it. It waits for its
-	// pin.
-	heldThreadId: string | undefined;
+	// pin; a user pick or pin open ends it.
+	#heldThreadId: string | undefined = $state();
 	pinsView: { focusPin: (id: string) => void } | undefined = $state();
 	stage: { focusViewport: () => void } | undefined = $state();
-	flash: { commentId: string; sequence: number } | undefined = $state.raw();
+	#flash: { commentId: string; sequence: number } | undefined = $state.raw();
 
 	// The drawn frames, like the outlines. Pins and panel items number from the full list, so a pin,
 	// its card and its thread share one number.
 	readonly pins = $derived.by(() =>
 		layoutPins({
 			comments: this.#comments.comments,
-			anchors: this.anchors,
+			anchors: this.#anchors,
 			frames: this.#canvas.displayFrames,
 			view: this.#canvas.committedView,
 		}),
@@ -56,19 +56,19 @@ export class PinThread {
 	readonly commentItems = $derived.by(() =>
 		panelItems({
 			comments: this.#comments.comments,
-			anchors: this.anchors,
+			anchors: this.#anchors,
 			frames: this.#canvas.frames,
 		}),
 	);
 	readonly flashOutline = $derived.by(() => {
-		const comment = this.#comments.comments.find((entry) => entry.id === this.flash?.commentId);
+		const comment = this.#comments.comments.find((entry) => entry.id === this.#flash?.commentId);
 		const frame = comment === undefined ? undefined : this.#canvas.jumpFrame(comment);
 		if (comment === undefined || frame === undefined) {
 			return undefined;
 		}
 		const { outline } = jumpTarget({
 			comment,
-			live: liveAnchor({ anchors: this.anchors, comment }),
+			live: liveAnchor({ anchors: this.#anchors, comment }),
 			frame,
 		});
 		return frameOutline({
@@ -93,21 +93,21 @@ export class PinThread {
 	}) {
 		this.#canvas = canvas;
 		this.#comments = comments;
-		this.heldThreadId = $state(heldThreadId);
+		this.#heldThreadId = heldThreadId;
 
 		// Closes the open thread whenever its pin is no longer placed, whatever moved it. Pre: it runs
 		// before the thread leaves the DOM, so focus inside it moves to the stage viewport, not body.
 		$effect.pre(() => {
 			if (keepOpenThread({ openThreadId: this.openThreadId, pins: this.pins }) === undefined) {
-				this.closeThreadImplicitly();
+				this.#closeThreadImplicitly();
 			}
 		});
 
 		$effect.pre(() => {
-			if (this.heldThreadId === undefined) {
+			if (this.#heldThreadId === undefined) {
 				return;
 			}
-			const held = this.heldThreadId;
+			const held = this.#heldThreadId;
 			const comment = this.#comments.comments.find((entry) => entry.id === held);
 			const resolved = resolveHeldThread({
 				held,
@@ -118,12 +118,12 @@ export class PinThread {
 				anchorAnswered:
 					this.#canvas.committedView !== undefined &&
 					comment !== undefined &&
-					liveAnchor({ anchors: this.anchors, comment }) !== undefined,
+					liveAnchor({ anchors: this.#anchors, comment }) !== undefined,
 			});
 			if (resolved === 'hold') {
 				return;
 			}
-			this.heldThreadId = undefined;
+			this.#heldThreadId = undefined;
 			if (resolved === 'open') {
 				this.threadFocusOnOpen = canTakeFocus();
 				this.openThreadId = held;
@@ -132,16 +132,21 @@ export class PinThread {
 
 		// Each jump restarts the flash timer.
 		$effect(() => {
-			if (this.flash === undefined) {
+			if (this.#flash === undefined) {
 				return;
 			}
 			const timer = setTimeout(() => {
-				this.flash = undefined;
+				this.#flash = undefined;
 			}, JUMP_FLASH_MS);
 			return () => {
 				clearTimeout(timer);
 			};
 		});
+	}
+
+	// Saved thread: the open one, or one still held.
+	get savedThreadId(): string | undefined {
+		return this.openThreadId ?? this.#heldThreadId;
 	}
 
 	// Each frame measures only its own element comments; [] stops its observers.
@@ -152,25 +157,25 @@ export class PinThread {
 	};
 
 	resetFrameAnchors = (frameId: string): void => {
-		this.anchors = dropFrameAnchors({ state: this.anchors, frameId });
+		this.#anchors = dropFrameAnchors({ state: this.#anchors, frameId });
 		this.sendAnchors([frameId]);
 	};
 
 	handleAnchorRects = (frameId: string, anchors: readonly AnchorRect[]): void => {
-		this.anchors = applyAnchorRects({ state: this.anchors, frameId, anchors });
+		this.#anchors = applyAnchorRects({ state: this.#anchors, frameId, anchors });
 	};
 
 	keepLiveAnchors = (liveFrameIds: ReadonlySet<string>): void => {
-		for (const frameId of this.anchors.keys()) {
+		for (const frameId of this.#anchors.keys()) {
 			if (!liveFrameIds.has(frameId)) {
-				this.anchors = dropFrameAnchors({ state: this.anchors, frameId });
+				this.#anchors = dropFrameAnchors({ state: this.#anchors, frameId });
 			}
 		}
 	};
 
 	// Closes the thread without a user asking (its pin is gone, or a draft opened). Focus that was
 	// inside it lands on the stage viewport, never on body.
-	closeThreadImplicitly = (): void => {
+	#closeThreadImplicitly = (): void => {
 		if (this.openThreadId === undefined) {
 			return;
 		}
@@ -181,8 +186,19 @@ export class PinThread {
 		}
 	};
 
+	// A cd:pick that reached the draft: a user pick ends any held thread, and an open draft closes
+	// the thread.
+	handleDraftPick = ({ userPick, draftOpen }: { userPick: boolean; draftOpen: boolean }): void => {
+		if (userPick) {
+			this.#heldThreadId = undefined;
+		}
+		if (draftOpen) {
+			this.#closeThreadImplicitly();
+		}
+	};
+
 	handlePinOpen = (id: string): void => {
-		this.heldThreadId = undefined;
+		this.#heldThreadId = undefined;
 		this.threadFocusOnOpen = true;
 		this.openThreadId = this.openThreadId === id ? undefined : id;
 	};
@@ -200,37 +216,21 @@ export class PinThread {
 	handleJump = (id: string): void => {
 		const comment = this.#comments.comments.find((entry) => entry.id === id);
 		const frame = comment === undefined ? undefined : this.#canvas.jumpFrame(comment);
-		const canvas = this.#canvas;
-		if (
-			comment === undefined ||
-			frame === undefined ||
-			canvas.committedView === undefined ||
-			canvas.viewportWidth === 0 ||
-			canvas.viewportHeight === 0
-		) {
+		if (comment === undefined || frame === undefined) {
 			return;
 		}
-		const target = jumpTarget({
+		const view = jumpView({
 			comment,
-			live: liveAnchor({ anchors: this.anchors, comment }),
+			live: liveAnchor({ anchors: this.#anchors, comment }),
 			frame,
+			view: this.#canvas.committedView,
+			viewportWidth: this.#canvas.viewportWidth,
+			viewportHeight: this.#canvas.viewportHeight,
 		});
-		canvas.commitStageView(
-			jumpStageView({
-				view: canvas.committedView,
-				center: { x: frame.x + target.center.x, y: frame.y + target.center.y },
-				fitZoom:
-					target.fit === undefined
-						? undefined
-						: fitZoom({
-								...target.fit,
-								viewportWidth: canvas.viewportWidth,
-								viewportHeight: canvas.viewportHeight,
-							}),
-				viewportWidth: canvas.viewportWidth,
-				viewportHeight: canvas.viewportHeight,
-			}),
-		);
-		this.flash = { commentId: id, sequence: (this.flash?.sequence ?? 0) + 1 };
+		if (view === undefined) {
+			return;
+		}
+		this.#canvas.commitStageView(view);
+		this.#flash = { commentId: id, sequence: (this.#flash?.sequence ?? 0) + 1 };
 	};
 }

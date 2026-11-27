@@ -26,6 +26,8 @@ import {
 	popoverTarget,
 	type Point,
 	postToChrome,
+	reload,
+	savedRecord,
 	stageBox,
 	thread,
 	untilHeightReported,
@@ -532,6 +534,36 @@ test('a pick in Comment mode closes the thread and opens the draft', async ({ pa
 	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
 	await expect(popoverTarget(page)).toHaveText('Doomed');
 	await expect(thread(page)).toHaveCount(0);
+});
+
+test('a pick while a restored thread is still held cancels the restore', async ({ page }) => {
+	await openPinStage(page, [THREADED, MOVER]);
+	await expectPinOn({ page, id: TITLE.id, selector: '#title' });
+	await openThread(page, TITLE.id);
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
+
+	// No comments:updated yet: the restored thread is held until the list is known.
+	await reload(page);
+	await postToChrome(page, canvasUpdated([FRAME]));
+	await untilHeightReported(page, 'a');
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBe(TITLE.id);
+
+	await clickChrome(commentButton(page));
+	await expect(commentButton(page)).toHaveAttribute('aria-pressed', 'true');
+	const doomed = await frameElementBox({ page, frameId: 'a', selector: '#doomed' });
+	await clickAt(page, { x: doomed.x + 6, y: doomed.y + doomed.height / 2 });
+	await expect(popoverTarget(page)).toHaveText('Doomed');
+	await expect.poll(async () => (await savedRecord(page)).openThreadId).toBeUndefined();
+
+	await postToChrome(page, {
+		type: 'comments:updated',
+		pageId: 'page-1',
+		comments: [THREADED, MOVER],
+	});
+	await expect(pinOf(page, TITLE.id)).toBeVisible();
+	await nextAnimationFrame(page);
+	await expect(thread(page)).toHaveCount(0);
+	await expect(popoverTarget(page)).toHaveText('Doomed');
 });
 
 test('a reload that unplaces the open pin closes its thread, and it does not come back', async ({

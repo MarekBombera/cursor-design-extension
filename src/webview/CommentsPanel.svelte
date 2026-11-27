@@ -159,15 +159,15 @@
 						action={actions.get(id)}
 						frameLabel={item.frameLabel}
 						frameShown={item.canJump}
-						onJump={item.canJump ? () => onJump(id) : undefined}
-						onReplyOpen={() => onReplyOpen(id)}
-						onReplyInput={(text) => onReplyInput(id, text)}
-						onReplyCancel={() => onReplyCancel(id)}
-						onReplySubmit={() => onReplySubmit(id)}
-						onToggleStatus={() => onToggleStatus(id)}
+						onJump={item.canJump ? onJump : undefined}
+						{onReplyOpen}
+						{onReplyInput}
+						{onReplyCancel}
+						{onReplySubmit}
+						{onToggleStatus}
 						{copyBlocked}
-						copied={copied?.kind === 'comment' && copied.id === id}
-						onCopy={() => onCopy(id)}
+						{copied}
+						{onCopy}
 					/>
 				</li>
 			{/each}

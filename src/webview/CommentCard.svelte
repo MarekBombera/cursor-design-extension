@@ -10,6 +10,7 @@
 		type CommentAction,
 		anythingPending,
 		canSubmitReply,
+		type CopiedButton,
 		replyPending,
 	} from './commentActions';
 	import { relativeTime } from './commentsPanel';
@@ -34,18 +35,19 @@
 		frameLabel: string;
 		// A live iframe; false says "Frame not shown" in the status badge's place.
 		frameShown: boolean;
-		// Show the target on the canvas: the panel's card for a shown frame only; never the thread.
-		onJump?: () => void;
-		onReplyOpen: () => void;
-		onReplyInput: (text: string) => void;
-		onReplyCancel: () => void;
-		onReplySubmit: () => void;
-		onToggleStatus: () => void;
+		// Show the comment's target on the canvas (takes its id): the panel's card for a shown frame
+		// only; never the thread.
+		onJump?: (id: string) => void;
+		onReplyOpen: (id: string) => void;
+		onReplyInput: (id: string, text: string) => void;
+		onReplyCancel: (id: string) => void;
+		onReplySubmit: (id: string) => void;
+		onToggleStatus: (id: string) => void;
 		// Another copy is in flight somewhere in the chrome: one copy at a time.
 		copyBlocked: boolean;
-		// This card's own copy just succeeded.
-		copied: boolean;
-		onCopy: () => void;
+		// The chrome-wide "Copied" button, if any; the card derives whether it is its own.
+		copied: CopiedButton | undefined;
+		onCopy: (id: string) => void;
 	};
 
 	let {
@@ -97,10 +99,11 @@
 	const copyDisabled = $derived(copyBlocked || isAnythingPending);
 	const resolved = $derived(comment.status === 'resolved');
 	const describedBy = $derived(action?.error === undefined ? undefined : errorId);
+	const copiedHere = $derived(copied?.kind === 'comment' && copied.id === comment.id);
 
 	// Focus moves only on a user action, never on mount, so the panel and the thread never fight.
 	const openComposer = async (): Promise<void> => {
-		onReplyOpen();
+		onReplyOpen(comment.id);
 		await tick();
 		textarea?.focus();
 	};
@@ -110,20 +113,20 @@
 		if (isReplyPending) {
 			return;
 		}
-		onReplyCancel();
+		onReplyCancel(comment.id);
 		await tick();
 		replyButton?.focus();
 	};
 
 	const handleCopy = (): void => {
 		if (!copyDisabled) {
-			onCopy();
+			onCopy(comment.id);
 		}
 	};
 
 	const handleStatus = (): void => {
 		if (!isAnythingPending) {
-			onToggleStatus();
+			onToggleStatus(comment.id);
 		}
 	};
 
@@ -143,7 +146,7 @@
 		});
 		if (key === 'add') {
 			event.preventDefault();
-			onReplySubmit();
+			onReplySubmit(comment.id);
 		} else if (key === 'cancel') {
 			event.preventDefault();
 			void closeComposer();
@@ -163,7 +166,7 @@
 			title={comment.selector}
 			jumpLabel="Show on canvas: {frameLabel} · {chipText}"
 			data-cd-focus={onJump === undefined ? undefined : 'jump'}
-			onjump={onJump}
+			onjump={onJump === undefined ? undefined : () => onJump(comment.id)}
 		/>
 		{#if frameShown}
 			<Badge {...statusBadge(comment.status)} />
@@ -239,8 +242,8 @@
 			{describedBy}
 			textareaAttachment={attachTextarea}
 			message={error}
-			oninput={onReplyInput}
-			onsubmit={onReplySubmit}
+			oninput={(text) => onReplyInput(comment.id, text)}
+			onsubmit={() => onReplySubmit(comment.id)}
 			oncancel={closeComposer}
 			onkeydown={handleComposerKeydown}
 		/>
@@ -269,13 +272,13 @@
 		<span class="end">
 			<Button
 				variant="ghost"
-				tone={copied ? undefined : 'agent'}
+				tone={copiedHere ? undefined : 'agent'}
 				size="sm"
-				icon={copied ? 'check' : 'sparkle'}
+				icon={copiedHere ? 'check' : 'sparkle'}
 				aria-disabled={copyDisabled}
 				aria-describedby={describedBy}
 				data-cd-focus="copy"
-				onclick={handleCopy}>{copied ? 'Copied' : 'Copy for Agent'}</Button
+				onclick={handleCopy}>{copiedHere ? 'Copied' : 'Copy for Agent'}</Button
 			>
 		</span>
 	</div>

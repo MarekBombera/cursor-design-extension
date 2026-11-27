@@ -25,6 +25,7 @@ import type {
 	CommentSavedMessage,
 	CommentsUpdatedMessage,
 	CopiedMessage,
+	PageFree,
 	PagePost,
 	PostedComment,
 	UiErrorMessage,
@@ -113,6 +114,16 @@ export class CommentsState {
 		}
 	};
 
+	#send = (submitted: {
+		actions: CommentActions;
+		message?: PageFree<Exclude<CommentRequestMessage, CommentCreateMessage>>;
+	}): void => {
+		this.actions = submitted.actions;
+		if (submitted.message !== undefined) {
+			this.#post(submitted.message);
+		}
+	};
+
 	handleReplyOpen = (id: string): void => {
 		this.actions = openReply({ actions: this.actions, id });
 	};
@@ -127,10 +138,7 @@ export class CommentsState {
 
 	handleReplySubmit = (id: string): void => {
 		const submitted = submitReply({ actions: this.actions, id, requestId: crypto.randomUUID() });
-		this.actions = submitted.actions;
-		if (submitted.message !== undefined) {
-			this.#post(submitted.message);
-		}
+		this.#send(submitted);
 	};
 
 	handleToggleStatus = (id: string): void => {
@@ -143,10 +151,7 @@ export class CommentsState {
 			comment,
 			requestId: crypto.randomUUID(),
 		});
-		this.actions = submitted.actions;
-		if (submitted.message !== undefined) {
-			this.#post(submitted.message);
-		}
+		this.#send(submitted);
 	};
 
 	handleCopy = (id: string): void => {
@@ -156,10 +161,7 @@ export class CommentsState {
 			id,
 			requestId: crypto.randomUUID(),
 		});
-		this.actions = submitted.actions;
-		if (submitted.message !== undefined) {
-			this.#post(submitted.message);
-		}
+		this.#send(submitted);
 	};
 
 	handleCopyOpen = (): void => {
@@ -186,21 +188,22 @@ export class CommentsState {
 		saveCommentsPanelOpen(this.commentsPanelOpen);
 	};
 
-	handleActionAnswer = (answer: CommentSavedMessage | CopiedMessage | UiErrorMessage): void => {
-		const answered = answerAction({ actions: this.actions, answer });
-		this.actions = answered.actions;
-		if (answered.copiedId !== undefined) {
-			this.#showCopied({ kind: 'comment', id: answered.copiedId });
+	// An action's answer, then the copy-open request's (a comment:saved answers only an action).
+	handleAnswer = (answer: CommentSavedMessage | CopiedMessage | UiErrorMessage): void => {
+		const action = answerAction({ actions: this.actions, answer });
+		this.actions = action.actions;
+		if (action.copiedId !== undefined) {
+			this.#showCopied({ kind: 'comment', id: action.copiedId });
 		}
-		this.#announce(answered.announcement);
-	};
-
-	handleCopyOpenAnswer = (answer: CopiedMessage | UiErrorMessage): void => {
-		const answered = answerCopyOpen({ state: this.copyOpen, answer });
-		this.copyOpen = answered.state;
-		if (answered.copiedCount !== undefined) {
-			this.#showCopied({ kind: 'open', count: answered.copiedCount });
+		this.#announce(action.announcement);
+		if (answer.type === 'comment:saved') {
+			return;
 		}
-		this.#announce(answered.announcement);
+		const copyOpen = answerCopyOpen({ state: this.copyOpen, answer });
+		this.copyOpen = copyOpen.state;
+		if (copyOpen.copiedCount !== undefined) {
+			this.#showCopied({ kind: 'open', count: copyOpen.copiedCount });
+		}
+		this.#announce(copyOpen.announcement);
 	};
 }

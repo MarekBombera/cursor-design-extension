@@ -2,7 +2,14 @@ import { type FrameRecord, liveIframeIds } from './canvasFrames';
 import type { AnchorRect, AnchorRequest, FrameRect } from './frame/frameMessages';
 import { clipRect } from './frame/pickTarget';
 import type { PostedComment } from './hostMessages';
-import { clampNumber, type StagePoint, type StageView, stageToScreen } from './stageGeometry';
+import {
+	clampNumber,
+	fitZoom,
+	jumpStageView,
+	type StagePoint,
+	type StageView,
+	stageToScreen,
+} from './stageGeometry';
 import type { BadgeProps } from './ui/badge';
 
 type LiveAnchor = { box: FrameRect | null; visible: FrameRect | null };
@@ -307,6 +314,39 @@ export const jumpTarget = ({
 		fit: { width: fitBox.width, height: fitBox.height },
 		outline,
 	};
+};
+
+// The target chip's view: the target centered, zoomed out only when it would not fit. Nothing
+// before the first committed view or while the viewport has no size.
+export const jumpView = ({
+	comment,
+	live,
+	frame,
+	view,
+	viewportWidth,
+	viewportHeight,
+}: {
+	comment: PostedComment;
+	live: LiveAnchor | undefined;
+	frame: Pick<FrameRecord, 'x' | 'y' | 'width' | 'height'>;
+	view: StageView | undefined;
+	viewportWidth: number;
+	viewportHeight: number;
+}): StageView | undefined => {
+	if (view === undefined || viewportWidth === 0 || viewportHeight === 0) {
+		return undefined;
+	}
+	const target = jumpTarget({ comment, live, frame });
+	return jumpStageView({
+		view,
+		center: { x: frame.x + target.center.x, y: frame.y + target.center.y },
+		fitZoom:
+			target.fit === undefined
+				? undefined
+				: fitZoom({ ...target.fit, viewportWidth, viewportHeight }),
+		viewportWidth,
+		viewportHeight,
+	});
 };
 
 export const keepOpenThread = ({

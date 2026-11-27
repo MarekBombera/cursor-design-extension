@@ -52,9 +52,11 @@ export class CommentPicker {
 	picking: CommentPickState;
 	draft: CommentDraft | undefined = $state();
 	popover: { focusBody: (caretAtEnd?: boolean) => void } | undefined = $state();
-	// A draft restored after a reload, kept apart so the live rules never see it. It waits for the
-	// first canvas:updated.
-	heldDraft: CommentDraft | undefined;
+	// A draft restored after a reload, kept apart so the live rules never see it. It lives only until
+	// the start canvas this page applies in its own script (restoreHeldDraft). That relies on App's
+	// stagePage mounting a page together with its start canvas: a page mounted without one would keep
+	// the hold, and savable would no longer save it.
+	#heldDraft: CommentDraft | undefined;
 	// A restored draft's popover takes focus once it mounts (the constructor's effect).
 	#focusRestoredDraft = false;
 
@@ -111,7 +113,7 @@ export class CommentPicker {
 		this.#pinThread = pinThread;
 		this.#post = post;
 		this.picking = $state({ ...INITIAL_COMMENT_PICK, mode });
-		this.heldDraft = $state.raw(heldDraft);
+		this.#heldDraft = heldDraft;
 
 		// The restored popover mounts only once the stage has committed a view, so its focus waits for
 		// the popover itself.
@@ -170,7 +172,6 @@ export class CommentPicker {
 		}
 		this.#leaveInspectorFocus(next);
 		this.draft = undefined;
-		this.heldDraft = undefined;
 		this.#applyPickStep(chooseMode({ mode: next, frameIds: this.#canvas.iframes.keys() }));
 	};
 
@@ -206,15 +207,15 @@ export class CommentPicker {
 	// The first canvas:updated after a reload ends the draft hold: the draft comes back on its live
 	// frame or is dropped.
 	restoreHeldDraft = (): void => {
-		if (this.heldDraft === undefined) {
+		if (this.#heldDraft === undefined) {
 			return;
 		}
 		this.draft = resolveHeldDraft({
-			held: this.heldDraft,
+			held: this.#heldDraft,
 			commentMode: this.picking.mode === 'comment',
 			frames: this.#canvas.frames,
 		}).draft;
-		this.heldDraft = undefined;
+		this.#heldDraft = undefined;
 		this.#focusRestoredDraft = this.draft !== undefined;
 	};
 
@@ -246,10 +247,6 @@ export class CommentPicker {
 	// the textarea on open, or on a retarget whose click moved focus into the frame, after the
 	// frame's own window.focus() settled. A re-post never moves focus.
 	#applyPickToDraft = (frame: FrameRecord, pick: FramePickMessage): void => {
-		if (!pick.repost) {
-			this.heldDraft = undefined;
-			this.#pinThread.heldThreadId = undefined;
-		}
 		const opened = this.draft === undefined;
 		this.draft = draftFromPick({
 			draft: this.draft,
@@ -257,9 +254,10 @@ export class CommentPicker {
 			pick,
 			generation: frame.generation,
 		});
-		if (this.draft !== undefined) {
-			this.#pinThread.closeThreadImplicitly();
-		}
+		this.#pinThread.handleDraftPick({
+			userPick: !pick.repost,
+			draftOpen: this.draft !== undefined,
+		});
 		if (pick.repost || (!opened && document.activeElement?.tagName !== 'IFRAME')) {
 			return;
 		}

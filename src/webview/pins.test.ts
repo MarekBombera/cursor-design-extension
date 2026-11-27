@@ -9,6 +9,7 @@ import {
 	applyAnchorRects,
 	dropFrameAnchors,
 	jumpTarget,
+	jumpView,
 	keepOpenThread,
 	layoutPins,
 	liveAnchor,
@@ -390,6 +391,22 @@ test('jumpTarget: a box partly outside the frame fits only its inside part', () 
 		jumpTarget({ comment: comment(), live: { box: partial, visible: null }, frame: jumpFrame }).fit,
 		{ width: 100, height: 50 },
 	);
+});
+
+test('jumpView: centers the stored target, zooms out to fit it, and needs a view and a viewport', () => {
+	// Fit box 100 × 40 at (10, 20) in a frame at (1000, 500): center (1060, 540). The 146 px viewport
+	// leaves 50 px inside FIT_PADDING, so the fit zoom is min(50 / 100, 50 / 40) = 0.5.
+	const input = { comment: comment(), live: undefined, frame: frame(), view };
+	assert.deepEqual(jumpView({ ...input, viewportWidth: 146, viewportHeight: 146 }), {
+		x: 73 - 1060 * 0.5,
+		y: 73 - 540 * 0.5,
+		zoom: 0.5,
+	});
+	assert.equal(
+		jumpView({ ...input, view: undefined, viewportWidth: 146, viewportHeight: 146 }),
+		undefined,
+	);
+	assert.equal(jumpView({ ...input, viewportWidth: 0, viewportHeight: 146 }), undefined);
 });
 
 test('resolveHeldThread: open on its pin, drop once it cannot come back, hold otherwise', () => {
