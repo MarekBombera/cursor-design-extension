@@ -1,5 +1,3 @@
-import * as vscode from 'vscode';
-
 import { panelFrameHtml } from './canvasSnapshot';
 import {
 	type HistoryKey,
@@ -10,7 +8,6 @@ import {
 	recordEdit,
 	recordStep,
 } from './editHistory';
-import { logDiskError } from './hostFs';
 import { checkedPanelMessage, panelRequest } from './panelRequest';
 import {
 	MALFORMED_EDIT_MESSAGE,
@@ -26,10 +23,10 @@ import { ArtboardNotFoundError, ConflictError, InvalidArgsError } from '../disk/
 import type { PageLocation } from '../disk/layoutFs';
 import { resolveRequestedPage } from '../disk/openPage';
 import { parseArtboardId } from '../disk/parse';
-import { postAnswerToPanel } from '../panel/openArtboardPanel';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 import type { ArtboardEditMessage } from '../webview/hostMessages';
 
-// vscode glue only. Neither export ever rejects.
+// Panel edit and undo/redo handlers; all I/O through ports. Neither export ever rejects.
 // ponytail: no host guard against two requests in flight (the chrome sends one at a time). A
 // webview reload while a step awaits the lock lets the new chrome send a second step on the same
 // target; it conflicts and forgets a valid history ("changed on disk" copy), no data loss. Upgrade
@@ -45,12 +42,12 @@ const postEdited = ({
 	requestId,
 	page,
 	written,
-	outputChannel,
+	ports,
 }: {
 	requestId: string;
 	page: PageLocation;
 	written: { artboardId: string; hash: string; generation: number; html: string };
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): void => {
 	const posted = panelFrameHtml({
 		workspaceRoot: page.workspaceRoot,
@@ -58,10 +55,10 @@ const postEdited = ({
 		frameId: written.artboardId,
 		html: written.html,
 		onTagError: (frameId, error) => {
-			logDiskError({ scope: `panelEdit.sourceTags:${frameId}`, error, outputChannel });
+			ports.log(`panelEdit.sourceTags:${frameId}`, error);
 		},
 	});
-	postAnswerToPanel({
+	ports.postAnswer({
 		type: 'artboard:edited',
 		requestId,
 		frameId: written.artboardId,
@@ -86,12 +83,12 @@ const toArtboardEdit = (message: ArtboardEditMessage): ArtboardEdit =>
 // Answered exactly once unless it has no usable requestId.
 export const answerEditRequest = async ({
 	value,
-	outputChannel,
+	ports,
 }: {
 	value: unknown;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<void> => {
-	const request = panelRequest({ value, type: 'artboard:edit', scope: EDIT_SCOPE, outputChannel });
+	const request = panelRequest({ value, type: 'artboard:edit', scope: EDIT_SCOPE, ports });
 	if (request === undefined) {
 		return;
 	}
@@ -102,6 +99,7 @@ export const answerEditRequest = async ({
 			type: 'artboard:edit',
 			malformedMessage: MALFORMED_EDIT_MESSAGE,
 			refuse,
+			ports,
 		});
 		if (checked === undefined) {
 			return;
@@ -130,7 +128,7 @@ export const answerEditRequest = async ({
 				epoch,
 			});
 		}
-		postEdited({ requestId, page, written: edited, outputChannel });
+		postEdited({ requestId, page, written: edited, ports });
 	} catch (error: unknown) {
 		refuse(editRequestErrorMessage(error, 'edit'), error);
 	}
@@ -144,17 +142,12 @@ export const answerEditRequest = async ({
 // post a refresh after forgetHistory.
 export const answerHistoryRequest = async ({
 	value,
-	outputChannel,
+	ports,
 }: {
 	value: unknown;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<void> => {
-	const request = panelRequest({
-		value,
-		type: 'artboard:history',
-		scope: HISTORY_SCOPE,
-		outputChannel,
-	});
+	const request = panelRequest({ value, type: 'artboard:history', scope: HISTORY_SCOPE, ports });
 	if (request === undefined) {
 		return;
 	}
@@ -166,6 +159,7 @@ export const answerHistoryRequest = async ({
 			type: 'artboard:history',
 			malformedMessage: MALFORMED_HISTORY_MESSAGE,
 			refuse,
+			ports,
 		});
 		if (checked === undefined) {
 			return;
@@ -197,7 +191,7 @@ export const answerHistoryRequest = async ({
 			requestId,
 			page,
 			written: { ...written, html: restore.target.html },
-			outputChannel,
+			ports,
 		});
 	} catch (error: unknown) {
 		if (

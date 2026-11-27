@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, test, vi } from 'vite-plus/test';
-import type * as vscode from 'vscode';
 
 import { createArtboard, readArtboard } from '../disk/artboardFs';
 import { LockTimeoutError } from '../disk/errors';
@@ -20,32 +19,16 @@ import { withWorkspaceLock } from '../disk/workspaceLock';
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { MALFORMED_HISTORY_MESSAGE, NOTHING_TO_UNDO_MESSAGE } from './panelRequestCopy';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // Pinned values: the module keeps these private.
 const EDIT_FRAME_GONE_MESSAGE = 'This frame no longer exists.';
 const HISTORY_CLEARED_MESSAGE = 'This artboard changed on disk, so its undo history was cleared.';
 
-// End to end over a real temp workspace: only the vscode glue is stubbed (panelEdit.test.ts mocks
-// the disk lib instead).
+// End to end over a real temp workspace: only the ports are faked (panelEdit.test.ts mocks the
+// disk lib instead).
 
 const host = vi.hoisted(() => ({ isTrusted: true, root: '', logs: 0 }));
-
-vi.mock('vscode', () => ({
-	workspace: {
-		get isTrusted() {
-			return host.isTrusted;
-		},
-	},
-}));
-vi.mock('./hostFs', () => ({
-	firstWorkspaceFolder: () => ({ uri: { fsPath: host.root } }),
-	logDiskError: vi.fn(() => {
-		host.logs += 1;
-	}),
-}));
-vi.mock('../panel/openArtboardPanel', () => ({ postAnswerToPanel: vi.fn() }));
-
-const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
 
 type Answer = {
 	type: string;
@@ -58,11 +41,22 @@ type Answer = {
 	canRedo?: boolean;
 };
 
-const outputChannel = {} as vscode.OutputChannel;
+const ports = {
+	isTrusted: () => host.isTrusted,
+	workspaceRoot: () => host.root,
+	log: vi.fn((_scope: string, _error: unknown) => {
+		host.logs += 1;
+	}),
+	postAnswer: vi.fn(),
+	postSnapshot: vi.fn(),
+	postComments: vi.fn(),
+	writeClipboard: vi.fn(() => Promise.resolve()),
+	confirmModal: vi.fn(() => Promise.resolve(true)),
+} satisfies PanelPorts;
 const ORIGINAL = '<main>\n  <p style="padding: 1px">x</p>\n</main>\n';
 let requestCount = 0;
 
-const lastAnswer = (): Answer => vi.mocked(postAnswerToPanel).mock.calls.at(-1)?.[0] as Answer;
+const lastAnswer = (): Answer => ports.postAnswer.mock.calls.at(-1)?.[0] as Answer;
 
 const htmlPath = (pageId: string = FIRST_PAGE_ID): string =>
 	join(host.root, ...artboardHtmlPathSegments(pageId, 'hero'));
@@ -85,7 +79,7 @@ const editStyles = async (
 			hash: hashHtml(await diskHtml(pageId)),
 			styles,
 		},
-		outputChannel,
+		ports,
 	});
 	return lastAnswer();
 };
@@ -98,7 +92,7 @@ const historyStep = async (
 	overrides: Record<string, unknown> = {},
 ): Promise<Answer | undefined> => {
 	requestCount += 1;
-	const before = vi.mocked(postAnswerToPanel).mock.calls.length;
+	const before = ports.postAnswer.mock.calls.length;
 	await answerHistoryRequest({
 		value: {
 			type: 'artboard:history',
@@ -108,9 +102,9 @@ const historyStep = async (
 			step,
 			...overrides,
 		},
-		outputChannel,
+		ports,
 	});
-	return vi.mocked(postAnswerToPanel).mock.calls.length > before ? lastAnswer() : undefined;
+	return ports.postAnswer.mock.calls.length > before ? lastAnswer() : undefined;
 };
 
 beforeEach(async () => {
@@ -191,7 +185,7 @@ test('a text edit writes the new text and one undo restores the original bytes',
 			value: 'New',
 			liveText: 'x',
 		},
-		outputChannel,
+		ports,
 	});
 	assert.equal(lastAnswer().type, 'artboard:edited');
 	assert.equal(await diskHtml(), ORIGINAL.replace('>x<', '>New<'));

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
-import type * as vscode from 'vscode';
 
 import {
 	COPIED_NOT_MARKED_MESSAGE,
@@ -16,6 +15,7 @@ import {
 	PageNotFoundError,
 } from '../disk/errors';
 import { answerCommentRequest, postPanelComments } from './panelComments';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // Pinned values: the module keeps these private.
 const MALFORMED_CHANGE_MESSAGE = 'Could not save the change. Try again.';
@@ -24,30 +24,6 @@ const COPY_FAILED_MESSAGE = 'Could not copy the prompt. Check the Output panel: 
 
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, calls: [] as string[], clipboard: '' }));
-const writeText = vi.hoisted(() =>
-	vi.fn((text: string) => {
-		host.calls.push('clipboard');
-		host.clipboard = text;
-		return Promise.resolve();
-	}),
-);
-
-vi.mock('vscode', () => ({
-	workspace: {
-		get isTrusted() {
-			return host.isTrusted;
-		},
-	},
-	env: { clipboard: { writeText } },
-}));
-vi.mock('./hostFs', () => ({
-	firstWorkspaceFolder: () => ({ uri: { fsPath: '/ws' } }),
-	logDiskError: vi.fn(),
-}));
-vi.mock('../panel/openArtboardPanel', () => ({
-	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
-	postCommentsToPanel: vi.fn(() => host.calls.push('comments:updated')),
-}));
 // page-1 is open; the requests below name page-2.
 vi.mock('../disk/openPage', () => ({
 	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
@@ -71,7 +47,6 @@ vi.mock('../disk/comments', () => ({
 	}),
 }));
 
-const { postAnswerToPanel, postCommentsToPanel } = await import('../panel/openArtboardPanel');
 const {
 	addComment,
 	replyToComment,
@@ -82,10 +57,22 @@ const {
 	readComments,
 } = await import('../disk/comments');
 const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
-const { logDiskError } = await import('./hostFs');
 
-const outputChannel = {} as vscode.OutputChannel;
-const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
+const ports = {
+	isTrusted: () => host.isTrusted,
+	workspaceRoot: () => '/ws',
+	log: vi.fn((_scope: string, _error: unknown) => {}),
+	postAnswer: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
+	postSnapshot: vi.fn(),
+	postComments: vi.fn((_comments: unknown) => host.calls.push('comments:updated')),
+	writeClipboard: vi.fn((text: string) => {
+		host.calls.push('clipboard');
+		host.clipboard = text;
+		return Promise.resolve();
+	}),
+	confirmModal: vi.fn(() => Promise.resolve(true)),
+} satisfies PanelPorts;
+const answers = (): unknown[] => ports.postAnswer.mock.calls.map(([answer]) => answer);
 const flushRefresh = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 const create = {
@@ -149,14 +136,14 @@ beforeEach(() => {
 });
 
 test('a bad requestId posts nothing and writes nothing', async () => {
-	await answerCommentRequest({ value: { ...reply, requestId: 'a b' }, outputChannel });
+	await answerCommentRequest({ value: { ...reply, requestId: 'a b' }, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, []);
 });
 
 test('an untrusted workspace posts one ui:error and writes nothing', async () => {
 	host.isTrusted = false;
-	await answerCommentRequest({ value: create, outputChannel });
+	await answerCommentRequest({ value: create, ports });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-1', message: UNTRUSTED_WORKSPACE_MESSAGE },
@@ -168,14 +155,14 @@ test('an untrusted workspace posts one ui:error and writes nothing', async () =>
 test('a resolver error posts one ui:error with its message and writes nothing', async () => {
 	const conflict = new MigrationConflictError({ pageId: 'page-1', names: ['manifest.json'] });
 	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(conflict);
-	await answerCommentRequest({ value: reply, outputChannel });
+	await answerCommentRequest({ value: reply, ports });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-2', message: conflict.message },
 	]);
 	assert.deepEqual(host.calls, ['answer:ui:error']);
 	assert.deepEqual(
-		vi.mocked(logDiskError).mock.calls.map(([args]) => args.error),
+		ports.log.mock.calls.map(([, error]) => error),
 		[conflict],
 	);
 	assert.equal(vi.mocked(addComment).mock.calls.length, 0);
@@ -184,7 +171,7 @@ test('a resolver error posts one ui:error with its message and writes nothing', 
 });
 
 test('a malformed comment:reply posts one ui:error with the change copy', async () => {
-	await answerCommentRequest({ value: { ...reply, body: 7 }, outputChannel });
+	await answerCommentRequest({ value: { ...reply, body: 7 }, ports });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-2', message: MALFORMED_CHANGE_MESSAGE },
@@ -200,7 +187,7 @@ test('each request type answers once, before the comments:updated refresh', asyn
 	] as const;
 	for (const [value, write, answer] of cases) {
 		host.calls.length = 0;
-		await answerCommentRequest({ value, outputChannel });
+		await answerCommentRequest({ value, ports });
 		await flushRefresh();
 		assert.deepEqual(host.calls, [`write:${write}`, `answer:${answer}`, 'comments:updated']);
 	}
@@ -208,7 +195,7 @@ test('each request type answers once, before the comments:updated refresh', asyn
 
 test('a comment that no longer exists posts one ui:error and no refresh', async () => {
 	vi.mocked(replyToComment).mockRejectedValueOnce(new CommentNotFoundError());
-	await answerCommentRequest({ value: reply, outputChannel });
+	await answerCommentRequest({ value: reply, ports });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-2', message: 'This comment no longer exists.' },
@@ -217,7 +204,7 @@ test('a comment that no longer exists posts one ui:error and no refresh', async 
 });
 
 test('copy writes the clipboard, then marks sent, then answers, then refreshes', async () => {
-	await answerCommentRequest({ value: copy, outputChannel });
+	await answerCommentRequest({ value: copy, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['clipboard', 'write:sent', 'answer:ui:copied', 'comments:updated']);
 	assert.deepEqual(answers(), [{ type: 'ui:copied', requestId: 'req-4', count: 1 }]);
@@ -230,7 +217,7 @@ test('copy-open sends the open ids in listComments order and answers the marked 
 		// The Agent resolved c-1 between the read and the lock: 2 of 3 still open.
 		return Promise.resolve([stored('c-2'), stored('c-3')]);
 	});
-	await answerCommentRequest({ value: copyOpen, outputChannel });
+	await answerCommentRequest({ value: copyOpen, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['clipboard', 'write:sent', 'answer:ui:copied', 'comments:updated']);
 	assert.deepEqual(vi.mocked(markCommentsSent).mock.calls[0]?.[0].ids, ['c-2', 'c-1', 'c-3']);
@@ -239,8 +226,8 @@ test('copy-open sends the open ids in listComments order and answers the marked 
 });
 
 test('a rejected clipboard write marks nothing sent and answers the copy fallback', async () => {
-	writeText.mockRejectedValueOnce(new Error('denied'));
-	await answerCommentRequest({ value: copy, outputChannel });
+	ports.writeClipboard.mockRejectedValueOnce(new Error('denied'));
+	await answerCommentRequest({ value: copy, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['answer:ui:error', 'comments:updated']);
 	assert.deepEqual(answers(), [
@@ -250,7 +237,7 @@ test('a rejected clipboard write marks nothing sent and answers the copy fallbac
 
 test('a markCommentsSent failure says the prompt was copied but not marked', async () => {
 	vi.mocked(markCommentsSent).mockRejectedValueOnce(new LockTimeoutError());
-	await answerCommentRequest({ value: copyOpen, outputChannel });
+	await answerCommentRequest({ value: copyOpen, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['clipboard', 'answer:ui:error', 'comments:updated']);
 	assert.deepEqual(answers(), [
@@ -260,7 +247,7 @@ test('a markCommentsSent failure says the prompt was copied but not marked', asy
 
 test('copy-open with nothing open copies nothing and refreshes the stale count', async () => {
 	vi.mocked(listComments).mockResolvedValueOnce({ comments: [] });
-	await answerCommentRequest({ value: copyOpen, outputChannel });
+	await answerCommentRequest({ value: copyOpen, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['answer:ui:error', 'comments:updated']);
 	assert.deepEqual(answers(), [
@@ -270,7 +257,7 @@ test('copy-open with nothing open copies nothing and refreshes the stale count',
 
 test('copying a comment that no longer exists answers the gone copy without a clipboard write', async () => {
 	vi.mocked(getComment).mockRejectedValueOnce(new CommentNotFoundError());
-	await answerCommentRequest({ value: copy, outputChannel });
+	await answerCommentRequest({ value: copy, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['answer:ui:error', 'comments:updated']);
 	assert.deepEqual(answers(), [
@@ -280,7 +267,7 @@ test('copying a comment that no longer exists answers the gone copy without a cl
 
 test('an untrusted workspace refuses a copy before the clipboard', async () => {
 	host.isTrusted = false;
-	await answerCommentRequest({ value: copy, outputChannel });
+	await answerCommentRequest({ value: copy, ports });
 	await flushRefresh();
 	assert.deepEqual(host.calls, ['answer:ui:error', 'comments:updated']);
 	assert.deepEqual(answers(), [
@@ -293,7 +280,7 @@ test("a request for page-2 while page-1 is open acts on page-2's location", asyn
 	const page2 = { workspaceRoot: '/ws', pageId: 'page-2' };
 	for (const value of [create, reply, setStatus, copy, copyOpen]) {
 		vi.mocked(resolveRequestedPage).mockResolvedValueOnce(page2);
-		await answerCommentRequest({ value, outputChannel });
+		await answerCommentRequest({ value, ports });
 	}
 	await flushRefresh();
 	assert.deepEqual(
@@ -315,7 +302,7 @@ test("a request for page-2 while page-1 is open acts on page-2's location", asyn
 
 test('a gone page answers one ui:error with the page copy and writes nothing', async () => {
 	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(new PageNotFoundError('page-2'));
-	await answerCommentRequest({ value: create, outputChannel });
+	await answerCommentRequest({ value: create, ports });
 	await flushRefresh();
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-1', message: PAGE_GONE_MESSAGE },
@@ -323,30 +310,29 @@ test('a gone page answers one ui:error with the page copy and writes nothing', a
 	assert.equal(vi.mocked(addComment).mock.calls.length, 0);
 });
 
-const postedLists = (): unknown[] =>
-	vi.mocked(postCommentsToPanel).mock.calls.map(([list]) => list);
+const postedLists = (): unknown[] => ports.postComments.mock.calls.map(([list]) => list);
 
 test('the posted list names the resolved page, kept on a read failure, empty when nothing resolved', async () => {
-	await postPanelComments({ outputChannel });
+	await postPanelComments({ ports });
 	assert.deepEqual(postedLists(), [{ pageId: 'page-1', comments: [] }]);
 
-	vi.mocked(postCommentsToPanel).mockClear();
+	ports.postComments.mockClear();
 	vi.mocked(readComments).mockRejectedValueOnce(new LockTimeoutError());
-	await postPanelComments({ outputChannel });
+	await postPanelComments({ ports });
 	assert.deepEqual(
 		postedLists().map((list) => (list as { pageId: string }).pageId),
 		['page-1'],
 	);
 	assert.equal((postedLists()[0] as { error?: string }).error !== undefined, true);
 
-	vi.mocked(postCommentsToPanel).mockClear();
+	ports.postComments.mockClear();
 	vi.mocked(resolveOpenPage).mockRejectedValueOnce(new LockTimeoutError());
-	await postPanelComments({ outputChannel });
+	await postPanelComments({ ports });
 	assert.equal((postedLists()[0] as { pageId: string }).pageId, '');
 
-	vi.mocked(postCommentsToPanel).mockClear();
+	ports.postComments.mockClear();
 	host.isTrusted = false;
-	await postPanelComments({ outputChannel });
+	await postPanelComments({ ports });
 	assert.deepEqual(postedLists(), [{ pageId: '', comments: [] }]);
 });
 
@@ -361,8 +347,8 @@ test('a slow comment read never posts over a newer one', async () => {
 				finishOlder = resolve;
 			}),
 	);
-	const older = postPanelComments({ outputChannel });
-	await postPanelComments({ outputChannel });
+	const older = postPanelComments({ ports });
+	await postPanelComments({ ports });
 	finishOlder([]);
 	await older;
 	assert.deepEqual(postedLists(), [{ pageId: 'page-new', comments: [] }]);

@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11b Host dedupe (`feature/host-dedupe`): no flow or message changed. Panel requests now share one preamble (`panelRequest.ts`: requestId, trust, folder, parse) and `openArtboardPanel.ts` routes `artboard:history` and `artboard:edit` to separate handlers; the Runtime map and request charts already describe that order.
+**Last verified against code:** 2026-11-27, 11c1 Host ports (`feature/host-ports`): no flow or message changed. Host request and refresh handlers now get trust, root, log, panel posts, clipboard and the delete modal from one `PanelPorts` object built in `activate` (`createPanelPorts`, `openArtboardPanel.ts`); the manifest existence check reads through the disk lib (`lstat`).
 
 ## Chart checklist
 

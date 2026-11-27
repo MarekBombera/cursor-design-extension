@@ -10,7 +10,7 @@ import { revealDesignFolder } from './commands/revealDesignFolder';
 import { syncAgentSkill } from './host/agentSkill';
 import { placeFrameFromChrome } from './host/artboardDisk';
 import { handleOpenArtboard } from './host/handleOpenArtboard';
-import { logDiskError, migrateLegacyDesignFolders } from './host/hostFs';
+import { migrateLegacyDesignFolders } from './host/hostFs';
 import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
 import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
@@ -18,10 +18,15 @@ import { answerPageRequest } from './host/panelPages';
 import { refreshPanel } from './host/refreshPanel';
 import { disposeArtboardWatcher, replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerVibeboardMcp } from './mcp/registerVibeboardMcp';
-import { postUiStatusToPanel, setArtboardPanelHandlers } from './panel/openArtboardPanel';
+import {
+	createPanelPorts,
+	postUiStatusToPanel,
+	setArtboardPanelHandlers,
+} from './panel/openArtboardPanel';
 
 export const activate = async (context: vscode.ExtensionContext): Promise<void> => {
 	const outputChannel = vscode.window.createOutputChannel('Vibeboard');
+	const ports = createPanelPorts(outputChannel);
 	context.subscriptions.push(outputChannel, { dispose: disposeArtboardWatcher });
 
 	const syncHostRuntime = async (rearmMarker: boolean): Promise<void> => {
@@ -33,31 +38,31 @@ export const activate = async (context: vscode.ExtensionContext): Promise<void> 
 			// Cursor reads ~/.cursor/skills/; every agent also gets the skill as MCP instructions.
 			void syncAgentSkill({ extensionUri: context.extensionUri, outputChannel });
 		}
-		replaceArtboardWatcher({ context, outputChannel, rearmMarker });
+		replaceArtboardWatcher({ context, ports, rearmMarker });
 	};
 
 	setArtboardPanelHandlers({
 		onVisible: () => {
-			void refreshPanel({ outputChannel });
+			void refreshPanel({ ports });
 		},
 		onFramePlace: (value) => {
-			void placeFrameFromChrome({ value, outputChannel })
-				.then((errorMessage) => refreshPanel({ outputChannel, errorMessage }))
+			void placeFrameFromChrome({ value, ports })
+				.then((errorMessage) => refreshPanel({ ports, errorMessage }))
 				.catch((error: unknown) => {
-					logDiskError({ scope: 'extension.framePlace', error, outputChannel });
+					ports.log('extension.framePlace', error);
 				});
 		},
 		onEditRequest: (value) => {
-			void answerEditRequest({ value, outputChannel });
+			void answerEditRequest({ value, ports });
 		},
 		onHistoryRequest: (value) => {
-			void answerHistoryRequest({ value, outputChannel });
+			void answerHistoryRequest({ value, ports });
 		},
 		onCommentRequest: (value) => {
-			void answerCommentRequest({ value, outputChannel });
+			void answerCommentRequest({ value, ports });
 		},
 		onPageRequest: (value) => {
-			void answerPageRequest({ value, outputChannel });
+			void answerPageRequest({ value, ports });
 		},
 	});
 
@@ -77,14 +82,14 @@ export const activate = async (context: vscode.ExtensionContext): Promise<void> 
 			clearEditHistories();
 			if (!vscode.workspace.isTrusted) {
 				postUiStatusToPanel({ mcpAvailable: false });
-				replaceArtboardWatcher({ context, outputChannel, rearmMarker: true });
-				void refreshPanel({ outputChannel });
+				replaceArtboardWatcher({ context, ports, rearmMarker: true });
+				void refreshPanel({ ports });
 			} else {
-				void syncHostRuntime(true).then(() => refreshPanel({ outputChannel }));
+				void syncHostRuntime(true).then(() => refreshPanel({ ports }));
 			}
 		}),
 		vscode.commands.registerCommand(OPEN_ARTBOARD_COMMAND, () => {
-			void handleOpenArtboard({ context, outputChannel });
+			void handleOpenArtboard({ context, ports });
 		}),
 		vscode.commands.registerCommand(REVEAL_DESIGN_FOLDER_COMMAND, () => {
 			void revealDesignFolder(outputChannel);

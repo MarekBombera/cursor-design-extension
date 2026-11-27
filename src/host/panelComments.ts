@@ -1,5 +1,3 @@
-import * as vscode from 'vscode';
-
 import { commentRequestType, toNewComment, toPostedComment } from './chromeMessages';
 import {
 	COPIED_NOT_MARKED_MESSAGE,
@@ -9,7 +7,6 @@ import {
 	malformedRequestMessage,
 } from './panelRequestCopy';
 import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
-import { firstWorkspaceFolder, logDiskError } from './hostFs';
 import { checkedPanelMessage, panelRequest } from './panelRequest';
 import {
 	addComment,
@@ -22,44 +19,37 @@ import {
 } from '../disk/comments';
 import { InvalidArgsError, toSafeArtboardErrorMessage } from '../disk/errors';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
-import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
-// vscode glue only. Neither export ever rejects.
+// Panel comment handlers; all I/O through ports. Neither export ever rejects.
 
 const READ_FALLBACK_MESSAGE = 'Could not read comments. Check the Output panel: Vibeboard.';
 
 // The last read started wins, so a slow read never overwrites a newer list.
 let readGeneration = 0;
 
-export const postPanelComments = async ({
-	outputChannel,
-}: {
-	outputChannel: vscode.OutputChannel;
-}): Promise<void> => {
+export const postPanelComments = async ({ ports }: { ports: PanelPorts }): Promise<void> => {
 	const token = ++readGeneration;
 	// '' until the resolve succeeds; a read failure after it still names the page.
 	let pageId = '';
 	// ponytail: no total payload cap; 500 comments × 100 replies × 2000 chars is the ceiling, the
 	// same as for canvas:updated. Upgrade path: page the list if a real workspace gets close.
 	try {
-		const workspaceFolder = firstWorkspaceFolder();
-		if (!vscode.workspace.isTrusted || !workspaceFolder) {
-			postCommentsToPanel({ pageId, comments: [] });
+		const workspaceRoot = ports.workspaceRoot();
+		if (!ports.isTrusted() || workspaceRoot === undefined) {
+			ports.postComments({ pageId, comments: [] });
 			return;
 		}
-		const page = await resolveOpenPage({
-			workspaceRoot: workspaceFolder.uri.fsPath,
-			createIfFresh: false,
-		});
+		const page = await resolveOpenPage({ workspaceRoot, createIfFresh: false });
 		pageId = page.pageId;
 		const comments = await readComments({ page });
 		if (token === readGeneration) {
-			postCommentsToPanel({ pageId, comments: comments.map(toPostedComment) });
+			ports.postComments({ pageId, comments: comments.map(toPostedComment) });
 		}
 	} catch (error: unknown) {
-		logDiskError({ scope: 'panelComments.read', error, outputChannel });
+		ports.log('panelComments.read', error);
 		if (token === readGeneration) {
-			postCommentsToPanel({
+			ports.postComments({
 				pageId,
 				comments: [],
 				error: toSafeArtboardErrorMessage(error, READ_FALLBACK_MESSAGE),
@@ -84,29 +74,28 @@ const LOG_SCOPES = {
 // check budget and the parse cache. Upgrade path: a flag-free disk read.
 export const answerCommentRequest = async ({
 	value,
-	outputChannel,
+	ports,
 }: {
 	value: unknown;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<void> => {
 	const type = commentRequestType(value);
 	if (type === undefined) {
 		// Routing only calls this for a claimed type, so there is nothing to answer to.
-		logDiskError({
-			scope: 'panelComments.answer',
-			error: new InvalidArgsError('Comment request from the panel claims no known type.'),
-			outputChannel,
-		});
+		ports.log(
+			'panelComments.answer',
+			new InvalidArgsError('Comment request from the panel claims no known type.'),
+		);
 		return;
 	}
 	const request = panelRequest({
 		value,
 		type,
 		scope: LOG_SCOPES[type],
-		outputChannel,
+		ports,
 		afterRefuse: isCopyType(type)
 			? () => {
-					void postPanelComments({ outputChannel });
+					void postPanelComments({ ports });
 				}
 			: undefined,
 	});
@@ -120,6 +109,7 @@ export const answerCommentRequest = async ({
 			type,
 			malformedMessage: malformedRequestMessage(type),
 			refuse,
+			ports,
 		});
 		if (checked === undefined) {
 			return;
@@ -141,24 +131,24 @@ export const answerCommentRequest = async ({
 		switch (message.type) {
 			case 'comment:create':
 				await addComment({ page, comment: toNewComment(message) });
-				postAnswerToPanel({ type: 'comment:added', requestId });
+				ports.postAnswer({ type: 'comment:added', requestId });
 				break;
 			case 'comment:reply':
 				await replyToComment({ page, id: message.id, body: message.body });
-				postAnswerToPanel({ type: 'comment:saved', requestId });
+				ports.postAnswer({ type: 'comment:saved', requestId });
 				break;
 			case 'comment:set-status':
 				await setCommentStatus({ page, id: message.id, status: message.status });
-				postAnswerToPanel({ type: 'comment:saved', requestId });
+				ports.postAnswer({ type: 'comment:saved', requestId });
 				break;
 			case 'comment:copy': {
 				const comment = await getComment({ page, id: message.id });
-				await vscode.env.clipboard.writeText(singleCommentPrompt(comment));
+				await ports.writeClipboard(singleCommentPrompt(comment));
 				const count = await markSent([comment.id]);
 				if (count === undefined) {
 					return;
 				}
-				postAnswerToPanel({ type: 'ui:copied', requestId, count });
+				ports.postAnswer({ type: 'ui:copied', requestId, count });
 				break;
 			}
 			case 'comment:copy-open': {
@@ -171,18 +161,18 @@ export const answerCommentRequest = async ({
 					return;
 				}
 				const ids = comments.map((comment) => comment.id);
-				await vscode.env.clipboard.writeText(openCommentsPrompt(ids));
+				await ports.writeClipboard(openCommentsPrompt(ids));
 				const count = await markSent(ids);
 				if (count === undefined) {
 					return;
 				}
-				postAnswerToPanel({ type: 'ui:copied', requestId, count });
+				ports.postAnswer({ type: 'ui:copied', requestId, count });
 				break;
 			}
 			default:
 				return message satisfies never;
 		}
-		void postPanelComments({ outputChannel });
+		void postPanelComments({ ports });
 	} catch (error: unknown) {
 		refuse(commentRequestErrorMessage({ type, error }), error);
 	}

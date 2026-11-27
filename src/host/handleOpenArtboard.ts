@@ -3,16 +3,16 @@ import * as vscode from 'vscode';
 import { firstWorkspaceFolder, NO_FOLDER_MESSAGE } from './hostFs';
 import { refreshPanel } from './refreshPanel';
 import { ensureArtboardWatcher } from './watchArtboardDisk';
-import { openArtboardPanel } from '../panel/openArtboardPanel';
+import { type PanelPorts, openArtboardPanel } from '../panel/openArtboardPanel';
 
 type HandleOpenArtboardArgs = {
 	context: vscode.ExtensionContext;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 };
 
 export const handleOpenArtboard = async ({
 	context,
-	outputChannel,
+	ports,
 }: HandleOpenArtboardArgs): Promise<void> => {
 	if (!firstWorkspaceFolder()) {
 		await vscode.window.showErrorMessage(NO_FOLDER_MESSAGE);
@@ -20,7 +20,7 @@ export const handleOpenArtboard = async ({
 		return;
 	}
 
-	await refreshPanel({ outputChannel, initialize: true });
+	await refreshPanel({ ports, initialize: true });
 	openArtboardPanel({ context });
-	ensureArtboardWatcher({ context, outputChannel });
+	ensureArtboardWatcher({ context, ports });
 };

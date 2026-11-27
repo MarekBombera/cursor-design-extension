@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
-import type * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { MALFORMED_EDIT_MESSAGE, PAGE_GONE_MESSAGE } from './panelRequestCopy';
@@ -14,6 +13,7 @@ import {
 import { FIRST_PAGE_ID } from '../disk/layout';
 import { clearEditHistories, historyFlags, historyStepTarget } from './editHistory';
 import { answerEditRequest, answerHistoryRequest } from './panelEdit';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // Pinned values: the module keeps these private.
 const EDIT_FALLBACK_MESSAGE = 'Could not save the edit. Check the Output panel: Vibeboard.';
@@ -22,20 +22,6 @@ const EDIT_CONFLICT_MESSAGE = 'This artboard changed on disk. Make the edit agai
 // One shared, ordered log of everything the host does, so order is assertable.
 const host = vi.hoisted(() => ({ isTrusted: true, hasFolder: true, calls: [] as string[] }));
 
-vi.mock('vscode', () => ({
-	workspace: {
-		get isTrusted() {
-			return host.isTrusted;
-		},
-	},
-}));
-vi.mock('./hostFs', () => ({
-	firstWorkspaceFolder: () => (host.hasFolder ? { uri: { fsPath: '/ws' } } : undefined),
-	logDiskError: vi.fn(() => host.calls.push('log')),
-}));
-vi.mock('../panel/openArtboardPanel', () => ({
-	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
-}));
 // page-1 is open; the edit below names page-2.
 vi.mock('../disk/openPage', () => ({
 	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
@@ -70,12 +56,20 @@ vi.mock('./canvasSnapshot', async (importOriginal) => {
 	};
 });
 
-const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
 const { editArtboard } = await import('../disk/artboardEditFs');
 const { resolveOpenPage, resolveRequestedPage } = await import('../disk/openPage');
 
-const outputChannel = {} as vscode.OutputChannel;
-const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
+const ports = {
+	isTrusted: () => host.isTrusted,
+	workspaceRoot: () => (host.hasFolder ? '/ws' : undefined),
+	log: vi.fn((_scope: string, _error: unknown) => host.calls.push('log')),
+	postAnswer: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
+	postSnapshot: vi.fn(),
+	postComments: vi.fn(),
+	writeClipboard: vi.fn(() => Promise.resolve()),
+	confirmModal: vi.fn(() => Promise.resolve(true)),
+} satisfies PanelPorts;
+const answers = (): unknown[] => ports.postAnswer.mock.calls.map(([answer]) => answer);
 
 const edit = {
 	type: 'artboard:edit',
@@ -96,7 +90,7 @@ beforeEach(() => {
 });
 
 test('a valid edit is written, then answered once with the tagged frame copy', async () => {
-	await answerEditRequest({ value: edit, outputChannel });
+	await answerEditRequest({ value: edit, ports });
 	assert.deepEqual(host.calls, ['editArtboard', 'panelFrameHtml', 'answer:artboard:edited']);
 	assert.deepEqual(answers(), [
 		{
@@ -124,10 +118,10 @@ test('a valid edit is written, then answered once with the tagged frame copy', a
 
 test('a conflict or a refusal is logged and answered once with panel copy', async () => {
 	vi.mocked(editArtboard).mockRejectedValueOnce(new ConflictError('hero', {}));
-	await answerEditRequest({ value: edit, outputChannel });
+	await answerEditRequest({ value: edit, ports });
 	const refused = new EditRefusedError('text-changed');
 	vi.mocked(editArtboard).mockRejectedValueOnce(refused);
-	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'edit-1', message: EDIT_CONFLICT_MESSAGE },
 		{ type: 'ui:error', requestId: 'edit-2', message: refused.message },
@@ -140,7 +134,7 @@ test('a resolver error is logged and answered once, and nothing is edited', asyn
 	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(
 		new MigrationConflictError({ pageId: FIRST_PAGE_ID, names: ['artboards'] }),
 	);
-	await answerEditRequest({ value: edit, outputChannel });
+	await answerEditRequest({ value: edit, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'edit-1', message: EDIT_FALLBACK_MESSAGE },
 	]);
@@ -151,13 +145,13 @@ test('a resolver error is logged and answered once, and nothing is edited', asyn
 test('malformed, untrusted and folderless attempts are refused before any disk call', async () => {
 	await answerEditRequest({
 		value: { ...edit, styles: [{ field: 'border', value: '1px' }] },
-		outputChannel,
+		ports,
 	});
 	host.isTrusted = false;
-	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, ports });
 	host.isTrusted = true;
 	host.hasFolder = false;
-	await answerEditRequest({ value: { ...edit, requestId: 'edit-3' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-3' }, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'edit-1', message: MALFORMED_EDIT_MESSAGE },
 		{ type: 'ui:error', requestId: 'edit-2', message: UNTRUSTED_WORKSPACE_MESSAGE },
@@ -169,7 +163,7 @@ test('malformed, untrusted and folderless attempts are refused before any disk c
 });
 
 test('an attempt without a usable requestId is logged once and never answered', async () => {
-	await answerEditRequest({ value: { ...edit, requestId: 'bad id' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'bad id' }, ports });
 	assert.deepEqual(host.calls, ['log']);
 	assert.equal(vi.mocked(editArtboard).mock.calls.length, 0);
 });
@@ -184,11 +178,11 @@ test('a same-bytes edit records nothing and answers the current flags', async ()
 		baseHash: `sha256:${'b'.repeat(64)}`,
 	};
 	vi.mocked(editArtboard).mockResolvedValueOnce(sameBytes);
-	await answerEditRequest({ value: edit, outputChannel });
+	await answerEditRequest({ value: edit, ports });
 	// A written edit, then the same-bytes one: the history keeps its one step.
-	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-2' }, ports });
 	vi.mocked(editArtboard).mockResolvedValueOnce(sameBytes);
-	await answerEditRequest({ value: { ...edit, requestId: 'edit-3' }, outputChannel });
+	await answerEditRequest({ value: { ...edit, requestId: 'edit-3' }, ports });
 	const flags = answers().map((answer) => {
 		const { canUndo, canRedo } = answer as { canUndo: boolean; canRedo: boolean };
 		return { canUndo, canRedo };
@@ -211,7 +205,7 @@ test('a same-bytes edit records nothing and answers the current flags', async ()
 
 test('a gone page is answered once with the page copy, and nothing is edited', async () => {
 	vi.mocked(resolveRequestedPage).mockRejectedValueOnce(new PageNotFoundError('page-2'));
-	await answerEditRequest({ value: edit, outputChannel });
+	await answerEditRequest({ value: edit, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'edit-1', message: PAGE_GONE_MESSAGE },
 	]);
@@ -228,7 +222,7 @@ test('nothing to undo or redo is answered without resolving a page', async () =>
 				frameId: 'hero',
 				step,
 			},
-			outputChannel,
+			ports,
 		});
 	}
 	assert.equal(vi.mocked(resolveRequestedPage).mock.calls.length, 0);

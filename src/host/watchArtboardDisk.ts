@@ -2,15 +2,19 @@ import * as vscode from 'vscode';
 
 import { VIBEBOARD_DIR, ensurePanelPathSegments } from '../disk/layout';
 import { isLockOrTempPath } from '../disk/workspaceLock';
-import { fileExists, firstWorkspaceFolder, isFileNotFound, logDiskError } from './hostFs';
+import { fileExists, firstWorkspaceFolder, isFileNotFound } from './hostFs';
 import { refreshPanel } from './refreshPanel';
-import { hasCurrentArtboardPanel, openArtboardPanel } from '../panel/openArtboardPanel';
+import {
+	type PanelPorts,
+	hasCurrentArtboardPanel,
+	openArtboardPanel,
+} from '../panel/openArtboardPanel';
 
 const WATCH_DEBOUNCE_MS = 200;
 
 type WatchArtboardDiskArgs = {
 	context: vscode.ExtensionContext;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 };
 
 type ReplaceArtboardWatcherArgs = WatchArtboardDiskArgs & {
@@ -37,29 +41,23 @@ export const disposeArtboardWatcher = (): void => {
 	artboardWatcher = undefined;
 };
 
-const refreshWatchedArtboard = async ({
-	outputChannel,
-}: {
-	outputChannel: vscode.OutputChannel;
-}): Promise<void> => (hasCurrentArtboardPanel() ? refreshPanel({ outputChannel }) : undefined);
+const refreshWatchedArtboard = async ({ ports }: { ports: PanelPorts }): Promise<void> =>
+	hasCurrentArtboardPanel() ? refreshPanel({ ports }) : undefined;
 
-const deleteEnsurePanelMarker = async (
-	markerUri: vscode.Uri,
-	outputChannel: vscode.OutputChannel,
-): Promise<void> => {
+const deleteEnsurePanelMarker = async (markerUri: vscode.Uri, ports: PanelPorts): Promise<void> => {
 	try {
 		await vscode.workspace.fs.delete(markerUri);
 	} catch (error: unknown) {
 		if (isFileNotFound(error)) {
 			return;
 		}
-		logDiskError({ scope: 'watchArtboardDisk.deleteMarker', error, outputChannel });
+		ports.log('watchArtboardDisk.deleteMarker', error);
 	}
 };
 
 export const replaceArtboardWatcher = ({
 	context,
-	outputChannel,
+	ports,
 	rearmMarker,
 }: ReplaceArtboardWatcherArgs): void => {
 	disposeArtboardWatcher();
@@ -90,7 +88,7 @@ export const replaceArtboardWatcher = ({
 				markerStillThere = await fileExists(markerUri);
 			} catch (error: unknown) {
 				pendingMarkerEnsure = false;
-				logDiskError({ scope: 'watchArtboardDisk.markerStat', error, outputChannel });
+				ports.log('watchArtboardDisk.markerStat', error);
 				return;
 			}
 			if (!markerStillThere) {
@@ -98,12 +96,12 @@ export const replaceArtboardWatcher = ({
 				return;
 			}
 			openArtboardPanel({ context, preserveFocus: true });
-			await refreshWatchedArtboard({ outputChannel });
-			await deleteEnsurePanelMarker(markerUri, outputChannel);
+			await refreshWatchedArtboard({ ports });
+			await deleteEnsurePanelMarker(markerUri, ports);
 			pendingMarkerEnsure = false;
 			return;
 		}
-		await refreshWatchedArtboard({ outputChannel });
+		await refreshWatchedArtboard({ ports });
 	};
 
 	const scheduleDebounce = (): void => {
@@ -153,13 +151,13 @@ export const replaceArtboardWatcher = ({
 			}
 		})
 		.catch((error: unknown) => {
-			logDiskError({ scope: 'watchArtboardDisk.markerStat', error, outputChannel });
+			ports.log('watchArtboardDisk.markerStat', error);
 		});
 };
 
-export const ensureArtboardWatcher = ({ context, outputChannel }: WatchArtboardDiskArgs): void => {
+export const ensureArtboardWatcher = ({ context, ports }: WatchArtboardDiskArgs): void => {
 	if (artboardWatcher !== undefined) {
 		return;
 	}
-	replaceArtboardWatcher({ context, outputChannel, rearmMarker: false });
+	replaceArtboardWatcher({ context, ports, rearmMarker: false });
 };

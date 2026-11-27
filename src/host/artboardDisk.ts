@@ -1,6 +1,3 @@
-import * as vscode from 'vscode';
-
-import { fileExists, logDiskError } from './hostFs';
 import { checkedPanelMessage } from './panelRequest';
 import {
 	canvasSnapshotErrorMessage,
@@ -27,18 +24,9 @@ import {
 } from '../disk/layoutFs';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
 import { listPages } from '../disk/pageOps';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 import type { PostedPage } from '../webview/hostMessages';
 import { PAGE_GONE_MESSAGE } from './panelRequestCopy';
-
-type WorkspaceDiskArgs = {
-	workspaceFolder: vscode.WorkspaceFolder;
-	outputChannel: vscode.OutputChannel;
-};
-
-const joinWorkspace = (
-	workspaceFolder: vscode.WorkspaceFolder,
-	segments: readonly string[],
-): vscode.Uri => vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
 
 // No manifest yet: create the default artboard, or make an existing artboard.html active.
 // Goes through the disk lib so the host gets the same symlink and ownership checks as MCP.
@@ -60,28 +48,28 @@ const initializeDefaultArtboard = async (page: PageLocation): Promise<void> => {
 
 const logCanvasViewReadErrors = ({
 	view,
-	outputChannel,
+	ports,
 }: {
 	view: CanvasView;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): void => {
 	for (const readLog of canvasViewReadLogs(view)) {
-		outputChannel.appendLine(`${readLog.scope}: ${readLog.tileMessage}`);
+		ports.log(readLog.scope, readLog.tileMessage);
 		if (readLog.error !== undefined) {
-			logDiskError({ scope: readLog.scope, error: readLog.error, outputChannel });
+			ports.log(readLog.scope, readLog.error);
 		}
 	}
 };
 
 const snapshotFromCanvasView = async ({
 	page,
-	outputChannel,
+	ports,
 }: {
 	page: PageLocation;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<Omit<CanvasSnapshot, 'pages'>> => {
 	const view = await readCanvasView({ page });
-	logCanvasViewReadErrors({ view, outputChannel });
+	logCanvasViewReadErrors({ view, ports });
 	const activeFrame = view.frames.find((frame) => frame.id === view.activeArtboardId);
 	const errorMessage = canvasSnapshotErrorMessage({
 		activeArtboardId: view.activeArtboardId,
@@ -99,7 +87,7 @@ const snapshotFromCanvasView = async ({
 			pageId: page.pageId,
 			frames: view.frames,
 			onTagError: (frameId, error) => {
-				logDiskError({ scope: `artboardDisk.sourceTags:${frameId}`, error, outputChannel });
+				ports.log(`artboardDisk.sourceTags:${frameId}`, error);
 			},
 		}),
 		handoffStale: view.handoffStale,
@@ -108,15 +96,22 @@ const snapshotFromCanvasView = async ({
 };
 
 const readOpenPageSnapshot = async ({
-	workspaceFolder,
-	outputChannel,
+	ports,
 	page,
 	initializeWhenMissing,
-}: WorkspaceDiskArgs & {
+}: {
+	ports: PanelPorts;
 	page: PageLocation;
 	initializeWhenMissing: boolean;
 }): Promise<Omit<CanvasSnapshot, 'pages'>> => {
-	if (!(await fileExists(joinWorkspace(workspaceFolder, manifestPathSegments(page.pageId))))) {
+	// ponytail: lstat does not follow a symlink, so a dangling symlinked manifest.json counts as
+	// present: the page reads as an empty stage or the manifest ownership error instead of failing
+	// Open. Upgrade path: refuse a symlinked manifest here.
+	if (
+		(await lstatOrUndefined(
+			workspaceJoin(page.workspaceRoot, manifestPathSegments(page.pageId)),
+		)) === undefined
+	) {
 		if (!initializeWhenMissing) {
 			// An indexed page whose folder is gone is an error. Only a fresh folder resolves with
 			// no project.json, and it stays an empty stage.
@@ -131,24 +126,26 @@ const readOpenPageSnapshot = async ({
 		}
 		await initializeDefaultArtboard(page);
 	}
-	return await snapshotFromCanvasView({ page, outputChannel });
+	return await snapshotFromCanvasView({ page, ports });
 };
 
 // A list failure never fails the snapshot: it is logged and lists nothing.
 const readPostedPages = async ({
 	page,
-	outputChannel,
+	ports,
 }: {
 	page: PageLocation;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<PostedPage[]> => {
 	try {
 		return (await listPages({ workspaceRoot: page.workspaceRoot })).pages;
 	} catch (error: unknown) {
-		logDiskError({ scope: 'artboardDisk.listPages', error, outputChannel });
+		ports.log('artboardDisk.listPages', error);
 		return [];
 	}
 };
+
+type WorkspaceDiskArgs = { workspaceRoot: string; ports: PanelPorts };
 
 type LoadActiveSnapshotArgs = WorkspaceDiskArgs & {
 	scope: string;
@@ -156,15 +153,15 @@ type LoadActiveSnapshotArgs = WorkspaceDiskArgs & {
 };
 
 const loadActiveSnapshot = async ({
-	workspaceFolder,
-	outputChannel,
+	workspaceRoot,
+	ports,
 	scope,
 	initializeWhenMissing,
 }: LoadActiveSnapshotArgs): Promise<CanvasSnapshot> => {
-	if (!vscode.workspace.isTrusted) {
+	if (!ports.isTrusted()) {
 		// No frames are posted, so drop every tagged copy the memo still holds.
 		panelFrames({
-			workspaceRoot: workspaceFolder.uri.fsPath,
+			workspaceRoot,
 			pageId: '',
 			frames: [],
 			onTagError: () => {},
@@ -173,33 +170,25 @@ const loadActiveSnapshot = async ({
 	}
 
 	const failed = (error: unknown): CanvasSnapshot => {
-		logDiskError({ scope, error, outputChannel });
+		ports.log(scope, error);
 		return emptyArtboardSnapshot(toSafeArtboardErrorMessage(error));
 	};
 	// Resolved outside the read's try, so a read failure still names the page it came from.
 	let page: PageLocation;
 	try {
-		page = await resolveOpenPage({
-			workspaceRoot: workspaceFolder.uri.fsPath,
-			createIfFresh: initializeWhenMissing,
-		});
+		page = await resolveOpenPage({ workspaceRoot, createIfFresh: initializeWhenMissing });
 	} catch (error: unknown) {
 		return failed(error);
 	}
 	let snapshot: Omit<CanvasSnapshot, 'pages'>;
 	try {
-		snapshot = await readOpenPageSnapshot({
-			workspaceFolder,
-			outputChannel,
-			page,
-			initializeWhenMissing,
-		});
+		snapshot = await readOpenPageSnapshot({ ports, page, initializeWhenMissing });
 	} catch (error: unknown) {
 		snapshot = { ...failed(error), pageId: page.pageId };
 	}
 	// Listed after the read (and any initialize), so a just-created page has its time; a failed
 	// read still lists, so the Pages menu offers a way off a broken page.
-	return { ...snapshot, pages: await readPostedPages({ page, outputChannel }) };
+	return { ...snapshot, pages: await readPostedPages({ page, ports }) };
 };
 
 export const initAndLoadArtboard = async (args: WorkspaceDiskArgs): Promise<CanvasSnapshot> =>
@@ -216,10 +205,10 @@ const MALFORMED_FRAME_PLACE_MESSAGE = 'Could not move the frame. Try again.';
 // the caller refreshes the panel after it.
 export const placeFrameFromChrome = async ({
 	value,
-	outputChannel,
+	ports,
 }: {
 	value: unknown;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 }): Promise<string | undefined> => {
 	try {
 		let refusedMessage: string | undefined;
@@ -228,9 +217,10 @@ export const placeFrameFromChrome = async ({
 			type: 'frame:place',
 			malformedMessage: MALFORMED_FRAME_PLACE_MESSAGE,
 			refuse: (message, error) => {
-				logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
+				ports.log('artboardDisk.placeFrame', error);
 				refusedMessage = message;
 			},
+			ports,
 		});
 		if (checked === undefined) {
 			return refusedMessage;
@@ -247,7 +237,7 @@ export const placeFrameFromChrome = async ({
 			});
 			return undefined;
 		} catch (error: unknown) {
-			logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
+			ports.log('artboardDisk.placeFrame', error);
 			// ponytail: a gone requested page is never the open page, so this banner shows over the
 			// open page's snapshot and names no page. Upgrade path: 10d's page menu names it.
 			return error instanceof PageNotFoundError
@@ -255,7 +245,7 @@ export const placeFrameFromChrome = async ({
 				: toSafeArtboardErrorMessage(error);
 		}
 	} catch (error: unknown) {
-		logDiskError({ scope: 'artboardDisk.placeFrameFromChrome', error, outputChannel });
+		ports.log('artboardDisk.placeFrameFromChrome', error);
 		return toSafeArtboardErrorMessage(error);
 	}
 };

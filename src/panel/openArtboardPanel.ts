@@ -10,7 +10,12 @@ import {
 	parseChromeMessage,
 } from '../host/chromeMessages';
 import { clearEditHistories, historyFlags, keepUnchangedHistories } from '../host/editHistory';
-import { chromeLoadErrorMessage, missingChromeAssets } from '../host/hostFs';
+import {
+	chromeLoadErrorMessage,
+	firstWorkspaceFolder,
+	logDiskError,
+	missingChromeAssets,
+} from '../host/hostFs';
 import { type PanelAnswer, createPanelOutbox } from '../host/panelOutbox';
 import type { CommentsUpdatedMessage } from '../webview/hostMessages';
 import { buildArtboardChromeHtml } from './artboardChromeHtml';
@@ -46,10 +51,6 @@ export const setArtboardPanelHandlers = (next: ArtboardPanelHandlers): void => {
 	handlers = next;
 };
 
-export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
-	outbox.postSnapshot(snapshot);
-};
-
 export const postUiStatusToPanel = (partial: {
 	mcpAvailable?: boolean;
 	handoffStale?: boolean;
@@ -57,13 +58,41 @@ export const postUiStatusToPanel = (partial: {
 	outbox.postUiStatus(partial);
 };
 
-export const postCommentsToPanel = (comments: Omit<CommentsUpdatedMessage, 'type'>): void => {
-	outbox.postComments(comments);
+// Every vscode-backed effect a host request or refresh handler uses. Built once in activate; trust
+// and the root are getters, read at call time (a trust grant or folder change lands mid-session).
+export type PanelPorts = {
+	isTrusted: () => boolean;
+	workspaceRoot: () => string | undefined;
+	log: (scope: string, error: unknown) => void;
+	postAnswer: (answer: PanelAnswer) => void;
+	postSnapshot: (snapshot: CanvasSnapshot) => void;
+	postComments: (comments: Omit<CommentsUpdatedMessage, 'type'>) => void;
+	writeClipboard: (text: string) => Promise<void>;
+	// The native modal; true only when the user picks action.
+	confirmModal: (prompt: { message: string; detail: string; action: string }) => Promise<boolean>;
 };
 
-export const postAnswerToPanel = (answer: PanelAnswer): void => {
-	outbox.postAnswer(answer);
-};
+export const createPanelPorts = (outputChannel: vscode.OutputChannel): PanelPorts => ({
+	isTrusted: () => vscode.workspace.isTrusted,
+	workspaceRoot: () => firstWorkspaceFolder()?.uri.fsPath,
+	log: (scope, error) => {
+		logDiskError({ scope, error, outputChannel });
+	},
+	postAnswer: (answer) => {
+		outbox.postAnswer(answer);
+	},
+	postSnapshot: (snapshot) => {
+		outbox.postSnapshot(snapshot);
+	},
+	postComments: (comments) => {
+		outbox.postComments(comments);
+	},
+	writeClipboard: async (text) => {
+		await vscode.env.clipboard.writeText(text);
+	},
+	confirmModal: async ({ message, detail, action }) =>
+		(await vscode.window.showWarningMessage(message, { modal: true, detail }, action)) === action,
+});
 
 export type OpenArtboardPanelArgs = {
 	context: vscode.ExtensionContext;

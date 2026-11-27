@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
-import type * as vscode from 'vscode';
 
 import { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import type { CanvasSnapshot } from './canvasSnapshot';
 import { refreshPanel } from './refreshPanel';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // One shared, ordered log of everything the host posts, so order is assertable.
 const host = vi.hoisted(() => ({
@@ -13,17 +13,6 @@ const host = vi.hoisted(() => ({
 	calls: [] as string[],
 }));
 
-vi.mock('vscode', () => ({
-	workspace: {
-		get isTrusted() {
-			return host.isTrusted;
-		},
-	},
-}));
-vi.mock('./hostFs', () => ({
-	firstWorkspaceFolder: () => host.folder,
-	logDiskError: vi.fn(),
-}));
 vi.mock('./artboardDisk', () => ({
 	initAndLoadArtboard: vi.fn(),
 	readActiveArtboardFromDisk: vi.fn(),
@@ -34,24 +23,25 @@ vi.mock('./panelComments', () => ({
 		return Promise.resolve();
 	}),
 }));
-vi.mock('../panel/openArtboardPanel', () => ({
-	postArtboardSnapshotToPanel: vi.fn((snapshot: CanvasSnapshot) =>
-		host.calls.push(`snapshot:${snapshot.pageId}`),
-	),
-}));
 
 const { initAndLoadArtboard, readActiveArtboardFromDisk } = await import('./artboardDisk');
-const { postArtboardSnapshotToPanel } = await import('../panel/openArtboardPanel');
 const { postPanelComments } = await import('./panelComments');
-const { logDiskError } = await import('./hostFs');
 
-const outputChannel = {} as vscode.OutputChannel;
+const ports = {
+	isTrusted: () => host.isTrusted,
+	workspaceRoot: () => (host.folder === undefined ? undefined : '/ws'),
+	log: vi.fn(),
+	postAnswer: vi.fn(),
+	postSnapshot: vi.fn((snapshot: CanvasSnapshot) => host.calls.push(`snapshot:${snapshot.pageId}`)),
+	postComments: vi.fn(),
+	writeClipboard: vi.fn(() => Promise.resolve()),
+	confirmModal: vi.fn(() => Promise.resolve(true)),
+} satisfies PanelPorts;
 const page = (pageId: string, errorMessage?: string): CanvasSnapshot => ({
 	...emptyArtboardSnapshot(errorMessage),
 	pageId,
 });
-const posted = (): CanvasSnapshot[] =>
-	vi.mocked(postArtboardSnapshotToPanel).mock.calls.map(([snapshot]) => snapshot);
+const posted = (): CanvasSnapshot[] => ports.postSnapshot.mock.calls.map(([snapshot]) => snapshot);
 
 beforeEach(() => {
 	host.isTrusted = true;
@@ -72,8 +62,8 @@ test('a slow read overtaken by a newer refresh posts nothing; the newer posts sn
 				}),
 		)
 		.mockResolvedValueOnce(page('page-new'));
-	const older = refreshPanel({ outputChannel });
-	await refreshPanel({ outputChannel });
+	const older = refreshPanel({ ports });
+	await refreshPanel({ ports });
 	finishOlder(page('page-old'));
 	await older;
 	assert.deepEqual(host.calls, ['snapshot:page-new', 'comments']);
@@ -90,11 +80,11 @@ test('a superseded frame-place refresh hands its error to the newer post, once',
 		)
 		.mockResolvedValueOnce(page('page-new'))
 		.mockResolvedValueOnce(page('page-later'));
-	const place = refreshPanel({ outputChannel, errorMessage: 'busy' });
-	await refreshPanel({ outputChannel });
+	const place = refreshPanel({ ports, errorMessage: 'busy' });
+	await refreshPanel({ ports });
 	finishPlace(page('page-old'));
 	await place;
-	await refreshPanel({ outputChannel });
+	await refreshPanel({ ports });
 	assert.deepEqual(
 		posted().map((snapshot) => [snapshot.pageId, snapshot.errorMessage]),
 		[
@@ -105,17 +95,17 @@ test('a superseded frame-place refresh hands its error to the newer post, once',
 });
 
 test('initialize reads with initAndLoadArtboard, otherwise readActiveArtboardFromDisk', async () => {
-	await refreshPanel({ outputChannel, initialize: true });
-	await refreshPanel({ outputChannel });
+	await refreshPanel({ ports, initialize: true });
+	await refreshPanel({ ports });
 	assert.equal(vi.mocked(initAndLoadArtboard).mock.calls.length, 1);
 	assert.equal(vi.mocked(readActiveArtboardFromDisk).mock.calls.length, 1);
 	assert.deepEqual(host.calls, ['snapshot:page-init', 'comments', 'snapshot:page-1', 'comments']);
 });
 
 test('errorMessage shows when the snapshot has none; a snapshot error wins over it', async () => {
-	await refreshPanel({ outputChannel, errorMessage: 'Could not move the frame. Try again.' });
+	await refreshPanel({ ports, errorMessage: 'Could not move the frame. Try again.' });
 	vi.mocked(readActiveArtboardFromDisk).mockResolvedValueOnce(page('page-1', 'Layout broken.'));
-	await refreshPanel({ outputChannel, errorMessage: 'Could not move the frame. Try again.' });
+	await refreshPanel({ ports, errorMessage: 'Could not move the frame. Try again.' });
 	assert.deepEqual(
 		posted().map(({ pageId, errorMessage }) => ({ pageId, errorMessage })),
 		[
@@ -127,9 +117,9 @@ test('errorMessage shows when the snapshot has none; a snapshot error wins over 
 
 test('no folder posts one empty snapshot with no disk read; untrusted shows the untrusted copy', async () => {
 	host.folder = undefined;
-	await refreshPanel({ outputChannel, errorMessage: 'place copy' });
+	await refreshPanel({ ports, errorMessage: 'place copy' });
 	host.isTrusted = false;
-	await refreshPanel({ outputChannel });
+	await refreshPanel({ ports });
 	assert.deepEqual(posted(), [
 		emptyArtboardSnapshot('place copy'),
 		emptyArtboardSnapshot(UNTRUSTED_WORKSPACE_MESSAGE),
@@ -141,12 +131,12 @@ test('no folder posts one empty snapshot with no disk read; untrusted shows the 
 
 test('a throwing snapshot post resolves and logs once under refreshPanel', async () => {
 	const failure = new Error('panel gone');
-	vi.mocked(postArtboardSnapshotToPanel).mockImplementationOnce(() => {
+	ports.postSnapshot.mockImplementationOnce(() => {
 		throw failure;
 	});
-	await refreshPanel({ outputChannel });
+	await refreshPanel({ ports });
 	assert.deepEqual(
-		vi.mocked(logDiskError).mock.calls.map(([args]) => [args.scope, args.error]),
+		ports.log.mock.calls.map(([scope, error]) => [scope, error]),
 		[['refreshPanel', failure]],
 	);
 });

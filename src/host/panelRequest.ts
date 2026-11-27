@@ -1,13 +1,10 @@
-import * as vscode from 'vscode';
-
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { claimedRequestId, parseChromeMessage } from './chromeMessages';
-import { firstWorkspaceFolder, logDiskError } from './hostFs';
 import { InvalidArgsError, NoWorkspaceError } from '../disk/errors';
-import { postAnswerToPanel } from '../panel/openArtboardPanel';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 import type { ChromeMessage } from '../webview/hostMessages';
 
-// vscode glue only. Neither export throws.
+// The shared request preamble; all I/O through ports. Neither export throws.
 
 type Refuse = (message: string, error: unknown) => void;
 
@@ -17,29 +14,25 @@ export const panelRequest = ({
 	value,
 	type,
 	scope,
-	outputChannel,
+	ports,
 	afterRefuse,
 }: {
 	value: unknown;
 	type: string;
 	scope: string;
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 	afterRefuse?: () => void;
 }): { requestId: string; refuse: Refuse } | undefined => {
 	const requestId = claimedRequestId(value);
 	if (requestId === undefined) {
-		logDiskError({
-			scope,
-			error: new InvalidArgsError(`${type} from the panel has no valid requestId.`),
-			outputChannel,
-		});
+		ports.log(scope, new InvalidArgsError(`${type} from the panel has no valid requestId.`));
 		return undefined;
 	}
 	return {
 		requestId,
 		refuse: (message, error) => {
-			logDiskError({ scope, error, outputChannel });
-			postAnswerToPanel({ type: 'ui:error', requestId, message });
+			ports.log(scope, error);
+			ports.postAnswer({ type: 'ui:error', requestId, message });
 			afterRefuse?.();
 		},
 	};
@@ -51,18 +44,20 @@ export const checkedPanelMessage = <T extends ChromeMessage['type']>({
 	type,
 	malformedMessage,
 	refuse,
+	ports,
 }: {
 	value: unknown;
 	type: T;
 	malformedMessage: string;
 	refuse: Refuse;
+	ports: PanelPorts;
 }): { workspaceRoot: string; message: Extract<ChromeMessage, { type: T }> } | undefined => {
-	if (!vscode.workspace.isTrusted) {
+	if (!ports.isTrusted()) {
 		refuse(UNTRUSTED_WORKSPACE_MESSAGE, `${type} refused in an untrusted workspace.`);
 		return undefined;
 	}
-	const workspaceFolder = firstWorkspaceFolder();
-	if (!workspaceFolder) {
+	const workspaceRoot = ports.workspaceRoot();
+	if (workspaceRoot === undefined) {
 		const error = new NoWorkspaceError();
 		refuse(error.message, error);
 		return undefined;
@@ -75,5 +70,5 @@ export const checkedPanelMessage = <T extends ChromeMessage['type']>({
 		refuse(malformedMessage, new InvalidArgsError(`Malformed ${type} message from the panel.`));
 		return undefined;
 	}
-	return { workspaceRoot: workspaceFolder.uri.fsPath, message };
+	return { workspaceRoot, message };
 };

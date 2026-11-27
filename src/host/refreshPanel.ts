@@ -1,10 +1,7 @@
-import * as vscode from 'vscode';
-
 import { initAndLoadArtboard, readActiveArtboardFromDisk } from './artboardDisk';
 import { emptyArtboardSnapshot, UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import { firstWorkspaceFolder, logDiskError } from './hostFs';
 import { postPanelComments } from './panelComments';
-import { postArtboardSnapshotToPanel } from '../panel/openArtboardPanel';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // Last started wins: a refresh posts only when no newer one started during its read. A frame-place
 // error is held from the refresh's start until the next post, whichever refresh makes it: a failed
@@ -21,32 +18,33 @@ let pendingErrorMessage: string | undefined;
 
 // Never rejects: reads a fresh snapshot, then posts it and the comment list unless superseded.
 export const refreshPanel = async ({
-	outputChannel,
+	ports,
 	initialize = false,
 	errorMessage,
 }: {
-	outputChannel: vscode.OutputChannel;
+	ports: PanelPorts;
 	initialize?: boolean; // Open Artboard only: initAndLoadArtboard (createIfFresh)
 	errorMessage?: string; // shown when the snapshot carries none (frame place copy)
 }): Promise<void> => {
 	const token = ++refreshGeneration;
 	pendingErrorMessage = errorMessage ?? pendingErrorMessage;
 	try {
-		const workspaceFolder = firstWorkspaceFolder();
-		const snapshot = !workspaceFolder
-			? emptyArtboardSnapshot(vscode.workspace.isTrusted ? undefined : UNTRUSTED_WORKSPACE_MESSAGE)
-			: await (initialize ? initAndLoadArtboard : readActiveArtboardFromDisk)({
-					workspaceFolder,
-					outputChannel,
-				});
+		const workspaceRoot = ports.workspaceRoot();
+		const snapshot =
+			workspaceRoot === undefined
+				? emptyArtboardSnapshot(ports.isTrusted() ? undefined : UNTRUSTED_WORKSPACE_MESSAGE)
+				: await (initialize ? initAndLoadArtboard : readActiveArtboardFromDisk)({
+						workspaceRoot,
+						ports,
+					});
 		if (token !== refreshGeneration) {
 			return;
 		}
 		const shownError = snapshot.errorMessage ?? pendingErrorMessage;
 		pendingErrorMessage = undefined;
-		postArtboardSnapshotToPanel({ ...snapshot, errorMessage: shownError });
-		void postPanelComments({ outputChannel });
+		ports.postSnapshot({ ...snapshot, errorMessage: shownError });
+		void postPanelComments({ ports });
 	} catch (error) {
-		logDiskError({ scope: 'refreshPanel', error, outputChannel });
+		ports.log('refreshPanel', error);
 	}
 };

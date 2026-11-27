@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test, vi } from 'vite-plus/test';
-import type * as vscode from 'vscode';
 
 import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
 import { clearEditHistories, historyEpoch, historyFlags, recordEdit } from './editHistory';
@@ -14,6 +13,7 @@ import {
 import { hashHtml } from '../disk/hash';
 import type { Project } from '../disk/parse';
 import { answerPageRequest } from './panelPages';
+import type { PanelPorts } from '../panel/openArtboardPanel';
 
 // Pinned values: the copy module keeps these private.
 const RENAME_REFUSED_MESSAGE = 'A page title needs 1 to 80 characters and no control characters.';
@@ -24,35 +24,14 @@ const host = vi.hoisted(() => ({
 	isTrusted: true,
 	hasFolder: true,
 	calls: [] as string[],
-	modalChoice: undefined as string | undefined,
+	confirmed: false,
 }));
-const showWarningMessage = vi.hoisted(() =>
-	vi.fn(() => {
-		host.calls.push('modal');
-		return Promise.resolve(host.modalChoice);
-	}),
-);
 
-vi.mock('vscode', () => ({
-	workspace: {
-		get isTrusted() {
-			return host.isTrusted;
-		},
-	},
-	window: { showWarningMessage },
-}));
-vi.mock('./hostFs', () => ({
-	firstWorkspaceFolder: () => (host.hasFolder ? { uri: { fsPath: '/ws' } } : undefined),
-	logDiskError: vi.fn(),
-}));
 vi.mock('./refreshPanel', () => ({
 	refreshPanel: vi.fn(() => {
 		host.calls.push('refresh');
 		return Promise.resolve();
 	}),
-}));
-vi.mock('../panel/openArtboardPanel', () => ({
-	postAnswerToPanel: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
 }));
 vi.mock('../disk/openPage', () => ({
 	resolveOpenPage: vi.fn(({ workspaceRoot }: { workspaceRoot: string }) =>
@@ -69,13 +48,24 @@ vi.mock('../disk/pageOps', async (importOriginal) => ({
 	deletePage: vi.fn(() => host.calls.push('write:delete')),
 }));
 
-const { postAnswerToPanel } = await import('../panel/openArtboardPanel');
 const { readProjectFile } = await import('../disk/layoutFs');
 const { createPage, deletePage, openPage, renamePage } = await import('../disk/pageOps');
 const { resolveOpenPage } = await import('../disk/openPage');
 
-const outputChannel = {} as vscode.OutputChannel;
-const answers = (): unknown[] => vi.mocked(postAnswerToPanel).mock.calls.map(([answer]) => answer);
+const ports = {
+	isTrusted: () => host.isTrusted,
+	workspaceRoot: () => (host.hasFolder ? '/ws' : undefined),
+	log: vi.fn((_scope: string, _error: unknown) => {}),
+	postAnswer: vi.fn((answer: { type: string }) => host.calls.push(`answer:${answer.type}`)),
+	postSnapshot: vi.fn(),
+	postComments: vi.fn(),
+	writeClipboard: vi.fn(() => Promise.resolve()),
+	confirmModal: vi.fn((_prompt: { message: string; detail: string; action: string }) => {
+		host.calls.push('modal');
+		return Promise.resolve(host.confirmed);
+	}),
+} satisfies PanelPorts;
+const answers = (): unknown[] => ports.postAnswer.mock.calls.map(([answer]) => answer);
 
 const open = { type: 'page:open', requestId: 'req-1', pageId: 'page-2' };
 const create = { type: 'page:create', requestId: 'req-2' };
@@ -104,14 +94,14 @@ beforeEach(() => {
 	host.isTrusted = true;
 	host.hasFolder = true;
 	host.calls.length = 0;
-	host.modalChoice = undefined;
+	host.confirmed = false;
 	vi.clearAllMocks();
 	clearEditHistories();
 	vi.mocked(readProjectFile).mockResolvedValue(project('page-1', 'page-2'));
 });
 
 test('each request type answers page:saved after its write, then refreshes', async () => {
-	host.modalChoice = 'Delete';
+	host.confirmed = true;
 	const cases = [
 		[open, 'open'],
 		[create, 'create'],
@@ -120,8 +110,8 @@ test('each request type answers page:saved after its write, then refreshes', asy
 	] as const;
 	for (const [value, write] of cases) {
 		host.calls.length = 0;
-		vi.mocked(postAnswerToPanel).mockClear();
-		await answerPageRequest({ value, outputChannel });
+		ports.postAnswer.mockClear();
+		await answerPageRequest({ value, ports });
 		assert.equal(host.calls.at(-3), `write:${write}`);
 		assert.deepEqual(host.calls.slice(-2), ['answer:page:saved', 'refresh']);
 		assert.deepEqual(answers(), [{ type: 'page:saved', requestId: value.requestId }]);
@@ -151,20 +141,20 @@ test('no usable requestId: nothing answered, nothing refreshed, nothing written'
 		{ ...rename, requestId: 'a b' },
 		{ type: 'page:delete', pageId: 'page-2' },
 	]) {
-		await answerPageRequest({ value, outputChannel });
+		await answerPageRequest({ value, ports });
 	}
 	assert.deepEqual(host.calls, []);
 });
 
 test('untrusted, no folder and malformed requests answer ui:error, then refresh, writing nothing', async () => {
 	host.isTrusted = false;
-	await answerPageRequest({ value: open, outputChannel });
+	await answerPageRequest({ value: open, ports });
 	host.isTrusted = true;
 	host.hasFolder = false;
-	await answerPageRequest({ value: create, outputChannel });
+	await answerPageRequest({ value: create, ports });
 	host.hasFolder = true;
-	await answerPageRequest({ value: { ...rename, title: 7 }, outputChannel });
-	await answerPageRequest({ value: { ...remove, pageId: '../x' }, outputChannel });
+	await answerPageRequest({ value: { ...rename, title: 7 }, ports });
+	await answerPageRequest({ value: { ...remove, pageId: '../x' }, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-1', message: UNTRUSTED_WORKSPACE_MESSAGE },
 		{ type: 'ui:error', requestId: 'req-2', message: new NoWorkspaceError().message },
@@ -186,40 +176,42 @@ test('untrusted, no folder and malformed requests answer ui:error, then refresh,
 
 test('delete of an unlisted id, with no project.json, or of the last page refuses before the modal', async () => {
 	vi.mocked(readProjectFile).mockResolvedValueOnce(project('page-1', 'page-3'));
-	await answerPageRequest({ value: remove, outputChannel });
+	await answerPageRequest({ value: remove, ports });
 	vi.mocked(readProjectFile).mockResolvedValueOnce(undefined);
-	await answerPageRequest({ value: remove, outputChannel });
+	await answerPageRequest({ value: remove, ports });
 	vi.mocked(readProjectFile).mockResolvedValueOnce(project('page-2'));
-	await answerPageRequest({ value: remove, outputChannel });
+	await answerPageRequest({ value: remove, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-4', message: PAGE_GONE_MESSAGE },
 		{ type: 'ui:error', requestId: 'req-4', message: PAGE_GONE_MESSAGE },
 		{ type: 'ui:error', requestId: 'req-4', message: LAST_PAGE_MESSAGE },
 	]);
-	assert.equal(showWarningMessage.mock.calls.length, 0);
+	assert.equal(ports.confirmModal.mock.calls.length, 0);
 	assert.equal(vi.mocked(deletePage).mock.calls.length, 0);
 	assert.equal(host.calls.filter((call) => call === 'refresh').length, 3);
 });
 
 test('a cancelled modal answers page:saved, deletes nothing and refreshes', async () => {
 	editFrame('page-2');
-	await answerPageRequest({ value: remove, outputChannel });
+	await answerPageRequest({ value: remove, ports });
 	assert.deepEqual(host.calls, ['modal', 'answer:page:saved', 'refresh']);
 	assert.equal(vi.mocked(deletePage).mock.calls.length, 0);
 	assert.equal(historyFlags({ pageId: 'page-2', frameId: 'hero' }).canUndo, true);
-	assert.deepEqual(showWarningMessage.mock.calls[0], [
-		'Delete "Title of page-2"?',
-		{ modal: true, detail: 'Its files move to .vibeboard/deleted/.' },
-		'Delete',
+	assert.deepEqual(ports.confirmModal.mock.calls[0], [
+		{
+			message: 'Delete "Title of page-2"?',
+			detail: 'Its files move to .vibeboard/deleted/.',
+			action: 'Delete',
+		},
 	]);
 });
 
 test("a confirmed delete deletes, forgets only that page's histories, answers page:saved", async () => {
-	host.modalChoice = 'Delete';
+	host.confirmed = true;
 	for (const pageId of ['page-2', 'page-1', 'page-20']) {
 		editFrame(pageId);
 	}
-	await answerPageRequest({ value: remove, outputChannel });
+	await answerPageRequest({ value: remove, ports });
 	assert.deepEqual(host.calls, ['modal', 'write:delete', 'answer:page:saved', 'refresh']);
 	assert.equal(vi.mocked(deletePage).mock.calls[0]?.[0].pageId, 'page-2');
 	assert.equal(historyFlags({ pageId: 'page-2', frameId: 'hero' }).canUndo, false);
@@ -230,13 +222,13 @@ test("a confirmed delete deletes, forgets only that page's histories, answers pa
 test('a busy lock answers its own copy; Agent copy never reaches the panel', async () => {
 	const busy = new LockTimeoutError();
 	vi.mocked(renamePage).mockRejectedValueOnce(busy);
-	await answerPageRequest({ value: rename, outputChannel });
+	await answerPageRequest({ value: rename, ports });
 	const agentRefusal = new InvalidArgsError('title must be 1 to 80 characters. Call list_pages.');
 	vi.mocked(renamePage).mockRejectedValueOnce(agentRefusal);
-	await answerPageRequest({ value: rename, outputChannel });
+	await answerPageRequest({ value: rename, ports });
 	const gone = new PageNotFoundError('page-2', { reason: 'unlisted' });
 	vi.mocked(openPage).mockRejectedValueOnce(gone);
-	await answerPageRequest({ value: open, outputChannel });
+	await answerPageRequest({ value: open, ports });
 	assert.deepEqual(answers(), [
 		{ type: 'ui:error', requestId: 'req-3', message: busy.message },
 		{ type: 'ui:error', requestId: 'req-3', message: RENAME_REFUSED_MESSAGE },

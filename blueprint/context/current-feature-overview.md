@@ -1,48 +1,98 @@
-# Host dedupe (11b) - Overview for review
+# 11c1 Host ports - Overview for review
 
-Source of truth: `blueprint/history/features/11b-host-dedupe.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/11c1-host-ports.md`. This file is the steering summary, not the build spec.
+
+**Branch:** `feature/host-ports` · **Build attempt:** 1 · **Shipped:** 2026-11-27
 
 ## TL;DR
 
-A refactor: each host job now has one implementation. Nothing changes for you or the Agent: the same messages, the same error copy, the same files on disk, the same MCP tools. 74 test files and 880 tests pass, the old 879 plus one new routing test.
+Shipped. Six host handlers get all vscode I/O from one `PanelPorts` object built in `activate`; none imports `vscode`. Tests swap glue mocks for a fake ports object: `vi.mock(` 32 → 15, every test name kept. `pnpm verify`: 74 files, 882 tests. Audit: five P3s, all fixed (await re-audit).
 
-## System map
+## Goal
 
-```mermaid
-flowchart LR
-  Chrome["Panel chrome"] -->|"frame:place, artboard:edit, artboard:history,<br/>comment:*, page:*"| Route["openArtboardPanel<br/>one handlers object"]
-  Route --> Pre["panelRequest.ts<br/>requestId → trust → folder → parse"]
-  Pre --> Edit["answerEditRequest /<br/>answerHistoryRequest"]
-  Pre --> Comments["answerCommentRequest"]
-  Pre --> Pages["answerPageRequest"]
-  Pre --> Place["placeFrameFromChrome<br/>(no requestId)"]
-  Comments --> Shell["comments.ts<br/>one write shell"]
-  Shell --> Disk[(".vibeboard/pages/id/comments.json")]
-```
+The host's panel request and refresh handlers stop importing vscode. One small `PanelPorts` object
+(trust, workspace root, log, the three panel posts, clipboard, modal confirm) is built once in
+`activate` and passed in. Six modules (`panelRequest`, `panelEdit`, `panelComments`, `panelPages`,
+`artboardDisk`, `refreshPanel`) then load without vscode, and their tests drop the glue mocks.
+11c2 moves those tests onto real disk.
 
 ## What you will see
 
-Nothing new. Two log-only differences appear in the Output panel (Vibeboard):
-- A `page:*` request with no requestId is logged under its own type.
-- A frame move refused in an untrusted or folder-less window now gets a log line.
+Nothing in the product. The panel, the Agent and disk behave exactly as before. In the code:
+`vi.mock(` calls across the six host tests drop from 32 to 15, and the six modules have no runtime
+`vscode` import.
 
-## Decisions locked
+## Scope at a glance
 
-- **One request preamble in `src/host/panelRequest.ts`.** It holds the requestId, trust, folder and parse checks, and every chrome request handler plus frame moves start with it. It can't live in `chromeMessages.ts`, which must stay free of `vscode`.
-- **One `comments.json` write shell.** `changeCommentsFile` handles ownership, existence, lock, read, change and write for add, reply, status, mark-sent and resolve. A missing file still means no lock and no write.
-- **One handlers object.** `setArtboardPanelHandlers` has six keys, and the panel routes edit and undo/redo itself.
-- **No dispose flags.** `activate` pushes the watcher's cleanup once, and the MCP provider's reset is pushed together with the provider. This also re-registers the watcher's cleanup after a deactivate and reactivate in one host, which the old flag missed.
-- **MCP open-page wrapper dropped from 11b.** It already shipped in 10c as `runOnOpenPage`. The build plan and overview now say so.
+| In | Out |
+|---|---|
+| `PanelPorts` + `createPanelPorts` in `openArtboardPanel.ts` | Real-disk test rewrites (11c2) |
+| The six modules take `ports` instead of `outputChannel` | Watcher logic (11c3), only its log arg changes |
+| Watcher, Open Artboard, `extension.ts` pass `ports` through | Webview post port (11c4) |
+| Manifest check via the disk lib's `lstatOrUndefined` | `canvasSnapshot`, `hostFs`, `openArtboardPanel` test mocks |
+| Tests swap glue mocks for a fake ports object, assertions kept | Messages, disk format, MCP, Agent skill, chrome |
 
-## Out of scope
+## Wiring (11c1)
 
-Ports and mock-free host tests (11c), `parseHostMessage` (11d), the comments deep review (11e), and any message, copy, disk or MCP change.
+```mermaid
+flowchart LR
+  VS["vscode<br/>isTrusted, folders, clipboard,<br/>showWarningMessage, OutputChannel"] --> B["createPanelPorts<br/>(openArtboardPanel.ts)"]
+  OB["panel outbox<br/>answer / snapshot / comments"] --> B
+  B -->|"one ports object, built in activate"| EXT["extension.ts"]
+  EXT --> H["answer* handlers<br/>placeFrameFromChrome"]
+  EXT --> R["refreshPanel"]
+  EXT --> W["watcher, Open Artboard"]
+  W --> R
+  H --> R
+  H --> D[("disk lib<br/>.vibeboard/")]
+  R --> D
+```
 
-## Your actions
+No message between processes, and no disk write, changes. The diagram shows the in-process wiring
+only.
 
-- Optional F5 smoke: drag a frame, edit a field and undo it, add a comment and copy it, open and rename a page.
-- The Notion quality-pass note needs the same "MCP wrapper shipped in 10c" change, once you say yes.
+## Locked decisions
+
+- **Split of 11c (2026-11-27, Bombic):** 11c1 host ports, 11c2 host tests on real disk, 11c3 watcher
+  pure step, 11c4 page-bound post port. The split is by layer, because the shared preamble ties
+  every handler together.
+- **refreshPanel joins the ports**: it is the same panel I/O. `canvasSnapshot` and `hostFs` keep
+  their mocks: spies only, or the vscode edge itself.
+- **Getters for trust and root**, read at call time, as today, and tested: ports are built once in
+  `activate`, so a captured value would send panel writes to a stale folder.
+- **Logs stay byte-identical**: the canvas read-log line goes through `log(scope, text)`, which
+  prints the same text.
+- **One behavior detail:** the manifest existence check moves from a vscode stat to the disk lib's
+  lstat (rule 07: the host reaches `.vibeboard/` only through the disk lib). Only a *dangling*
+  symlinked manifest changes: it now counts as present, so the page reads as an empty stage or
+  shows the ownership error, where today Open fails trying to create the default artboard. Neither
+  version writes anything. A `ponytail:` comment marks it in code; the build-plan line and the
+  Notion page say so too.
+
+## Steps
+
+1. Ports type and builder, plus one builder test: the native delete modal (`modal: true`) and the
+   trust / root getters following live changes.
+2. Manifest check through the disk lib first (it needs no ports); `artboardDisk.test` moves to a
+   temp root with a real manifest file, and the page-list test gains a `readCanvasView` count so it
+   cannot pass on the manifest-missing path.
+3. Every handler on ports in one mechanical step; the test glue mocks become a fake ports object.
+   Only a named list of assertion rewrites is allowed; anything else means behavior changed.
+4. Owner catalog, system map check, `pnpm verify`.
+
+## Try it
+
+No F5 needed: no chrome or message change. Optional `/check` in the Extension Development Host:
+Copy prompt (clipboard port) and a page delete (modal port).
 
 ## Done means
 
-`pnpm verify` passes, there are no open P0 or P1 findings, the audit found one P3 (F-39) that is fixed and closed, and the work is one squash commit on local `main`.
+- No runtime `vscode`, `hostFs` or panel import in the six modules (grep checked).
+- Same test names; only the spec's allowed rewrites.
+- `createPanelPorts` tested: native modal, call-time trust/root, rejected clipboard write rejects.
+- One behavior detail: a dangling symlinked `manifest.json` now counts as present (`ponytail:` comment).
+
+## Your actions
+
+- Add the manifest-check note to the Notion 0.5 version page (rule 00).
+- Optional: `/check` Copy prompt and page delete in the Extension Development Host (vscode side not run live).
