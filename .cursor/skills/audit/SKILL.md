@@ -117,7 +117,8 @@ plus uncommitted changes. The diff is **critical** when it touches any of:
 
 - disk SoT or the lock: `src/disk/` (incl. `workspaceLock.ts`, migration, page ops)
 - MCP: `src/mcp/`, `skills/vibeboard/SKILL.md`
-- message contracts: `src/webview/hostMessages.ts`, `src/webview/frame/frameMessages.ts`,
+- message contracts: `src/webview/hostMessages.ts`, `src/webview/hostMessageGuard.ts`,
+  `src/webview/frame/frameMessages.ts`,
   `src/host/chromeMessages.ts`, the system-map message table
 - CSP or sandbox: `src/panel/artboardChromeHtml.ts`, `src/webview/stampArtboardHtml.ts`,
   `Frame.svelte`'s `sandbox`, `package.json` `capabilities`

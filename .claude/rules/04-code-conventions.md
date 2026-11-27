@@ -28,7 +28,7 @@ Import, never re-type:
 
 ## Wire values are `unknown` until a guard checks them
 
-Disk JSON, MCP tool args, and webview messages go through a parser (`src/disk/parse.ts`, `src/disk/canvasLayout.ts`, zod/mini) before use: `parseManifest(JSON.parse(text) as unknown)`, never `as ArtboardManifest` or `as SomeUnion`. Reject an unknown or malformed value with an authored error; never silently default it.
+Disk JSON, MCP tool args, and webview messages go through a parser (`src/disk/parse.ts`, `src/disk/canvasLayout.ts`, zod/mini) before use: `parseManifest(JSON.parse(text) as unknown)`, never `as ArtboardManifest` or `as SomeUnion`. Reject an unknown or malformed value with an authored error; never silently default it. One exception: the chrome checks only the envelope of host → chrome `comments:updated` and casts its entries, which the host's `comments.json` parse checked (`parseCommentsUpdated` in `hostMessageGuard.ts`).
 
 ## Types
 

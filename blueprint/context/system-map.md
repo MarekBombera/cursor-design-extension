@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11c4 Page-bound post port (`feature/page-bound-post-port`): no flow or message changed. The 8 page-bound requests still carry `pageId`, now added by the one `pageBoundPost(pageId)` that `DesignPage` builds per page (Page-scoped panel, Chrome → host).
+**Last verified against code:** 2026-11-27, 11d Host message guard (`feature/host-message-guard`): no message shape changed. `parseHostMessage` and `routeMessage` moved to `src/webview/hostMessageGuard.ts`; `comments:updated` entries are no longer re-checked in the chrome (routing paragraph in "Agent edit to live frame", contract table row).
 
 ## Chart checklist
 
@@ -514,8 +514,9 @@ sequenceDiagram
 
 Chrome routes every window message with `routeMessage`: a registered iframe's window is a frame
 message (then `parseFrameMessage`), any other opaque-origin sender is dropped, the rest goes to
-`parseHostMessage`. Source tags (9a) number every element written in the file by start-tag
-order (`sourceTags.ts`; implied elements, `script`/`style`/`title`/`textarea`, template content and SVG
+`parseHostMessage`, which checks only message envelopes for comments (the entries come from the
+host's strict `comments.json` parse). Source tags (9a) number every element written in the file
+by start-tag order (`sourceTags.ts`; implied elements, `script`/`style`/`title`/`textarea`, template content and SVG
 `text` get none) and are deterministic, so an unchanged frame re-posts identical HTML. Disk, export,
 `read_artboard`, comment flags and comment selectors never see them; the memo is pruned to the
 posted frames (and emptied on the untrusted path). Each `canvas:updated` is merged by `mergeCanvasFrames`: an identical re-post
@@ -1173,7 +1174,7 @@ settles the gesture to disk (the Agent wins).
 | host → chrome | `canvas:updated` | `{pageId, activeArtboardId, generation, cspNonce, frames[], pages[]}` (`pageId` 10b: the page the snapshot was read from, `''` when no page resolved, else a valid page id; each frame's `html` is the disk HTML with host-added `data-cd-src="N"` numbers, 9a; each frame's `hash` is `hashHtml` of the disk HTML, `''` when unreadable, 9c; each frame's `canUndo` / `canRedo` is read from the undo history when the outbox sends, 9f; `pages` 10d: required, `[{id, title, updatedAt}]` in `project.json` order, `updatedAt` ISO 8601 or `null` when unreadable, `[]` when no page resolved or the list read failed, a bad entry dropped) |
 | host → chrome | `artboard:error` | `{message}` (safe copy) |
 | host → chrome | `ui:status` | `{mcpAvailable, handoffStale}` |
-| host → chrome | `comments:updated` | `{pageId, comments[], error?}` (`pageId` 10b: as on `canvas:updated`, `''` always with no comments; each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked) |
+| host → chrome | `comments:updated` | `{pageId, comments[], error?}` (`pageId` 10b: as on `canvas:updated`, `''` always with no comments; each comment has `stale` and `targetMissing`, `true`, `false` or `null` = unchecked; the chrome checks the envelope only, 11d) |
 | host → chrome | `comment:added` | `{requestId}` |
 | host → chrome | `comment:saved` | `{requestId}` (answer to `comment:reply` / `comment:set-status`, posted before the `comments:updated` it causes) |
 | host → chrome | `ui:copied` | `{requestId, count}` (answer to `comment:copy` / `comment:copy-open`; `count` = comments moved open → sent; posted before the `comments:updated` it causes) |

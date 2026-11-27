@@ -207,7 +207,7 @@ const STYLE_VALUE_PATTERN = /^(?=.*[^ ])[\p{L}\p{N}_ #%.,()'"/+-]+$/u;
 export const isSafeStyleValue = (value: string): boolean =>
 	value.length <= MAX_STYLE_VALUE_CHARS && STYLE_VALUE_PATTERN.test(value);
 
-export const parseFrameRect = (value: unknown): FrameRect | undefined => {
+const parseFrameRect = (value: unknown): FrameRect | undefined => {
 	if (!isRecord(value)) {
 		return undefined;
 	}

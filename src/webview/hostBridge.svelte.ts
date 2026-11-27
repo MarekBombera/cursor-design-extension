@@ -11,9 +11,8 @@ import {
 	type HostMessage,
 	type PagePost,
 	type PageRequestMessage,
-	parseHostMessage,
-	routeMessage,
 } from './hostMessages';
+import { parseHostMessage, routeMessage } from './hostMessageGuard';
 import {
 	parseSavedCommentUi,
 	parseSavedStageView,

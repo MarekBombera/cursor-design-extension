@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vite-plus/test';
 
-import { parseHostMessage, routeMessage } from './hostMessages';
+import { parseHostMessage, routeMessage } from './hostMessageGuard';
 
 const validFrame = {
 	id: 'a',
@@ -188,39 +188,32 @@ const validComment = {
 	targetMissing: false,
 };
 
-test('comments:updated drops a malformed comment and keeps the valid one', () => {
+test("comments:updated passes the host's comments through with no per-entry check", () => {
+	const comments = [
+		validComment,
+		{ ...validComment, id: 'c2', status: 'sent' },
+		{ ...validComment, id: 'c3', status: 'resolved' },
+		{
+			...validComment,
+			id: 'c4',
+			isPage: true,
+			selector: 'body',
+			tagName: 'body',
+			rect: null,
+			replies: [],
+			stale: null,
+			targetMissing: null,
+		},
+		{ ...validComment, id: 'c5', selector: 'h1\nh2' },
+	];
+	assert.deepEqual(parseHostMessage({ type: 'comments:updated', pageId: 'page-1', comments }), {
+		type: 'comments:updated',
+		pageId: 'page-1',
+		comments,
+	});
 	assert.deepEqual(
-		parseHostMessage({
-			type: 'comments:updated',
-			pageId: 'page-1',
-			comments: [{ ...validComment, selector: 'h1\nh2' }, validComment],
-		}),
-		{ type: 'comments:updated', pageId: 'page-1', comments: [validComment] },
-	);
-	// Every status is kept, not only open.
-	const statuses = (['sent', 'resolved'] as const).map((status) => ({ ...validComment, status }));
-	assert.deepEqual(
-		parseHostMessage({ type: 'comments:updated', pageId: 'page-1', comments: statuses }),
-		{ type: 'comments:updated', pageId: 'page-1', comments: statuses },
-	);
-});
-
-test('comments:updated keeps true, false and null flags and drops anything else', () => {
-	const unchecked = { ...validComment, id: 'c2', stale: null, targetMissing: null };
-	const noTargetMissing: Record<string, unknown> = { ...validComment, id: 'c3' };
-	delete noTargetMissing.targetMissing;
-	assert.deepEqual(
-		parseHostMessage({
-			type: 'comments:updated',
-			pageId: 'page-1',
-			comments: [
-				validComment,
-				{ ...validComment, id: 'c4', stale: 'yes' },
-				noTargetMissing,
-				unchecked,
-			],
-		}),
-		{ type: 'comments:updated', pageId: 'page-1', comments: [validComment, unchecked] },
+		parseHostMessage({ type: 'comments:updated', pageId: 'page-1', comments, error: 'x' }),
+		{ type: 'comments:updated', pageId: 'page-1', comments, error: 'x' },
 	);
 });
 
