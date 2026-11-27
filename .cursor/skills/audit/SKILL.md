@@ -110,6 +110,38 @@ request exists.
 The builder never performs Phase B itself. Never let the builder review its
 own work or skip a selected independent-review gate.
 
+## Dual review for critical diffs (vibeboard)
+
+Applies to `current` and `independent current`. Run `git diff --name-only main...HEAD`
+plus uncommitted changes. The diff is **critical** when it touches any of:
+
+- disk SoT or the lock: `src/disk/` (incl. `workspaceLock.ts`, migration, page ops)
+- MCP: `src/mcp/`, `skills/vibeboard/SKILL.md`
+- message contracts: `src/webview/hostMessages.ts`, `src/webview/frame/frameMessages.ts`,
+  `src/host/chromeMessages.ts`, the system-map message table
+- CSP or sandbox: `src/panel/artboardChromeHtml.ts`, `src/webview/stampArtboardHtml.ts`,
+  `Frame.svelte`'s `sandbox`, `package.json` `capabilities`
+- or Bombic calls the change critical.
+
+Critical: spawn two fresh, isolated reviewer subagents in parallel (one message,
+foreground), both at `high` effort, never `xhigh`, each over the same raw diff and
+spec, never the builder's conclusions:
+
+- **Breaker**: Opus 5.5. Hunts breakage: data loss, lock and race bugs, wrong page
+  or folder, error paths, untrusted input.
+- **Literalist**: Sonnet 5.5. Hunts drift: code vs spec, contracts and docs, missed
+  callers, Agent skill and system map out of date.
+
+Merge before Step 4: verify each finding against the code yourself, drop the ones
+the code disproves (say why in the report), give one F-id per defect, and add
+`(found by: breaker | literalist | both)` to its **Found** line. If a reviewer
+fails, times out or runs on another model, stop and say so: never fall back to a
+silent single pass. In independent mode both act as the Phase B reviewer and the
+receipt names both.
+
+Not critical: one fresh reviewer subagent on Opus 5.5 at `high`. Test-only or
+config-only work always gets one reviewer (AGENTS.md).
+
 ## Step 1 - gather context
 
 Resolve this required context:
