@@ -20,7 +20,6 @@ type ReplaceArtboardWatcherArgs = WatchArtboardDiskArgs & {
 let artboardWatcher: vscode.FileSystemWatcher | undefined;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 let pendingMarkerEnsure = false;
-let watcherDisposeHooked = false;
 let watchChain: Promise<void> = Promise.resolve();
 
 const clearDebounceTimer = (): void => {
@@ -30,7 +29,8 @@ const clearDebounceTimer = (): void => {
 	}
 };
 
-const disposeArtboardWatcher = (): void => {
+// A no-op without a watcher; activate hooks it to deactivate.
+export const disposeArtboardWatcher = (): void => {
 	clearDebounceTimer();
 	pendingMarkerEnsure = false;
 	artboardWatcher?.dispose();
@@ -138,13 +138,6 @@ export const replaceArtboardWatcher = ({
 		}
 		scheduleDebounce();
 	});
-
-	if (!watcherDisposeHooked) {
-		context.subscriptions.push({
-			dispose: disposeArtboardWatcher,
-		});
-		watcherDisposeHooked = true;
-	}
 
 	if (!rearmMarker) {
 		return;

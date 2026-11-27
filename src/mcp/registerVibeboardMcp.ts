@@ -18,7 +18,6 @@ type RegisterVibeboardMcpArgs = {
 
 type McpServerLaunch = { command: string; args: string[]; env: Record<string, string> };
 
-let mcpDisposeHooked = false;
 // VS Code: the provider registers once per host; a later sync swaps the launch and fires the event.
 let vsCodeProvider: { launch: McpServerLaunch; changed: vscode.EventEmitter<void> } | undefined;
 
@@ -89,7 +88,13 @@ const provideVsCodeServer = ({
 	}
 	const provider = { launch, changed: new vscode.EventEmitter<void>() };
 	try {
+		// Deactivate disposes the provider; a later activate in the same host registers afresh.
 		context.subscriptions.push(
+			{
+				dispose: () => {
+					vsCodeProvider = undefined;
+				},
+			},
 			provider.changed,
 			lm.registerMcpServerDefinitionProvider(VIBEBOARD_MCP_SERVER_NAME, {
 				onDidChangeMcpServerDefinitions: provider.changed.event,
@@ -117,17 +122,6 @@ export const registerVibeboardMcp = ({
 	context,
 	outputChannel,
 }: RegisterVibeboardMcpArgs): boolean => {
-	if (!mcpDisposeHooked) {
-		// Deactivate disposes the provider; a later activate in the same host registers afresh.
-		context.subscriptions.push({
-			dispose: () => {
-				vsCodeProvider = undefined;
-				mcpDisposeHooked = false;
-			},
-		});
-		mcpDisposeHooked = true;
-	}
-
 	// Cursor runs one server per user for every window, and the last registration's env wins: a
 	// folder-less window must not replace another window's folders with none. Cursor's shared server
 	// still serves this window; VS Code's provider is per window, so there it is unavailable.

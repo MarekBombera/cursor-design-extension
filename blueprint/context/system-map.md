@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-26, 10e Verify (`feature/verify`): no flow changed. Docs-only drift fixes: the 10a Pre-rename folder bullet, the Stale node and the D5 note now say cursor-design 0.4 only uses `.cursor-design/`; the HostOther node notes `createPage` resolves with `createIfFresh: true`; the Pages menu answer lines name the page button in the focus condition. The six read MCP tools' descriptions say a read may first settle the design folder.
+**Last verified against code:** 2026-11-27, 11b Host dedupe (`feature/host-dedupe`): no flow or message changed. Panel requests now share one preamble (`panelRequest.ts`: requestId, trust, folder, parse) and `openArtboardPanel.ts` routes `artboard:history` and `artboard:edit` to separate handlers; the Runtime map and request charts already describe that order.
 
 ## Chart checklist
 

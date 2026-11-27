@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 
-import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import { pageRequestId, pageRequestType, parseChromeMessage } from './chromeMessages';
+import { pageRequestType } from './chromeMessages';
 import { forgetPageHistories } from './editHistory';
-import { firstWorkspaceFolder, logDiskError } from './hostFs';
+import { logDiskError } from './hostFs';
+import { checkedPanelMessage, panelRequest } from './panelRequest';
 import { MALFORMED_PAGE_REQUEST_MESSAGE, pageRequestErrorMessage } from './panelRequestCopy';
 import { refreshPanel } from './refreshPanel';
-import { InvalidArgsError, NoWorkspaceError } from '../disk/errors';
+import { InvalidArgsError } from '../disk/errors';
 import { readProjectFile } from '../disk/layoutFs';
 import { resolveOpenPage } from '../disk/openPage';
 import { createPage, deletePage, listedPage, openPage, renamePage } from '../disk/pageOps';
@@ -59,45 +59,40 @@ export const answerPageRequest = async ({
 	value: unknown;
 	outputChannel: vscode.OutputChannel;
 }): Promise<void> => {
-	const requestId = pageRequestId(value);
 	const type = pageRequestType(value);
-	// Routing only calls this for a claimed type; a request without a usable requestId has nothing to answer to.
-	if (type === undefined || requestId === undefined) {
+	// Routing only calls this for a claimed type, so there is nothing to answer to.
+	if (type === undefined) {
 		logDiskError({
 			scope: 'panelPages.answer',
-			error: new InvalidArgsError(
-				`${type ?? 'Page request'} from the panel has no valid requestId.`,
-			),
+			error: new InvalidArgsError('Page request from the panel has no valid requestId.'),
 			outputChannel,
 		});
 		return;
 	}
-	const scope = LOG_SCOPES[type];
-	const refuse = (message: string, error: unknown): void => {
-		logDiskError({ scope, error, outputChannel });
-		postAnswerToPanel({ type: 'ui:error', requestId, message });
-		void refreshPanel({ outputChannel });
-	};
+	const request = panelRequest({
+		value,
+		type,
+		scope: LOG_SCOPES[type],
+		outputChannel,
+		afterRefuse: () => {
+			void refreshPanel({ outputChannel });
+		},
+	});
+	if (request === undefined) {
+		return;
+	}
+	const { requestId, refuse } = request;
 	try {
-		if (!vscode.workspace.isTrusted) {
-			refuse(UNTRUSTED_WORKSPACE_MESSAGE, `${type} refused in an untrusted workspace.`);
+		const checked = checkedPanelMessage({
+			value,
+			type,
+			malformedMessage: MALFORMED_PAGE_REQUEST_MESSAGE,
+			refuse,
+		});
+		if (checked === undefined) {
 			return;
 		}
-		const workspaceFolder = firstWorkspaceFolder();
-		if (!workspaceFolder) {
-			const error = new NoWorkspaceError();
-			refuse(error.message, error);
-			return;
-		}
-		const message = parseChromeMessage(value);
-		if (message?.type !== type) {
-			refuse(
-				MALFORMED_PAGE_REQUEST_MESSAGE,
-				new InvalidArgsError(`Malformed ${type} message from the panel.`),
-			);
-			return;
-		}
-		const workspaceRoot = workspaceFolder.uri.fsPath;
+		const { workspaceRoot, message } = checked;
 		await resolveOpenPage({ workspaceRoot, createIfFresh: false });
 		// Exhaustive on purpose: a new page request type fails to compile here until it is handled.
 		switch (message.type) {

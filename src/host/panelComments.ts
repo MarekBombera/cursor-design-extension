@@ -1,13 +1,6 @@
 import * as vscode from 'vscode';
 
-import { UNTRUSTED_WORKSPACE_MESSAGE } from './canvasSnapshot';
-import {
-	commentRequestId,
-	commentRequestType,
-	parseChromeMessage,
-	toNewComment,
-	toPostedComment,
-} from './chromeMessages';
+import { commentRequestType, toNewComment, toPostedComment } from './chromeMessages';
 import {
 	COPIED_NOT_MARKED_MESSAGE,
 	NOTHING_OPEN_MESSAGE,
@@ -17,6 +10,7 @@ import {
 } from './panelRequestCopy';
 import { openCommentsPrompt, singleCommentPrompt } from './commentPrompt';
 import { firstWorkspaceFolder, logDiskError } from './hostFs';
+import { checkedPanelMessage, panelRequest } from './panelRequest';
 import {
 	addComment,
 	getComment,
@@ -26,7 +20,7 @@ import {
 	replyToComment,
 	setCommentStatus,
 } from '../disk/comments';
-import { InvalidArgsError, NoWorkspaceError, toSafeArtboardErrorMessage } from '../disk/errors';
+import { InvalidArgsError, toSafeArtboardErrorMessage } from '../disk/errors';
 import { resolveOpenPage, resolveRequestedPage } from '../disk/openPage';
 import { postAnswerToPanel, postCommentsToPanel } from '../panel/openArtboardPanel';
 
@@ -95,7 +89,6 @@ export const answerCommentRequest = async ({
 	value: unknown;
 	outputChannel: vscode.OutputChannel;
 }): Promise<void> => {
-	const requestId = commentRequestId(value);
 	const type = commentRequestType(value);
 	if (type === undefined) {
 		// Routing only calls this for a claimed type, so there is nothing to answer to.
@@ -106,47 +99,33 @@ export const answerCommentRequest = async ({
 		});
 		return;
 	}
-	const scope = LOG_SCOPES[type];
-	const refuse = (message: string, error: unknown): void => {
-		logDiskError({ scope, error, outputChannel });
-		if (requestId !== undefined) {
-			postAnswerToPanel({ type: 'ui:error', requestId, message });
-			if (isCopyType(type)) {
-				void postPanelComments({ outputChannel });
-			}
-		}
-	};
+	const request = panelRequest({
+		value,
+		type,
+		scope: LOG_SCOPES[type],
+		outputChannel,
+		afterRefuse: isCopyType(type)
+			? () => {
+					void postPanelComments({ outputChannel });
+				}
+			: undefined,
+	});
+	if (request === undefined) {
+		return;
+	}
+	const { requestId, refuse } = request;
 	try {
-		if (requestId === undefined) {
-			logDiskError({
-				scope,
-				error: new InvalidArgsError(`${type} from the panel has no valid requestId.`),
-				outputChannel,
-			});
-			return;
-		}
-		if (!vscode.workspace.isTrusted) {
-			refuse(UNTRUSTED_WORKSPACE_MESSAGE, `${type} refused in an untrusted workspace.`);
-			return;
-		}
-		const workspaceFolder = firstWorkspaceFolder();
-		if (!workspaceFolder) {
-			const error = new NoWorkspaceError();
-			refuse(error.message, error);
-			return;
-		}
-		const message = parseChromeMessage(value);
-		if (message?.type !== type) {
-			refuse(
-				malformedRequestMessage(type),
-				new InvalidArgsError(`Malformed ${type} message from the panel.`),
-			);
-			return;
-		}
-		const page = await resolveRequestedPage({
-			workspaceRoot: workspaceFolder.uri.fsPath,
-			pageId: message.pageId,
+		const checked = checkedPanelMessage({
+			value,
+			type,
+			malformedMessage: malformedRequestMessage(type),
+			refuse,
 		});
+		if (checked === undefined) {
+			return;
+		}
+		const { workspaceRoot, message } = checked;
+		const page = await resolveRequestedPage({ workspaceRoot, pageId: message.pageId });
 		// The clipboard already holds the prompt here, so any throw gets its own copy; the typed
 		// message is only logged. Undefined: refused, stop.
 		const markSent = async (ids: readonly string[]): Promise<number | undefined> => {

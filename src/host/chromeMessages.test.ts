@@ -10,11 +10,9 @@ import {
 } from '../disk/layout';
 import {
 	claimedRequestId,
-	commentRequestId,
 	isArtboardEditAttempt,
 	commentRequestType,
 	isFramePlaceAttempt,
-	pageRequestId,
 	pageRequestType,
 	parseChromeMessage,
 	toNewComment,
@@ -189,24 +187,23 @@ test('comment:copy and comment:copy-open parse; bad ids and requestIds are rejec
 		assert.equal(parseChromeMessage(broken), undefined, JSON.stringify(broken));
 	}
 	assert.equal(commentRequestType({ ...copy, id: 'a b' }), 'comment:copy');
-	assert.equal(commentRequestId({ ...copy, id: 'a b' }), 'r-4');
+	assert.equal(claimedRequestId({ ...copy, id: 'a b' }), 'r-4');
 	assert.equal(commentRequestType(copyOpen), 'comment:copy-open');
-	assert.equal(commentRequestId(copyOpen), 'r-5');
+	assert.equal(claimedRequestId(copyOpen), 'r-5');
 });
 
 test('a malformed comment request is still an attempt with an answerable requestId', () => {
 	const malformed = { type: 'comment:create', requestId: 'req-1', selector: 7 };
 	assert.equal(parseChromeMessage(malformed), undefined);
 	assert.equal(commentRequestType(malformed), 'comment:create');
-	assert.equal(commentRequestId(malformed), 'req-1');
-	assert.equal(commentRequestId({ ...malformed, requestId: 'a b' }), undefined);
+	assert.equal(claimedRequestId(malformed), 'req-1');
+	assert.equal(claimedRequestId({ ...malformed, requestId: 'a b' }), undefined);
 	assert.equal(commentRequestType({ ...validReply, body: 7 }), 'comment:reply');
-	assert.equal(commentRequestId({ ...validReply, body: 7 }), 'r-2');
+	assert.equal(claimedRequestId({ ...validReply, body: 7 }), 'r-2');
 	assert.equal(commentRequestType({ ...validStatus, status: 'sent' }), 'comment:set-status');
-	assert.equal(commentRequestId(validStatus), 'r-3');
+	assert.equal(claimedRequestId(validStatus), 'r-3');
 	for (const other of [validPlace, null, 'comment:reply', 7, undefined]) {
 		assert.equal(commentRequestType(other), undefined);
-		assert.equal(commentRequestId(other), undefined);
 	}
 });
 
@@ -350,7 +347,6 @@ test('a malformed artboard:edit is still an attempt with an answerable requestId
 	assert.equal(isArtboardEditAttempt({ type: 'comment:copy-open', requestId: 'x' }), false);
 	assert.equal(claimedRequestId(broken), 'edit-2');
 	assert.equal(claimedRequestId({ ...styleEdit, requestId: 'bad id' }), undefined);
-	assert.equal(commentRequestId(styleEdit), undefined);
 	assert.equal(commentRequestType(styleEdit), undefined);
 });
 
@@ -450,9 +446,9 @@ test('a page request claim is answerable whatever else fails; anything else is n
 			assert.equal(parseChromeMessage(malformed), undefined);
 		}
 		assert.equal(pageRequestType(malformed), request.type);
-		assert.equal(pageRequestId(malformed), request.requestId);
-		assert.equal(pageRequestId({ ...request, requestId: 'a b' }), undefined);
-		assert.equal(pageRequestId({ ...request, requestId: 7 }), undefined);
+		assert.equal(claimedRequestId(malformed), request.requestId);
+		assert.equal(claimedRequestId({ ...request, requestId: 'a b' }), undefined);
+		assert.equal(claimedRequestId({ ...request, requestId: 7 }), undefined);
 	}
 	for (const other of [
 		validPlace,
@@ -466,6 +462,5 @@ test('a page request claim is answerable whatever else fails; anything else is n
 		[],
 	]) {
 		assert.equal(pageRequestType(other), undefined, JSON.stringify(other));
-		assert.equal(pageRequestId(other), undefined, JSON.stringify(other));
 	}
 });

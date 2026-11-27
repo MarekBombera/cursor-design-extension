@@ -204,7 +204,6 @@ export const isFramePlaceAttempt = (value: unknown): boolean => claimsType(value
 export const isArtboardEditAttempt = (value: unknown): boolean =>
 	claimsType(value, 'artboard:edit');
 
-// It shares the edit route.
 export const isArtboardHistoryAttempt = (value: unknown): boolean =>
 	claimsType(value, 'artboard:history');
 
@@ -233,10 +232,6 @@ const COMMENT_REQUEST_TYPES: readonly CommentRequestMessage['type'][] = [
 export const commentRequestType = (value: unknown): CommentRequestMessage['type'] | undefined =>
 	COMMENT_REQUEST_TYPES.find((type) => claimsType(value, type));
 
-// The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
-export const commentRequestId = (value: unknown): string | undefined =>
-	commentRequestType(value) === undefined ? undefined : claimedRequestId(value);
-
 const PAGE_REQUEST_TYPES: readonly PageRequestMessage['type'][] = [
 	'page:open',
 	'page:create',
@@ -248,10 +243,6 @@ const PAGE_REQUEST_TYPES: readonly PageRequestMessage['type'][] = [
 // request.
 export const pageRequestType = (value: unknown): PageRequestMessage['type'] | undefined =>
 	PAGE_REQUEST_TYPES.find((type) => claimsType(value, type));
-
-// The id to answer, even when another field fails the full parse. Undefined: nothing to answer to.
-export const pageRequestId = (value: unknown): string | undefined =>
-	pageRequestType(value) === undefined ? undefined : claimedRequestId(value);
 
 // Pin = point / unclipped box, never the (maybe clipped or null) rect. A zero-size box pins at 0,
 // not NaN (addComment clamps 0..1 but leaves NaN). A non-page null rect is left for addComment to

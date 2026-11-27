@@ -18,11 +18,17 @@ import { buildArtboardChromeHtml } from './artboardChromeHtml';
 const ARTBOARD_VIEW_TYPE = 'vibeboard.artboard' as const;
 
 let currentPanel: vscode.WebviewPanel | undefined;
-let onPanelBecameVisible: (() => void) | undefined;
-let onFramePlace: ((value: unknown) => void) | undefined;
-let onCommentRequest: ((value: unknown) => void) | undefined;
-let onEditRequest: ((value: unknown) => void) | undefined;
-let onPageRequest: ((value: unknown) => void) | undefined;
+// Each request handler gets every attempt raw, valid or not, and owns its one answer.
+type ArtboardPanelHandlers = {
+	onVisible: () => void;
+	onFramePlace: (value: unknown) => void;
+	onEditRequest: (value: unknown) => void;
+	onHistoryRequest: (value: unknown) => void;
+	onCommentRequest: (value: unknown) => void;
+	onPageRequest: (value: unknown) => void;
+};
+
+let handlers: ArtboardPanelHandlers | undefined;
 let chromeCspNonce = '';
 
 const outbox = createPanelOutbox({
@@ -36,25 +42,8 @@ const outbox = createPanelOutbox({
 
 export const hasCurrentArtboardPanel = (): boolean => currentPanel !== undefined;
 
-export const setArtboardPanelOnVisible = (handler: () => void): void => {
-	onPanelBecameVisible = handler;
-};
-
-// Each handler gets every attempt raw, valid or not, and owns its one answer.
-export const setArtboardPanelOnFramePlace = (handler: (value: unknown) => void): void => {
-	onFramePlace = handler;
-};
-
-export const setArtboardPanelOnCommentRequest = (handler: (value: unknown) => void): void => {
-	onCommentRequest = handler;
-};
-
-export const setArtboardPanelOnEditRequest = (handler: (value: unknown) => void): void => {
-	onEditRequest = handler;
-};
-
-export const setArtboardPanelOnPageRequest = (handler: (value: unknown) => void): void => {
-	onPageRequest = handler;
+export const setArtboardPanelHandlers = (next: ArtboardPanelHandlers): void => {
+	handlers = next;
 };
 
 export const postArtboardSnapshotToPanel = (snapshot: CanvasSnapshot): void => {
@@ -112,19 +101,23 @@ export const openArtboardPanel = ({
 	});
 	panel.webview.onDidReceiveMessage((message: unknown) => {
 		if (isFramePlaceAttempt(message)) {
-			onFramePlace?.(message);
+			handlers?.onFramePlace(message);
 			return;
 		}
-		if (isArtboardEditAttempt(message) || isArtboardHistoryAttempt(message)) {
-			onEditRequest?.(message);
+		if (isArtboardHistoryAttempt(message)) {
+			handlers?.onHistoryRequest(message);
+			return;
+		}
+		if (isArtboardEditAttempt(message)) {
+			handlers?.onEditRequest(message);
 			return;
 		}
 		if (commentRequestType(message) !== undefined) {
-			onCommentRequest?.(message);
+			handlers?.onCommentRequest(message);
 			return;
 		}
 		if (pageRequestType(message) !== undefined) {
-			onPageRequest?.(message);
+			handlers?.onPageRequest(message);
 			return;
 		}
 		if (parseChromeMessage(message)?.type !== 'artboard:ready') {
@@ -139,7 +132,7 @@ export const openArtboardPanel = ({
 		if (!becameVisible) {
 			return;
 		}
-		onPanelBecameVisible?.();
+		handlers?.onVisible();
 	});
 	panel.onDidDispose(() => {
 		currentPanel = undefined;

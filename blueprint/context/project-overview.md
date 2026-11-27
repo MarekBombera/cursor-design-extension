@@ -1,6 +1,6 @@
 # vibeboard - Project Overview
 
-<!-- blueprint:source-hash 30ca72fce85a05ffc1ea0f1ae46800486c0cc269dc11afdf5b885e7627142e5f -->
+<!-- blueprint:source-hash 5f17019d561c26109e35efd6422beb9309f864f38dcdda7eb0b325cab1471272 -->
 
 > Agent-driven live HTML artboards inside Cursor and VS Code, driven by any MCP-capable agent: WebviewPanel chrome, sandboxed blob iframes, local MCP, disk SoT under `.vibeboard/`. 0.2 made the panel a Figma-style multi-frame stage; 0.2.1 moved the repo onto Vite+; 0.3 shipped Svelte chrome, frame drag/resize, element picking and comments for the Agent; 0.4 Edit-lite shipped an Edit mode that saves text and inline styles straight to disk; 0.5 (in progress, only 10e Verify left) adds pages: several designs per workspace, each with its own frames, layout and comments. A quality pass (item 11) follows.
 
@@ -45,7 +45,7 @@ Build-plan order. Headline: live Agent -> artboard -> export -> implement.
 11. **Quality pass** (in progress; 2026-11-23 deep-modules review, Bombic approved the waves) - one way to do each job, smaller interfaces, the panel refresh race fixed, host and chrome state testable without module mocks. No new dependencies; behavior unchanged unless an item names a bug. Dropped: branded ids, host singleton factories (except the watcher), clock and id injection.
    - 11f. **Test effectiveness review** (shipped) - one-off StrykerJS run in a throwaway worktree, ranked report.
    - 11a. **Panel refresh + frame key** (shipped) - one last-started-wins `refreshPanel()`; the frame cache key includes the page.
-   - 11b. **Host dedupe** - one request preamble, one comments write shell, one MCP open-page wrapper, one handlers object.
+   - 11b. **Host dedupe** (done) - one request preamble, one comments write shell, one handlers object (MCP wrapper: 10c).
    - 11c. **Ports** - host `answer*` handlers take a small ports object; one page-bound post port per webview state class; the watcher's event handling becomes a pure step.
    - 11d. **Host message guard** - shrink `parseHostMessage`; no zod in the chrome bundle.
    - 11e. **Comments deep review** - report first (Bombic picks): fold `CommentsState`, `PinThread`, `CommentPicker` into one comments module?; extract `Stage.svelte` and `Inspector.svelte` glue to `.svelte.ts`.

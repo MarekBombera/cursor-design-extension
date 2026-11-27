@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-import { parseChromeMessage } from './chromeMessages';
-import { fileExists, firstWorkspaceFolder, logDiskError } from './hostFs';
+import { fileExists, logDiskError } from './hostFs';
+import { checkedPanelMessage } from './panelRequest';
 import {
 	canvasSnapshotErrorMessage,
 	canvasViewReadLogs,
@@ -12,13 +12,7 @@ import {
 } from './canvasSnapshot';
 import { createArtboard, placeFrame, setActiveArtboard } from '../disk/artboardFs';
 import { type CanvasView, readCanvasView } from '../disk/canvasView';
-import {
-	ArtboardExistsError,
-	InvalidArgsError,
-	NoWorkspaceError,
-	PageNotFoundError,
-	toSafeArtboardErrorMessage,
-} from '../disk/errors';
+import { ArtboardExistsError, PageNotFoundError, toSafeArtboardErrorMessage } from '../disk/errors';
 import {
 	DEFAULT_ARTBOARD_HTML,
 	DEFAULT_ARTBOARD_ID,
@@ -228,28 +222,23 @@ export const placeFrameFromChrome = async ({
 	outputChannel: vscode.OutputChannel;
 }): Promise<string | undefined> => {
 	try {
-		if (!vscode.workspace.isTrusted) {
-			return UNTRUSTED_WORKSPACE_MESSAGE;
+		let refusedMessage: string | undefined;
+		const checked = checkedPanelMessage({
+			value,
+			type: 'frame:place',
+			malformedMessage: MALFORMED_FRAME_PLACE_MESSAGE,
+			refuse: (message, error) => {
+				logDiskError({ scope: 'artboardDisk.placeFrame', error, outputChannel });
+				refusedMessage = message;
+			},
+		});
+		if (checked === undefined) {
+			return refusedMessage;
 		}
-		const workspaceFolder = firstWorkspaceFolder();
-		if (!workspaceFolder) {
-			return new NoWorkspaceError().message;
-		}
-		const message = parseChromeMessage(value);
-		if (message?.type !== 'frame:place') {
-			logDiskError({
-				scope: 'artboardDisk.placeFrame',
-				error: new InvalidArgsError('Malformed frame:place message from the panel.'),
-				outputChannel,
-			});
-			return MALFORMED_FRAME_PLACE_MESSAGE;
-		}
+		const { workspaceRoot, message } = checked;
 		try {
 			await placeFrame({
-				page: await resolveRequestedPage({
-					workspaceRoot: workspaceFolder.uri.fsPath,
-					pageId: message.pageId,
-				}),
+				page: await resolveRequestedPage({ workspaceRoot, pageId: message.pageId }),
 				id: message.id,
 				x: message.x,
 				y: message.y,

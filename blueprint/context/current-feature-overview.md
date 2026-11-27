@@ -1,66 +1,48 @@
-# 10e Verify - Overview for review
+# Host dedupe (11b) - Overview for review
 
-Source of truth: `blueprint/history/features/10e-verify.md`. This file is the steering summary, not the build spec.
+Source of truth: `blueprint/history/features/11b-host-dedupe.md`. This file is the steering summary, not the build spec.
 
 ## TL;DR
 
-0.5 Projects + pages is verified, with no manual testing by Bombic. Agents ran every check they could against the packaged `vibeboard-0.1.0.vsix`, using three stdio stand-ins for the Agent: the 0.5 server, the real 0.4 server and a patched stale server. Docs now match the shipped code. The real-Cursor panel run could not happen: Cursor 3.32 refuses `--remote-debugging-port`. Panel cases D, E and F are recorded `not run`, and the browser tests stand in for them.
+A refactor: each host job now has one implementation. Nothing changes for you or the Agent: the same messages, the same error copy, the same files on disk, the same MCP tools. 74 test files and 880 tests pass, the old 879 plus one new routing test.
 
-## Flow
+## System map
 
 ```mermaid
 flowchart LR
-  Pre[Step 1: preconditions + evidence table] --> Docs[Step 2: docs vs code]
-  Docs --> Pack[Step 3: pnpm vsix]
-  Pack --> Perf[Step 5: F-20 timing]
-  Perf --> Run[Steps 4a/4b: stdio stand-ins, A to H]
-  Run --> Gates[Step 6: overview, verify, browser suite]
-  Gates --> Audit[/audit + step 7 repairs/]
+  Chrome["Panel chrome"] -->|"frame:place, artboard:edit, artboard:history,<br/>comment:*, page:*"| Route["openArtboardPanel<br/>one handlers object"]
+  Route --> Pre["panelRequest.ts<br/>requestId → trust → folder → parse"]
+  Pre --> Edit["answerEditRequest /<br/>answerHistoryRequest"]
+  Pre --> Comments["answerCommentRequest"]
+  Pre --> Pages["answerPageRequest"]
+  Pre --> Place["placeFrameFromChrome<br/>(no requestId)"]
+  Comments --> Shell["comments.ts<br/>one write shell"]
+  Shell --> Disk[(".vibeboard/pages/id/comments.json")]
 ```
 
 ## What you will see
 
-- README gains a **Pages** section: menu, New blank page, rename, delete, keys. The Export Handoff row now says "open page".
-- `docs/limits.md` gains "Coming from cursor-design 0.4", the no-way-back sentence and a corrected Older server line. `docs/edit-mode.md` says undo history is per page.
-- The six read MCP tools no longer say "Does not write". They now say they may first settle the design folder. `readOnlyHint` is kept, with a `ponytail:` comment.
-- Rule 02, the system map, `project-plan.md` §3/§5/§7 and the project overview now match the code.
-
-## Results
-
-| Case | Result |
-|---|---|
-| A: 0.4 folder → `.vibeboard/` → Page 1 | pass: byte-identical, and the 4 baseline calls deep-equal (rename reproduced with `mv`) |
-| B: older servers | pass: the stale server fails 11/11 on the tombstone and writes nothing; the real 0.4 server never touches `.vibeboard/` (it recreates `.cursor-design/`) |
-| C, G, H: Agent page tools, cross-page comment, export per page | pass at the MCP level |
-| D, E, F: switch leaks, undo, rename/delete in the panel | not run: Cursor 3.32 blocks CDP; browser tests stand in |
-| F-20 `list_pages` at 100 pages × 10 frames | 26 ms median: `supports accepting` (finding marked invalid) |
-| `pnpm verify` / `pnpm test:browser` | 73 files, 879 tests / 231 passed, 224 skipped |
+Nothing new. Two log-only differences appear in the Output panel (Vibeboard):
+- A `page:*` request with no requestId is logged under its own type.
+- A frame move refused in an untrusted or folder-less window now gets a log line.
 
 ## Decisions locked
 
-- **No real-Cursor launch** (Bombic, 2026-11-26). An attempt to patch a copy of Cursor.app triggered a macOS "damaged" alert and was stopped. `/Applications/Cursor.app` was never changed. Bombic's own Cursor session (21:20) is the real-Cursor evidence for the Agent tools.
-- **No tombstone at `.cursor-design/`.** cursor-design 0.4 users uninstall it, then quit and reopen Cursor.
-- **`readOnlyHint` stays `true`** on the read tools; dropping it is a product call for later.
+- **One request preamble in `src/host/panelRequest.ts`.** It holds the requestId, trust, folder and parse checks, and every chrome request handler plus frame moves start with it. It can't live in `chromeMessages.ts`, which must stay free of `vscode`.
+- **One `comments.json` write shell.** `changeCommentsFile` handles ownership, existence, lock, read, change and write for add, reply, status, mark-sent and resolve. A missing file still means no lock and no write.
+- **One handlers object.** `setArtboardPanelHandlers` has six keys, and the panel routes edit and undo/redo itself.
+- **No dispose flags.** `activate` pushes the watcher's cleanup once, and the MCP provider's reset is pushed together with the provider. This also re-registers the watcher's cleanup after a deactivate and reactivate in one host, which the old flag missed.
+- **MCP open-page wrapper dropped from 11b.** It already shipped in 10c as `runOnOpenPage`. The build plan and overview now say so.
 
 ## Out of scope
 
-- Behavior changes; the only `src/` edits are tool descriptions and comments.
-- The Notion 0.5 page patch: drafted in the archive, applied only on Bombic's yes.
-
-## Glossary
-
-| Term | Why it exists |
-|---|---|
-| Tombstone | A file named `artboards` at the `.vibeboard/` root, so a stale server that expects a folder there fails instead of writing |
-| Stand-in | A small Node MCP client that plays the Agent over stdio, so no LLM or Cursor UI is needed |
-| Stale server | A copy of the 0.4 server patched to use `.vibeboard/`, standing in for an old process that outlived an update |
-| CDP | Chrome DevTools Protocol; how agents drove Cursor before 3.32 blocked it |
+Ports and mock-free host tests (11c), `parseHostMessage` (11d), the comments deep review (11e), and any message, copy, disk or MCP change.
 
 ## Your actions
 
-- Rebuild the `.vsix` (`pnpm vsix`) before your next install; the test build has the old tool descriptions.
-- Say yes or no to the Notion 0.5 patch.
+- Optional F5 smoke: drag a frame, edit a field and undo it, add a comment and copy it, open and rename a page.
+- The Notion quality-pass note needs the same "MCP wrapper shipped in 10c" change, once you say yes.
 
 ## Done means
 
-Every case passes or is recorded `not run` with its reason, the docs match the code, and `pnpm verify` passes. No P0/P1 finding remains. F-37 and F-38 (P3, fixed) stay in the ledger for a later re-review.
+`pnpm verify` passes, there are no open P0 or P1 findings, the audit found one P3 (F-39) that is fixed and closed, and the work is one squash commit on local `main`.

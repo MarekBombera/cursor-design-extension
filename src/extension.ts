@@ -13,24 +13,16 @@ import { handleOpenArtboard } from './host/handleOpenArtboard';
 import { logDiskError, migrateLegacyDesignFolders } from './host/hostFs';
 import { clearEditHistories } from './host/editHistory';
 import { answerCommentRequest } from './host/panelComments';
-import { isArtboardHistoryAttempt } from './host/chromeMessages';
 import { answerEditRequest, answerHistoryRequest } from './host/panelEdit';
 import { answerPageRequest } from './host/panelPages';
 import { refreshPanel } from './host/refreshPanel';
-import { replaceArtboardWatcher } from './host/watchArtboardDisk';
+import { disposeArtboardWatcher, replaceArtboardWatcher } from './host/watchArtboardDisk';
 import { registerVibeboardMcp } from './mcp/registerVibeboardMcp';
-import {
-	postUiStatusToPanel,
-	setArtboardPanelOnCommentRequest,
-	setArtboardPanelOnEditRequest,
-	setArtboardPanelOnFramePlace,
-	setArtboardPanelOnPageRequest,
-	setArtboardPanelOnVisible,
-} from './panel/openArtboardPanel';
+import { postUiStatusToPanel, setArtboardPanelHandlers } from './panel/openArtboardPanel';
 
 export const activate = async (context: vscode.ExtensionContext): Promise<void> => {
 	const outputChannel = vscode.window.createOutputChannel('Vibeboard');
-	context.subscriptions.push(outputChannel);
+	context.subscriptions.push(outputChannel, { dispose: disposeArtboardWatcher });
 
 	const syncHostRuntime = async (rearmMarker: boolean): Promise<void> => {
 		// TODO(1.0): remove .cursor-design migration
@@ -44,31 +36,29 @@ export const activate = async (context: vscode.ExtensionContext): Promise<void> 
 		replaceArtboardWatcher({ context, outputChannel, rearmMarker });
 	};
 
-	setArtboardPanelOnVisible(() => {
-		void refreshPanel({ outputChannel });
-	});
-
-	setArtboardPanelOnFramePlace((value) => {
-		void placeFrameFromChrome({ value, outputChannel })
-			.then((errorMessage) => refreshPanel({ outputChannel, errorMessage }))
-			.catch((error: unknown) => {
-				logDiskError({ scope: 'extension.framePlace', error, outputChannel });
-			});
-	});
-
-	setArtboardPanelOnCommentRequest((value) => {
-		void answerCommentRequest({ value, outputChannel });
-	});
-
-	setArtboardPanelOnPageRequest((value) => {
-		void answerPageRequest({ value, outputChannel });
-	});
-
-	setArtboardPanelOnEditRequest((value) => {
-		void (isArtboardHistoryAttempt(value) ? answerHistoryRequest : answerEditRequest)({
-			value,
-			outputChannel,
-		});
+	setArtboardPanelHandlers({
+		onVisible: () => {
+			void refreshPanel({ outputChannel });
+		},
+		onFramePlace: (value) => {
+			void placeFrameFromChrome({ value, outputChannel })
+				.then((errorMessage) => refreshPanel({ outputChannel, errorMessage }))
+				.catch((error: unknown) => {
+					logDiskError({ scope: 'extension.framePlace', error, outputChannel });
+				});
+		},
+		onEditRequest: (value) => {
+			void answerEditRequest({ value, outputChannel });
+		},
+		onHistoryRequest: (value) => {
+			void answerHistoryRequest({ value, outputChannel });
+		},
+		onCommentRequest: (value) => {
+			void answerCommentRequest({ value, outputChannel });
+		},
+		onPageRequest: (value) => {
+			void answerPageRequest({ value, outputChannel });
+		},
 	});
 
 	if (vscode.workspace.isTrusted) {

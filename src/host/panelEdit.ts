@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 
-import { UNTRUSTED_WORKSPACE_MESSAGE, panelFrameHtml } from './canvasSnapshot';
-import { claimedRequestId, parseChromeMessage } from './chromeMessages';
+import { panelFrameHtml } from './canvasSnapshot';
 import {
 	type HistoryKey,
 	forgetHistory,
@@ -11,7 +10,8 @@ import {
 	recordEdit,
 	recordStep,
 } from './editHistory';
-import { firstWorkspaceFolder, logDiskError } from './hostFs';
+import { logDiskError } from './hostFs';
+import { checkedPanelMessage, panelRequest } from './panelRequest';
 import {
 	MALFORMED_EDIT_MESSAGE,
 	MALFORMED_HISTORY_MESSAGE,
@@ -22,12 +22,7 @@ import {
 import type { ArtboardEdit } from '../disk/artboardEdit';
 import { editArtboard } from '../disk/artboardEditFs';
 import { updateArtboard } from '../disk/artboardFs';
-import {
-	ArtboardNotFoundError,
-	ConflictError,
-	InvalidArgsError,
-	NoWorkspaceError,
-} from '../disk/errors';
+import { ArtboardNotFoundError, ConflictError, InvalidArgsError } from '../disk/errors';
 import type { PageLocation } from '../disk/layoutFs';
 import { resolveRequestedPage } from '../disk/openPage';
 import { parseArtboardId } from '../disk/parse';
@@ -42,52 +37,6 @@ import type { ArtboardEditMessage } from '../webview/hostMessages';
 
 const EDIT_SCOPE = 'panelEdit.answer';
 const HISTORY_SCOPE = 'panelEdit.history';
-
-type Refuse = (message: string, error: unknown) => void;
-
-const refuser =
-	({
-		requestId,
-		scope,
-		outputChannel,
-	}: {
-		requestId: string | undefined;
-		scope: string;
-		outputChannel: vscode.OutputChannel;
-	}): Refuse =>
-	(message, error) => {
-		logDiskError({ scope, error, outputChannel });
-		if (requestId !== undefined) {
-			postAnswerToPanel({ type: 'ui:error', requestId, message });
-		}
-	};
-
-// Undefined: already logged or refused.
-const checkedWorkspaceRoot = ({
-	type,
-	requestId,
-	refuse,
-}: {
-	type: string;
-	requestId: string | undefined;
-	refuse: Refuse;
-}): string | undefined => {
-	if (requestId === undefined) {
-		refuse('', new InvalidArgsError(`${type} from the panel has no valid requestId.`));
-		return undefined;
-	}
-	if (!vscode.workspace.isTrusted) {
-		refuse(UNTRUSTED_WORKSPACE_MESSAGE, `${type} refused in an untrusted workspace.`);
-		return undefined;
-	}
-	const workspaceFolder = firstWorkspaceFolder();
-	if (!workspaceFolder) {
-		const error = new NoWorkspaceError();
-		refuse(error.message, error);
-		return undefined;
-	}
-	return workspaceFolder.uri.fsPath;
-};
 
 // The answer to a written (or same-bytes) change: the tagged copy the echo will post, and the
 // history flags after it. editArtboard refuses a result over the preview cap and an undo or redo
@@ -142,21 +91,22 @@ export const answerEditRequest = async ({
 	value: unknown;
 	outputChannel: vscode.OutputChannel;
 }): Promise<void> => {
-	const requestId = claimedRequestId(value);
-	const refuse = refuser({ requestId, scope: EDIT_SCOPE, outputChannel });
+	const request = panelRequest({ value, type: 'artboard:edit', scope: EDIT_SCOPE, outputChannel });
+	if (request === undefined) {
+		return;
+	}
+	const { requestId, refuse } = request;
 	try {
-		const workspaceRoot = checkedWorkspaceRoot({ type: 'artboard:edit', requestId, refuse });
-		if (workspaceRoot === undefined || requestId === undefined) {
+		const checked = checkedPanelMessage({
+			value,
+			type: 'artboard:edit',
+			malformedMessage: MALFORMED_EDIT_MESSAGE,
+			refuse,
+		});
+		if (checked === undefined) {
 			return;
 		}
-		const message = parseChromeMessage(value);
-		if (message?.type !== 'artboard:edit') {
-			refuse(
-				MALFORMED_EDIT_MESSAGE,
-				new InvalidArgsError('Malformed artboard:edit message from the panel.'),
-			);
-			return;
-		}
+		const { workspaceRoot, message } = checked;
 		const epoch = historyEpoch();
 		const page = await resolveRequestedPage({ workspaceRoot, pageId: message.pageId });
 		const edited = await editArtboard({
@@ -199,22 +149,28 @@ export const answerHistoryRequest = async ({
 	value: unknown;
 	outputChannel: vscode.OutputChannel;
 }): Promise<void> => {
-	const requestId = claimedRequestId(value);
-	const refuse = refuser({ requestId, scope: HISTORY_SCOPE, outputChannel });
+	const request = panelRequest({
+		value,
+		type: 'artboard:history',
+		scope: HISTORY_SCOPE,
+		outputChannel,
+	});
+	if (request === undefined) {
+		return;
+	}
+	const { requestId, refuse } = request;
 	let key: HistoryKey | undefined;
 	try {
-		const workspaceRoot = checkedWorkspaceRoot({ type: 'artboard:history', requestId, refuse });
-		if (workspaceRoot === undefined || requestId === undefined) {
+		const checked = checkedPanelMessage({
+			value,
+			type: 'artboard:history',
+			malformedMessage: MALFORMED_HISTORY_MESSAGE,
+			refuse,
+		});
+		if (checked === undefined) {
 			return;
 		}
-		const message = parseChromeMessage(value);
-		if (message?.type !== 'artboard:history') {
-			refuse(
-				MALFORMED_HISTORY_MESSAGE,
-				new InvalidArgsError('Malformed artboard:history message from the panel.'),
-			);
-			return;
-		}
+		const { workspaceRoot, message } = checked;
 		// Its InvalidArtboardIdError maps to the same malformed copy, by design.
 		const frameId = parseArtboardId(message.frameId);
 		key = { pageId: message.pageId, frameId };
