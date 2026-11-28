@@ -21,7 +21,7 @@ import {
 	isErrno,
 	throwDiskError,
 } from './errors';
-import { hashHtml, isArtboardHash, normalizeHash } from './hash';
+import { hashHtml, normalizeHash } from './hash';
 import {
 	DEFAULT_ARTBOARD_TITLE,
 	DEFAULT_VIEWPORT,
@@ -63,10 +63,10 @@ import type { FramePlacement } from '../webview/hostMessages';
 
 export type CreateArtboardArgs = {
 	page: PageLocation;
-	artboardId: unknown;
-	html: unknown;
-	title?: unknown;
-	viewport?: unknown;
+	artboardId: string;
+	html: string;
+	title?: string | undefined;
+	viewport?: string | undefined;
 	writeEnsurePanelMarker: boolean;
 };
 
@@ -82,12 +82,12 @@ export type CreateArtboardResult = {
 
 export type UpdateArtboardArgs = {
 	page: PageLocation;
-	artboardId: unknown;
-	html: unknown;
-	baseGeneration?: unknown;
-	baseHash?: unknown;
-	title?: unknown;
-	viewport?: unknown;
+	artboardId: string;
+	html: string;
+	baseGeneration?: number | undefined;
+	baseHash?: string | undefined;
+	title?: string | undefined;
+	viewport?: string | undefined;
 };
 
 export type UpdateArtboardResult = {
@@ -100,7 +100,7 @@ export type UpdateArtboardResult = {
 
 export type ReadArtboardArgs = {
 	page: PageLocation;
-	artboardId?: unknown;
+	artboardId?: string | undefined;
 };
 
 export type ReadArtboardResult = {
@@ -116,12 +116,12 @@ export type ReadArtboardResult = {
 
 export type PlaceFrameArgs = {
 	page: PageLocation;
-	id: unknown;
-	x?: unknown;
-	y?: unknown;
-	width?: unknown;
-	label?: unknown;
-	group?: unknown;
+	id: string;
+	x?: number | undefined;
+	y?: number | undefined;
+	width?: number | undefined;
+	label?: string | undefined;
+	group?: string | undefined;
 	// Panel drag only: the frame's x/y/width when the gesture started; MCP never passes it.
 	base?: FramePlacement;
 };
@@ -132,59 +132,8 @@ export type PlaceFrameResult = {
 
 export type SetActiveArtboardArgs = {
 	page: PageLocation;
-	artboardId: unknown;
-};
-
-const requireHtmlString = (html: unknown): string => {
-	if (typeof html !== 'string') {
-		throw new InvalidArgsError('html must be a string. Fix args and retry.');
-	}
-	return html;
-};
-
-const requireArtboardIdString = (artboardId: unknown): string => {
-	if (typeof artboardId !== 'string') {
-		throw new InvalidArgsError('artboardId must be a string. Fix args and retry.');
-	}
-	return parseArtboardId(artboardId);
-};
-
-const requireOptionalString = (value: unknown, fieldName: string): string | undefined => {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== 'string') {
-		throw new InvalidArgsError(`${fieldName} must be a string. Fix args and retry.`);
-	}
-	if (fieldName === 'viewport' && value.length === 0) {
-		throw new InvalidArgsError('viewport must be a non-empty string. Fix args and retry.');
-	}
-	return value;
-};
-
-// set_artboard's arg checks, run by createArtboard and by the handler before it resolves the page,
-// so invalid args on a fresh root create nothing.
-export const validateNewArtboardArgs = ({
-	artboardId,
-	html,
-	title,
-	viewport,
-}: {
-	artboardId: unknown;
-	html: unknown;
-	title?: unknown;
-	viewport?: unknown;
-}): {
 	artboardId: string;
-	html: string;
-	title: string | undefined;
-	viewport: string | undefined;
-} => ({
-	artboardId: requireArtboardIdString(artboardId),
-	html: requireHtmlString(html),
-	title: requireOptionalString(title, 'title'),
-	viewport: requireOptionalString(viewport, 'viewport'),
-});
+};
 
 // No page-folder mkdir anywhere else, so no page-scoped write recreates a missing page.
 const makeArtboardsDir = async (page: PageLocation): Promise<void> => {
@@ -238,12 +187,7 @@ export const createArtboard = async ({
 	viewport,
 	writeEnsurePanelMarker,
 }: CreateArtboardArgs): Promise<CreateArtboardResult> => {
-	const {
-		artboardId: resolvedId,
-		html: resolvedHtml,
-		title: validatedTitle,
-		viewport: validatedViewport,
-	} = validateNewArtboardArgs({ artboardId, html, title, viewport });
+	const resolvedId = parseArtboardId(artboardId);
 
 	await assertLayoutDirsOwned(page);
 	const htmlLayout = workspaceLayoutFile(
@@ -268,7 +212,7 @@ export const createArtboard = async ({
 		throw new DiskError(regularFileRequiredMessage(htmlLayout.relativePath));
 	}
 	try {
-		await writeFile(htmlLayout.filePath, resolvedHtml, { encoding: 'utf8', flag: 'wx' });
+		await writeFile(htmlLayout.filePath, html, { encoding: 'utf8', flag: 'wx' });
 	} catch (error: unknown) {
 		if (isErrno(error, 'EEXIST')) {
 			throw new ArtboardExistsError(resolvedId);
@@ -276,9 +220,9 @@ export const createArtboard = async ({
 		throwDiskError(error);
 	}
 
-	const resolvedTitle = validatedTitle ?? DEFAULT_ARTBOARD_TITLE;
-	const resolvedViewport = validatedViewport ?? DEFAULT_VIEWPORT;
-	const htmlHash = hashHtml(resolvedHtml);
+	const resolvedTitle = title ?? DEFAULT_ARTBOARD_TITLE;
+	const resolvedViewport = viewport ?? DEFAULT_VIEWPORT;
+	const htmlHash = hashHtml(html);
 	const meta: ArtboardMeta = {
 		id: resolvedId,
 		title: resolvedTitle,
@@ -319,26 +263,13 @@ export const updateArtboard = async ({
 	title,
 	viewport,
 }: UpdateArtboardArgs): Promise<UpdateArtboardResult> => {
-	const resolvedId = requireArtboardIdString(artboardId);
-	const resolvedHtml = requireHtmlString(html);
+	const resolvedId = parseArtboardId(artboardId);
+	// The MCP schema checks each base's format; panel bases are host-computed.
 	if (baseGeneration === undefined && baseHash === undefined) {
 		throw new InvalidArgsError(
 			'update_artboard requires baseGeneration and/or baseHash. Fix args and retry.',
 		);
 	}
-	if (
-		baseGeneration !== undefined &&
-		(typeof baseGeneration !== 'number' || !Number.isInteger(baseGeneration) || baseGeneration < 1)
-	) {
-		throw new InvalidArgsError('baseGeneration must be an integer >= 1. Fix args and retry.');
-	}
-	if (baseHash !== undefined && (typeof baseHash !== 'string' || !isArtboardHash(baseHash))) {
-		throw new InvalidArgsError(
-			'baseHash must be sha256: plus 64 hex characters. Fix args and retry.',
-		);
-	}
-	const validatedTitle = requireOptionalString(title, 'title');
-	const validatedViewport = requireOptionalString(viewport, 'viewport');
 
 	await assertLayoutDirsOwned(page);
 	const htmlLayout = workspaceLayoutFile(
@@ -375,19 +306,19 @@ export const updateArtboard = async ({
 				throw new ConflictError(resolvedId, compared);
 			}
 
-			const htmlHash = hashHtml(resolvedHtml);
+			const htmlHash = hashHtml(html);
 			const nextMeta: ArtboardMeta = {
 				id: resolvedId,
-				title: validatedTitle ?? currentMeta.title,
+				title: title ?? currentMeta.title,
 				generation:
 					htmlHash === normalizeHash(currentMeta.hash)
 						? currentMeta.generation
 						: currentMeta.generation + 1,
 				hash: htmlHash,
-				viewport: validatedViewport ?? currentMeta.viewport,
+				viewport: viewport ?? currentMeta.viewport,
 				updatedAt: new Date().toISOString(),
 			};
-			await writeUtf8({ ...htmlLayout, contents: resolvedHtml });
+			await writeUtf8({ ...htmlLayout, contents: html });
 			await writeUtf8({
 				...workspaceLayoutFile(
 					page.workspaceRoot,
@@ -416,7 +347,7 @@ export const readArtboard = async ({
 	const resolvedId =
 		artboardId === undefined
 			? requireActiveManifest(manifest).activeArtboardId
-			: requireArtboardIdString(artboardId);
+			: parseArtboardId(artboardId);
 
 	const html = await requireArtboardHtml(page, resolvedId);
 	const meta = effectiveArtboardMeta({
@@ -436,16 +367,6 @@ export const readArtboard = async ({
 	};
 };
 
-const requireOptionalFiniteNumber = (value: unknown, fieldName: string): number | undefined => {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== 'number' || !Number.isFinite(value)) {
-		throw new InvalidArgsError(`${fieldName} must be a finite number. Fix args and retry.`);
-	}
-	return value;
-};
-
 // Backs place_frame and the panel drag commit; writes only this frame's canvas.json entry.
 export const placeFrame = async ({
 	page,
@@ -458,13 +379,7 @@ export const placeFrame = async ({
 	base,
 }: PlaceFrameArgs): Promise<PlaceFrameResult> => {
 	const resolvedId = parseArtboardId(id);
-	const placement = {
-		x: requireOptionalFiniteNumber(x, 'x'),
-		y: requireOptionalFiniteNumber(y, 'y'),
-		width: requireOptionalFiniteNumber(width, 'width'),
-		label: requireOptionalString(label, 'label'),
-		group: requireOptionalString(group, 'group'),
-	};
+	const placement = { x, y, width, label, group };
 
 	await assertLayoutDirsOwned(page);
 	await requireHtmlFile(page, resolvedId);
@@ -509,7 +424,7 @@ export const setActiveArtboard = async ({
 	page,
 	artboardId,
 }: SetActiveArtboardArgs): Promise<{ activeArtboardId: string }> => {
-	const resolvedId = requireArtboardIdString(artboardId);
+	const resolvedId = parseArtboardId(artboardId);
 	await assertLayoutDirsOwned(page);
 	await requireHtmlFile(page, resolvedId);
 	await requireExactHtmlFileName(page, resolvedId);

@@ -1,4 +1,9 @@
-import { type CallToolResult, type McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
+import {
+	type CallToolResult,
+	type McpServer,
+	type StandardSchemaWithJSON,
+} from '@modelcontextprotocol/server';
+import * as z from 'zod/mini';
 
 import {
 	ConflictError,
@@ -23,19 +28,81 @@ type McpErrorBody = {
 	message: string;
 };
 
-export const ROOT_PATH_DESCRIPTION =
+const ROOT_PATH_DESCRIPTION =
 	'Optional string. Workspace folder fsPath. Pass when more than one folder is open; error roots lists valid values.';
 
-// The handler's args are typed from the listed property keys, so a handler cannot read an arg its
-// schema does not advertise.
-export const toolInputSchema = <Key extends string>(
-	properties: Record<Key, { description: string }>,
-): ReturnType<typeof fromJsonSchema<Partial<Record<Key, unknown>>>> =>
-	fromJsonSchema<Partial<Record<Key, unknown>>>({
-		type: 'object',
-		properties,
-		additionalProperties: true,
-	});
+export const rootPathArg = z.optional(
+	z
+		.string({ error: 'rootPath must be a string. Fix args and retry.' })
+		.check(z.describe(ROOT_PATH_DESCRIPTION)),
+);
+
+type ToolArgsSchema = z.ZodMiniType<{ rootPath?: string | undefined }, unknown>;
+
+// The advertised schema. validate passes everything through so the SDK never answers with its own
+// text (it would drop our { code } body); parseToolArgs is the one parse.
+export const zodToolInput = (
+	schema: ToolArgsSchema,
+): StandardSchemaWithJSON<Record<string, unknown>, Record<string, unknown>> => {
+	const jsonSchema = (): Record<string, unknown> =>
+		z.toJSONSchema(schema, { io: 'input', target: 'draft-2020-12' });
+	return {
+		'~standard': {
+			version: 1,
+			vendor: 'vibeboard',
+			validate: (value) => ({ value: value as Record<string, unknown> }),
+			jsonSchema: { input: jsonSchema, output: jsonSchema },
+		},
+	};
+};
+
+const MAX_LISTED_KEYS = 3;
+
+const MAX_LISTED_KEY_CHARS = 64;
+
+// Agent-supplied key names: at most 3, each cut, so a flood of keys cannot flood the message.
+const listedKeys = (keys: readonly string[]): string => {
+	const listed = keys
+		.slice(0, MAX_LISTED_KEYS)
+		.map((key) => key.slice(0, MAX_LISTED_KEY_CHARS))
+		.join(', ');
+	return keys.length > MAX_LISTED_KEYS
+		? `${listed} and ${keys.length - MAX_LISTED_KEYS} more`
+		: listed;
+};
+
+// zod lists field issues before unrecognized_keys, so the unknown key is looked for first; it also
+// has path [], so it must be matched before the root invalid_type case.
+const toolArgsMessage = (tool: string, issues: readonly z.core.$ZodIssue[]): string => {
+	const unknownKeys = issues.find((issue) => issue.code === 'unrecognized_keys');
+	if (unknownKeys !== undefined) {
+		return `${tool} does not take ${listedKeys(unknownKeys.keys)}. Fix args and retry.`;
+	}
+	const [first] = issues;
+	if (first === undefined || (first.code === 'invalid_type' && first.path.length === 0)) {
+		return `${tool} args must be an object. Fix args and retry.`;
+	}
+	return first.message;
+};
+
+/** @internal */
+export const parseToolArgs = <Schema extends ToolArgsSchema>({
+	tool,
+	schema,
+	args,
+}: {
+	tool: string;
+	schema: Schema;
+	args: unknown;
+}): z.output<Schema> => {
+	const parsed = schema.safeParse(args ?? {});
+	if (!parsed.success) {
+		throw new InvalidArgsError(toolArgsMessage(tool, parsed.error.issues), {
+			cause: parsed.error,
+		});
+	}
+	return parsed.data;
+};
 
 // ponytail: readOnlyHint describes the steady state. A read resolves the open page first, which can migrate an older
 // design folder once, rebuild a lost project.json or restore a missing tombstone (openPage.ts); the descriptions
@@ -48,22 +115,13 @@ const jsonResult = (body: unknown, isError = false): CallToolResult => ({
 	isError,
 });
 
-const optionalRootPath = (value: unknown): string | undefined => {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (typeof value !== 'string') {
-		throw new InvalidArgsError('rootPath must be a string. Fix args and retry.');
-	}
-	return value;
-};
-
 const logMcpError = (error: unknown): void => {
 	process.stderr.write(
 		`vibeboard MCP: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
 	);
 };
 
+/** @internal */
 export const toMcpToolError = (error: unknown): CallToolResult => {
 	if (error instanceof VibeboardError) {
 		if (error instanceof DiskError) {
@@ -103,19 +161,27 @@ export const toMcpToolError = (error: unknown): CallToolResult => {
 };
 
 // isFirstRoot: the host watches only its first folder for `.ensure-panel`, so only that one gets it.
-export const runQueued = async (
-	{ server, rootPath }: { server: McpServer; rootPath: unknown },
-	operation: (workspaceRoot: string, isFirstRoot: boolean) => Promise<unknown>,
+// Args are parsed first, so a schema error answers before roots/list and never touches disk.
+export const runQueued = async <Schema extends ToolArgsSchema>(
+	{
+		server,
+		tool,
+		schema,
+		args,
+	}: { server: McpServer; tool: string; schema: Schema; args: unknown },
+	operation: (
+		parsed: z.output<Schema>,
+		workspaceRoot: string,
+		isFirstRoot: boolean,
+	) => Promise<unknown>,
 ): Promise<CallToolResult> => {
 	try {
+		const parsed = parseToolArgs({ tool, schema, args });
 		// Outside the queue: a slow client roots/list must not hold up other writes.
 		const roots = await allowedWorkspaceRoots(server);
 		const result = await enqueueDiskOp(async () => {
-			const workspaceRoot = resolveWorkspaceRoot({
-				roots,
-				rootPath: optionalRootPath(rootPath),
-			});
-			return operation(workspaceRoot, workspaceRoot === roots[0]);
+			const workspaceRoot = resolveWorkspaceRoot({ roots, rootPath: parsed.rootPath });
+			return operation(parsed, workspaceRoot, workspaceRoot === roots[0]);
 		});
 		return jsonResult(result);
 	} catch (error: unknown) {
@@ -126,26 +192,35 @@ export const runQueued = async (
 // Every existing tool's handler: resolve the open page once, then add `page` to the success result.
 // The title is read before the operation so no read after a write can fail (a corrupt index
 // already fails in the resolver). page is null when the read found no project.json or no entry
-// (a fresh folder, or a race).
-export const runOnOpenPage = async ({
+// (a fresh folder, or a race). beforeResolve refuses args the schema cannot judge (set_artboard's
+// id characters) before a fresh project is created.
+export const runOnOpenPage = async <Schema extends ToolArgsSchema>({
 	server,
-	rootPath,
+	tool,
+	schema,
+	args,
 	createIfFresh,
 	beforeResolve,
 	operation,
 }: {
 	server: McpServer;
-	rootPath: unknown;
+	tool: string;
+	schema: Schema;
+	args: unknown;
 	createIfFresh: boolean;
-	beforeResolve?: () => void;
-	operation: (page: PageLocation, isFirstRoot: boolean) => Promise<object>;
+	beforeResolve?: (parsed: z.output<Schema>) => void;
+	operation: (
+		parsed: z.output<Schema>,
+		page: PageLocation,
+		isFirstRoot: boolean,
+	) => Promise<object>;
 }): Promise<CallToolResult> =>
-	runQueued({ server, rootPath }, async (workspaceRoot, isFirstRoot) => {
-		beforeResolve?.();
+	runQueued({ server, tool, schema, args }, async (parsed, workspaceRoot, isFirstRoot) => {
+		beforeResolve?.(parsed);
 		const page = await resolveOpenPage({ workspaceRoot, createIfFresh });
 		const entry = (await readProjectFile(workspaceRoot))?.pages.find(
 			({ id }) => id === page.pageId,
 		);
-		const result = await operation(page, isFirstRoot);
+		const result = await operation(parsed, page, isFirstRoot);
 		return { ...result, page: entry === undefined ? null : { id: entry.id, title: entry.title } };
 	});

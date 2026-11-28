@@ -54,7 +54,7 @@ const DELETED_PAGE_NAME_PATTERN = /^page-([1-9][0-9]{0,5})-/;
 
 const NO_PAGE_IDS_LEFT_MESSAGE = `No page ids are left. Remove unused folders from ${pagesDirSegments.join('/')}/ and ${deletedDirSegments.join('/')}/.`;
 
-const PAGE_ID_MESSAGE =
+export const PAGE_ID_MESSAGE =
 	'pageId must be a page id such as page-2. Call list_pages for the page ids.';
 
 // The one pageId arg guard (open_page, renamePage, deletePage); the message never echoes the value.

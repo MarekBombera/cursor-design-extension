@@ -35,7 +35,7 @@ The sections below give every tool, limit, workflow and error code.
 
 ## Tools
 
-Argument names differ between tools. Use these exact shapes:
+Argument names differ between tools. Use these exact shapes: an argument name a tool does not list, or a wrong type, returns `INVALID_ARGS` naming it.
 
 - `list_artboards()`: every artboard id with its `generation`, and the canvas `frames` (`x`, `y`, `width`, `label`, `group`). Call it first in a new chat. An empty workspace returns empty lists, not an error.
 - `set_artboard({ artboardId, html, title })`: creates a new artboard and returns its `generation`. Fails if the id exists. Ids: letters, digits, `.`, `_`, `-` (max 64).
@@ -143,10 +143,10 @@ A failed call returns `isError: true` with JSON `{ code, message, ... }`. The me
 - `conflict`: re-read, re-apply, retry once (see Edit).
 - `ARTBOARD_NOT_FOUND`: call `list_artboards` for real ids, or create the artboard with `set_artboard`.
 - `ARTBOARD_EXISTS`: the id is taken. Use `update_artboard`, or a new id.
-- `INVALID_ARTBOARD_ID`: the id is missing or has bad characters. `place_frame` takes `id`; the others take `artboardId`.
+- `INVALID_ARTBOARD_ID`: the id string has bad characters (a missing required id or a non-string id is `INVALID_ARGS`). `place_frame` takes `id`; the others take `artboardId`.
 - `INVALID_ARGS`: fix the arguments as the message says.
 - `INVALID_ROOT`: retry with `rootPath` set to one of the returned `roots`.
-- `NO_WORKSPACE`: ask the user to open a folder.
+- `NO_WORKSPACE`: ask the user to open a folder, or to fix the vibeboard server env the message names.
 - `WORKSPACE_BUSY`: another write holds the lock. Retry in a moment; after a crashed write it can last up to 30 s.
 - `COMMENT_NOT_FOUND`: call `list_comments` for current ids. When the message says the comment is on another page, call `open_page` with that page id (tell the user the panel moves), then retry.
 - `COMMENT_RESOLVED`: already done. Skip it.

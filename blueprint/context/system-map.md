@@ -7,7 +7,7 @@
 > Planned flows never go here; they live in `current-feature-overview.md` until shipped.
 > Open in Markdown preview to render the diagrams.
 
-**Last verified against code:** 2026-11-27, 11e3 Stage + Inspector helpers (`feature/stage-inspector-helpers`): chrome-internal refactor, no flow, message or disk change; the wheel-input line names `StageGestures.attachWheel`.
+**Last verified against code:** 2026-11-28, 11g1 MCP tool args (`feature/mcp-tool-args`): every tool parses its args first in `runQueued` (`parseToolArgs`, strict `zod/mini` schema; schema errors answer before roots), `set_artboard`'s id check in `beforeResolve`; a malformed `VIBEBOARD_WORKSPACE_ROOTS` is `NO_WORKSPACE`. No message or disk-layout change.
 
 ## Chart checklist
 
@@ -94,7 +94,7 @@ runtime accepts them only from the parent it captured at load; its one write to 
 `cd:edit-apply`'s Edit-mode preview (9e). Chrome never touches disk or MCP. The MCP
 process never touches the panel; it reaches the user only through disk and the watcher.
 
-Workspace roots (fix MCP client roots): Cursor runs one shared server process for every window, and the last window's registration env wins, so env cannot name the right folder. `allowedWorkspaceRoots` (`resolveWorkspaceRoot.ts`) asks the client with `roots/list` when it declares the `roots` capability (5 s timeout), keeps the `file://` roots as paths per connection, and drops the cache on `notifications/roots/list_changed`. Only a client without the `roots` capability falls back to `VIBEBOARD_WORKSPACE_ROOT(S)`; a declared-roots client that reports no file roots, or whose `roots/list` fails or times out, gets `NO_WORKSPACE` (a failure is not cached, the next call asks again). Every tool resolves through `runQueued` (`rootPath` must equal an allowed root, default the first; `.ensure-panel` only for the first). The server logs the source to stderr right after `initialize` and on each re-fetch. `registerVibeboardMcp` returns early in a window with no folder, leaving any registration alone (`true` in Cursor, whose shared server still serves the window; `false` in VS Code). In Cursor it never unregisters: not before a re-register and not on deactivate, since the one registration serves every window. Accepted: the shared server can write `.vibeboard/` into an untrusted window's folder that its client reports; writes stay inside `.vibeboard/` and symlinks there are rejected.
+Workspace roots (fix MCP client roots): Cursor runs one shared server process for every window, and the last window's registration env wins, so env cannot name the right folder. `allowedWorkspaceRoots` (`resolveWorkspaceRoot.ts`) asks the client with `roots/list` when it declares the `roots` capability (5 s timeout), keeps the `file://` roots as paths per connection, and drops the cache on `notifications/roots/list_changed`. Only a client without the `roots` capability falls back to `VIBEBOARD_WORKSPACE_ROOT(S)` (a set, non-empty, malformed `VIBEBOARD_WORKSPACE_ROOTS` is an authored `NO_WORKSPACE`, logged to stderr, never a fallback to ROOT); a declared-roots client that reports no file roots, or whose `roots/list` fails or times out, gets `NO_WORKSPACE` (a failure is not cached, the next call asks again). Every tool resolves through `runQueued`, which first parses the args (`parseToolArgs`, strict `zod/mini` schema per tool; 11g1), then the roots (`rootPath` must equal an allowed root, default the first; `.ensure-panel` only for the first). The server logs the source to stderr right after `initialize` and on each re-fetch. `registerVibeboardMcp` returns early in a window with no folder, leaving any registration alone (`true` in Cursor, whose shared server still serves the window; `false` in VS Code). In Cursor it never unregisters: not before a re-register and not on deactivate, since the one registration serves every window. Accepted: the shared server can write `.vibeboard/` into an untrusted window's folder that its client reports; writes stay inside `.vibeboard/` and symlinks there are rejected.
 
 Every per-page file lives in `.vibeboard/pages/<pageId>/` of the open page that
 `project.json` names (10a); the charts below write `pages/<id>/` for it. Handoffs, `tokens.json`,
@@ -110,13 +110,14 @@ changes: errors reach the user through each caller's existing channel.
 ```mermaid
 flowchart TD
   subgraph Callers["Entry points (shipped, 10a): one resolve per call"]
-    MCPSet["MCP set_artboard, inside runOnOpenPage (10c):<br/>validateNewArtboardArgs, then createIfFresh true"]
+    MCPSet["MCP set_artboard, inside runOnOpenPage (10c):<br/>parseToolArgs, then parseArtboardId in beforeResolve,<br/>then createIfFresh true"]
     MCPOther["MCP, the other 10 tools, inside runOnOpenPage (10c):<br/>createIfFresh false"]
     HostOpen["Host loadActiveSnapshot via initAndLoadArtboard<br/>(Open Artboard): createIfFresh true"]
     HostOther["Host, after the trust check, createIfFresh false (createPage: true):<br/>readActiveArtboardFromDisk, postPanelComments, exportHandoff.<br/>Chrome requests (placeFrameFromChrome, answerEditRequest,<br/>answerHistoryRequest, answerCommentRequest) call resolveRequestedPage (10b),<br/>which calls it once, then checks the requested page.<br/>answerPageRequest (10d) calls it once, then the page op"]
   end
-  MCPSet -->|"invalid artboardId, html, title or viewport"| ArgErr["INVALID_ARTBOARD_ID or INVALID_ARGS,<br/>resolver not called, nothing written"]
+  MCPSet -->|"bad-character artboardId (beforeResolve), or a schema error before roots"| ArgErr["INVALID_ARTBOARD_ID or INVALID_ARGS,<br/>resolver not called, nothing written"]
   MCPSet -->|"resolveOpenPage"| Classify
+  MCPOther -->|"schema error (parseToolArgs, before roots)"| ArgErr
   MCPOther -->|"resolveOpenPage"| Classify
   HostOpen -->|"resolveOpenPage"| Classify
   HostOther -->|"resolveOpenPage"| Classify

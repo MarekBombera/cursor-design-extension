@@ -45,26 +45,9 @@ const USER_REPLY_CAP_MESSAGE = 'This comment has the maximum number of replies.'
 const THREAD_FULL_MESSAGE =
 	"This comment's thread is full. Ask the user to resolve it in the panel.";
 
-const NOTE_MESSAGE = `note must be a one-line description of what you changed, 1 to ${MAX_COMMENT_BODY_CHARS} characters.`;
+export const NOTE_MESSAGE = `note must be a one-line description of what you changed, 1 to ${MAX_COMMENT_BODY_CHARS} characters.`;
 
-const SET_STATUS_MESSAGE = 'status must be open or resolved.';
-
-const LIST_STATUS_MESSAGE =
-	'status must be open, sent, or resolved. Omit it for all unresolved comments.';
-
-const COMMENT_ID_MESSAGE = 'id must be a comment id string from list_comments.';
-
-const requireCommentId = (id: unknown): string => {
-	if (typeof id !== 'string') {
-		throw new InvalidArgsError(COMMENT_ID_MESSAGE);
-	}
-	return id;
-};
-
-const requireCommentBody = (body: unknown): string => {
-	if (typeof body !== 'string') {
-		throw new InvalidArgsError(COMMENT_BODY_MESSAGE);
-	}
+const requireCommentBody = (body: string): string => {
 	const trimmed = body.trim();
 	if (trimmed.length === 0 || trimmed.length > MAX_COMMENT_BODY_CHARS) {
 		throw new InvalidArgsError(COMMENT_BODY_MESSAGE);
@@ -72,10 +55,7 @@ const requireCommentBody = (body: unknown): string => {
 	return trimmed;
 };
 
-const requireNote = (note: unknown): string => {
-	if (typeof note !== 'string') {
-		throw new InvalidArgsError(NOTE_MESSAGE);
-	}
+const requireNote = (note: string): string => {
 	const trimmed = note.trim();
 	if (trimmed.length === 0 || trimmed.length > MAX_COMMENT_BODY_CHARS) {
 		throw new InvalidArgsError(NOTE_MESSAGE);
@@ -182,14 +162,13 @@ export const addComment = async ({
 
 export const replyToComment = async ({
 	page,
-	id,
+	id: commentId,
 	body,
 }: {
 	page: PageLocation;
-	id: unknown;
-	body: unknown;
+	id: string;
+	body: string;
 }): Promise<Comment> => {
-	const commentId = requireCommentId(id);
 	const trimmed = requireCommentBody(body);
 	return changeCommentsFile({
 		page,
@@ -218,17 +197,13 @@ export const replyToComment = async ({
 
 export const setCommentStatus = async ({
 	page,
-	id,
+	id: commentId,
 	status,
 }: {
 	page: PageLocation;
-	id: unknown;
-	status: unknown;
+	id: string;
+	status: 'open' | 'resolved';
 }): Promise<Comment> => {
-	if (status !== 'open' && status !== 'resolved') {
-		throw new InvalidArgsError(SET_STATUS_MESSAGE);
-	}
-	const commentId = requireCommentId(id);
 	return changeCommentsFile({
 		page,
 		ifMissing: throwNotFound,
@@ -276,14 +251,13 @@ export const markCommentsSent = async ({
 
 export const resolveComment = async ({
 	page,
-	id,
+	id: commentId,
 	note,
 }: {
 	page: PageLocation;
-	id: unknown;
-	note: unknown;
+	id: string;
+	note: string;
 }): Promise<Comment> => {
-	const commentId = requireCommentId(id);
 	const trimmed = requireNote(note);
 	return changeCommentsFile({
 		page,
@@ -319,11 +293,8 @@ export const listComments = async ({
 	status,
 }: {
 	page: PageLocation;
-	status?: unknown;
+	status?: CommentStatus | undefined;
 }): Promise<{ comments: CommentView[] }> => {
-	if (status !== undefined && status !== 'open' && status !== 'sent' && status !== 'resolved') {
-		throw new InvalidArgsError(LIST_STATUS_MESSAGE);
-	}
 	await assertLayoutDirsOwned(page);
 	const file = await readCommentsFile(page);
 	const comments =
@@ -341,12 +312,11 @@ export const readComments = async ({ page }: { page: PageLocation }): Promise<Co
 
 export const getComment = async ({
 	page,
-	id,
+	id: commentId,
 }: {
 	page: PageLocation;
-	id: unknown;
+	id: string;
 }): Promise<CommentView> => {
-	const commentId = requireCommentId(id);
 	await assertLayoutDirsOwned(page);
 	const file = await readCommentsFile(page);
 	const comment = findComment(file.comments, commentId);

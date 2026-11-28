@@ -364,7 +364,7 @@ test('copy-open sends the open ids in listComments order and answers the marked 
 		calls.push('clipboard');
 		clipboard = text;
 		// The Agent resolves the second one between the read and the lock: 2 of 3 still open.
-		await resolveComment({ page: pageAt(root, SECOND_PAGE_ID), id: ids[1], note: 'Done' });
+		await resolveComment({ page: pageAt(root, SECOND_PAGE_ID), id: ids[1] ?? '', note: 'Done' });
 	});
 	await answerCommentRequest({ value: copyOpenMessage, ports });
 	assert.equal(clipboard.includes(`- ${ids.join('\n- ')}\n`), true);

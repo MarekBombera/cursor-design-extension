@@ -374,21 +374,13 @@ test('resolve, reply, status and mark-sent on a workspace with no .vibeboard cre
 	assert.deepEqual(await readdir(workspaceRoot), []);
 });
 
-test('setCommentStatus rejects sent and applies the status machine', async () => {
+test('setCommentStatus applies the status machine', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	const comment = await addComment({
 		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
 		comment: pick(),
 	});
-	await assert.rejects(
-		setCommentStatus({
-			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-			id: comment.id,
-			status: 'sent',
-		}),
-		InvalidArgsError,
-	);
 	assert.equal(
 		(
 			await setCommentStatus({
@@ -561,7 +553,7 @@ test('replyToComment keeps the status', async () => {
 	// The disk is the only body guard: an empty or oversize reply would make the next read corrupt.
 	const commentsPath = join(workspaceRoot, ...commentsPathSegments(FIRST_PAGE_ID));
 	const before = await readFile(commentsPath, 'utf8');
-	for (const body of ['   ', 42, 'x'.repeat(MAX_COMMENT_BODY_CHARS + 1)]) {
+	for (const body of ['   ', 'x'.repeat(MAX_COMMENT_BODY_CHARS + 1)]) {
 		await assert.rejects(
 			replyToComment({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, id: comment.id, body }),
 			(error: unknown) =>
@@ -717,7 +709,7 @@ test('an unreadable frame still lists every comment', async () => {
 	assert.notEqual(otherView?.hint, HINT_FRAME_UNREADABLE);
 });
 
-test('listComments filters by status and rejects a bad status', async () => {
+test('listComments filters by status', async () => {
 	const workspaceRoot = await makeTempRoot();
 	await seedHero(workspaceRoot);
 	const openComment = await addComment({
@@ -761,10 +753,6 @@ test('listComments filters by status and rejects a bad status', async () => {
 			await listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'resolved' })
 		).comments.map((comment) => comment.id),
 		[resolvedComment.id],
-	);
-	await assert.rejects(
-		listComments({ page: { workspaceRoot, pageId: FIRST_PAGE_ID }, status: 'nope' }),
-		InvalidArgsError,
 	);
 });
 

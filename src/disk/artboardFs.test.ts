@@ -105,8 +105,8 @@ test('wrong generation does not change HTML', async () => {
 	assert.equal(htmlOnDisk, html);
 });
 
-// The disk check is the only guard: the MCP handler passes base args through unchecked.
-test('updateArtboard with no base or a malformed base is INVALID_ARGS and writes nothing', async () => {
+// The base formats are the MCP schema's (artboardTools.contract.test.ts); no base is the disk's.
+test('updateArtboard with no base is INVALID_ARGS and writes nothing', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
 	await createArtboard({
@@ -118,20 +118,11 @@ test('updateArtboard with no base or a malformed base is INVALID_ARGS and writes
 	const htmlPath = join(workspaceRoot, ...artboardHtmlPathSegments(FIRST_PAGE_ID, 'hero'));
 	const metaPath = join(workspaceRoot, ...artboardMetaPathSegments(FIRST_PAGE_ID, 'hero'));
 	const before = [await readFile(htmlPath, 'utf8'), await readFile(metaPath, 'utf8')];
-	for (const base of [
-		{},
-		{ baseGeneration: 0 },
-		{ baseGeneration: 1.5 },
-		{ baseGeneration: '1' },
-		{ baseHash: 'sha256:zz' },
-	]) {
-		await assert.rejects(
-			updateArtboard({ page, artboardId: 'hero', html: '<p>clobber</p>', ...base }),
-			InvalidArgsError,
-			JSON.stringify(base),
-		);
-		assert.deepEqual([await readFile(htmlPath, 'utf8'), await readFile(metaPath, 'utf8')], before);
-	}
+	await assert.rejects(
+		updateArtboard({ page, artboardId: 'hero', html: '<p>clobber</p>' }),
+		InvalidArgsError,
+	);
+	assert.deepEqual([await readFile(htmlPath, 'utf8'), await readFile(metaPath, 'utf8')], before);
 });
 
 test('uppercase on-disk hash does not conflict or extra-bump', async () => {
@@ -746,44 +737,6 @@ test('updateArtboard with a case variant id is ARTBOARD_NOT_FOUND and renames no
 	assert.equal(await readFile(metaPath, 'utf8'), metaBefore);
 });
 
-test('empty viewport is InvalidArgsError on create and update', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await assert.rejects(
-		createArtboard({
-			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-			artboardId: 'hero',
-			html: '<p>hero</p>',
-			viewport: '',
-			writeEnsurePanelMarker: false,
-		}),
-		(error: unknown) => {
-			assert.ok(error instanceof InvalidArgsError);
-			assert.match(error.message, /viewport must be a non-empty string/);
-			return true;
-		},
-	);
-	const created = await createArtboard({
-		page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-		artboardId: 'hero',
-		html: '<p>hero</p>',
-		writeEnsurePanelMarker: false,
-	});
-	await assert.rejects(
-		updateArtboard({
-			page: { workspaceRoot, pageId: FIRST_PAGE_ID },
-			artboardId: 'hero',
-			html: '<p>hero</p>',
-			baseGeneration: created.generation,
-			viewport: '',
-		}),
-		(error: unknown) => {
-			assert.ok(error instanceof InvalidArgsError);
-			assert.match(error.message, /viewport must be a non-empty string/);
-			return true;
-		},
-	);
-});
-
 test('listArtboards keeps other ids when one meta is a symlink', async () => {
 	const workspaceRoot = await makeTempRoot();
 	const outsideDir = await makeTempRoot();
@@ -944,29 +897,6 @@ test('createArtboard refuses a symlink at the new meta path and leaves the link 
 	);
 	assert.equal((await lstat(metaPath)).isSymbolicLink(), true);
 	assert.equal(await readFile(targetPath, 'utf8'), 'outside');
-});
-
-test('placeFrame rejects wrong-typed args by field name, a non-string id, and writes nothing', async () => {
-	const workspaceRoot = await makeTempRoot();
-	await createPlainArtboard(workspaceRoot, 'a');
-	const page = { workspaceRoot, pageId: FIRST_PAGE_ID };
-	for (const [field, badArgs] of [
-		['x', { x: '10' }],
-		['x', { x: null }],
-		['y', { y: null }],
-		['width', { width: '300' }],
-		['label', { label: 3 }],
-		['group', { group: 3 }],
-	] as const) {
-		await assert.rejects(
-			placeFrame({ page, id: 'a', ...badArgs }),
-			(error: unknown) =>
-				error instanceof InvalidArgsError && error.message.startsWith(`${field} `),
-			field,
-		);
-	}
-	await assert.rejects(placeFrame({ page, id: 42 }), InvalidArtboardIdError);
-	await assert.rejects(readFile(canvasFileOf(workspaceRoot), 'utf8'), { code: 'ENOENT' });
 });
 
 const frameAt = (id: string, x: number, width = DEFAULT_FRAME_WIDTH) => ({

@@ -327,7 +327,99 @@ test('export_artboard with artboardId returns authored INVALID_ARGS', async () =
 		const client = await connectContractPair();
 		const result = await callArtboardTool(client, EXPORT_ARTBOARD_TOOL, { artboardId: 'hero' });
 		const body = requireErrorCode(result, 'INVALID_ARGS');
-		assert.equal(body.message, 'export_artboard exports every frame. Omit artboardId and retry.');
+		assert.equal(body.message, 'export_artboard does not take artboardId. Fix args and retry.');
+	});
+});
+
+test('place_frame names each wrong-typed field; a non-string id is INVALID_ARGS', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'a', '<p>a</p>');
+		for (const [field, badArgs] of [
+			['x', { x: '10' }],
+			['x', { x: null }],
+			['y', { y: null }],
+			['width', { width: '300' }],
+			['label', { label: 3 }],
+			['group', { group: 3 }],
+			['id', { id: 42 }],
+		] as const) {
+			const body = requireErrorCode(
+				await callArtboardTool(client, PLACE_FRAME_TOOL, { id: 'a', ...badArgs }),
+				'INVALID_ARGS',
+			);
+			assert.ok(String(body.message).startsWith(`${field} must be `), field);
+		}
+	});
+});
+
+test('update_artboard rejects a malformed base and writes nothing', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		const generationMessage = 'baseGeneration must be an integer >= 1. Fix args and retry.';
+		for (const [base, message] of [
+			[{ baseGeneration: 0 }, generationMessage],
+			[{ baseGeneration: 1.5 }, generationMessage],
+			[
+				{ baseHash: 'sha256:zz' },
+				'baseHash must be sha256: plus 64 hex characters. Fix args and retry.',
+			],
+		] as const) {
+			const body = requireErrorCode(
+				await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
+					artboardId: 'hero',
+					html: '<p>clobber</p>',
+					...base,
+				}),
+				'INVALID_ARGS',
+			);
+			assert.equal(body.message, message);
+		}
+		const read = await callArtboardTool(client, READ_ARTBOARD_TOOL, { artboardId: 'hero' });
+		assert.equal(assertToolSuccess(read).generation, 1);
+	});
+});
+
+test('empty viewport is INVALID_ARGS on create and update', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		const viewportMessage = 'viewport must be a non-empty string. Fix args and retry.';
+		const created = requireErrorCode(
+			await callArtboardTool(client, SET_ARTBOARD_TOOL, {
+				artboardId: 'hero',
+				html: '<p>hero</p>',
+				viewport: '',
+			}),
+			'INVALID_ARGS',
+		);
+		assert.equal(created.message, viewportMessage);
+		await seedArtboard(client, 'hero', '<p>hero</p>');
+		const updated = requireErrorCode(
+			await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
+				artboardId: 'hero',
+				html: '<p>hero</p>',
+				baseGeneration: 1,
+				viewport: '',
+			}),
+			'INVALID_ARGS',
+		);
+		assert.equal(updated.message, viewportMessage);
+	});
+});
+
+test('place_frame with artboardId and no id names the unknown key', async () => {
+	const workspaceRoot = await makeTempRoot();
+	await withWorkspaceEnv(workspaceRoot, async () => {
+		const client = await connectContractPair();
+		const body = requireErrorCode(
+			await callArtboardTool(client, PLACE_FRAME_TOOL, { artboardId: 'hero' }),
+			'INVALID_ARGS',
+		);
+		assert.equal(body.message, 'place_frame does not take artboardId. Fix args and retry.');
 	});
 });
 
@@ -339,19 +431,29 @@ test('wrong-typed html, baseGeneration, and rootPath are observed at the client'
 			artboardId: 'hero',
 			html: 42,
 		});
-		requireErrorCode(htmlResult, 'INVALID_ARGS');
+		assert.equal(
+			requireErrorCode(htmlResult, 'INVALID_ARGS').message,
+			'html must be a string. Fix args and retry.',
+		);
+		assert.deepEqual(await readdir(workspaceRoot), []);
 
 		const generationResult = await callArtboardTool(client, UPDATE_ARTBOARD_TOOL, {
 			artboardId: 'hero',
 			html: '<p>hero</p>',
 			baseGeneration: '1',
 		});
-		requireErrorCode(generationResult, 'INVALID_ARGS');
+		assert.equal(
+			requireErrorCode(generationResult, 'INVALID_ARGS').message,
+			'baseGeneration must be an integer >= 1. Fix args and retry.',
+		);
 
 		const rootPathResult = await callArtboardTool(client, LIST_ARTBOARDS_TOOL, {
 			rootPath: { path: workspaceRoot },
 		});
-		requireErrorCode(rootPathResult, 'INVALID_ARGS');
+		assert.equal(
+			requireErrorCode(rootPathResult, 'INVALID_ARGS').message,
+			'rootPath must be a string. Fix args and retry.',
+		);
 	});
 });
 

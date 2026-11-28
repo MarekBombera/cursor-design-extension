@@ -80,24 +80,33 @@ test('rootPath outside the host list is INVALID_ROOT', async () => {
 	);
 });
 
-test('invalid ROOTS falls back to ROOT', async () => {
+test('malformed ROOTS is NO_WORKSPACE naming the env, never a ROOT fallback; empty ROOTS is unset', async () => {
 	const workspaceRoot = await makeTempRoot();
-	// The log-once flag is module state with no reset, so this must stay the file's first invalid-ROOTS parse.
 	const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
-	for (const rootsRaw of ['null', '{}', '[1]', '[""]', '["a", 1]', '{oops']) {
-		assert.deepEqual(
-			parseWorkspaceRootsEnv({
-				[VIBEBOARD_WORKSPACE_ROOTS_ENV]: rootsRaw,
-				[VIBEBOARD_WORKSPACE_ROOT_ENV]: workspaceRoot,
-			}),
-			[workspaceRoot],
+	for (const rootsRaw of ['null', '{}', '[1]', '[""]', '["", "x"]', '["a", 1]', 'not json']) {
+		assert.throws(
+			() =>
+				parseWorkspaceRootsEnv({
+					[VIBEBOARD_WORKSPACE_ROOTS_ENV]: rootsRaw,
+					[VIBEBOARD_WORKSPACE_ROOT_ENV]: workspaceRoot,
+				}),
+			(error: unknown) =>
+				error instanceof NoWorkspaceError &&
+				error.message ===
+					`${VIBEBOARD_WORKSPACE_ROOTS_ENV} must be a JSON array of folder paths. Fix the vibeboard MCP server env.` &&
+				error.cause instanceof Error,
+			rootsRaw,
 		);
 	}
-	assert.deepEqual(stderr.mock.calls, [
-		[
-			`vibeboard: ${VIBEBOARD_WORKSPACE_ROOTS_ENV} parse failed: expected a JSON array of non-empty strings\n`,
-		],
-	]);
+	assert.equal(stderr.mock.calls.length, 7);
+	assert.match(String(stderr.mock.calls[0]?.[0]), /parse failed: expected a JSON array/);
+	assert.deepEqual(
+		parseWorkspaceRootsEnv({
+			[VIBEBOARD_WORKSPACE_ROOTS_ENV]: '',
+			[VIBEBOARD_WORKSPACE_ROOT_ENV]: workspaceRoot,
+		}),
+		[workspaceRoot],
+	);
 });
 
 test('valid ROOTS wins over ROOT', async () => {
@@ -124,6 +133,7 @@ test('missing roots is NO_WORKSPACE', () => {
 		() => parseWorkspaceRootsEnv({ [VIBEBOARD_WORKSPACE_ROOTS_ENV]: '[]' }),
 		(error: unknown) => {
 			assert.ok(error instanceof NoWorkspaceError);
+			assert.equal(error.message, 'No workspace folder is available. Open a workspace folder.');
 			return true;
 		},
 	);

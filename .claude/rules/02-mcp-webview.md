@@ -13,9 +13,10 @@ alwaysApply: false
 
 Names: `src/mcp/toolNames.ts`; Agent-facing contract: shipped `skills/vibeboard/SKILL.md` (sync rule: `AGENTS.md`). Non-obvious facts:
 
+- Args (11g1): each tool declares a `zod/mini` `z.strictObject` registered through `zodToolInput` (advertised JSON Schema; its `validate` passes through so the SDK never answers with its own text). `runQueued` parses with `parseToolArgs` first, before roots: an unknown key (named even when a required field is missing too; the SDK's `arguments` parse drops a `__proto__` key before ours) or a wrong type is `INVALID_ARGS` with the field's authored message. Rules the schema cannot express run after roots: `parseArtboardId` (`set_artboard` runs it in `beforeResolve`, before a fresh project is created), `requirePageId`, `parsePageTitle`, the comment trim rules, `update_artboard`'s needs-a-base rule.
 - No `open_artboard`: `set_artboard` creates and may set active and open the panel.
 - `update_artboard` requires `baseGeneration` or `baseHash`; mismatch is a conflict. `read_artboard` defaults to the active artboard.
-- `export_artboard` writes every frame to `handoff/<exportId>/` and takes no `artboardId` (a stray one is rejected). `handoff_status` is stale when a frame's HTML changed or a frame was added or removed since the last export.
+- `export_artboard` writes every frame to `handoff/<exportId>/` and takes no `artboardId` (a stray one is an unknown key). `handoff_status` is stale when a frame's HTML changed or a frame was added or removed since the last export.
 - Pages (10c): `list_pages`, `create_page` (blank `artboard`, opens the page; a never-opened folder's blank page-1 is adopted), `open_page` in `pageTools.ts`, on plain `runQueued`. Every other tool runs through `runOnOpenPage`, which resolves once, reads the title before the op and adds `page: { id, title } | null` to success results. A malformed `pageId` is `INVALID_ARGS`; an unknown one `PAGE_NOT_FOUND`. `get_comment` / `resolve_comment` name the page that holds a comment missing from the open page.
 - `place_frame` returns every frame. `list_comments` defaults to every unresolved comment and returns `replyCount`, not `replies` (`targetMissing: null` = unchecked); `get_comment` has replies, flags checked against disk; `resolve_comment`'s `note` is stored as an agent reply.
 

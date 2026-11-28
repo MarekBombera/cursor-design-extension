@@ -188,8 +188,11 @@ export class NoArtboardsToExportError extends VibeboardError {
 export class NoWorkspaceError extends VibeboardError {
 	readonly code = 'NO_WORKSPACE' as const;
 
-	constructor(options?: { cause?: unknown }) {
-		super('No workspace folder is available. Open a workspace folder.', options);
+	constructor(options?: { message?: string; cause?: unknown }) {
+		super(
+			options?.message ?? 'No workspace folder is available. Open a workspace folder.',
+			options,
+		);
 		this.name = 'NoWorkspaceError';
 	}
 }

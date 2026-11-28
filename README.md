@@ -182,7 +182,7 @@ env = { VIBEBOARD_WORKSPACE_ROOT = "/Users/you/projects/my-app" }
 <summary><strong>How the server finds your workspace</strong></summary>
 
 - The server asks the connected client for its workspace folders (MCP roots). A client that supports roots gets the right folder automatically.
-- `VIBEBOARD_WORKSPACE_ROOT` (one folder) or `VIBEBOARD_WORKSPACE_ROOTS` (a JSON array; the first is the default) is the fallback only for clients without roots support.
+- `VIBEBOARD_WORKSPACE_ROOT` (one folder) or `VIBEBOARD_WORKSPACE_ROOTS` (a JSON array; the first is the default) is the fallback only for clients without roots support. A malformed `VIBEBOARD_WORKSPACE_ROOTS` returns `NO_WORKSPACE` instead of falling back.
 - A client that supports roots but reports no folder gets `NO_WORKSPACE`. A `rootPath` argument must name one of the reported folders.
 
 </details>

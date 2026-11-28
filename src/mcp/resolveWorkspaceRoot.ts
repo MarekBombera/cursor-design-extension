@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { InvalidRootError, NoWorkspaceError, logStderr } from '../disk/errors';
 import { VIBEBOARD_WORKSPACE_ROOT_ENV, VIBEBOARD_WORKSPACE_ROOTS_ENV } from './mcpIdentity';
 
-let rootsInvalidLogged = false;
+const MALFORMED_ROOTS_MESSAGE = `${VIBEBOARD_WORKSPACE_ROOTS_ENV} must be a JSON array of folder paths. Fix the vibeboard MCP server env.`;
 
-const parseRootsJson = (raw: string): string[] | undefined => {
+// A set but malformed ROOTS never falls back to ROOT: serving the wrong folder is worse than none.
+const parseRootsJson = (raw: string): string[] => {
 	try {
 		const parsed = JSON.parse(raw) as unknown;
 		if (
@@ -17,29 +18,21 @@ const parseRootsJson = (raw: string): string[] | undefined => {
 			throw new Error('expected a JSON array of non-empty strings');
 		}
 		return parsed;
-	} catch (error) {
-		// ponytail: falls back to the ROOT env, so only the ROOT folder (the first) is served, and
-		// later invalid values in the same process are not logged. Upgrade path: fail the tool call
-		// with an authored error instead of falling back.
-		if (!rootsInvalidLogged) {
-			rootsInvalidLogged = true;
-			logStderr(`${VIBEBOARD_WORKSPACE_ROOTS_ENV} parse`, error);
-		}
-		return undefined;
+	} catch (error: unknown) {
+		logStderr(`${VIBEBOARD_WORKSPACE_ROOTS_ENV} parse`, error);
+		throw new NoWorkspaceError({ message: MALFORMED_ROOTS_MESSAGE, cause: error });
 	}
 };
 
 /** @internal */
 export const parseWorkspaceRootsEnv = (env: NodeJS.Dict<string>): string[] => {
 	const rootsRaw = env[VIBEBOARD_WORKSPACE_ROOTS_ENV];
-	if (rootsRaw !== undefined) {
+	if (rootsRaw !== undefined && rootsRaw.length > 0) {
 		const parsed = parseRootsJson(rootsRaw);
-		if (parsed !== undefined) {
-			if (parsed.length === 0) {
-				throw new NoWorkspaceError();
-			}
-			return parsed;
+		if (parsed.length === 0) {
+			throw new NoWorkspaceError();
 		}
+		return parsed;
 	}
 	const root = env[VIBEBOARD_WORKSPACE_ROOT_ENV];
 	if (typeof root === 'string' && root.length > 0) {

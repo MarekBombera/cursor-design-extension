@@ -1,4 +1,5 @@
 import { type McpServer } from '@modelcontextprotocol/server';
+import * as z from 'zod/mini';
 
 import {
 	createArtboard,
@@ -6,19 +7,13 @@ import {
 	readArtboard,
 	setActiveArtboard,
 	updateArtboard,
-	validateNewArtboardArgs,
 } from '../disk/artboardFs';
 import { listArtboards } from '../disk/canvasView';
 import { exportArtboard, readHandoffStatus } from '../disk/exportFs';
-import { InvalidArgsError } from '../disk/errors';
+import { isArtboardHash } from '../disk/hash';
 import { MAX_FRAME_WIDTH, MIN_FRAME_WIDTH } from '../disk/layout';
-import {
-	READ_ONLY_ANNOTATIONS,
-	ROOT_PATH_DESCRIPTION,
-	runOnOpenPage,
-	toMcpToolError,
-	toolInputSchema,
-} from './mcpToolResult';
+import { parseArtboardId } from '../disk/parse';
+import { READ_ONLY_ANNOTATIONS, rootPathArg, runOnOpenPage, zodToolInput } from './mcpToolResult';
 import {
 	EXPORT_ARTBOARD_TOOL,
 	HANDOFF_STATUS_TOOL,
@@ -35,83 +30,114 @@ import {
 const ARTBOARD_HTML_RULES =
 	'The panel renders it in a sandbox: put CSS in <style> and JS in <script> (addEventListener). style="" attributes work: keep any already in the file (the user may have set them in the panel) and prefer classes for your own CSS. Inline on* handlers and anything loaded from outside the document (images, fonts, stylesheets, CDN scripts) do not work. Avoid vh units: frame height follows the content.';
 
-const setArtboardInputSchema = toolInputSchema({
-	artboardId: {
-		description: 'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
-	},
-	html: {
-		description: `Required string. Full standalone HTML document. Empty string allowed. ${ARTBOARD_HTML_RULES}`,
-	},
-	title: { description: 'Optional string title.' },
-	viewport: { description: 'Optional string viewport label, e.g. 1280x800.' },
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
+const stringArg = (field: string, description: string): z.ZodMiniString<string> =>
+	z
+		.string({ error: `${field} must be a string. Fix args and retry.` })
+		.check(z.describe(description));
+
+const finiteNumberArg = (field: string, description: string) =>
+	z.optional(
+		z
+			.number({ error: `${field} must be a finite number. Fix args and retry.` })
+			.check(z.describe(description)),
+	);
+
+const viewportArg = (description: string) =>
+	z.optional(
+		z
+			.string({ error: 'viewport must be a non-empty string. Fix args and retry.' })
+			.check(z.minLength(1), z.describe(description)),
+	);
+
+const setArtboardInputSchema = z.strictObject({
+	artboardId: stringArg(
+		'artboardId',
+		'Required string. New artboard id (letters, digits, dot, underscore, hyphen).',
+	),
+	html: stringArg(
+		'html',
+		`Required string. Full standalone HTML document. Empty string allowed. ${ARTBOARD_HTML_RULES}`,
+	),
+	title: z.optional(stringArg('title', 'Optional string title.')),
+	viewport: viewportArg('Optional string viewport label, e.g. 1280x800.'),
+	rootPath: rootPathArg,
 });
 
-const updateArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'Required string. Existing artboard id.' },
-	html: {
-		description: `Required string. Replacement HTML document (the whole document). ${ARTBOARD_HTML_RULES}`,
-	},
-	baseGeneration: {
-		description: 'Integer generation from read_artboard. Required unless baseHash is sent.',
-	},
-	baseHash: {
-		description: 'String hash from read_artboard. Required unless baseGeneration is sent.',
-	},
-	title: { description: 'Optional string title. Keeps the stored title when omitted.' },
-	viewport: {
-		description: 'Optional string viewport label. Keeps the stored viewport when omitted.',
-	},
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
+const updateArtboardInputSchema = z.strictObject({
+	artboardId: stringArg('artboardId', 'Required string. Existing artboard id.'),
+	html: stringArg(
+		'html',
+		`Required string. Replacement HTML document (the whole document). ${ARTBOARD_HTML_RULES}`,
+	),
+	baseGeneration: z.optional(
+		z
+			.int({ error: 'baseGeneration must be an integer >= 1. Fix args and retry.' })
+			.check(
+				z.gte(1),
+				z.describe('Integer generation from read_artboard. Required unless baseHash is sent.'),
+			),
+	),
+	baseHash: z.optional(
+		z
+			.string({ error: 'baseHash must be sha256: plus 64 hex characters. Fix args and retry.' })
+			.check(
+				z.refine(isArtboardHash),
+				z.describe(
+					'String hash from read_artboard (sha256: plus 64 hex characters). Required unless baseGeneration is sent.',
+				),
+			),
+	),
+	title: z.optional(
+		stringArg('title', 'Optional string title. Keeps the stored title when omitted.'),
+	),
+	viewport: viewportArg('Optional string viewport label. Keeps the stored viewport when omitted.'),
+	rootPath: rootPathArg,
 });
 
-const readArtboardInputSchema = toolInputSchema({
-	artboardId: {
-		description: 'Optional string artboard id. Defaults to the active artboard when omitted.',
-	},
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
+const readArtboardInputSchema = z.strictObject({
+	artboardId: z.optional(
+		stringArg(
+			'artboardId',
+			'Optional string artboard id. Defaults to the active artboard when omitted.',
+		),
+	),
+	rootPath: rootPathArg,
 });
 
-const listArtboardsInputSchema = toolInputSchema({
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
+const rootPathOnlyInputSchema = z.strictObject({ rootPath: rootPathArg });
+
+const setActiveArtboardInputSchema = z.strictObject({
+	artboardId: stringArg('artboardId', 'Required string. Existing artboard id to make active.'),
+	rootPath: rootPathArg,
 });
 
-const setActiveArtboardInputSchema = toolInputSchema({
-	artboardId: { description: 'Required string. Existing artboard id to make active.' },
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
-});
-
-const exportArtboardInputSchema = toolInputSchema({
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
-});
-
-const EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE =
-	'export_artboard exports every frame. Omit artboardId and retry.';
-
-const handoffStatusInputSchema = toolInputSchema({
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
-});
-
-const placeFrameInputSchema = toolInputSchema({
-	id: {
-		description:
-			'Required string. Existing artboard id to place on the stage (named id here, artboardId in the other tools).',
-	},
-	x: {
-		description: 'Optional finite number. Stage x in px. Keeps the current value when omitted.',
-	},
-	y: {
-		description: 'Optional finite number. Stage y in px. Keeps the current value when omitted.',
-	},
-	width: {
-		description: `Optional finite number. Frame width in px, clamped to ${MIN_FRAME_WIDTH}..${MAX_FRAME_WIDTH}. Keeps the current value when omitted.`,
-	},
-	label: { description: 'Optional string label. Keeps the current label when omitted.' },
-	group: {
-		description:
+const placeFrameInputSchema = z.strictObject({
+	id: stringArg(
+		'id',
+		'Required string. Existing artboard id to place on the stage (named id here, artboardId in the other tools).',
+	),
+	x: finiteNumberArg(
+		'x',
+		'Optional finite number. Stage x in px. Keeps the current value when omitted.',
+	),
+	y: finiteNumberArg(
+		'y',
+		'Optional finite number. Stage y in px. Keeps the current value when omitted.',
+	),
+	width: finiteNumberArg(
+		'width',
+		`Optional finite number. Frame width in px, clamped to ${MIN_FRAME_WIDTH}..${MAX_FRAME_WIDTH}. Keeps the current value when omitted.`,
+	),
+	label: z.optional(
+		stringArg('label', 'Optional string label. Keeps the current label when omitted.'),
+	),
+	group: z.optional(
+		stringArg(
+			'group',
 			'Optional string group name. Empty string clears the group. Keeps the current group when omitted.',
-	},
-	rootPath: { description: ROOT_PATH_DESCRIPTION },
+		),
+	),
+	rootPath: rootPathArg,
 });
 
 // Exported for tests: agentSkill.test.ts reads the tool names (skill drift guard).
@@ -120,10 +146,10 @@ export const artboardToolInputSchemas = {
 	[SET_ARTBOARD_TOOL]: setArtboardInputSchema,
 	[UPDATE_ARTBOARD_TOOL]: updateArtboardInputSchema,
 	[READ_ARTBOARD_TOOL]: readArtboardInputSchema,
-	[LIST_ARTBOARDS_TOOL]: listArtboardsInputSchema,
+	[LIST_ARTBOARDS_TOOL]: rootPathOnlyInputSchema,
 	[SET_ACTIVE_ARTBOARD_TOOL]: setActiveArtboardInputSchema,
-	[EXPORT_ARTBOARD_TOOL]: exportArtboardInputSchema,
-	[HANDOFF_STATUS_TOOL]: handoffStatusInputSchema,
+	[EXPORT_ARTBOARD_TOOL]: rootPathOnlyInputSchema,
+	[HANDOFF_STATUS_TOOL]: rootPathOnlyInputSchema,
 	[PLACE_FRAME_TOOL]: placeFrameInputSchema,
 };
 
@@ -134,19 +160,21 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Set artboard',
 			description:
 				'Create a new artboard HTML id on disk. html is required (empty string allowed). Does not overwrite an existing id. Pass rootPath when more than one folder is open.',
-			inputSchema: setArtboardInputSchema,
+			inputSchema: zodToolInput(setArtboardInputSchema),
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
-		async ({ artboardId, html, title, viewport, rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: SET_ARTBOARD_TOOL,
+				schema: setArtboardInputSchema,
+				args,
 				createIfFresh: true,
-				// Invalid args refuse before the resolver, so they never create a fresh project.
-				beforeResolve: () => {
-					validateNewArtboardArgs({ artboardId, html, title, viewport });
+				// A bad-character id refuses before the resolver, so it never creates a fresh project.
+				beforeResolve: ({ artboardId }) => {
+					parseArtboardId(artboardId);
 				},
-				operation: (page, isFirstRoot) =>
+				operation: ({ artboardId, html, title, viewport }, page, isFirstRoot) =>
 					createArtboard({
 						page,
 						artboardId,
@@ -164,15 +192,17 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Update artboard',
 			description:
 				'Replace HTML for an existing artboard. Requires baseGeneration and/or baseHash from read_artboard. Mismatch returns conflict without clobbering HTML. WORKSPACE_BUSY when another Vibeboard write holds the lock: retry; after a crashed write it can last up to 30 s.',
-			inputSchema: updateArtboardInputSchema,
+			inputSchema: zodToolInput(updateArtboardInputSchema),
 			annotations: { destructiveHint: true, openWorldHint: false },
 		},
-		async ({ artboardId, html, title, viewport, rootPath, baseGeneration, baseHash }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: UPDATE_ARTBOARD_TOOL,
+				schema: updateArtboardInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) =>
+				operation: ({ artboardId, html, baseGeneration, baseHash, title, viewport }, page) =>
 					updateArtboard({ page, artboardId, html, baseGeneration, baseHash, title, viewport }),
 			}),
 	);
@@ -183,15 +213,17 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Read artboard',
 			description:
 				'Read artboard HTML and meta. artboardId optional (defaults to active). Does not bump generation. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write.',
-			inputSchema: readArtboardInputSchema,
+			inputSchema: zodToolInput(readArtboardInputSchema),
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
-		async ({ artboardId, rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: READ_ARTBOARD_TOOL,
+				schema: readArtboardInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) => readArtboard({ page, artboardId }),
+				operation: ({ artboardId }, page) => readArtboard({ page, artboardId }),
 			}),
 	);
 
@@ -201,15 +233,17 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'List artboards',
 			description:
 				'List artboards/*.html ids on the open page. Generation matches read_artboard when stored meta is usable. Omits generation when meta is unreadable or id-mismatched. Also returns frames: the stage layout from the open page (.vibeboard/pages/<pageId>/canvas.json), with artboards missing from it auto-placed to the right. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write.',
-			inputSchema: listArtboardsInputSchema,
+			inputSchema: zodToolInput(rootPathOnlyInputSchema),
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
-		async ({ rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: LIST_ARTBOARDS_TOOL,
+				schema: rootPathOnlyInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) => listArtboards({ page }),
+				operation: (_parsed, page) => listArtboards({ page }),
 			}),
 	);
 
@@ -219,15 +253,18 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Place frame',
 			description:
 				'Update one frame (x, y, width, label, group) in the open page (.vibeboard/pages/<pageId>/canvas.json) and return every frame. Omitted fields keep their current value; place_frame({ id }) pins an auto-placed frame. Call list_artboards first and avoid overlapping frames. Height is never stored. Pass rootPath when more than one folder is open.',
-			inputSchema: placeFrameInputSchema,
+			inputSchema: zodToolInput(placeFrameInputSchema),
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
-		async ({ id, x, y, width, label, group, rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: PLACE_FRAME_TOOL,
+				schema: placeFrameInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) => placeFrame({ page, id, x, y, width, label, group }),
+				operation: ({ id, x, y, width, label, group }, page) =>
+					placeFrame({ page, id, x, y, width, label, group }),
 			}),
 	);
 
@@ -237,15 +274,17 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Set active artboard',
 			description:
 				'Set manifest activeArtboardId to an id whose HTML exists. Does not open the panel. Host watcher reloads if the panel is already open on the first folder.',
-			inputSchema: setActiveArtboardInputSchema,
+			inputSchema: zodToolInput(setActiveArtboardInputSchema),
 			annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
 		},
-		async ({ artboardId, rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: SET_ACTIVE_ARTBOARD_TOOL,
+				schema: setActiveArtboardInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) => setActiveArtboard({ page, artboardId }),
+				operation: ({ artboardId }, page) => setActiveArtboard({ page, artboardId }),
 			}),
 	);
 
@@ -255,20 +294,18 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Export artboard',
 			description:
 				'Export every frame on the canvas to .vibeboard/handoff/<exportId>/ (IMPLEMENT.md, canvas.html, tokens.json, <group>/<id>/index.html) and record lastExport. Takes no artboardId. Call this before implementing from a handoff. Does not bump generation. Pass rootPath when more than one folder is open. WORKSPACE_BUSY when another Vibeboard write holds the lock: retry; after a crashed write it can last up to 30 s. The handoff folder is still written; a retry writes a new one.',
-			inputSchema: exportArtboardInputSchema,
+			inputSchema: zodToolInput(rootPathOnlyInputSchema),
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
-		// The passthrough schema still delivers a stray artboardId (unlisted, so typed here); reject it
-		// before any disk work.
-		async ({ artboardId, rootPath }: { artboardId?: unknown; rootPath?: unknown }) =>
-			artboardId === undefined
-				? runOnOpenPage({
-						server,
-						rootPath,
-						createIfFresh: false,
-						operation: (page) => exportArtboard({ page }),
-					})
-				: toMcpToolError(new InvalidArgsError(EXPORT_TAKES_NO_ARTBOARD_ID_MESSAGE)),
+		async (args) =>
+			runOnOpenPage({
+				server,
+				tool: EXPORT_ARTBOARD_TOOL,
+				schema: rootPathOnlyInputSchema,
+				args,
+				createIfFresh: false,
+				operation: (_parsed, page) => exportArtboard({ page }),
+			}),
 	);
 
 	server.registerTool(
@@ -277,15 +314,17 @@ export const registerArtboardTools = (server: McpServer): void => {
 			title: 'Handoff status',
 			description:
 				"Read whether the recorded handoff is stale: any frame's HTML changed, or a frame was added or removed since the last export. Call this before implementing; if stale is true, call export_artboard again. May first settle the design folder (move an older one into pages once, or restore a missing project.json or artboards file); otherwise does not write. Pass rootPath when more than one folder is open.",
-			inputSchema: handoffStatusInputSchema,
+			inputSchema: zodToolInput(rootPathOnlyInputSchema),
 			annotations: READ_ONLY_ANNOTATIONS,
 		},
-		async ({ rootPath }) =>
+		async (args) =>
 			runOnOpenPage({
 				server,
-				rootPath,
+				tool: HANDOFF_STATUS_TOOL,
+				schema: rootPathOnlyInputSchema,
+				args,
 				createIfFresh: false,
-				operation: (page) => readHandoffStatus({ page }),
+				operation: (_parsed, page) => readHandoffStatus({ page }),
 			}),
 	);
 };
